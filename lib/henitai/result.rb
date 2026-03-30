@@ -45,7 +45,7 @@ module Henitai
       valid = mutants.reject { |m| excluded.include?(m.status) }
       return nil if valid.empty?
 
-      (detected.to_f / valid.count * 100).round(2)
+      ((detected.to_f / valid.count) * 100.0).round(2).to_f
     end
 
     # Mutation Score Indicator (MSI) — naive Berechnung ohne Äquivalenz-Bereinigung:
@@ -59,7 +59,7 @@ module Henitai
     def mutation_score_indicator
       return nil if mutants.empty?
 
-      (killed.to_f / mutants.count * 100).round(2)
+      ((killed.to_f / mutants.count) * 100.0).round(2).to_f
     end
 
     # @return [Float] duration in seconds

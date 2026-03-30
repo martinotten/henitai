@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "yaml"
+require "psych"
 
 module Henitai
   # Loads and validates .henitai.yml configuration.
@@ -29,7 +29,12 @@ module Henitai
     end
 
     def initialize(path: CONFIG_FILE, overrides: {})
-      raw = File.exist?(path) ? YAML.safe_load_file(path, symbolize_names: true) : {}
+      # @type var raw: Hash[Symbol, untyped]
+      raw = if File.exist?(path)
+              Psych.safe_load(File.read(path), symbolize_names: true) || {}
+            else
+              {}
+            end
       apply_defaults(merge_defaults(raw, symbolize_keys(overrides)))
     end
 
@@ -53,7 +58,9 @@ module Henitai
       @includes = raw[:includes] || ["lib"]
       @jobs = raw[:jobs]
       @reporters = raw[:reporters] || ["terminal"]
-      @dashboard = merge_defaults({}, raw[:dashboard])
+      # @type var empty_dashboard: Hash[Symbol, untyped]
+      empty_dashboard = {}
+      @dashboard = merge_defaults(empty_dashboard, raw[:dashboard])
     end
 
     def apply_mutation_defaults(raw)
@@ -85,9 +92,12 @@ module Henitai
     def symbolize_keys(value)
       case value
       when Hash
-        value.each_with_object({}) do |(key, val), result|
+        # @type var result: Hash[Symbol, untyped]
+        result = {}
+        value.each do |key, val|
           result[key.to_sym] = symbolize_keys(val)
         end
+        result
       when Array
         value.map { |item| symbolize_keys(item) }
       else

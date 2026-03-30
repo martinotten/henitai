@@ -1,0 +1,190 @@
+module Henitai
+  VERSION: String
+
+  class ConfigurationError < StandardError
+  end
+
+  class SubjectNotFound < StandardError
+  end
+
+  module Operators
+  end
+
+  class Configuration
+    DEFAULT_TIMEOUT: Float
+    DEFAULT_OPERATORS: Symbol
+    DEFAULT_JOBS: untyped
+    DEFAULT_COVERAGE_CRITERIA: Hash[Symbol, bool]
+    DEFAULT_THRESHOLDS: Hash[Symbol, Integer]
+    CONFIG_FILE: String
+
+    attr_reader integration: untyped
+    attr_reader includes: Array[String]
+    attr_reader operators: Symbol
+    attr_reader timeout: Float
+    attr_reader ignore_patterns: Array[untyped]
+    attr_reader jobs: untyped
+    attr_reader coverage_criteria: Hash[Symbol, untyped]
+    attr_reader thresholds: Hash[Symbol, Integer]
+    attr_reader reporters: Array[String]
+    attr_reader dashboard: Hash[Symbol, untyped]
+
+    def self.load: (?path: String, ?overrides: Hash[Symbol, untyped]) -> Configuration
+    def initialize: (?path: String, ?overrides: Hash[Symbol, untyped]) -> void
+
+    private
+
+    def apply_defaults: (Hash[Symbol, untyped]) -> void
+    def apply_general_defaults: (Hash[Symbol, untyped]) -> void
+    def apply_mutation_defaults: (Hash[Symbol, untyped]) -> void
+    def apply_analysis_defaults: (Hash[Symbol, untyped]) -> void
+    def merge_defaults: (Hash[Symbol, untyped], Hash[Symbol, untyped]?) -> Hash[Symbol, untyped]
+    def symbolize_keys: (untyped) -> untyped
+  end
+
+  class Subject
+    attr_reader namespace: String?
+    attr_reader method_name: String?
+    attr_reader method_type: Symbol
+    attr_reader source_file: String?
+    attr_reader source_range: Range[Integer]?
+
+    def self.parse: (String) -> Subject
+    def initialize: (?expression: String, ?namespace: String, ?method_name: String, ?method_type: Symbol, ?source_location: Hash[Symbol, untyped]) -> void
+    def expression: () -> String
+    def wildcard?: () -> bool
+
+    private
+
+    def parse_expression: (String) -> void
+  end
+
+  class Mutant
+    STATUSES: Array[Symbol]
+
+    attr_reader id: String
+    attr_reader subject: Subject
+    attr_reader operator: String
+    attr_reader original_node: untyped
+    attr_reader mutated_node: untyped
+    attr_reader mutation_type: untyped
+    attr_reader description: String
+    attr_reader location: Hash[Symbol, untyped]
+    attr_accessor status: Symbol
+    attr_accessor killing_test: String?
+    attr_accessor duration: Float?
+
+    def initialize: (subject: Subject, operator: String, nodes: Hash[Symbol, untyped], description: String, location: Hash[Symbol, untyped]) -> void
+    def killed?: () -> bool
+    def survived?: () -> bool
+    def pending?: () -> bool
+    def ignored?: () -> bool
+    def equivalent?: () -> bool
+    def to_s: () -> String
+  end
+
+  class Operator
+    LIGHT_SET: Array[String]
+    FULL_SET: Array[String]
+
+    def self.for_set: (Symbol) -> Array[untyped]
+    def self.node_types: () -> Array[Symbol]
+    def mutate: (untyped, subject: Subject) -> Array[Mutant]
+    def name: () -> String
+
+    private
+
+    def build_mutant: (subject: Subject, original_node: untyped, mutated_node: untyped, description: String) -> Mutant
+    def node_location: (untyped) -> Hash[Symbol, untyped]
+  end
+
+  module Integration
+    def self.for: (String) -> untyped
+
+    class Base
+      def select_tests: (Subject) -> Array[String]
+      def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> Symbol
+    end
+
+    class Rspec < Base
+      def select_tests: (Subject) -> Array[String]
+      def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> Symbol
+    end
+  end
+
+  module Reporter
+    def self.run_all: (names: Array[String], result: Result, config: Configuration) -> void
+    def self.reporter_class: (String) -> untyped
+
+    class Base
+      def initialize: (config: Configuration) -> void
+      def report: (Result) -> void
+    end
+
+    class Terminal < Base
+      def report: (Result) -> void
+    end
+
+    class Json < Base
+      def report: (Result) -> void
+    end
+
+    class Html < Base
+      def report: (Result) -> void
+    end
+
+    class Dashboard < Base
+      def report: (Result) -> void
+    end
+  end
+
+  class Result
+    SCHEMA_VERSION: String
+
+    attr_reader mutants: Array[Mutant]
+    attr_reader started_at: Time
+    attr_reader finished_at: Time
+
+    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time) -> void
+    def killed: () -> Integer
+    def survived: () -> Integer
+    def equivalent: () -> Integer
+    def detected: () -> Integer
+    def mutation_score: () -> Float?
+    def mutation_score_indicator: () -> Float?
+    def duration: () -> Float
+    def to_stryker_schema: () -> Hash[Symbol, untyped]
+
+    private
+
+    def build_files_section: () -> Hash[Symbol, untyped]
+    def mutant_to_schema: (Mutant) -> Hash[Symbol, untyped]
+    def replacement_for: (Mutant) -> String
+    def location_for: (Mutant) -> Hash[Symbol, untyped]
+    def line_column: (Mutant, Symbol) -> Hash[Symbol, Integer]
+    def duration_for: (Mutant) -> Integer?
+    def stryker_status: (Symbol) -> String
+  end
+
+  class Runner
+    attr_reader config: Configuration
+    attr_reader result: untyped
+
+    def initialize: (?config: Configuration, ?subjects: Array[Subject], ?since: String) -> void
+    def run: () -> Result
+
+    private
+
+    def resolve_subjects: () -> untyped
+    def generate_mutants: (untyped) -> untyped
+    def filter_mutants: (untyped) -> untyped
+    def execute_mutants: (untyped) -> untyped
+    def report: (Result) -> void
+  end
+
+  class CLI
+    def self.start: (Array[String]) -> untyped
+    def initialize: (Array[String]) -> void
+    def run: () -> untyped
+  end
+end

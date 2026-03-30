@@ -27,6 +27,9 @@ jobs:
       - name: Run RuboCop
         run: bundle exec rubocop --parallel
 
+      - name: Run Steep
+        run: bundle exec steep check
+
       - name: Run specs
         run: bundle exec rspec
 

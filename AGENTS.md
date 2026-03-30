@@ -49,6 +49,7 @@ or with the architecture docs, stop and resolve the conflict before coding.
 
 - `bundle exec rspec`
 - `bundle exec rubocop --parallel`
+- `bundle exec steep check`
 - `bundle exec henitai run`
 
 When in doubt, choose the simplest change that satisfies the spec and stays

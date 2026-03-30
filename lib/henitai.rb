@@ -15,6 +15,13 @@ module Henitai
   # Raised when a subject expression cannot be resolved
   class SubjectNotFound < StandardError; end
 
+  # Namespace for concrete mutation operators.
+  #
+  # The namespace exists as part of the public extension surface even before
+  # the individual operators are loaded.
+  module Operators
+  end
+
   autoload :Configuration, "henitai/configuration"
   autoload :Subject, "henitai/subject"
   autoload :Mutant, "henitai/mutant"

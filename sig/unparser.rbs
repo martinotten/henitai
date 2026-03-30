@@ -1,0 +1,3 @@
+module Unparser
+  def self.unparse: (untyped) -> String
+end
