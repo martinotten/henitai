@@ -248,16 +248,14 @@ Das kritische Implementierungsdetail: Mutationen werden **nicht** als temporäre
 
 ```ruby
 # Im Elternprozess (ExecutionEngine), vor fork:
-Activator.serialize(mutant, tmpfile)   # Mutant-Daten in tmpfile schreiben
-
 pid = Process.fork do
   # ── CHILD ────────────────────────────────────────────────────────────
   # Schritt 1: Mutation aktivieren (vor RSpec)
-  Activator.load_and_apply(tmpfile)    # define_method patcht Zielklasse
+  Activator.activate!(mutant)          # define_method patcht Zielklasse
 
   # Schritt 2: Tests im GLEICHEN Prozess starten (kein exec!)
   status = RSpec::Core::Runner.run(test_files)
-  exit(status)
+  exit(status ? 0 : 1)
   # ─────────────────────────────────────────────────────────────────────
 end
 
@@ -265,7 +263,7 @@ end
 result = wait_with_timeout(pid, config.timeout)
 ```
 
-`define_method`-Patches sind prozesslokal — ein separater RSpec-Subprocess würde die Patch-Information nicht erben. Der Elternprozess wertet den Exit-Code aus: 0 → survived, != 0 → killed, SIGTERM/SIGKILL → timeout.
+`define_method`-Patches sind prozesslokal — ein separater RSpec-Subprocess würde die Patch-Information nicht erben. Der Elternprozess wertet den Exit-Code aus: 0 → survived, != 0 → killed, SIGTERM/SIGKILL → timeout. Der `mutant`-Datensatz wird durch den Fork vererbt; kein tmpfile ist nötig.
 
 ---
 
@@ -277,7 +275,7 @@ result = wait_with_timeout(pid, config.timeout)
 
 **Definition of Done:**
 - `bundle exec henitai run` terminiert erfolgreich
-- Mindestens 5 Operatoren (Light Set) implementiert
+- Alle 7 Light-Set-Operatoren implementiert
 - JSON-Report (Stryker-Schema) wird korrekt generiert
 - CI-Pipeline (GH Actions) ist grün
 - Das Framework testet sich selbst (Dogfooding)
@@ -339,7 +337,7 @@ result = wait_with_timeout(pid, config.timeout)
 - [x] **(P1)** RuboCop-Konfiguration (`TargetRubyVersion: 4.0`, frozen strings)
 - [x] **(P1)** SimpleCov-Setup mit Branch-Coverage
 - [x] **(P1)** `.henitai.yml` Konfigurations-Schema anlegen
-- [ ] **(P1)** `TASK: infra-01` — Abhängigkeiten verifizieren: `parser ~> 3.3`, `unparser ~> 0.6` installierbar unter Ruby 4.0.2
+- [ ] **(P1)** `TASK: infra-01` — Parser-Spike als Go/No-Go: `parser ~> 3.3` und `unparser ~> 0.6` gegen Ruby 4.0.2 mit echten Syntax-Fixtures prüfen; Ergebnis ist entweder "upstream tragfähig" oder "Fork/Wartungsstrategie erforderlich". Phase 1 startet nicht ohne diese Entscheidung.
 - [ ] **(P1)** `TASK: infra-02` — Steep/RBS Typannotationen: Entscheidung treffen (Scope für Phase 1 begrenzen, nur public API)
 
 ---
@@ -426,7 +424,7 @@ Jeder Operator braucht: Implementierung + Spec + mindestens 3 dokumentierte Beis
 - [ ] **(P2)** `TASK: op-array-01` — `ArrayDeclaration`: `[]` → `[nil]`, Element-Entfernung
 - [ ] **(P2)** `TASK: op-block-01` — `BlockStatement`: `{ ... }` → `{}` (leerer Block)
 - [ ] **(P2)** `TASK: op-method-01` — `MethodExpression`: Methodenaufruf-Ergebnis durch `nil` ersetzen
-- [ ] **(P2)** `TASK: op-assign-01` — `AssignmentExpression`: `+=` ↔ `-=`, `||=` entfernen
+- [ ] **(P2)** `TASK: op-assign-01` — `AssignmentExpression`: `+=` ↔ `-=`, `||=` entfernen; Dokumentation und Specs müssen explizit festhalten, dass der Default-Arid-Filter Memoization-Patterns wie `@var ||= compute_value` standardmäßig unterdrückt
 
 ---
 
@@ -467,11 +465,11 @@ Jeder Operator braucht: Implementierung + Spec + mindestens 3 dokumentierte Beis
 
 - [ ] **(P1)** `TASK: exec-01` — `ExecutionEngine#run(mutants, integration, config)`: Hauptschleife über alle `:pending`-Mutanten
 - [ ] **(P1)** `TASK: exec-02` — Fork-Isolation: `Process.fork` pro Mutant, `HENITAI_MUTANT_ID` ENV-Var setzen, `Process.wait` mit Timeout im Elternprozess
-- [ ] **(P1)** `TASK: exec-03` — Mutant-Aktivierung im Child (vor RSpec): `Activator.activate!` lädt Mutant per ID aus dem serialisierten Mutant-Store (tmpfile oder Shared Memory), patcht Zielklasse via `Module#define_method` — **kein exec, kein zweiter Fork**
+- [ ] **(P1)** `TASK: exec-03` — Mutant-Aktivierung im Child (vor RSpec): `Activator.activate!(mutant)` patcht Zielklasse via `Module#define_method` — **kein exec, kein zweiter Fork**
 - [ ] **(P1)** `TASK: exec-04` — Timeout-Handling: `Process.kill(:SIGTERM, pid)` nach `config.timeout` Sekunden im Elternprozess, danach `SIGKILL` nach weiteren 2 Sekunden
 - [ ] **(P1)** `TASK: exec-05` — Kill-on-First-Failure: RSpec-Formatter meldet ersten Test-Fehler → Kindprozess ruft `exit(1)` auf (kein `--fail-fast` nötig, da eigener Prozess)
 - [ ] **(P1)** `TASK: exec-06` — Exit-Code-Auswertung im Elternprozess: 0 → survived, != 0 → killed, SIGTERM/SIGKILL → timeout
-- [ ] **(P1)** `TASK: exec-07` — `Henitai::Mutant::Activator`-Klasse: Serialisiert Mutant-Daten (mutierter AST als String, Klasse, Methode) in tmpfile vor Fork; deserialisiert und patcht im Child
+- [ ] **(P1)** `TASK: exec-07` — `Henitai::Mutant::Activator`-Klasse: Aktiviert den per Fork vererbten `Mutant`-Datensatz im Child und patcht Zielklasse/Methode via `Module#define_method`
 - [ ] **(P2)** `TASK: exec-08` — Parallele Ausführung: Worker-Pool (`Parallel`-Gem oder natives `Ractor`), Anzahl via `config.jobs` oder CPU-Count
 - [ ] **(P2)** `TASK: exec-09` — Test-Priorisierung: `TestPrioritizer#sort(tests, mutant, history)` — adaptive Strategie (Tests die bereits andere Mutanten getötet haben, zuerst)
 - [ ] **(P2)** `TASK: exec-10` — Flaky-Test-Mitigation: 3× Retry bei survived Mutant, Warnung wenn > 5 % unknown
@@ -531,7 +529,7 @@ Jeder Operator braucht: Implementierung + Spec + mindestens 3 dokumentierte Beis
 > **Scoring-Formel (bindend, aus architecture.md Abschnitt 6.1):**
 >
 > ```
-> MS  = detected / (total − ignored − no_coverage − compile_error − equivalent)
+> MS  = (killed + timeout) / (total − ignored − no_coverage − compile_error − equivalent)
 > MSI = killed   / total
 > ```
 >
@@ -544,7 +542,8 @@ Jeder Operator braucht: Implementierung + Spec + mindestens 3 dokumentierte Beis
 - [ ] **(P1)** `TASK: result-03` — Terminal-Report zeigt MS **und** MSI nebeneinander, plus geschätzte Äquivalenz-Unsicherheit (`~10–15 % der lebenden Mutanten`)
 - [ ] **(P1)** `TASK: result-04` — Spec: MS/MSI-Berechnung mit Fixture-Mutanten aller Statuses, inkl. `:equivalent` (Regression-Guard gegen Formel-Drift)
 - [ ] **(P2)** `TASK: result-05` — Äquivalenz-Heuristiken (MEDIC-Muster): `EquivalenceDetector#analyze(mutant)` markiert Kandidaten mit `:equivalent` — Data-Flow-Pattern (Use-Def, Use-Ret, Def-Def, Def-Ret). Erkennungsrate ~50 % der tatsächlich äquivalenten Mutanten.
-- [ ] **(P2)** `TASK: result-06` — Trend-Tracking: `reports/mutation-history.json` — akkumuliert MS/MSI-Werte über Zeit für Trendlinie
+- [ ] **(P2)** `TASK: result-06` — Persistente Mutantenhistorie: `MutantHistoryStore` auf SQLite-Basis speichert `mutant_id`, `first_seen_version`, `status_history`, `days_alive` und bildet die Grundlage für Latent-Mutant-Tracking
+- [ ] **(P2)** `TASK: result-07` — Trend-Tracking: Reporter leitet aus der SQLite-Historie `reports/mutation-history.json` für MS/MSI-Trends und persistente lebende Mutanten ab
 
 ---
 
@@ -611,7 +610,20 @@ Jeder Operator braucht: Implementierung + Spec + mindestens 3 dokumentierte Beis
 - Konsistent mit dem Copy-on-Write-Vorteil des Fork-Modells
 - Mutant-Gem verwendet denselben Ansatz (Konzept-Übernahme, nicht Code-Übernahme)
 
-**Risiko:** `eval` für Methoden-Body-Rekonstruktion — muss sorgfältig gesandboxed werden.
+**Aktivierungspfad:** `Activator.activate!(mutant)` arbeitet in vier Schritten:
+- Mutierter AST wird via `unparser` zu Ruby-Source rekonstruiert
+- Diese Source wird in einen ausführbaren Methoden-Wrapper überführt
+- Der Wrapper wird via `class_eval` oder `module_eval` im Kontext der Zielklasse kompiliert
+- Die resultierende Implementierung wird als Ersatzmethode gebunden; die Aktivierung bleibt auf den geforkten Kindprozess beschränkt
+
+`define_method` ist damit die öffentliche Injektionsstrategie, aber nicht die ganze Geschichte: Irgendwo zwischen AST und ersetzter Methode ist `eval` unvermeidlich, weil Ruby ein ausführbares Codeobjekt benötigt. Genau diese Stufe ist das eigentliche Risiko, nicht der Stillborn-Filter allein.
+
+**Spezifische Risiken:**
+- Eval-/Aktivierungsfehler trotz syntaktisch validem Mutanten, z.B. durch Scope-Verlust bei Closures oder ungültige Rekonstruktion der Methodenform
+- Unterschied zwischen `def`-Semantik und `define_method`-Semantik bei Argumenten, Sichtbarkeit und `super`/Block-Verhalten
+- Fehlklassifikation: Ein Aktivierungsfehler darf nie als `Survived` enden
+
+**Status-Mapping:** Fehler in `Activator.activate!`, die nach erfolgreicher Syntaxvalidierung auftreten, werden als `RuntimeError` klassifiziert und aus dem MS-Nenner ausgeschlossen. Sie sind keine überlebenden Mutanten.
 
 ---
 

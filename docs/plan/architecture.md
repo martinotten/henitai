@@ -120,56 +120,43 @@ Fibers                               →  NICHT geeignet (kooperativ, kein echte
 
 ## 4. Mutationsoperatoren
 
-### 4.1 Kern-Operatoren (Pflicht, Phase 1)
+### 4.1 Kern-Operatoren (Phase 1, Pflicht)
 
-Die Forschungslage ist hier ungewöhnlich konsistent: Jia & Harman (2010), Papadakis et al. (2017) und beide Google-Paper (2018, 2021) konvergieren auf ein minimales Set von fünf Operatoren, das 90 %+ der Fault-Detection-Kapazität abdeckt.
+Für Henitai standardisieren wir im MVP auf das sieben Operatoren umfassende Light Set aus dem Implementierungsplan. Die Literatur stützt ein kleines, signalstarkes Kernset; die konkrete Auswahl ist hier diejenige, die wir im Code und in den Reports als kanonisch behandeln.
 
-| ID | Name | Beschreibung | Ruby-Beispiel |
-|---|---|---|---|
-| **AOR** | Arithmetic Operator Replacement | Ersetzt `+, -, *, /, **, %` durch jeweils andere | `a + b` → `a - b` |
-| **LCR** | Logical Connector Replacement | Ersetzt `&&, \|\|` und umkehrt Operanden | `a && b` → `a \|\| b` |
-| **ROR** | Relational Operator Replacement | Ersetzt `<, >, <=, >=, ==, !=` und `true/false` | `a > b` → `a >= b` |
-| **UOI** | Unary Operator Insertion | Fügt `!, -, +` vor Variablen ein | `n` → `!n`, `-n` |
-| **SBR** | Statement Block Removal | Entfernt einzelne Statements | `return x` → _(leer)_ |
+| Kanonischer Name | Beschreibung | Ruby-Beispiel |
+|---|---|---|
+| `ArithmeticOperator` | Ersetzt arithmetische Operatoren `+, -, *, /, **, %` | `a + b` → `a - b` |
+| `EqualityOperator` | Ersetzt Vergleichsoperatoren `==, !=, <, >, <=, >=, <=>, eql?, equal?` | `a > b` → `a >= b` |
+| `LogicalOperator` | Ersetzt logische Verknüpfungen `&&` / `||` | `a && b` → `a \|\| b` |
+| `BooleanLiteral` | Toggelt `true` / `false` und entfernt Negation | `true` → `false` |
+| `ConditionalExpression` | Entfernt Zweige oder negiert Bedingungen | `if cond then ... end` |
+| `StringLiteral` | Ersetzt String-Literale durch leere oder Platzhalterwerte | `"foo"` → `""` |
+| `ReturnValue` | Ersetzt Rückgabeausdrücke durch neutrale Werte | `return x` → `return nil` |
 
-> **Empirische Grundlage:** Zhang et al. (2013) zeigen, dass 10 Operatoren aus 43 verfügbaren gleichwertige oder bessere Testeffektivität erzielen. Das 5er-Set ist das destillierte Minimum — erweiterbar, nicht reduzierbar.
+### 4.2 Ruby-spezifische Full-Set-Operatoren (Phase 2)
 
-### 4.2 Ruby-OO-Operatoren (Phase 2, Ruby-spezifisch)
+Die folgenden Operatoren ergänzen den MVP als Full Set. Ihre Namen sind bereits die kanonischen Report- und Konfigurationsnamen; es gibt keine zusätzlichen Alias-Namen in der öffentlichen API.
 
-Ruby ist eine vollständig objektorientierte Sprache. Die OO-Operatoren aus der Java-Literatur (muJava-Subset) müssen Ruby-adäquat adaptiert werden. Sie ergänzen den Phase-1-Kern und werden erst in Phase 2 implementiert, weil sie komplexere AST-Traversal-Logik benötigen und ihr Signal-to-Noise-Verhältnis erst nach empirischer Messung am Phase-1-Basis calibriert werden kann (Analogie: Google brauchte 6 Jahre iterativer Kalibrierung).
-
-| ID | Name | Stryker-kompatibler Name | Beschreibung | Ruby-Beispiel |
-|---|---|---|---|---|
-| **MCD** | Method Call Deletion | `MethodExpression` (erweitert) | Entfernt einen Methodenaufruf | `obj.save` → _(leer)_ |
-| **MRS** | Method Return Substitution | `ReturnValue` (erweitert) | Ersetzt Rückgabewert durch `nil`, `0`, `false` | `def f = calc` → `def f = nil` |
-| **IVR** | Instance Variable Reset | _(Ruby-spezifisch)_ | Setzt `@var` auf `nil` | `@count += 1` → `@count = nil` |
-| **BLK** | Block Argument Removal | `BlockStatement` (erweitert) | Entfernt `&block`-Übergabe | `map(&method(:f))` → `map` |
-| **PMR** | Pattern Match Replacement | `PatternMatch` | Ersetzt Pattern-Match-Arm | `in { x: Integer }` → `in { x: String }` |
-
-> **Phase-1 Light Set (kanonisch):** `ArithmeticOperator`, `EqualityOperator`, `LogicalOperator`, `BooleanLiteral`, `ConditionalExpression`, `StringLiteral`, `ReturnValue`. Diese sieben Operatoren sind in `lib/henitai/operator.rb` als `LIGHT_SET` definiert und bilden den MVP. Die obigen OO-Operatoren gehören zum `FULL_SET` und werden in Phase 2 hinzugefügt.
+| Kanonischer Name | Beschreibung | Ruby-Beispiel |
+|---|---|---|
+| `SafeNavigation` | Entfernt den Nil-Guard von `&.` | `user&.name` → `user.name` |
+| `RangeLiteral` | Wandelt inklusive und exklusive Range-Literale um | `1..5` ↔ `1...5` |
+| `HashLiteral` | Ersetzt Hash-Literale durch leere oder reduzierte Varianten | `{a: 1}` → `{}` |
+| `PatternMatch` | Entfernt oder verändert `in`-Arms und Guards | `in { x: Integer }` → `in { x: String }` |
+| `ArrayDeclaration` | Entfernt Array-Elemente oder ersetzt mit leeren Arrays | `[1, 2]` → `[]` |
+| `BlockStatement` | Entfernt Blockinhalte | `{ do_work }` → `{}` |
+| `MethodExpression` | Ersetzt Methodenergebnisse durch neutrale Werte | `call_service` → `nil` |
+| `AssignmentExpression` | Mutiert Zuweisungs- und Compound-Assignment-Operatoren | `+=` ↔ `-=` |
 
 ### 4.3 Stryker-kompatible Operator-Benennung
 
-Wir verwenden die Stryker-Operator-Namen als kanonische Bezeichnung, damit Berichte im Dashboard korrekt dargestellt und gefiltert werden können. Ruby-spezifische Operatoren erhalten neue Namen im Stryker-Stil:
+Die Stryker-kompatiblen Namen sind identisch mit den kanonischen Namen oben. In `mutatorName`, Konfiguration und Reports werden keine alternativen Kürzel verwendet. Die Literaturkürzel wie `AOR`, `ROR` oder `MCD` bleiben nur als Forschungsreferenz erhalten.
 
-| Unser Operator | Stryker-Name | Status |
-|---|---|---|
-| AOR | `ArithmeticOperator` | Stryker-kompatibel |
-| ROR | `EqualityOperator` | Stryker-kompatibel |
-| LCR | `LogicalOperator` | Stryker-kompatibel |
-| UOI | `UnaryOperator` | Stryker-kompatibel |
-| SBR | `BlockStatement` | Stryker-kompatibel |
-| — | `BooleanLiteral` | Stryker-kompatibel |
-| — | `StringLiteral` | Stryker-kompatibel |
-| — | `ArrayDeclaration` | Stryker-kompatibel |
-| — | `AssignmentOperator` | Stryker-kompatibel |
-| — | `ConditionalExpression` | Stryker-kompatibel |
-| — | `RegexLiteral` | Stryker-kompatibel |
-| MRS | `MethodExpression` | Stryker-kompatibel (erweitert) |
-| PMR | `PatternMatch` | Ruby-spezifisch (neu) |
-| — | `SafeNavigation` | Ruby-spezifisch (neu, `&.`) |
-| — | `RangeLiteral` | Ruby-spezifisch (neu, `..`/`...`) |
-| — | `HashLiteral` | Ruby-spezifisch (neu) |
+| Phase | Kanonische Namen |
+|---|---|
+| P1 | `ArithmeticOperator`, `EqualityOperator`, `LogicalOperator`, `BooleanLiteral`, `ConditionalExpression`, `StringLiteral`, `ReturnValue` |
+| P2 | `SafeNavigation`, `RangeLiteral`, `HashLiteral`, `PatternMatch`, `ArrayDeclaration`, `BlockStatement`, `MethodExpression`, `AssignmentExpression` |
 
 ### 4.4 Erweiterte Operatoren (Phase 2, optional)
 
@@ -179,7 +166,7 @@ Diese Operatoren sind in der Literatur beschrieben, aber für MVP nicht zwingend
 - **Performance-Operatoren** (Delgado-Pérez et al. 2010): RCL (Remove Cache Loop), URV (Unnecessary Recalculation Value) — nur relevant wenn Performance-Regression-Tests vorhanden.
 - **Ractor-Operatoren:** Entfernung von Synchronisations-Primitiven, Race-Condition-Injektion — für nebenläufigen Ruby-Code.
 
-### 4.4 Operator-Taxonomie und Konfiguration
+### 4.5 Operator-Taxonomie und Konfiguration
 
 Das Framework implementiert das **SoMO-Klassifikationsmodell** (Gutiérrez-Madroñal et al. 2014):
 
@@ -244,6 +231,8 @@ Kapazitäts-Hints:     Array.new(100), Hash.new
 
 Diese Liste ist **iterativ zu erweitern** — jeder Mutant, den Entwickler als "nicht relevant" markieren, ist ein Kandidat für einen neuen Arid-Node-Eintrag. Dieser Feedback-Loop ist der wichtigste Mechanismus zur langfristigen Qualitätsverbesserung.
 
+**Bewusster Trade-off bei Memoization:** Das Pattern `@var ||= compute_value` ist standardmäßig arid, obwohl `AssignmentExpression` in Phase 2 explizit `||=` mutieren kann. Das ist beabsichtigt: Im Default-Modus priorisieren wir Signal vor Vollständigkeit und unterdrücken die häufig sehr rauschigen Memoization-Mutanten. Teams, die diese Stellen gezielt analysieren wollen, können die eingebaute Memoization-Suppression abschalten oder das Ignore-Pattern überschreiben.
+
 ### 5.3 Test-Priorisierung
 
 Das FaMT-System (Zhang et al. 2013) zeigt 17–38 % Execution-Reduktion durch Coverage-basierte Priorisierung:
@@ -294,12 +283,12 @@ Dies ist das schwierigste Problem im Mutation Testing. Es ist formal unentscheid
 
 **Stufe 3 — Transparente Kommunikation (im Report):**
 ```
-Mutation Score (MS):  42 / 87 = 48,3 %   (getötet / (gesamt - bestätigt äquivalent))
-Mutation Score Indicator (MSI): 42 / 100 = 42 %  (getötet / alle)
+Mutation Score (MS):  (killed + timeout) / (total - ignored - no_coverage - compile_error - equivalent)
+Mutation Score Indicator (MSI): killed / total
 Unbekannt äquivalent: ~13 Mutanten (geschätzt 10–15 %)
 ```
 
-**Warnung:** Das Framework darf niemals einen exakten MS ausweisen, ohne den Äquivalenz-Vorbehalt zu kommunizieren. Bis zu 50 % der lebenden Mutanten können äquivalent sein.
+**Warnung:** Das Framework darf niemals einen MS ohne Äquivalenz-Vorbehalt ausweisen. `Equivalent` ist ein interner Status und wird im Stryker-JSON als `Ignored` serialisiert. Bis zu 50 % der lebenden Mutanten können äquivalent sein.
 
 ### 6.2 LLM-Integration (Phase 3, optional)
 
@@ -377,7 +366,7 @@ Lektion aus Google (Petrović et al. 2021): Mutation Testing wird nur adoptiert,
 ```yaml
 # .github/workflows/mutation.yml
 - name: Mutation Analysis
-  run: bundle exec ruby-mutator analyze --mode ci-pr --format github-review
+  run: bundle exec henitai run --mode ci-pr --format github-review
 
 # Output: Inline-Kommentare im PR für jeden lebenden Mutanten
 # Format: "Der Mutant `a + b → a - b` in Zeile 42 wird nicht getötet.
@@ -409,6 +398,8 @@ mutant_db:
 ```
 
 Dies ermöglicht **Trend-Reports:** "Diese Methode hat seit 6 Monaten 3 persistente lebende Mutanten — das deutet auf systematisch schwache Assertions hin."
+
+**Phasen-Zuordnung:** Die persistente SQLite-Ablage gehört in Phase 2 (Production-Ready). Vorhersagemodelle für latente Mutanten und ML-Flags wie `predicted_latent` gehören erst in Phase 3.
 
 ---
 
@@ -560,9 +551,9 @@ Unser Framework gibt als primären Report-Output das `mutation-testing-report-sc
 
 **Wichtige Details:** Zeilen/Spalten sind **1-basiert**. Das `source`-Feld muss den vollständigen Dateiinhalt enthalten (wird für Syntax-Highlighting im HTML-Report benötigt).
 
-**Mutant-Status-Werte:** `Killed`, `Survived`, `NoCoverage`, `Timeout`, `CompileError`, `RuntimeError`, `Ignored`, `Pending`
+**Mutant-Status-Werte:** `Killed`, `Survived`, `NoCoverage`, `Timeout`, `CompileError`, `RuntimeError`, `Ignored`, `Equivalent`, `Pending`
 
-In den Score gehen ein: `Killed` + `Timeout` (detected) vs. `Survived` + `NoCoverage` (undetected). `CompileError`, `RuntimeError`, `Ignored` bleiben außen vor.
+Für die Score-Berechnung zählt `detected = Killed + Timeout`. Aus dem Nenner ausgeschlossen werden `Ignored`, `NoCoverage`, `CompileError`, `RuntimeError` und `Equivalent`. Das Stryker-JSON kennt keinen `Equivalent`-Status; dieser wird als `Ignored` serialisiert, die interne Modellierung bleibt jedoch erhalten.
 
 ### 8b.2 HTML-Report via mutation-testing-elements
 
