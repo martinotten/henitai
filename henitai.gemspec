@@ -26,11 +26,11 @@ Gem::Specification.new do |spec|
   spec.required_ruby_version = ">= 4.0.0"
 
   spec.metadata = {
-    "bug_tracker_uri"   => "https://github.com/martinotten/henitai/issues",
-    "changelog_uri"     => "https://github.com/martinotten/henitai/blob/main/CHANGELOG.md",
+    "bug_tracker_uri" => "https://github.com/martinotten/henitai/issues",
+    "changelog_uri" => "https://github.com/martinotten/henitai/blob/main/CHANGELOG.md",
     "documentation_uri" => "https://github.com/martinotten/henitai/blob/main/README.md",
-    "homepage_uri"      => spec.homepage,
-    "source_code_uri"   => "https://github.com/martinotten/henitai",
+    "homepage_uri" => spec.homepage,
+    "source_code_uri" => "https://github.com/martinotten/henitai",
     "rubygems_mfa_required" => "true"
   }
 
@@ -48,7 +48,7 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   # Runtime dependencies
-  spec.add_dependency "parser",   "~> 3.3"   # Ruby AST parsing
+  spec.add_dependency "prism",    "~> 1.5"   # Ruby 4 parser
   spec.add_dependency "unparser", "~> 0.6"   # AST → source code reconstruction
 
   # Development dependencies (via Gemfile)

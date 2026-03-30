@@ -102,7 +102,7 @@ Henitai sits between a Ruby codebase and the developer feedback loop.
 | System | Protocol or interface | Purpose |
 |---|---|---|
 | Git repository | local filesystem and git diff | identify changed subjects and changed methods |
-| Ruby source tree | parser AST input | discover mutation points |
+| Ruby source tree | Prism-translated parser-compatible AST input | discover mutation points |
 | Test framework | process execution of RSpec or Minitest | execute only the relevant tests |
 | Coverage data | SimpleCov JSON or equivalent | prioritize tests and mark uncovered code |
 | Stryker Dashboard | HTTP upload and project metadata | share results with the existing mutation-testing ecosystem |
@@ -154,7 +154,7 @@ The canonical operator model uses a small light set first and then grows to a Ru
 
 Ruby-specific execution notes:
 
-- source parsing is based on the `parser` gem, because the framework needs a real AST and not regular-expression heuristics
+- source parsing is based on Prism's translation layer, because the framework needs a real AST and not regular-expression heuristics
 - `RubyVM::AbstractSyntaxTree` is useful for inspection and future experiments, but not the primary mutation backend
 - the default execution model uses `Module#define_method` injection inside a forked worker process
 - process-based parallelism is the default for test execution, because it gives isolation and avoids shared-state surprises
@@ -463,7 +463,7 @@ It should stay opt-in so the default mode remains easy to reason about.
 
 | Decision | Alternatives considered | Status | Rationale |
 |---|---|---|---|
-| AST-based mutation with the `parser` gem | `RubyVM::AbstractSyntaxTree` as primary backend | accepted | regex mutation is too fragile for Ruby syntax, and `parser` is easier to validate against report locations |
+| AST-based mutation with Prism translation | `RubyVM::AbstractSyntaxTree` as primary backend | accepted | regex mutation is too fragile for Ruby syntax, and Prism keeps Ruby 4 syntax support aligned with the runtime while preserving parser-compatible AST locations |
 | Process-based worker isolation | threads or Ractors | accepted | avoids shared-state issues and fits Ruby's execution model |
 | Stryker-compatible JSON as canonical output | custom Henitai-only JSON | accepted | gives immediate ecosystem compatibility and keeps downstream tooling simple |
 | Diff-based analysis by default | full-repository analysis on every run | accepted | keeps PR feedback cost-effective |

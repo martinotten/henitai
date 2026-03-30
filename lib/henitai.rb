@@ -15,13 +15,14 @@ module Henitai
   # Raised when a subject expression cannot be resolved
   class SubjectNotFound < StandardError; end
 
-  autoload :Configuration,  "henitai/configuration"
-  autoload :Subject,         "henitai/subject"
-  autoload :Mutant,          "henitai/mutant"
-  autoload :Operator,        "henitai/operator"
-  autoload :Runner,          "henitai/runner"
-  autoload :Reporter,        "henitai/reporter"
-  autoload :Integration,     "henitai/integration"
-  autoload :Result,          "henitai/result"
-  autoload :CLI,             "henitai/cli"
+  autoload :Configuration, "henitai/configuration"
+  autoload :Subject, "henitai/subject"
+  autoload :Mutant, "henitai/mutant"
+  autoload :Operator, "henitai/operator"
+  autoload :SourceParser, "henitai/source_parser"
+  autoload :Runner, "henitai/runner"
+  autoload :Reporter, "henitai/reporter"
+  autoload :Integration, "henitai/integration"
+  autoload :Result, "henitai/result"
+  autoload :CLI, "henitai/cli"
 end

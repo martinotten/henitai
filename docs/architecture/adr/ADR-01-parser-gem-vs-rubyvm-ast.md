@@ -1,21 +1,21 @@
-# ADR-01: `parser` Gem Instead of `RubyVM::AbstractSyntaxTree`
+# ADR-01: Prism Translation Instead of `RubyVM::AbstractSyntaxTree`
 
 Status: accepted
 
 ## Context
 
-Henitai needs a reliable Ruby AST backend for traversal, mutation point discovery, and source reconstruction. The framework also has to preserve accurate source locations for the Stryker JSON output.
+Henitai needs a reliable Ruby AST backend for traversal, mutation point discovery, and source reconstruction. The framework also has to preserve accurate source locations for the Stryker JSON output, while supporting Ruby 4 syntax.
 
 ## Decision
 
-Use the `parser` and `unparser` gems as the primary AST and source-reconstruction toolchain.
+Use Prism as the parsing backend and translate its syntax tree into parser-compatible AST nodes for traversal and source reconstruction. `unparser` remains the source-reconstruction tool.
 
 ## Consequences
 
-- AST traversal is based on a mature, RuboCop-compatible parser
+- AST traversal stays compatible with the existing parser-style mutation code
 - source reconstruction stays stable enough for mutation injection and reporting
 - exact line and column positions remain available for report generation
-- Ruby 4 syntax support must be verified continuously, and a fork or maintenance strategy may be required if upstream lags
+- Ruby 4 syntax support follows Prism's release line, reducing the risk that the parser backend blocks adoption
 
 ## Related Documents
 

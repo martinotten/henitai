@@ -180,7 +180,7 @@ git diff output ─→ GitDiffAnalyzer
              │  SubjectResolver      │
              │                       │
              │  1. Parse source files│
-             │     (parser gem)      │
+             │     (Prism)           │
              │  2. Filter by --since │
              │     (git diff)        │
              │  3. Match patterns    │
@@ -337,7 +337,7 @@ result = wait_with_timeout(pid, config.timeout)
 - [x] **(P1)** RuboCop configuration (`TargetRubyVersion: 4.0`, frozen strings)
 - [x] **(P1)** SimpleCov setup with branch coverage
 - [x] **(P1)** Create `.henitai.yml` config schema
-- [ ] **(P1)** `TASK: infra-01` - Parser spike as go/no-go: verify `parser ~> 3.3` and `unparser ~> 0.6` against Ruby 4.0.2 with real syntax fixtures; the result is either "upstream viable" or "fork / maintenance strategy required". Phase 1 must not start without this decision.
+- [x] **(P1)** `TASK: infra-01` - Prism spike as go/no-go: verify the Prism/unparser toolchain against Ruby 4.0.2 with real syntax fixtures, including `Prism::Translation::ParserCurrent` if it can produce the `Parser::AST::Node` shape used by `mutant` (`Unparser.parse_ast_either`); the result is either "upstream viable" or "fork / maintenance strategy required". Phase 1 must not start without this decision.
 - [ ] **(P1)** `TASK: infra-02` - Steep / RBS type annotations: decide the scope for Phase 1 (limit to the public API)
 
 ---
@@ -354,7 +354,7 @@ result = wait_with_timeout(pid, config.timeout)
 
 ### 5.3 Subject Resolver (Gate 1)
 
-- [ ] **(P1)** `TASK: subject-01` - `SubjectResolver#resolve_from_files(paths)`: parse Ruby files with the `parser` gem, extract all `def` / `def self.` nodes with namespace context
+- [ ] **(P1)** `TASK: subject-01` - `SubjectResolver#resolve_from_files(paths)`: parse Ruby files with Prism translation, extract all `def` / `def self.` nodes with namespace context
 - [ ] **(P1)** `TASK: subject-02` - Namespace resolution: correctly handle nested `module` / `class` definitions in the AST
 - [ ] **(P1)** `TASK: subject-03` - `SubjectResolver#apply_pattern(subjects, pattern)`: filter the subject list by CLI expressions (`Foo#bar`, `Foo*`, etc.)
 - [ ] **(P1)** `TASK: subject-04` - `GitDiffAnalyzer#changed_files(from:, to:)`: shell wrapper around `git diff --name-only`, returns `Array<String>`
@@ -571,7 +571,7 @@ The decisions now live in individual files under `../architecture/adr/`. That di
 
 Current ADRs:
 
-- [ADR-01: `parser` gem instead of `RubyVM::AbstractSyntaxTree`](../architecture/adr/ADR-01-parser-gem-vs-rubyvm-ast.md)
+- [ADR-01: Prism translation instead of `RubyVM::AbstractSyntaxTree`](../architecture/adr/ADR-01-parser-gem-vs-rubyvm-ast.md)
 - [ADR-02: `Process.fork` instead of threads or Ractors for test isolation](../architecture/adr/ADR-02-process-fork-for-test-isolation.md)
 - [ADR-03: Stryker JSON schema as the native output format](../architecture/adr/ADR-03-stryker-json-native-output.md)
 - [ADR-04: `define_method` for mutant injection](../architecture/adr/ADR-04-define_method-for-mutant-injection.md)
@@ -614,7 +614,7 @@ Each operator must document:
 
 | # | Risk | Probability | Impact | Mitigation |
 |---|---|---|---|---|
-| R1 | `parser` gem does not fully support Ruby 4.0 syntax | Medium | High | Verify early (TASK: infra-01); fallback: fork the gem |
+| R1 | Prism translation does not fully support Ruby 4.0 syntax | Medium | High | Verify early (TASK: infra-01); fallback: pin or patch Prism translation compatibility |
 | R2 | `define_method` injection fails for some methods (e.g. `initialize`, native methods) | High | Medium | Whitelist non-mutable methods; raise explicit errors instead of failing silently |
 | R3 | Equivalent mutants erode user trust | Medium | High | Build the arid-node catalog early; add a feedback loop in the CLI |
 | R4 | Fork model is not portable to Windows / JRuby | Medium | Low | Document clearly; Windows is a non-goal for Phase 1 |
@@ -632,7 +632,7 @@ The component dependency graph suggests this order:
 1.  config-01 to config-04         (Configuration - no dependencies)
 2.  op-01 to op-05                 (Operator base - no dependencies)
 3.  op-arith to op-ret (light set) (7 operators - operator base only)
-4.  subject-01 to subject-06       (SubjectResolver - parser gem)
+4.  subject-01 to subject-06       (SubjectResolver - Prism)
 5.  gen-01 to gen-05               (MutantGenerator - operators + subjects)
 6.  filter-01 to filter-03         (StaticFilter - configuration)
 7.  rspec-01 to rspec-05           (RSpec integration - integration base)
