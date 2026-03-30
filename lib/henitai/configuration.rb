@@ -24,13 +24,13 @@ module Henitai
                 :thresholds, :reporters, :dashboard
 
     # @param path [String] path to .henitai.yml (default: project root)
-    def self.load(path: CONFIG_FILE)
-      new(path:)
+    def self.load(path: CONFIG_FILE, overrides: {})
+      new(path:, overrides:)
     end
 
-    def initialize(path: CONFIG_FILE)
+    def initialize(path: CONFIG_FILE, overrides: {})
       raw = File.exist?(path) ? YAML.safe_load_file(path, symbolize_names: true) : {}
-      apply_defaults(raw)
+      apply_defaults(merge_defaults(raw, symbolize_keys(overrides)))
     end
 
     private
@@ -42,7 +42,14 @@ module Henitai
     end
 
     def apply_general_defaults(raw)
-      @integration = raw.dig(:integration, :name) || "rspec"
+      integration = raw[:integration]
+      @integration = if integration.is_a?(Hash)
+                       integration[:name] || "rspec"
+                     elsif integration.nil?
+                       "rspec"
+                     else
+                       integration
+                     end
       @includes = raw[:includes] || ["lib"]
       @jobs = raw[:jobs]
       @reporters = raw[:reporters] || ["terminal"]
@@ -72,6 +79,19 @@ module Henitai
         else
           override_value
         end
+      end
+    end
+
+    def symbolize_keys(value)
+      case value
+      when Hash
+        value.each_with_object({}) do |(key, val), result|
+          result[key.to_sym] = symbolize_keys(val)
+        end
+      when Array
+        value.map { |item| symbolize_keys(item) }
+      else
+        value
       end
     end
   end
