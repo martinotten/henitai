@@ -1,0 +1,40 @@
+{
+  "name": "Hen'i-tai 変異体",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Shopify.ruby-lsp",
+        "castwide.solargraph",
+        "misogi.ruby-rubocop",
+        "hridoy.rails-snippets",
+        "KoichiSasada.vscode-rdbg"
+      ],
+      "settings": {
+        "ruby.useBundler": true,
+        "ruby.lint": { "rubocop": true },
+        "ruby.format": "rubocop",
+        "[ruby]": {
+          "editor.formatOnSave": true,
+          "editor.defaultFormatter": "Shopify.ruby-lsp"
+        }
+      }
+    }
+  },
+  "postCreateCommand": "bundle install",
+  "remoteEnv": {
+    "BUNDLE_PATH": "/usr/local/bundle"
+  },
+  "mounts": [
+    "source=${localWorkspaceFolder}/.bundle,target=/usr/local/bundle,type=bind,consistency=cached"
+  ],
+  "forwardPorts": [],
+  "remoteUser": "vscode"
+}

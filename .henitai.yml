@@ -1,0 +1,45 @@
+# Hen'i-tai 変異体 — Configuration
+# https://github.com/martinotten/henitai
+
+integration:
+  name: rspec
+
+requires:
+  - henitai
+
+includes:
+  - lib
+
+# Mutation operator configuration
+mutation:
+  operators: light          # light (default) | full
+  timeout: 10.0             # seconds per mutant
+  ignore_patterns:
+    - "(send _ {:log :debug :info :warn :error} _)"  # Logger calls
+    - "(send _ :puts _)"                              # puts / debug output
+    - "(or-asgn (ivasgn _) _)"                       # @var ||= memoization
+
+# Parallelisation
+jobs: ~                     # null = auto-detect CPU count
+
+# Coverage criteria
+coverage_criteria:
+  test_result: true
+  timeout: false
+  process_abort: false
+
+# Thresholds for HTML report colouring
+thresholds:
+  high: 80
+  low: 60
+
+# Dashboard reporter (opt-in)
+# reporters:
+#   - terminal
+#   - html
+#   - json
+#   - dashboard
+#
+# dashboard:
+#   project: "github.com/martinotten/henitai"
+#   base_url: "https://dashboard.stryker-mutator.io"
