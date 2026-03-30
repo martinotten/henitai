@@ -6,9 +6,9 @@ Gem::Specification.new do |spec|
   spec.name    = "henitai"
   spec.version = Henitai::VERSION
   spec.authors = ["Martin Otten"]
-  spec.email   = ["martin.otten@innoq.com"]
+  spec.email   = ["kontakt@martinotten.com"]
 
-  spec.summary     = "Mutation testing for Ruby — Stryker-compatible"
+  spec.summary     = "Mutation testing for Ruby"
   spec.description = <<~DESC
     Hen'i-tai (変異体) is a mutation testing framework for Ruby 4+.
     It produces Stryker-compatible mutation-testing-report-schema JSON,
