@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/martinotten/henitai/assets/schema/henitai.schema.json",
+  "title": "Henitai configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "integration": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "includes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "mutation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operators": {
+          "enum": ["light", "full"]
+        },
+        "timeout": {
+          "type": "number"
+        },
+        "ignore_patterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "coverage_criteria": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "test_result": {
+          "type": "boolean"
+        },
+        "timeout": {
+          "type": "boolean"
+        },
+        "process_abort": {
+          "type": "boolean"
+        }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "high": {
+          "type": "integer"
+        },
+        "low": {
+          "type": "integer"
+        }
+      }
+    },
+    "reporters": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "dashboard": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "project": {
+          "type": "string"
+        },
+        "base_url": {
+          "type": "string"
+        }
+      }
+    },
+    "jobs": {
+      "type": ["integer", "null"]
+    }
+  }
+}

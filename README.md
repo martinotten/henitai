@@ -55,6 +55,7 @@ bundle exec henitai run 'MyNamespace*'
 Configuration lives in `.henitai.yml`:
 
 ```yaml
+# yaml-language-server: $schema=./assets/schema/henitai.schema.json
 integration:
   name: rspec
 
@@ -72,6 +73,8 @@ thresholds:
 
 Henitai warns on unknown config keys and aborts with `Henitai::ConfigurationError`
 when a value is invalid.
+
+The repository ships a JSON Schema at [`assets/schema/henitai.schema.json`](/workspaces/henitai/assets/schema/henitai.schema.json) for editor autocompletion.
 
 ## Operator sets
 

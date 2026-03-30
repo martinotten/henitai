@@ -8,6 +8,7 @@ AllCops:
   Exclude:
     - "vendor/**/*"
     - "tmp/**/*"
+    - ".simplecov"
 
 Style/FrozenStringLiteralComment:
   Enabled: true

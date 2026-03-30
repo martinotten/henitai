@@ -348,7 +348,7 @@ result = wait_with_timeout(pid, config.timeout)
 - [ ] **(P1)** `TASK: config-02` - CLI override: CLI flags override YAML values (last wins)
 - [x] **(P1)** `TASK: config-03` - Validation: warn on unknown keys, abort with a clear error for invalid values
 - [x] **(P1)** `TASK: config-04` - Spec: 100% coverage for `Configuration` (unit tests without file-system access via tmp YAML)
-- [ ] **(P2)** `TASK: config-05` - Schema documentation: generate JSON Schema for `.henitai.yml` (for IDE autocompletion)
+- [x] **(P2)** `TASK: config-05` - Schema documentation: generate JSON Schema for `.henitai.yml` (for IDE autocompletion)
 
 ---
 

@@ -1,11 +1,9 @@
+# yaml-language-server: $schema=./assets/schema/henitai.schema.json
 # Hen'i-tai 変異体 — Configuration
 # https://github.com/martinotten/henitai
 
 integration:
   name: rspec
-
-requires:
-  - henitai
 
 includes:
   - lib
