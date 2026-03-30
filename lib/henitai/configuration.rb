@@ -2,6 +2,8 @@
 
 require "psych"
 
+require_relative "configuration_validator"
+
 module Henitai
   # Loads and validates .henitai.yml configuration.
   #
@@ -29,16 +31,21 @@ module Henitai
     end
 
     def initialize(path: CONFIG_FILE, overrides: {})
-      # @type var raw: Hash[Symbol, untyped]
-      raw = if File.exist?(path)
-              Psych.safe_load(File.read(path), symbolize_names: true) || {}
-            else
-              {}
-            end
-      apply_defaults(merge_defaults(raw, symbolize_keys(overrides)))
+      raw = load_raw_configuration(path)
+      ConfigurationValidator.send(:ensure_hash!, raw, "configuration")
+      merged = merge_defaults(raw, symbolize_keys(overrides))
+      ConfigurationValidator.validate!(merged)
+      apply_defaults(merged)
     end
 
     private
+
+    def load_raw_configuration(path)
+      return {} unless File.exist?(path)
+
+      raw = Psych.safe_load(File.read(path), symbolize_names: true)
+      raw || {}
+    end
 
     def apply_defaults(raw)
       apply_general_defaults(raw)

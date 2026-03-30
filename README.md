@@ -70,6 +70,9 @@ thresholds:
   low: 60
 ```
 
+Henitai warns on unknown config keys and aborts with `Henitai::ConfigurationError`
+when a value is invalid.
+
 ## Operator sets
 
 **Light** (default) — high-signal, low-noise operators covering the majority of real-world defects:

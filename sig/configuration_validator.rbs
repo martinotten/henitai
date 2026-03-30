@@ -1,0 +1,27 @@
+module Henitai
+  module ConfigurationValidator
+    def self.validate!: (Hash[Symbol, untyped]) -> void
+
+    private
+
+    def self.validate_top_level_keys: (Hash[Symbol, untyped]) -> void
+    def self.validate_integration: (Hash[Symbol, untyped]) -> void
+    def self.validate_includes: (Hash[Symbol, untyped]) -> void
+    def self.validate_jobs: (Hash[Symbol, untyped]) -> void
+    def self.validate_reporters: (Hash[Symbol, untyped]) -> void
+    def self.validate_dashboard: (Hash[Symbol, untyped]) -> void
+    def self.validate_mutation: (Hash[Symbol, untyped]) -> void
+    def self.validate_coverage_criteria: (Hash[Symbol, untyped]) -> void
+    def self.validate_thresholds: (Hash[Symbol, untyped]) -> void
+    def self.validate_operator: (untyped) -> void
+    def self.validate_timeout: (untyped) -> void
+    def self.validate_threshold: (untyped, String) -> void
+    def self.validate_boolean: (untyped, String) -> void
+    def self.validate_optional_string: (untyped, String) -> void
+    def self.validate_string_array: (untyped, String) -> void
+    def self.warn_unknown_keys: (Hash[Symbol, untyped], Array[Symbol], ?String) -> void
+    def self.key_path: (?String, Symbol) -> String
+    def self.ensure_hash!: (untyped, String) -> void
+    def self.configuration_error: (String) -> void
+  end
+end
