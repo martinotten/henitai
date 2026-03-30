@@ -22,6 +22,7 @@ module Henitai
     def self.warn_unknown_keys: (Hash[Symbol, untyped], Array[Symbol], ?String) -> void
     def self.key_path: (?String, Symbol) -> String
     def self.ensure_hash!: (untyped, String) -> void
+    def self.describe_array_type: (untyped) -> String
     def self.configuration_error: (String) -> void
   end
 end

@@ -158,7 +158,9 @@ module Henitai
         return if value.nil?
         return if value.is_a?(Array) && value.all?(String)
 
-        configuration_error("Invalid configuration value for #{path}: expected Array<String>, got #{value.class}")
+        configuration_error(
+          "Invalid configuration value for #{path}: expected Array<String>, got #{describe_array_type(value)}"
+        )
       end
 
       def warn_unknown_keys(raw, allowed_keys, path = nil)
@@ -177,6 +179,13 @@ module Henitai
         return if value.is_a?(Hash)
 
         configuration_error("Invalid configuration value for #{path}: expected Hash, got #{value.class}")
+      end
+
+      def describe_array_type(value)
+        return value.class.name unless value.is_a?(Array)
+
+        element_types = value.map { |item| item.class.name }.uniq.join(", ")
+        "Array<#{element_types}>"
       end
 
       def configuration_error(message)

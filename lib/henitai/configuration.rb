@@ -32,7 +32,10 @@ module Henitai
 
     def initialize(path: CONFIG_FILE, overrides: {})
       raw = load_raw_configuration(path)
-      ConfigurationValidator.send(:ensure_hash!, raw, "configuration")
+      unless raw.is_a?(Hash)
+        raise Henitai::ConfigurationError,
+              "Invalid configuration value for configuration: expected Hash, got #{raw.class}"
+      end
       merged = merge_defaults(raw, symbolize_keys(overrides))
       ConfigurationValidator.validate!(merged)
       apply_defaults(merged)

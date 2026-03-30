@@ -250,7 +250,24 @@ RSpec.describe Henitai::Configuration do
       load_configuration(<<~YAML)
         includes: lib
       YAML
-    end.to raise_error(Henitai::ConfigurationError, /includes/)
+    end.to raise_error(
+      Henitai::ConfigurationError,
+      /includes: expected Array<String>, got String/
+    )
+  end
+
+  it "describes invalid array element types" do
+    expect do
+      load_configuration(<<~YAML)
+        mutation:
+          ignore_patterns:
+            - "(send _ :puts _)"
+            - 1
+      YAML
+    end.to raise_error(
+      Henitai::ConfigurationError,
+      /mutation\.ignore_patterns: expected Array<String>, got Array<String, Integer>/
+    )
   end
 
   it "aborts on invalid mutation timeout values" do
