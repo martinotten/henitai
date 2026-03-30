@@ -1,73 +1,73 @@
-# Henitai 変異体 — Implementierungsplan
+# Henitai — Implementation Plan
 
-> **Version:** 0.1 · **Stand:** März 2026
-> **Zielplattform:** Ruby 4.0.2 · **Gem:** `henitai`
-> **Basis:** [architecture.md](architecture.md), 39 Paper (1992–2025), mutant- und Stryker-Analyse
-
----
-
-## Inhaltsverzeichnis
-
-1. [Architektur-Überblick](#1-architektur-überblick)
-2. [Komponentenmodell](#2-komponentenmodell)
-3. [Datenfluß durch die Pipeline](#3-datenfluß-durch-die-pipeline)
-4. [Implementierungsphasen](#4-implementierungsphasen)
-   - [Phase 1 — Fundament (MVP)](#phase-1--fundament-mvp)
-   - [Phase 2 — Produktionsreife](#phase-2--produktionsreife)
-   - [Phase 3 — Ökosystem & Intelligenz](#phase-3--ökosystem--intelligenz)
-5. [Task-Breakdown](#5-task-breakdown)
-6. [Technische Entscheidungen (ADRs)](#6-technische-entscheidungen-adrs)
-7. [Qualitätskriterien](#7-qualitätskriterien)
-8. [Risiken & Mitigationen](#8-risiken--mitigationen)
+> **Version:** 0.1 · **Status:** March 2026
+> **Target platform:** Ruby 4.0.2 · **Gem:** `henitai`
+> **Basis:** [architecture.md](../architecture/architecture.md), 39 papers (1992–2025), mutant and Stryker ecosystem analysis
 
 ---
 
-## 1. Architektur-Überblick
+## Table of Contents
 
-Henitai ist ein **AST-basiertes Mutation-Testing-Framework** für Ruby 4. Die Architektur folgt vier Designprinzipien (vollständig begründet in `architecture.md`):
+1. [Architecture Overview](#1-architecture-overview)
+2. [Component Model](#2-component-model)
+3. [Data Flow Through the Pipeline](#3-data-flow-through-the-pipeline)
+4. [Implementation Phases](#4-implementation-phases)
+   - [Phase 1 - Foundation (MVP)](#phase-1---foundation-mvp)
+   - [Phase 2 - Production Ready](#phase-2---production-ready)
+   - [Phase 3 - Ecosystem & Intelligence](#phase-3---ecosystem--intelligence)
+5. [Task Breakdown](#5-task-breakdown)
+6. [Technical Decisions (ADRs)](#6-technical-decisions-adrs)
+7. [Quality Criteria](#7-quality-criteria)
+8. [Risks & Mitigations](#8-risks--mitigations)
 
-- **Aktionierbarkeit vor Vollständigkeit** — Kein Mutant ohne Signal für den Entwickler
-- **Kosten sind Kern, nicht Option** — Phase-Gate-Pipeline als Pflicht-Pipeline
-- **Erweiterbarkeit durch Schichten** — Plugin-Punkte für Operatoren, Reporter, Integrationen
-- **Ökosystem-Kompatibilität** — Stryker-JSON-Schema als natives Ausgabeformat
+---
 
-### Systemgrenzen
+## 1. Architecture Overview
 
-```
+Henitai is an **AST-based mutation-testing framework** for Ruby 4. The architecture follows four design principles (fully explained in `../architecture/architecture.md`):
+
+- **Actionability before completeness** - No mutant without developer-visible signal
+- **Cost is core, not optional** - Phase-gate pipeline as a mandatory pipeline
+- **Extensibility through layers** - Plugin points for operators, reporters, and integrations
+- **Ecosystem compatibility** - Stryker JSON schema as the native output format
+
+### System Boundary
+
+```text
 ┌──────────────────────────────────────────────────────────────────┐
 │  Developer / CI                                                   │
 │                                                                   │
-│  $ bundle exec henitai run --since origin/main 'MyClass#method'  │
+│  $ bundle exec henitai run --since origin/main 'MyClass#method'   │
 └──────────────────────────────┬───────────────────────────────────┘
                                │
 ┌──────────────────────────────▼───────────────────────────────────┐
-│  Henitai (dieser Gem)                                             │
+│  Henitai (this gem)                                               │
 │                                                                   │
-│  ┌─────────┐   ┌──────────┐   ┌──────────┐   ┌───────────────┐  │
-│  │   CLI   │→  │  Runner  │→  │ Pipeline │→  │  Reporters    │  │
-│  └─────────┘   └──────────┘   └──────────┘   └───────────────┘  │
+│  ┌─────────┐   ┌──────────┐   ┌──────────┐   ┌───────────────┐    │
+│  │   CLI   │→  │  Runner  │→  │ Pipeline │→  │  Reporters    │    │
+│  └─────────┘   └──────────┘   └──────────┘   └───────────────┘    │
 └──────────────────────────────────────────────────────────────────┘
          │                                              │
          ▼                                              ▼
-  Ruby-Quellcode                           JSON / HTML / Dashboard
-  RSpec-Tests                              Terminal-Summary
-  .henitai.yml                        Exit-Code für CI
+  Ruby source code                           JSON / HTML / Dashboard
+  RSpec tests                                Terminal summary
+  .henitai.yml                               Exit code for CI
 ```
 
 ---
 
-## 2. Komponentenmodell
+## 2. Component Model
 
-### 2.1 Komponentenübersicht
+### 2.1 Component Overview
 
-```
+```text
 lib/henitai/
-├── cli.rb                  # Einstiegspunkt (OptionParser)
-├── configuration.rb        # YAML-Konfig + Defaults
-├── subject.rb              # Adressierbarer Code-Bereich
-├── mutant.rb               # Einzelne Mutation + Status
-├── operator.rb             # Basisklasse für Operatoren
-├── operators/              # Konkrete Operator-Implementierungen
+├── cli.rb                  # Entry point (OptionParser)
+├── configuration.rb        # YAML config + defaults
+├── subject.rb              # Addressable code region
+├── mutant.rb               # Single mutation + status
+├── operator.rb             # Base class for operators
+├── operators/              # Concrete operator implementations
 │   ├── arithmetic_operator.rb
 │   ├── equality_operator.rb
 │   ├── logical_operator.rb
@@ -83,59 +83,59 @@ lib/henitai/
 │   ├── block_statement.rb
 │   ├── method_expression.rb
 │   └── assignment_expression.rb
-├── runner.rb               # Pipeline-Orchestrator
-├── pipeline/               # Phase-Gate-Implementierungen
+├── runner.rb               # Pipeline orchestrator
+├── pipeline/               # Phase-gate implementations
 │   ├── subject_resolver.rb     # Gate 1
 │   ├── mutant_generator.rb     # Gate 2
 │   ├── static_filter.rb        # Gate 3
 │   ├── execution_engine.rb     # Gate 4
 │   └── result_collector.rb     # Gate 5
-├── integration/            # Test-Framework-Anbindungen
+├── integration/            # Test-framework adapters
 │   ├── base.rb
 │   └── rspec.rb
-├── reporter/               # Ausgabe-Backends
+├── reporter/               # Output backends
 │   ├── base.rb
 │   ├── terminal.rb
 │   ├── json.rb
 │   ├── html.rb
 │   └── dashboard.rb
-├── result.rb               # Aggregat + Stryker-Serialisierung
+├── result.rb               # Aggregate + Stryker serialization
 └── version.rb
 ```
 
-### 2.2 Abhängigkeitsgraph
+### 2.2 Dependency Graph
 
-```
+```text
 CLI
  └─→ Configuration
  └─→ Runner
-       └─→ Pipeline::SubjectResolver  (nutzt: parser, git)
-       └─→ Pipeline::MutantGenerator  (nutzt: Operators, AridFilter)
-       └─→ Pipeline::StaticFilter     (nutzt: Configuration, Coverage)
-       └─→ Pipeline::ExecutionEngine  (nutzt: Integration, Process.fork)
-       └─→ Pipeline::ResultCollector  (nutzt: Result, Reporters)
+       └─→ Pipeline::SubjectResolver  (uses: parser, git)
+       └─→ Pipeline::MutantGenerator  (uses: operators, arid filter)
+       └─→ Pipeline::StaticFilter      (uses: configuration, coverage)
+       └─→ Pipeline::ExecutionEngine   (uses: integration, Process.fork)
+       └─→ Pipeline::ResultCollector   (uses: result, reporters)
 ```
 
-Alle Pipeline-Komponenten sind **zustandslos** — sie erhalten Eingabe, geben Ausgabe, kein globaler Zustand. Der Runner hält den Pipeline-Zustand zwischen den Gates.
+All pipeline components are **stateless** - they receive input, produce output, and keep no global state. The runner holds pipeline state between gates.
 
-### 2.3 Schlüsseldatenstrukturen
+### 2.3 Key Data Structures
 
 #### `Subject`
-Repräsentiert eine adressierbare Einheit vor der Mutation.
+Represents an addressable unit before mutation.
 
 ```ruby
 Subject = Data.define(
   :namespace,      # "Foo::Bar"
-  :method_name,    # "my_method" | nil (Wildcard)
+  :method_name,    # "my_method" | nil (wildcard)
   :method_type,    # :instance | :class
   :source_file,    # "/path/to/foo/bar.rb"
-  :source_range,   # 42..68 (Zeilen)
+  :source_range,   # 42..68 (lines)
   :ast_node        # Parser::AST::Node
 )
 ```
 
 #### `Mutant`
-Repräsentiert eine konkrete Mutation und ihren Ausführungsstatus.
+Represents a concrete mutation and its execution status.
 
 ```ruby
 Mutant = Data.define(
@@ -143,7 +143,7 @@ Mutant = Data.define(
   :subject,        # Subject
   :operator,       # "ArithmeticOperator"
   :original_node,  # Parser::AST::Node (original)
-  :mutated_node,   # Parser::AST::Node (mutiert)
+  :mutated_node,   # Parser::AST::Node (mutated)
   :description,    # "replaced + with -"
   :location,       # { file:, start_line:, end_line:, start_col:, end_col: }
   :status,         # :pending | :killed | :survived | :timeout | ...
@@ -153,7 +153,7 @@ Mutant = Data.define(
 ```
 
 #### `PipelineContext`
-Trägt den gesamten Pipeline-Zustand durch alle Gates.
+Carries the full pipeline state through all gates.
 
 ```ruby
 PipelineContext = Data.define(
@@ -168,538 +168,481 @@ PipelineContext = Data.define(
 
 ---
 
-## 3. Datenfluß durch die Pipeline
+## 3. Data Flow Through the Pipeline
 
-```
+```text
 .henitai.yml ─→ Configuration
-git diff output   ─→ GitDiffAnalyzer
-                          │
-                          ▼
-              ┌───────────────────────┐
-              │  Gate 1               │
-              │  SubjectResolver      │
-              │                       │
-              │  1. Parse source files│
-              │     (parser gem)      │
-              │  2. Filter by --since │
-              │     (git diff)        │
-              │  3. Match patterns    │
-              │     (CLI args)        │
-              └──────────┬────────────┘
-                         │  Array<Subject>
+git diff output ─→ GitDiffAnalyzer
+                         │
                          ▼
-              ┌───────────────────────┐
-              │  Gate 2               │
-              │  MutantGenerator      │
-              │                       │
-              │  1. AST traversal per │
-              │     Subject           │
-              │  2. Apply operators   │
-              │     (light | full)    │
-              │  3. Filter arid nodes │
-              │  4. Filter stillborn  │
-              │     (syntax check)    │
-              └──────────┬────────────┘
-                         │  Array<Mutant> (status: :pending)
-                         ▼
-              ┌───────────────────────┐
-              │  Gate 3               │
-              │  StaticFilter         │
-              │                       │
-              │  1. ignore_patterns   │
-              │     (config regex)    │
-              │  2. Coverage data     │
-              │     (SimpleCov JSON)  │
-              │  3. Mark :no_coverage │
-              │     + :ignored        │
-              └──────────┬────────────┘
-                         │  Array<Mutant> (pending/no_coverage/ignored)
-                         ▼
-              ┌───────────────────────┐
-              │  Gate 4               │
-              │  ExecutionEngine      │
-              │                       │
-              │  Per Mutant:          │
-              │  1. Fork child        │
-              │  2. Inject mutation   │
-              │     (define_method)   │
-              │  3. Run selected      │
-              │     tests (rspec)     │
-              │  4. Collect result    │
-              │  5. Kill on first     │
-              │     failure           │
-              └──────────┬────────────┘
-                         │  Array<Mutant> (alle final)
-                         ▼
-              ┌───────────────────────┐
-              │  Gate 5               │
-              │  ResultCollector      │
-              │                       │
-              │  1. Build Result      │
-              │  2. to_stryker_schema │
-              │  3. Run reporters     │
-              │  4. Exit code         │
-              └───────────────────────┘
+             ┌───────────────────────┐
+             │  Gate 1               │
+             │  SubjectResolver      │
+             │                       │
+             │  1. Parse source files│
+             │     (parser gem)      │
+             │  2. Filter by --since │
+             │     (git diff)        │
+             │  3. Match patterns    │
+             │     (CLI args)        │
+             └──────────┬────────────┘
+                        │  Array<Subject>
+                        ▼
+             ┌───────────────────────┐
+             │  Gate 2               │
+             │  MutantGenerator      │
+             │                       │
+             │  1. AST traversal per │
+             │     subject           │
+             │  2. Apply operators   │
+             │     (light | full)    │
+             │  3. Filter arid nodes │
+             │  4. Filter stillborn  │
+             │     (syntax check)    │
+             └──────────┬────────────┘
+                        │  Array<Mutant> (status: :pending)
+                        ▼
+             ┌───────────────────────┐
+             │  Gate 3               │
+             │  StaticFilter         │
+             │                       │
+             │  1. ignore_patterns   │
+             │     (config regex)    │
+             │  2. Coverage data     │
+             │     (SimpleCov JSON)  │
+             │  3. Mark :no_coverage │
+             │     + :ignored        │
+             └──────────┬────────────┘
+                        │  Array<Mutant> (pending/no_coverage/ignored)
+                        ▼
+             ┌───────────────────────┐
+             │  Gate 4               │
+             │  ExecutionEngine      │
+             │                       │
+             │  Per mutant:          │
+             │  1. Fork child        │
+             │  2. Inject mutation   │
+             │     (define_method)   │
+             │  3. Run selected      │
+             │     tests (rspec)     │
+             │  4. Collect result    │
+             │  5. Kill on first     │
+             │     failure           │
+             └──────────┬────────────┘
+                        │  Array<Mutant> (all final)
+                        ▼
+             ┌───────────────────────┐
+             │  Gate 5               │
+             │  ResultCollector      │
+             │                       │
+             │  1. Build Result      │
+             │  2. to_stryker_schema │
+             │  3. Run reporters     │
+             │  4. Exit code         │
+             └───────────────────────┘
 ```
 
-### Mutant-Injektion (Gate 4 Detail)
+### Mutant Injection (Gate 4 Detail)
 
-Das kritische Implementierungsdetail: Mutationen werden **nicht** als temporäre Dateien geschrieben, und RSpec wird **nicht** als separater Subprocess gestartet (`exec`/`system`). Stattdessen läuft alles im selben geforkten Kindprozess:
+The critical implementation detail: mutations are **not** written as temporary files, and RSpec is **not** started as a separate subprocess (`exec` / `system`). Everything runs in the same forked child process:
 
 ```ruby
-# Im Elternprozess (ExecutionEngine), vor fork:
+# In the parent process (ExecutionEngine), before fork:
 pid = Process.fork do
   # ── CHILD ────────────────────────────────────────────────────────────
-  # Schritt 1: Mutation aktivieren (vor RSpec)
-  Activator.activate!(mutant)          # define_method patcht Zielklasse
+  # Step 1: Activate the mutation (before RSpec)
+  Activator.activate!(mutant)          # define_method patches target class
 
-  # Schritt 2: Tests im GLEICHEN Prozess starten (kein exec!)
+  # Step 2: Start tests in the SAME process (no exec!)
   status = RSpec::Core::Runner.run(test_files)
   exit(status ? 0 : 1)
   # ─────────────────────────────────────────────────────────────────────
 end
 
-# Im Elternprozess: auf Kind warten, Timeout erzwingen
+# In the parent process: wait for child and enforce timeout
 result = wait_with_timeout(pid, config.timeout)
 ```
 
-`define_method`-Patches sind prozesslokal — ein separater RSpec-Subprocess würde die Patch-Information nicht erben. Der Elternprozess wertet den Exit-Code aus: 0 → survived, != 0 → killed, SIGTERM/SIGKILL → timeout. Der `mutant`-Datensatz wird durch den Fork vererbt; kein tmpfile ist nötig.
+`define_method` patches are process-local - a separate RSpec subprocess would not inherit the patch state. The parent process evaluates the exit code: 0 -> survived, != 0 -> killed, SIGTERM/SIGKILL -> timeout. The `mutant` record is inherited through the fork; no tmpfile is required.
 
 ---
 
-## 4. Implementierungsphasen
+## 4. Implementation Phases
 
-### Phase 1 — Fundament (MVP)
+### Phase 1 - Foundation (MVP)
 
-**Ziel:** Ein lauffähiges Framework, das für ein einfaches Ruby-Projekt end-to-end funktioniert.
+**Goal:** A working framework that end-to-end works for a simple Ruby project.
 
 **Definition of Done:**
-- `bundle exec henitai run` terminiert erfolgreich
-- Alle 7 Light-Set-Operatoren implementiert
-- JSON-Report (Stryker-Schema) wird korrekt generiert
-- CI-Pipeline (GH Actions) ist grün
-- Das Framework testet sich selbst (Dogfooding)
+- `bundle exec henitai run` terminates successfully
+- All 7 light-set operators are implemented
+- JSON report (Stryker schema) is generated correctly
+- CI pipeline (GitHub Actions) is green
+- The framework dogfoods itself
 
-**Geschätzter Aufwand:** 8–12 Wochen (Einzelentwickler, Teilzeit)
+**Estimated effort:** 8-12 weeks (single developer, part-time)
 
 ---
 
-### Phase 2 — Produktionsreife
+### Phase 2 - Production Ready
 
-**Ziel:** Framework ist für mittlere Ruby-Projekte (5.000–20.000 LOC) praktikabel einsetzbar.
+**Goal:** The framework is practical for medium Ruby projects (5,000-20,000 LOC).
 
 **Definition of Done:**
-- Alle Light + Full Operatoren implementiert
-- Inkrementeller Modus (`--since`) funktioniert zuverlässig
-- HTML-Report via `mutation-testing-elements`
-- Stryker Dashboard Integration
-- Performance: < 10 Min für 10.000 LOC Projekt (mit `--since`)
+- All light + full operators are implemented
+- Incremental mode (`--since`) works reliably
+- HTML report via `mutation-testing-elements`
+- Stryker Dashboard integration
+- Performance: < 10 min for a 10,000 LOC project (with `--since`)
 
-**Geschätzter Aufwand:** 8–16 Wochen nach Phase 1
+**Estimated effort:** 8-16 weeks after Phase 1
 
 ---
 
-### Phase 3 — Ökosystem & Intelligenz
+### Phase 3 - Ecosystem & Intelligence
 
-**Ziel:** Adoption, Erweiterbarkeit, LLM-Integration.
+**Goal:** Adoption, extensibility, and LLM integration.
 
 **Definition of Done:**
-- Plugin-API für Custom-Operatoren dokumentiert und stabil
-- LLM-Äquivalenz-Detektor als optionales Plugin
-- Minitest-Integration
-- Latent-Mutant-Tracking
+- Plugin API for custom operators is documented and stable
+- LLM-based equivalence detector as an optional plugin
+- Minitest integration
+- Latent-mutant tracking
 
-**Geschätzter Aufwand:** unbegrenzt / iterativ
+**Estimated effort:** unbounded / iterative
 
 ---
 
-## 5. Task-Breakdown
+## 5. Task Breakdown
 
-### Legende
+### Legend
 
-| Symbol | Bedeutung |
+| Symbol | Meaning |
 |--------|-----------|
-| `[ ]` | offen |
-| `[~]` | Stub vorhanden, Implementierung ausstehend |
-| `[x]` | abgeschlossen |
-| `[!]` | blockiert / Risiko |
+| `[ ]` | open |
+| `[~]` | stub exists, implementation pending |
+| `[x]` | completed |
+| `[!]` | blocked / risk |
 | **(P1)** | Phase 1 |
 | **(P2)** | Phase 2 |
 | **(P3)** | Phase 3 |
 
 ---
 
-### 5.1 Infrastruktur & Gem-Setup
+### 5.1 Infrastructure & Gem Setup
 
-- [x] **(P1)** Gem-Scaffold anlegen (`henitai.gemspec`, `Gemfile`, `.ruby-version`)
-- [x] **(P1)** Dev-Container konfigurieren (Ubuntu 24.04, mise, Ruby 4.0.2)
-- [x] **(P1)** CI-Pipeline (GitHub Actions: RSpec + RuboCop + inkrementelle MT auf PRs)
-- [x] **(P1)** RuboCop-Konfiguration (`TargetRubyVersion: 4.0`, frozen strings)
-- [x] **(P1)** SimpleCov-Setup mit Branch-Coverage
-- [x] **(P1)** `.henitai.yml` Konfigurations-Schema anlegen
-- [ ] **(P1)** `TASK: infra-01` — Parser-Spike als Go/No-Go: `parser ~> 3.3` und `unparser ~> 0.6` gegen Ruby 4.0.2 mit echten Syntax-Fixtures prüfen; Ergebnis ist entweder "upstream tragfähig" oder "Fork/Wartungsstrategie erforderlich". Phase 1 startet nicht ohne diese Entscheidung.
-- [ ] **(P1)** `TASK: infra-02` — Steep/RBS Typannotationen: Entscheidung treffen (Scope für Phase 1 begrenzen, nur public API)
-
----
-
-### 5.2 Konfiguration (`Configuration`)
-
-- [~] **(P1)** `TASK: config-01` — YAML-Parser-Implementierung: `YAML.safe_load_file` mit Symbolisierung, Defaults, Merge-Semantik
-- [ ] **(P1)** `TASK: config-02` — CLI-Override: CLI-Flags überschreiben YAML-Werte (letzter gewinnt)
-- [ ] **(P1)** `TASK: config-03` — Validierung: Unbekannte Schlüssel warnen, invalide Werte mit sprechendem Fehler abbrechen
-- [ ] **(P1)** `TASK: config-04` — Spec: 100 % Coverage für `Configuration` (unit tests ohne FS-Zugriff via tmp-YAML)
-- [ ] **(P2)** `TASK: config-05` — Schema-Dokumentation: JSON Schema für `.henitai.yml` generieren (für IDE-Autovervollständigung)
+- [x] **(P1)** Create gem scaffold (`henitai.gemspec`, `Gemfile`, `.ruby-version`)
+- [x] **(P1)** Configure dev container (Ubuntu 24.04, mise, Ruby 4.0.2)
+- [x] **(P1)** CI pipeline (GitHub Actions: RSpec + RuboCop + incremental MT on PRs)
+- [x] **(P1)** RuboCop configuration (`TargetRubyVersion: 4.0`, frozen strings)
+- [x] **(P1)** SimpleCov setup with branch coverage
+- [x] **(P1)** Create `.henitai.yml` config schema
+- [ ] **(P1)** `TASK: infra-01` - Parser spike as go/no-go: verify `parser ~> 3.3` and `unparser ~> 0.6` against Ruby 4.0.2 with real syntax fixtures; the result is either "upstream viable" or "fork / maintenance strategy required". Phase 1 must not start without this decision.
+- [ ] **(P1)** `TASK: infra-02` - Steep / RBS type annotations: decide the scope for Phase 1 (limit to the public API)
 
 ---
 
-### 5.3 Subject-Resolver (Gate 1)
+### 5.2 Configuration (`Configuration`)
 
-- [ ] **(P1)** `TASK: subject-01` — `SubjectResolver#resolve_from_files(paths)`: Parst Ruby-Dateien mit `parser` gem, extrahiert alle `def`/`def self.` Nodes mit Namespace-Kontext
-- [ ] **(P1)** `TASK: subject-02` — Namespace-Auflösung: Korrekte Handhabung von verschachtelten `module`/`class`-Definitionen im AST
-- [ ] **(P1)** `TASK: subject-03` — `SubjectResolver#apply_pattern(subjects, pattern)`: Filtert die Subject-Liste nach CLI-Expressions (`Foo#bar`, `Foo*`, etc.)
-- [ ] **(P1)** `TASK: subject-04` — `GitDiffAnalyzer#changed_files(from:, to:)`: Shell-Wrapper um `git diff --name-only`, gibt Array<String> zurück
-- [ ] **(P1)** `TASK: subject-05` — `GitDiffAnalyzer#changed_methods(from:, to:)`: Mappt Diff-Hunk-Zeilennummern auf Subject-Bereiche
-- [ ] **(P1)** `TASK: subject-06` — Spec: Edge Cases — anonyme Klassen, Singleton-Klassen (`class << self`), `attr_accessor`-generierte Methoden, endless methods (`def f = expr`)
-- [ ] **(P2)** `TASK: subject-07` — Metaprogramming-Erkennung: `define_method`-Aufrufe als Subject erfassen (Limitation-Dokumentation wenn nicht lösbar)
+- [~] **(P1)** `TASK: config-01` - YAML parser implementation: `YAML.safe_load_file` with symbolization, defaults, and merge semantics
+- [ ] **(P1)** `TASK: config-02` - CLI override: CLI flags override YAML values (last wins)
+- [ ] **(P1)** `TASK: config-03` - Validation: warn on unknown keys, abort with a clear error for invalid values
+- [ ] **(P1)** `TASK: config-04` - Spec: 100% coverage for `Configuration` (unit tests without file-system access via tmp YAML)
+- [ ] **(P2)** `TASK: config-05` - Schema documentation: generate JSON Schema for `.henitai.yml` (for IDE autocompletion)
 
 ---
 
-### 5.4 Operator-Basisklasse & Registry
+### 5.3 Subject Resolver (Gate 1)
 
-- [~] **(P1)** `TASK: op-01` — `Operator` Basisklasse: `#mutate(node, subject:)`, `self.node_types`, `#build_mutant`, `#node_location` implementieren (Stub → Real)
-- [ ] **(P1)** `TASK: op-02` — `Operators` Namespace und Autoload-Einträge in `henitai.rb`
-- [ ] **(P1)** `TASK: op-03` — `Operator.for_set(:light)` / `Operator.for_set(:full)`: Gibt instanziierte Operator-Objekte zurück
-- [ ] **(P1)** `TASK: op-04` — Arid-Node-Filter: `AridNodeFilter#suppressed?(node, config)` — prüft gegen `ignore_patterns` Regex-Liste und eingebauten Katalog (Logger, Memoization, etc.)
-- [ ] **(P1)** `TASK: op-05` — Stillborn-Filter: Nach Mutation `unparser` aufrufen, dann `RubyVM::InstructionSequence.compile` — bei `SyntaxError` Mutant verwerfen
+- [ ] **(P1)** `TASK: subject-01` - `SubjectResolver#resolve_from_files(paths)`: parse Ruby files with the `parser` gem, extract all `def` / `def self.` nodes with namespace context
+- [ ] **(P1)** `TASK: subject-02` - Namespace resolution: correctly handle nested `module` / `class` definitions in the AST
+- [ ] **(P1)** `TASK: subject-03` - `SubjectResolver#apply_pattern(subjects, pattern)`: filter the subject list by CLI expressions (`Foo#bar`, `Foo*`, etc.)
+- [ ] **(P1)** `TASK: subject-04` - `GitDiffAnalyzer#changed_files(from:, to:)`: shell wrapper around `git diff --name-only`, returns `Array<String>`
+- [ ] **(P1)** `TASK: subject-05` - `GitDiffAnalyzer#changed_methods(from:, to:)`: maps diff hunk line numbers to subject ranges
+- [ ] **(P1)** `TASK: subject-06` - Spec: edge cases - anonymous classes, singleton classes (`class << self`), `attr_accessor`-generated methods, endless methods (`def f = expr`)
+- [ ] **(P2)** `TASK: subject-07` - Metaprogramming detection: capture `define_method` calls as subjects (document the limitation if it cannot be solved)
 
 ---
 
-### 5.5 Konkrete Operatoren (Light Set — Phase 1)
+### 5.4 Operator Base Class & Registry
 
-Jeder Operator braucht: Implementierung + Spec + mindestens 3 dokumentierte Beispiel-Mutationen.
+- [~] **(P1)** `TASK: op-01` - `Operator` base class: implement `#mutate(node, subject:)`, `self.node_types`, `#build_mutant`, `#node_location`
+- [ ] **(P1)** `TASK: op-02` - `Operators` namespace and autoload entries in `henitai.rb`
+- [ ] **(P1)** `TASK: op-03` - `Operator.for_set(:light)` / `Operator.for_set(:full)`: return instantiated operator objects
+- [ ] **(P1)** `TASK: op-04` - Arid-node filter: `AridNodeFilter#suppressed?(node, config)` - check against `ignore_patterns` regex list and the built-in catalog (logger, memoization, etc.)
+- [ ] **(P1)** `TASK: op-05` - Stillborn filter: after mutation run `unparser`, then `RubyVM::InstructionSequence.compile` - discard mutant on `SyntaxError`
+
+---
+
+### 5.5 Concrete Operators (Light Set - Phase 1)
+
+Each operator needs: implementation + spec + at least 3 documented example mutations.
 
 #### ArithmeticOperator
-- [ ] **(P1)** `TASK: op-arith-01` — Node-Types: `:send` mit Methoden `+`, `-`, `*`, `/`, `**`, `%`
-- [ ] **(P1)** `TASK: op-arith-02` — Mutationsmatrix: `+→-`, `-→+`, `*→/`, `/→*`, `**→*`, `%→*` (symmetrisch, keine Doppelzählung)
-- [ ] **(P1)** `TASK: op-arith-03` — Spec: Arithmetik mit Konstanten, mit Methodenaufrufen, mit Klammerung, mit Float-Literalen
+- [ ] **(P1)** `TASK: op-arith-01` - Node types: `:send` with methods `+`, `-`, `*`, `/`, `**`, `%`
+- [ ] **(P1)** `TASK: op-arith-02` - Mutation matrix: `+→-`, `-→+`, `*→/`, `/→*`, `**→*`, `%→*` (symmetrical, no double-counting)
+- [ ] **(P1)** `TASK: op-arith-03` - Spec: arithmetic with constants, method calls, parentheses, and float literals
 
 #### EqualityOperator
-- [ ] **(P1)** `TASK: op-eq-01` — Node-Types: `:send` mit `==`, `!=`, `<`, `>`, `<=`, `>=`, `<=>`, `eql?`, `equal?`
-- [ ] **(P1)** `TASK: op-eq-02` — Mutationsmatrix: jeder Operator wird durch jeden anderen ersetzt (volle Matrix, 8×8)
-- [ ] **(P1)** `TASK: op-eq-03` — Spec: Vergleiche in Conditionals, in Guard Clauses, in `Comparable`-Implementierungen
+- [ ] **(P1)** `TASK: op-eq-01` - Node types: `:send` with `==`, `!=`, `<`, `>`, `<=`, `>=`, `<=>`, `eql?`, `equal?`
+- [ ] **(P1)** `TASK: op-eq-02` - Mutation matrix: replace each operator with every other operator (full 8×8 matrix)
+- [ ] **(P1)** `TASK: op-eq-03` - Spec: comparisons in conditionals, guard clauses, and `Comparable` implementations
 
 #### LogicalOperator
-- [ ] **(P1)** `TASK: op-log-01` — Node-Types: `:and`, `:or`, `&&`/`||` als `:send`
-- [ ] **(P1)** `TASK: op-log-02` — Mutationen: `&&→||`, `||→&&`, `&&→lhs`, `&&→rhs`, `||→lhs`, `||→rhs`
-- [ ] **(P1)** `TASK: op-log-03` — Spec: Short-circuit-Semantik erhalten, `and`/`or` vs `&&`/`||` AST-Unterschied
+- [ ] **(P1)** `TASK: op-log-01` - Node types: `:and`, `:or`, `&&` / `||` as `:send`
+- [ ] **(P1)** `TASK: op-log-02` - Mutations: `&&→||`, `||→&&`, `&&→lhs`, `&&→rhs`, `||→lhs`, `||→rhs`
+- [ ] **(P1)** `TASK: op-log-03` - Spec: preserve short-circuit semantics, `and` / `or` vs `&&` / `||` AST differences
 
 #### BooleanLiteral
-- [ ] **(P1)** `TASK: op-bool-01` — Node-Types: `:true`, `:false`, `:send` (`!expr`)
-- [ ] **(P1)** `TASK: op-bool-02` — Mutationen: `true→false`, `false→true`, `!expr→expr`
-- [ ] **(P1)** `TASK: op-bool-03` — Spec: Boolean-Literale in Hash-Values, als Default-Arguments, in ternary
+- [ ] **(P1)** `TASK: op-bool-01` - Node types: `:true`, `:false`, `:send` (`!expr`)
+- [ ] **(P1)** `TASK: op-bool-02` - Mutations: `true→false`, `false→true`, `!expr→expr`
+- [ ] **(P1)** `TASK: op-bool-03` - Spec: boolean literals in hash values, default arguments, and ternaries
 
 #### ConditionalExpression
-- [ ] **(P1)** `TASK: op-cond-01` — Node-Types: `:if` (inkl. `unless`), `:case`, `:while`, `:until`
-- [ ] **(P1)** `TASK: op-cond-02` — Mutationen: then-Zweig entfernen, else-Zweig entfernen, Bedingung negieren, Bedingung durch `true`/`false` ersetzen
-- [ ] **(P1)** `TASK: op-cond-03` — Spec: Modifier-If (`x if cond`), ternary (`cond ? a : b`), `unless`
+- [ ] **(P1)** `TASK: op-cond-01` - Node types: `:if` (including `unless`), `:case`, `:while`, `:until`
+- [ ] **(P1)** `TASK: op-cond-02` - Mutations: remove then-branch, remove else-branch, negate condition, replace condition with `true` / `false`
+- [ ] **(P1)** `TASK: op-cond-03` - Spec: modifier-if (`x if cond`), ternary (`cond ? a : b`), `unless`
 
 #### StringLiteral
-- [ ] **(P1)** `TASK: op-str-01` — Node-Types: `:str`, `:dstr` (Interpolation)
-- [ ] **(P1)** `TASK: op-str-02` — Mutationen: `"foo"→""`, `"foo"→"Henitai was here"`, Interpolation-Ausdruck entfernen
-- [ ] **(P1)** `TASK: op-str-03` — Spec: Frozen-String-Literals, heredocs, `%w[]`-Arrays
+- [ ] **(P1)** `TASK: op-str-01` - Node types: `:str`, `:dstr` (interpolation)
+- [ ] **(P1)** `TASK: op-str-02` - Mutations: `"foo"→""`, `"foo"→"Henitai was here"`, remove interpolation expression
+- [ ] **(P1)** `TASK: op-str-03` - Spec: frozen string literals, heredocs, `%w[]` arrays
 
 #### ReturnValue
-- [ ] **(P1)** `TASK: op-ret-01` — Node-Types: `:return`, letzter Ausdruck in Methodenbody (impliziter Return)
-- [ ] **(P1)** `TASK: op-ret-02` — Mutationen: `return x` → `return nil`, `return x` → `return 0`, `return x` → `return false`, `return true`/`return false` gegenseitig
-- [ ] **(P1)** `TASK: op-ret-03` — Spec: Expliziter `return`, impliziter letzter Ausdruck, Guard-Clause `return nil if ...`
+- [ ] **(P1)** `TASK: op-ret-01` - Node types: `:return`, final expression in method body (implicit return)
+- [ ] **(P1)** `TASK: op-ret-02` - Mutations: `return x` → `return nil`, `return x` → `return 0`, `return x` → `return false`, `return true` / `return false` reciprocally
+- [ ] **(P1)** `TASK: op-ret-03` - Spec: explicit `return`, implicit final expression, guard-clause `return nil if ...`
 
 ---
 
-### 5.6 Konkrete Operatoren (Full Set — Phase 2)
+### 5.6 Concrete Operators (Full Set - Phase 2)
 
-- [ ] **(P2)** `TASK: op-safe-01` — `SafeNavigation`: `&.` → `.` (entfernt Nil-Guard)
-- [ ] **(P2)** `TASK: op-range-01` — `RangeLiteral`: `..` ↔ `...` (inclusive ↔ exclusive)
-- [ ] **(P2)** `TASK: op-hash-01` — `HashLiteral`: leerer Hash-Ersatz, Symbol-Key-Mutation
-- [ ] **(P2)** `TASK: op-pattern-01` — `PatternMatch`: `in`-Arm-Entfernung, Guard-Clause-Mutation
-- [ ] **(P2)** `TASK: op-array-01` — `ArrayDeclaration`: `[]` → `[nil]`, Element-Entfernung
-- [ ] **(P2)** `TASK: op-block-01` — `BlockStatement`: `{ ... }` → `{}` (leerer Block)
-- [ ] **(P2)** `TASK: op-method-01` — `MethodExpression`: Methodenaufruf-Ergebnis durch `nil` ersetzen
-- [ ] **(P2)** `TASK: op-assign-01` — `AssignmentExpression`: `+=` ↔ `-=`, `||=` entfernen; Dokumentation und Specs müssen explizit festhalten, dass der Default-Arid-Filter Memoization-Patterns wie `@var ||= compute_value` standardmäßig unterdrückt
-
----
-
-### 5.7 Mutant-Generator (Gate 2)
-
-- [ ] **(P1)** `TASK: gen-01` — `MutantGenerator#generate(subjects, operators)`: AST-Traversal per Subject, wendet alle aktiven Operatoren auf jeden passenden Node an
-- [ ] **(P1)** `TASK: gen-02` — AST-Traversal-Strategie: `Parser::AST::Processor` subklassen (depth-first, pre-order), nur innerhalb des Subject-Zeilenbereichs operieren
-- [ ] **(P1)** `TASK: gen-03` — Arid-Node-Integration: Vor Operator-Anwendung prüfen, ob Node suppressed ist
-- [ ] **(P1)** `TASK: gen-04` — Stillborn-Filter-Integration: Nach Generierung `SyntaxValidator#valid?(mutant)` aufrufen, invalide verwerfen
-- [ ] **(P1)** `TASK: gen-05` — `max_mutants_per_line: 1`-Constraint (Google-Empfehlung): Bei mehreren Mutanten pro Zeile nur den mit höchster Signal-Priorität behalten
-- [ ] **(P2)** `TASK: gen-06` — Stratified Sampling: `SamplingStrategy#sample(mutants, ratio:, strategy: :stratified)` — pro Methode `ratio`% samplen, nicht global
+- [ ] **(P2)** `TASK: op-safe-01` - `SafeNavigation`: `&.` → `.` (remove nil guard)
+- [ ] **(P2)** `TASK: op-range-01` - `RangeLiteral`: `..` ↔ `...` (inclusive ↔ exclusive)
+- [ ] **(P2)** `TASK: op-hash-01` - `HashLiteral`: empty hash replacement, symbol-key mutation
+- [ ] **(P2)** `TASK: op-pattern-01` - `PatternMatch`: remove `in` arm, mutate guard clause
+- [ ] **(P2)** `TASK: op-array-01` - `ArrayDeclaration`: `[]` → `[nil]`, remove elements
+- [ ] **(P2)** `TASK: op-block-01` - `BlockStatement`: `{ ... }` → `{}` (empty block)
+- [ ] **(P2)** `TASK: op-method-01` - `MethodExpression`: replace method call result with `nil`
+- [ ] **(P2)** `TASK: op-assign-01` - `AssignmentExpression`: `+=` ↔ `-=`, remove `||=`; documentation and specs must explicitly note that the default arid filter suppresses memoization patterns such as `@var ||= compute_value`
 
 ---
 
-### 5.8 Statischer Filter (Gate 3)
+### 5.7 Mutant Generator (Gate 2)
 
-- [ ] **(P1)** `TASK: filter-01` — `StaticFilter#apply(mutants, config)`: Markiert Mutanten als `:ignored` wenn Location auf `ignore_patterns` matcht
-- [ ] **(P1)** `TASK: filter-02` — Coverage-Integration: `SimpleCov`-JSON-Coverage-Report einlesen (`coverage/.resultset.json`), Map `file → [line_numbers]` aufbauen
-- [ ] **(P1)** `TASK: filter-03` — No-Coverage-Markierung: Mutanten deren `start_line` nicht in der Coverage-Map auftaucht → Status `:no_coverage`
-- [ ] **(P2)** `TASK: filter-04` — Per-Test-Coverage: `SimpleCov::RSpec`-Integration für granulare `test_file → covered_lines`-Map (40–60 % Speedup laut Forschung)
+- [ ] **(P1)** `TASK: gen-01` - `MutantGenerator#generate(subjects, operators)`: AST traversal per subject, applies all active operators to every matching node
+- [ ] **(P1)** `TASK: gen-02` - AST traversal strategy: `Parser::AST::Processor` subclasses (depth-first, pre-order), operate only within the subject line range
+- [ ] **(P1)** `TASK: gen-03` - Arid-node integration: check whether the node is suppressed before applying an operator
+- [ ] **(P1)** `TASK: gen-04` - Stillborn filter integration: after generation call `SyntaxValidator#valid?(mutant)`, discard invalid mutants
+- [ ] **(P1)** `TASK: gen-05` - `max_mutants_per_line: 1` constraint (Google recommendation): when multiple mutants exist on the same line, keep only the one with the highest signal priority
+- [ ] **(P2)** `TASK: gen-06` - Stratified sampling: `SamplingStrategy#sample(mutants, ratio:, strategy: :stratified)` - sample by method, not globally
+
+---
+
+### 5.8 Static Filter (Gate 3)
+
+- [ ] **(P1)** `TASK: filter-01` - `StaticFilter#apply(mutants, config)`: mark mutants as `:ignored` when the location matches `ignore_patterns`
+- [ ] **(P1)** `TASK: filter-02` - Coverage integration: read the `SimpleCov` JSON coverage report (`coverage/.resultset.json`), build a `file → [line_numbers]` map
+- [ ] **(P1)** `TASK: filter-03` - No-coverage marking: mutants whose `start_line` is not in the coverage map receive status `:no_coverage`
+- [ ] **(P2)** `TASK: filter-04` - Per-test coverage: `SimpleCov::RSpec` integration for a granular `test_file → covered_lines` map (40-60% speedup according to research)
 
 ---
 
 ### 5.9 Execution Engine (Gate 4)
 
-> **Ausführungsvertrag (wichtig für Korrektheit):** Jeder Mutant läuft in einem **geforkten Kindprozess**. Innerhalb dieses Kindprozesses wird die Mutation via `define_method` eingespielt — *bevor* RSpec Spec-Dateien lädt. Danach wird `RSpec::Core::Runner.run` **im selben Kindprozess** aufgerufen. Es wird kein zweiter `exec`- oder Subprocess gestartet. `define_method`-Patches sind prozesslokal und würden in einem separaten Prozess verloren gehen.
+> **Execution contract (important for correctness):** Each mutant runs in a **forked child process**. Inside that child process, the mutation is injected via `define_method` - *before* RSpec loads spec files. Then `RSpec::Core::Runner.run` is called **in the same child process**. No second `exec` or subprocess is started. `define_method` patches are process-local and would be lost in a separate process.
 >
-> ```
-> Elternprozess (Runner)
->   └─ Process.fork ──→ Kindprozess
->         ENV["HENITAI_MUTANT_ID"] = mutant.id
->         Henitai::Mutant::Activator.activate!   # ← patches Klasse via define_method
->         RSpec::Core::Runner.run(test_files)    # ← GLEICHER Prozess, Mutation bereits aktiv
->         exit $?.exitstatus
+> ```ruby
+> # In the parent process (Runner), before fork:
+> pid = Process.fork do
+>   # ── CHILD ───────────────────────────────────────────────────────────
+>   # Step 1: Activate the mutation (before RSpec)
+>   Activator.activate!(mutant)          # define_method patches the target class
+>
+>   # Step 2: Run tests in the SAME process (no exec!)
+>   status = RSpec::Core::Runner.run(test_files)
+>   exit(status ? 0 : 1)
+>   # ────────────────────────────────────────────────────────────────────
+> end
+>
+> # In the parent process: wait for child, enforce timeout
+> result = wait_with_timeout(pid, config.timeout)
 > ```
 >
-> **Aktivierungsreihenfolge:** `Activator.activate!` muss vor dem ersten `require` der Ziel-Quelldatei durch RSpec laufen. Da RSpec Quelldateien erst beim Laden der Spec-Dateien per `require_relative` einbindet, reicht es, `activate!` vor `RSpec::Core::Runner.run` aufzurufen — sofern die Quelldatei nicht bereits im Elternprozess geladen und in den Fork-Speicher mitkopiert wurde. In diesem Fall patcht `activate!` die bereits geladene Klasse direkt (was korrekt ist, da `define_method` auch auf bestehenden Klassen funktioniert).
+> **Activation order:** `Activator.activate!` must run before RSpec loads the target source file for the first time. Because RSpec loads source files when spec files are required, calling `activate!` before `RSpec::Core::Runner.run` is sufficient - unless the source file was already loaded in the parent process and copied into the fork. In that case, `activate!` patches the already loaded class directly (which is correct, because `define_method` works on existing classes).
 
-- [ ] **(P1)** `TASK: exec-01` — `ExecutionEngine#run(mutants, integration, config)`: Hauptschleife über alle `:pending`-Mutanten
-- [ ] **(P1)** `TASK: exec-02` — Fork-Isolation: `Process.fork` pro Mutant, `HENITAI_MUTANT_ID` ENV-Var setzen, `Process.wait` mit Timeout im Elternprozess
-- [ ] **(P1)** `TASK: exec-03` — Mutant-Aktivierung im Child (vor RSpec): `Activator.activate!(mutant)` patcht Zielklasse via `Module#define_method` — **kein exec, kein zweiter Fork**
-- [ ] **(P1)** `TASK: exec-04` — Timeout-Handling: `Process.kill(:SIGTERM, pid)` nach `config.timeout` Sekunden im Elternprozess, danach `SIGKILL` nach weiteren 2 Sekunden
-- [ ] **(P1)** `TASK: exec-05` — Kill-on-First-Failure: RSpec-Formatter meldet ersten Test-Fehler → Kindprozess ruft `exit(1)` auf (kein `--fail-fast` nötig, da eigener Prozess)
-- [ ] **(P1)** `TASK: exec-06` — Exit-Code-Auswertung im Elternprozess: 0 → survived, != 0 → killed, SIGTERM/SIGKILL → timeout
-- [ ] **(P1)** `TASK: exec-07` — `Henitai::Mutant::Activator`-Klasse: Aktiviert den per Fork vererbten `Mutant`-Datensatz im Child und patcht Zielklasse/Methode via `Module#define_method`
-- [ ] **(P2)** `TASK: exec-08` — Parallele Ausführung: Worker-Pool (`Parallel`-Gem oder natives `Ractor`), Anzahl via `config.jobs` oder CPU-Count
-- [ ] **(P2)** `TASK: exec-09` — Test-Priorisierung: `TestPrioritizer#sort(tests, mutant, history)` — adaptive Strategie (Tests die bereits andere Mutanten getötet haben, zuerst)
-- [ ] **(P2)** `TASK: exec-10` — Flaky-Test-Mitigation: 3× Retry bei survived Mutant, Warnung wenn > 5 % unknown
+- [ ] **(P1)** `TASK: exec-01` - `ExecutionEngine#run(mutants, integration, config)`: main loop over all `:pending` mutants
+- [ ] **(P1)** `TASK: exec-02` - Fork isolation: `Process.fork` per mutant, set `HENITAI_MUTANT_ID` env var, `Process.wait` with timeout in the parent process
+- [ ] **(P1)** `TASK: exec-03` - Mutant activation in the child (before RSpec): `Activator.activate!(mutant)` patches the target class via `Module#define_method` - **no exec, no second fork**
+- [ ] **(P1)** `TASK: exec-04` - Timeout handling: `Process.kill(:SIGTERM, pid)` after `config.timeout` seconds in the parent process, then `SIGKILL` after another 2 seconds
+- [ ] **(P1)** `TASK: exec-05` - Kill-on-first-failure: RSpec formatter reports the first test failure -> child process calls `exit(1)` (no `--fail-fast` needed because it is its own process)
+- [ ] **(P1)** `TASK: exec-06` - Exit-code evaluation in the parent process: 0 -> survived, != 0 -> killed, SIGTERM/SIGKILL -> timeout
+- [ ] **(P1)** `TASK: exec-07` - `Henitai::Mutant::Activator` class: activates the fork-inherited `Mutant` record in the child and patches target class/method via `Module#define_method`
+- [ ] **(P2)** `TASK: exec-08` - Parallel execution: worker pool (`Parallel` gem or native `Ractor`), number via `config.jobs` or CPU count
+- [ ] **(P2)** `TASK: exec-09` - Test prioritization: `TestPrioritizer#sort(tests, mutant, history)` - adaptive strategy (tests that have already killed other mutants first)
+- [ ] **(P2)** `TASK: exec-10` - Flaky-test mitigation: retry 3 times for a survived mutant, warn when > 5% unknown
 
 ---
 
-### 5.10 RSpec-Integration
+### 5.10 RSpec Integration
 
-- [ ] **(P1)** `TASK: rspec-01` — `Integration::Rspec#select_tests(subject)`: Longest-Prefix-Matching — scannt `spec/` nach RSpec-Dateien, deren `describe`/`context`-Strings den Subject-Namespace enthalten
-- [ ] **(P1)** `TASK: rspec-02` — Fallback: Wenn keine Tests per Prefix gefunden → alle Spec-Dateien die `require` der Source-Datei transitiv enthalten
-- [ ] **(P1)** `TASK: rspec-03` — `Integration::Rspec#run_in_child(test_files)`: Ruft `RSpec::Core::Runner.run(test_files + rspec_opts)` im **aktuellen Prozess** auf (wird nach `fork` vom ExecutionEngine-Child aufgerufen — kein separater Subprocess via `exec` oder `system`)
-- [ ] **(P1)** `TASK: rspec-04` — Aktivierungsreihenfolge sicherstellen: `exec-03` (`Activator.activate!`) wird von `exec-02` (fork) aufgerufen, **bevor** `rspec-03` (`RSpec::Core::Runner.run`) gestartet wird. Ein Spec-Test verifiziert, dass `define_method`-Patch aktiv ist wenn erster Test läuft.
-- [ ] **(P1)** `TASK: rspec-05` — Spec für Integration: Unit-Tests für Prefix-Matching-Logik (kein echter Prozess nötig)
-- [ ] **(P2)** `TASK: rspec-06` — Per-Test-Coverage: `--require henitai/coverage_formatter` in RSpec-Optionen, produziert `coverage/henitai_per_test.json`
-- [ ] **(P3)** `TASK: minitest-01` — Minitest-Integration analog zur RSpec-Integration
+- [ ] **(P1)** `TASK: rspec-01` - `Integration::Rspec#select_tests(subject)`: longest-prefix matching - scan `spec/` for RSpec files whose `describe` / `context` strings contain the subject namespace
+- [ ] **(P1)** `TASK: rspec-02` - Fallback: if no tests are found by prefix, use all spec files that transitively `require` the source file
+- [ ] **(P1)** `TASK: rspec-03` - `Integration::Rspec#run_in_child(test_files)`: call `RSpec::Core::Runner.run(test_files + rspec_opts)` in the **current process** (called after `fork` by the ExecutionEngine child - no separate subprocess via `exec` or `system`)
+- [ ] **(P1)** `TASK: rspec-04` - Ensure activation order: `exec-03` (`Activator.activate!`) is called by `exec-02` (fork) **before** `rspec-03` (`RSpec::Core::Runner.run`) starts. A spec test verifies that the `define_method` patch is active when the first test runs.
+- [ ] **(P1)** `TASK: rspec-05` - Integration spec: unit tests for prefix matching logic (no real process needed)
+- [ ] **(P2)** `TASK: rspec-06` - Per-test coverage: add `--require henitai/coverage_formatter` to RSpec options, produce `coverage/henitai_per_test.json`
+- [ ] **(P3)** `TASK: minitest-01` - Minitest integration analogous to the RSpec integration
 
 ---
 
-### 5.11 Reporter
+### 5.11 Reporters
 
 #### Terminal Reporter
-- [ ] **(P1)** `TASK: rep-term-01` — Live-Progress während Gate 4: `·` für killed, `S` für survived, `T` für timeout, `I` für ignored
-- [ ] **(P1)** `TASK: rep-term-02` — Summary nach Gate 5: Tabelle mit MS %, Killed/Survived/Timeout/NoCoverage-Counts, Dauer
-- [ ] **(P1)** `TASK: rep-term-03` — Survived-Details: Für jeden survived Mutant: Datei, Zeile, Diff (original vs. mutiert), Operator-Name
-- [ ] **(P1)** `TASK: rep-term-04` — Threshold-Check: Farbige Ausgabe (grün/gelb/rot) basierend auf `thresholds.high` / `thresholds.low`
+- [ ] **(P1)** `TASK: rep-term-01` - Live progress during Gate 4: `·` for killed, `S` for survived, `T` for timeout, `I` for ignored
+- [ ] **(P1)** `TASK: rep-term-02` - Summary after Gate 5: table with MS %, killed/survived/timeout/no-coverage counts, duration
+- [ ] **(P1)** `TASK: rep-term-03` - Survived details: for each survived mutant show file, line, diff (original vs. mutated), and operator name
+- [ ] **(P1)** `TASK: rep-term-04` - Threshold check: colored output (green/yellow/red) based on `thresholds.high` / `thresholds.low`
 
-#### JSON Reporter (Stryker-Schema)
-- [~] **(P1)** `TASK: rep-json-01` — `Result#to_stryker_schema`: Vollständige Implementierung inkl. `files`-Section, `mutants`-Array, korrektes Status-Mapping
-- [ ] **(P1)** `TASK: rep-json-02` — Datei-Output: `mutation-report.json` in konfigurierbarem Verzeichnis (`reports/`)
-- [ ] **(P1)** `TASK: rep-json-03` — Schema-Validierung in Specs: Gegen JSON Schema v3.5.1 validieren (via `json_schemer` Gem)
+#### JSON Reporter (Stryker Schema)
+- [~] **(P1)** `TASK: rep-json-01` - `Result#to_stryker_schema`: complete implementation including `files` section, `mutants` array, and correct status mapping
+- [ ] **(P1)** `TASK: rep-json-02` - File output: `mutation-report.json` in a configurable directory (`reports/`)
+- [ ] **(P1)** `TASK: rep-json-03` - Schema validation in specs: validate against JSON Schema v3.5.1 (via `json_schemer` gem)
 
 #### HTML Reporter
-- [ ] **(P2)** `TASK: rep-html-01` — HTML-Template: Einbinden von `mutation-testing-elements` via CDN (`unpkg.com/mutation-testing-elements`)
-- [ ] **(P2)** `TASK: rep-html-02` — Self-contained HTML: JSON-Report inline als `<mutation-test-report-app>` Web-Component-Attribut
-- [ ] **(P2)** `TASK: rep-html-03` — Output: `reports/mutation-report.html`
+- [ ] **(P2)** `TASK: rep-html-01` - HTML template: include `mutation-testing-elements` via CDN (`unpkg.com/mutation-testing-elements`)
+- [ ] **(P2)** `TASK: rep-html-02` - Self-contained HTML: embed the JSON report inline as a `<mutation-test-report-app>` web-component attribute
+- [ ] **(P2)** `TASK: rep-html-03` - Output: `reports/mutation-report.html`
 
 #### Dashboard Reporter
-- [ ] **(P2)** `TASK: rep-dash-01` — REST-API-Client: `PUT /api/reports/{project}/{version}` mit Bearer-Auth (`STRYKER_DASHBOARD_API_KEY`)
-- [ ] **(P2)** `TASK: rep-dash-02` — Projekt-URL aus Config (`dashboard.project`) oder Git-Remote-URL auto-detecten
-- [ ] **(P2)** `TASK: rep-dash-03` — CI-Erkennung: `GITHUB_REF`/`GITHUB_SHA` für automatische Version-Bestimmung
+- [ ] **(P2)** `TASK: rep-dash-01` - REST API client: `PUT /api/reports/{project}/{version}` with bearer auth (`STRYKER_DASHBOARD_API_KEY`)
+- [ ] **(P2)** `TASK: rep-dash-02` - Derive project URL from config (`dashboard.project`) or auto-detect from the git remote URL
+- [ ] **(P2)** `TASK: rep-dash-03` - CI detection: use `GITHUB_REF` / `GITHUB_SHA` for automatic version resolution
 
 ---
 
 ### 5.12 CLI
 
-- [~] **(P1)** `TASK: cli-01` — `henitai run`: Vollständige Pipeline-Ausführung mit OptionParser
-- [ ] **(P1)** `TASK: cli-02` — `henitai run --since GIT_REF`: Inkrementeller Modus, Gate 1 auf geänderte Dateien beschränken
-- [ ] **(P1)** `TASK: cli-03` — Exit-Codes: 0 = MS ≥ low-Threshold, 1 = MS < low-Threshold, 2 = Framework-Fehler
-- [ ] **(P1)** `TASK: cli-04` — `henitai version`: Gibt `Henitai::VERSION` aus
-- [ ] **(P2)** `TASK: cli-05` — `henitai init`: Legt `.henitai.yml` mit sinnvollen Defaults an, fragt interaktiv nach Integration
-- [ ] **(P2)** `TASK: cli-06` — `henitai operator list`: Listet alle verfügbaren Operatoren mit Beschreibung und Beispiel-Mutationen
+- [~] **(P1)** `TASK: cli-01` - `henitai run`: full pipeline execution with OptionParser
+- [ ] **(P1)** `TASK: cli-02` - `henitai run --since GIT_REF`: incremental mode, restrict Gate 1 to changed files
+- [ ] **(P1)** `TASK: cli-03` - Exit codes: 0 = MS ≥ low threshold, 1 = MS < low threshold, 2 = framework error
+- [ ] **(P1)** `TASK: cli-04` - `henitai version`: print `Henitai::VERSION`
+- [ ] **(P2)** `TASK: cli-05` - `henitai init`: create `.henitai.yml` with sensible defaults, ask interactively about integrations
+- [ ] **(P2)** `TASK: cli-06` - `henitai operator list`: list all available operators with descriptions and example mutations
 
 ---
 
 ### 5.13 Result & Scoring
 
-> **Scoring-Formel (bindend, aus architecture.md Abschnitt 6.1):**
+> **Scoring formula (binding, from `../architecture/architecture.md` section 8.4):**
 >
-> ```
+> ```text
 > MS  = (killed + timeout) / (total − ignored − no_coverage − compile_error − equivalent)
-> MSI = killed   / total
+> MSI = killed / total
 > ```
 >
-> `MS` und `MSI` **müssen immer zusammen** ausgegeben werden. Ein Report ohne den Äquivalenz-Vorbehalt ist ein Anti-Pattern (architecture.md Abschnitt 9).
+> `MS` and `MSI` **must always be reported together**. A report without the equivalence caveat is an anti-pattern (`../architecture/architecture.md` section 8.4).
 >
-> `:equivalent` ist ein Henitai-interner Status — im Stryker-JSON wird er als `"Ignored"` serialisiert (das Stryker-Schema kennt keinen Equivalent-Status). Die Unterscheidung bleibt im `Result`-Objekt für korrekte MS-Berechnung erhalten.
+> `:equivalent` is an internal Henitai status - in the Stryker JSON it is serialized as `"Ignored"` (the Stryker schema has no Equivalent status). The distinction remains in the `Result` object for correct MS calculation.
 
-- [~] **(P1)** `TASK: result-01` — `Result#mutation_score`: Korrekte MS-Formel — excl. `:ignored`, `:no_coverage`, `:compile_error`, **`:equivalent`** aus Zähler und Nenner (implementiert in `result.rb`)
-- [~] **(P1)** `TASK: result-02` — `Result#mutation_score_indicator`: Naive MSI-Formel — `killed / total`, kein Ausschluss (implementiert in `result.rb`)
-- [ ] **(P1)** `TASK: result-03` — Terminal-Report zeigt MS **und** MSI nebeneinander, plus geschätzte Äquivalenz-Unsicherheit (`~10–15 % der lebenden Mutanten`)
-- [ ] **(P1)** `TASK: result-04` — Spec: MS/MSI-Berechnung mit Fixture-Mutanten aller Statuses, inkl. `:equivalent` (Regression-Guard gegen Formel-Drift)
-- [ ] **(P2)** `TASK: result-05` — Äquivalenz-Heuristiken (MEDIC-Muster): `EquivalenceDetector#analyze(mutant)` markiert Kandidaten mit `:equivalent` — Data-Flow-Pattern (Use-Def, Use-Ret, Def-Def, Def-Ret). Erkennungsrate ~50 % der tatsächlich äquivalenten Mutanten.
-- [ ] **(P2)** `TASK: result-06` — Persistente Mutantenhistorie: `MutantHistoryStore` auf SQLite-Basis speichert `mutant_id`, `first_seen_version`, `status_history`, `days_alive` und bildet die Grundlage für Latent-Mutant-Tracking
-- [ ] **(P2)** `TASK: result-07` — Trend-Tracking: Reporter leitet aus der SQLite-Historie `reports/mutation-history.json` für MS/MSI-Trends und persistente lebende Mutanten ab
-
----
-
-### 5.14 Dogfooding & Qualitätssicherung
-
-- [ ] **(P1)** `TASK: dog-01` — Henitai testet sich selbst: `bundle exec henitai run --operators light` als Teil der CI-Pipeline (nach Phase 1 abgeschlossen)
-- [ ] **(P1)** `TASK: dog-02` — Test-Coverage: ≥ 90 % Statement + Branch via SimpleCov
-- [ ] **(P1)** `TASK: dog-03` — RuboCop: 0 Offenses, `TargetRubyVersion: 4.0`
-- [ ] **(P2)** `TASK: dog-04` — Mutation Score Ziel: ≥ 70 % (Light Set), ≥ 60 % (Full Set inkl. schwer tötbarer Operatoren)
-- [ ] **(P2)** `TASK: dog-05` — Performance-Benchmark: `henitai run` auf dem eigenen Repo in < 3 Minuten
+- [~] **(P1)** `TASK: result-01` - `Result#mutation_score`: correct MS formula - exclude `:ignored`, `:no_coverage`, `:compile_error`, and **`:equivalent`** from numerator and denominator (implemented in `result.rb`)
+- [~] **(P1)** `TASK: result-02` - `Result#mutation_score_indicator`: naive MSI formula - `killed / total`, no exclusions (implemented in `result.rb`)
+- [ ] **(P1)** `TASK: result-03` - Terminal report shows MS **and** MSI side by side, plus estimated equivalence uncertainty (`~10-15% of live mutants`)
+- [ ] **(P1)** `TASK: result-04` - Spec: MS / MSI calculation with fixture mutants of all statuses, including `:equivalent` (regression guard against formula drift)
+- [ ] **(P2)** `TASK: result-05` - Equivalence heuristics (MEDIC patterns): `EquivalenceDetector#analyze(mutant)` marks candidates as `:equivalent` - data-flow patterns (Use-Def, Use-Ret, Def-Def, Def-Ret). Detection rate around 50% of actually equivalent mutants.
+- [ ] **(P2)** `TASK: result-06` - Persistent mutant history: `MutantHistoryStore` on SQLite stores `mutant_id`, `first_seen_version`, `status_history`, `days_alive` and forms the basis for latent-mutant tracking
+- [ ] **(P2)** `TASK: result-07` - Trend tracking: reporter derives `reports/mutation-history.json` from the SQLite history for MS / MSI trends and persistent live mutants
 
 ---
 
-## 6. Technische Entscheidungen (ADRs)
+### 5.14 Dogfooding & Quality Assurance
 
-### ADR-01: `parser` Gem statt `RubyVM::AbstractSyntaxTree`
-
-**Entscheidung:** AST-Traversal und Code-Rekonstruktion via `parser` + `unparser` Gems.
-
-**Begründung:**
-- `RubyVM::AbstractSyntaxTree` hat keine stabile öffentliche API für Code-Generierung
-- `parser` ist RuboCop-kompatibel und battle-tested bei großen Ruby-Projekten
-- `unparser` ermöglicht zuverlässige AST → Source-Rekonstruktion ohne Whitespace-Verlust
-- Source-Locations bleiben erhalten (exakte Zeilen/Spalten für Stryker-JSON nötig)
-
-**Risiko:** `parser` muss Ruby 4.0-Syntax unterstützen. Ggf. Fork oder Wartung nötig.
+- [ ] **(P1)** `TASK: dog-01` - Henitai tests itself: `bundle exec henitai run --operators light` as part of the CI pipeline (after Phase 1 is complete)
+- [ ] **(P1)** `TASK: dog-02` - Test coverage: ≥ 90% statement + branch coverage via SimpleCov
+- [ ] **(P1)** `TASK: dog-03` - RuboCop: 0 offenses, `TargetRubyVersion: 4.0`
+- [ ] **(P2)** `TASK: dog-04` - Mutation score target: ≥ 70% (light set), ≥ 60% (full set including hard-to-kill operators)
+- [ ] **(P2)** `TASK: dog-05` - Performance benchmark: `henitai run` on the repository itself in under 3 minutes
 
 ---
 
-### ADR-02: `Process.fork` statt Threads oder Ractors für Test-Isolation
+## 6. Technical Decisions (ADRs)
 
-**Entscheidung:** Jeder Mutant läuft in einem eigenen geforkten Kindprozess.
+The decisions now live in individual files under `../architecture/adr/`. That directory is the canonical source.
 
-**Begründung:**
-- Vollständige Speicher-Isolation — Mutationen verschmutzen nicht den Elternprozess
-- Kompatibel mit allen C-Extensions (Ractor ist nicht C-Extension-kompatibel)
-- `Process.fork` + Copy-on-Write profitiert vom geladenen Ruby-Prozess (schneller als fresh start)
-- Mutant-Gem-Bewährung: Dieser Ansatz ist in Produktion erprobt
+Current ADRs:
 
-**Einschränkung:** Nicht auf JRuby, TruffleRuby. Dokumentierte Limitation.
+- [ADR-01: `parser` gem instead of `RubyVM::AbstractSyntaxTree`](../architecture/adr/ADR-01-parser-gem-vs-rubyvm-ast.md)
+- [ADR-02: `Process.fork` instead of threads or Ractors for test isolation](../architecture/adr/ADR-02-process-fork-for-test-isolation.md)
+- [ADR-03: Stryker JSON schema as the native output format](../architecture/adr/ADR-03-stryker-json-native-output.md)
+- [ADR-04: `define_method` for mutant injection](../architecture/adr/ADR-04-define_method-for-mutant-injection.md)
+- [ADR-05: Stryker-compatible operator names](../architecture/adr/ADR-05-stryker-compatible-operator-names.md)
 
----
-
-### ADR-03: Stryker-JSON-Schema als natives Ausgabeformat
-
-**Entscheidung:** `Result#to_stryker_schema` ist die kanonische Serialisierungsform.
-
-**Begründung:**
-- Dashboard, HTML-Report und Badges ohne eigene Server-Infrastruktur
-- Ruby ist die einzige Sprache ohne Stryker-Implementierung — direkter Anschluss an das Ökosystem
-- Zukünftige Stryker-Features (neue Dashboard-Views etc.) werden automatisch unterstützt
-
-**Risiko:** Schema-Versionierung — bei Breaking Changes in Stryker-Schema Anpassung nötig.
+When a decision changes, update the corresponding ADR file first, then reflect the impact here or in `../architecture/architecture.md`.
 
 ---
 
-### ADR-04: `define_method` für Mutant-Injektion (kein Temp-File)
+## 7. Quality Criteria
 
-**Entscheidung:** Mutationen werden via `Module#define_method` injiziert, nicht als temporäre Dateien.
+### 7.1 Definition of Done (per task)
 
-**Begründung:**
-- Kein Disk-I/O pro Mutant (signifikanter Speedup bei vielen Mutanten)
-- Kein Risiko durch gleichzeitige Prozesse die dieselbe Datei schreiben
-- Konsistent mit dem Copy-on-Write-Vorteil des Fork-Modells
-- Mutant-Gem verwendet denselben Ansatz (Konzept-Übernahme, nicht Code-Übernahme)
+A task is complete when:
+1. Implementation is finished (no `raise NotImplementedError`)
+2. Specs exist and pass (`bundle exec rspec spec/henitai/[component]`)
+3. RuboCop: 0 offenses in the new / changed file
+4. SimpleCov: new lines are at least 90% covered
+5. `CHANGELOG.md` is updated (under `[Unreleased]`)
 
-**Aktivierungspfad:** `Activator.activate!(mutant)` arbeitet in vier Schritten:
-- Mutierter AST wird via `unparser` zu Ruby-Source rekonstruiert
-- Diese Source wird in einen ausführbaren Methoden-Wrapper überführt
-- Der Wrapper wird via `class_eval` oder `module_eval` im Kontext der Zielklasse kompiliert
-- Die resultierende Implementierung wird als Ersatzmethode gebunden; die Aktivierung bleibt auf den geforkten Kindprozess beschränkt
+### 7.2 Minimum Operator Specification
 
-`define_method` ist damit die öffentliche Injektionsstrategie, aber nicht die ganze Geschichte: Irgendwo zwischen AST und ersetzter Methode ist `eval` unvermeidlich, weil Ruby ein ausführbares Codeobjekt benötigt. Genau diese Stufe ist das eigentliche Risiko, nicht der Stillborn-Filter allein.
+Each operator must document:
+- Which AST node types it handles
+- The full mutation matrix (what is replaced with what)
+- At least 3 examples with original and mutated code
+- Known false-positive sources (arid-node candidates)
 
-**Spezifische Risiken:**
-- Eval-/Aktivierungsfehler trotz syntaktisch validem Mutanten, z.B. durch Scope-Verlust bei Closures oder ungültige Rekonstruktion der Methodenform
-- Unterschied zwischen `def`-Semantik und `define_method`-Semantik bei Argumenten, Sichtbarkeit und `super`/Block-Verhalten
-- Fehlklassifikation: Ein Aktivierungsfehler darf nie als `Survived` enden
+### 7.3 Performance Benchmarks (Gate 4 reference)
 
-**Status-Mapping:** Fehler in `Activator.activate!`, die nach erfolgreicher Syntaxvalidierung auftreten, werden als `RuntimeError` klassifiziert und aus dem MS-Nenner ausgeschlossen. Sie sind keine überlebenden Mutanten.
-
----
-
-### ADR-05: Stryker-kompatible Operator-Namen
-
-**Entscheidung:** Operatoren werden nach Stryker-Konvention benannt (`ArithmeticOperator`, nicht `AOR`).
-
-**Begründung:**
-- Dashboard-Filter und HTML-Report kategorisieren nach diesen Namen
-- Konsistenz mit dem Ökosystem vereinfacht Onboarding für Stryker-Nutzer
-- Ruby-spezifische Operatoren (`SafeNavigation`, `PatternMatch`) folgen demselben Naming-Pattern
-
----
-
-## 7. Qualitätskriterien
-
-### 7.1 Definition of Done (pro Task)
-
-Ein Task gilt als abgeschlossen wenn:
-1. Implementierung ist vollständig (kein `raise NotImplementedError`)
-2. Specs vorhanden und grün (`bundle exec rspec spec/henitai/[component]`)
-3. RuboCop: 0 Offenses für die neue/geänderte Datei
-4. SimpleCov: Neue Zeilen sind ≥ 90 % covered
-5. CHANGELOG.md aktualisiert (unter `[Unreleased]`)
-
-### 7.2 Mindest-Operator-Spezifikation
-
-Jeder Operator muss dokumentieren:
-- Welche AST-Node-Types er behandelt
-- Vollständige Mutationsmatrix (was wird womit ersetzt)
-- Mindestens 3 Beispiele mit Original- und mutiertem Code
-- Bekannte False-Positive-Quellen (Arid-Node-Kandidaten)
-
-### 7.3 Performance-Benchmarks (Gate-4-Referenz)
-
-| Projekt-Größe | Ziel (--since, Light Set) | Ziel (Full Run) |
+| Project size | Target (--since, light set) | Target (full run) |
 |---|---|---|
-| Henitai selbst (~500 LOC) | < 30 Sek | < 3 Min |
-| 5.000 LOC | < 3 Min | < 20 Min |
-| 20.000 LOC | < 10 Min | < 60 Min |
+| Henitai itself (~500 LOC) | < 30 sec | < 3 min |
+| 5,000 LOC | < 3 min | < 20 min |
+| 20,000 LOC | < 10 min | < 60 min |
 
 ---
 
-## 8. Risiken & Mitigationen
+## 8. Risks & Mitigations
 
-| # | Risiko | Wahrscheinlichkeit | Auswirkung | Mitigation |
+| # | Risk | Probability | Impact | Mitigation |
 |---|---|---|---|---|
-| R1 | `parser` Gem unterstützt Ruby 4.0-Syntax nicht vollständig | Mittel | Hoch | Frühzeitig verifizieren (TASK: infra-01); Fallback: Fork des Gems |
-| R2 | `define_method`-Injektion schlägt für bestimmte Methoden fehl (z.B. `initialize`, native methods) | Hoch | Mittel | Whitelist nicht-mutierbarer Methoden; explizite Fehlermeldung statt silent failure |
-| R3 | Äquivalente Mutanten erodieren Nutzervertrauen | Mittel | Hoch | Arid-Node-Katalog früh aufbauen; Feedback-Loop in CLI integrieren |
-| R4 | Fork-Modell nicht portierbar auf Windows/JRuby | Mittel | Niedrig | Klar dokumentieren; Windows ist Non-Goal für Phase 1 |
-| R5 | Stryker-Schema Breaking Change | Niedrig | Mittel | Schema-Version im Output pinnen; Migration-Guide wenn nötig |
-| R6 | RSpec-interne APIs für per-test Coverage instabil | Mittel | Niedrig | Per-Test-Coverage ist P2, nicht P1; SimpleCov-Gesamt-Coverage als Fallback |
-| R7 | Ruby 4.0.2 nicht stabil genug für Produktion | Niedrig | Hoch | Entwicklung auf RC/stable; `.ruby-version` anpassen wenn nötig |
+| R1 | `parser` gem does not fully support Ruby 4.0 syntax | Medium | High | Verify early (TASK: infra-01); fallback: fork the gem |
+| R2 | `define_method` injection fails for some methods (e.g. `initialize`, native methods) | High | Medium | Whitelist non-mutable methods; raise explicit errors instead of failing silently |
+| R3 | Equivalent mutants erode user trust | Medium | High | Build the arid-node catalog early; add a feedback loop in the CLI |
+| R4 | Fork model is not portable to Windows / JRuby | Medium | Low | Document clearly; Windows is a non-goal for Phase 1 |
+| R5 | Stryker schema breaking change | Low | Medium | Pin schema version in output; provide a migration guide if needed |
+| R6 | RSpec internal APIs for per-test coverage are unstable | Medium | Low | Per-test coverage is P2, not P1; fallback to SimpleCov overall coverage |
+| R7 | Ruby 4.0.2 is not stable enough for production | Low | High | Develop against RC / stable; adjust `.ruby-version` if necessary |
 
 ---
 
-## Anhang: Erste Implementierungsreihenfolge (Phase 1, empfohlen)
+## Appendix: Recommended Initial Implementation Order (Phase 1)
 
-Die Abhängigkeiten im Komponentengraph legen diese Reihenfolge nahe:
+The component dependency graph suggests this order:
 
+```text
+1.  config-01 to config-04         (Configuration - no dependencies)
+2.  op-01 to op-05                 (Operator base - no dependencies)
+3.  op-arith to op-ret (light set) (7 operators - operator base only)
+4.  subject-01 to subject-06       (SubjectResolver - parser gem)
+5.  gen-01 to gen-05               (MutantGenerator - operators + subjects)
+6.  filter-01 to filter-03         (StaticFilter - configuration)
+7.  rspec-01 to rspec-05           (RSpec integration - integration base)
+8.  exec-01 to exec-06             (ExecutionEngine - integration + mutants)
+9.  result-01 to result-03         (Result + Stryker schema)
+10. rep-term-01 to rep-term-04     (Terminal reporter)
+11. rep-json-01 to rep-json-03     (JSON reporter - result)
+12. cli-01 to cli-04               (CLI - everything)
+13. dog-01 to dog-03               (Dogfooding - everything)
 ```
-1.  config-01 bis config-04         (Configuration — keine Deps)
-2.  op-01 bis op-05                 (Operator Basis — keine Deps)
-3.  op-arith bis op-ret (Light Set) (7 Operatoren — nur Operator-Basis)
-4.  subject-01 bis subject-06       (SubjectResolver — parser gem)
-5.  gen-01 bis gen-05               (MutantGenerator — Operators + Subjects)
-6.  filter-01 bis filter-03         (StaticFilter — Configuration)
-7.  rspec-01 bis rspec-05           (RSpec-Integration — Integration-Basis)
-8.  exec-01 bis exec-06             (ExecutionEngine — Integration + Mutants)
-9.  result-01 bis result-03         (Result + Stryker-Schema)
-10. rep-term-01 bis rep-term-04     (Terminal Reporter)
-11. rep-json-01 bis rep-json-03     (JSON Reporter — Result)
-12. cli-01 bis cli-04               (CLI — alles)
-13. dog-01 bis dog-03               (Dogfooding — alles)
-```
 
-> **Kritischer Pfad:** config → operators → generator → execution → result → cli
-> Alle anderen Komponenten können parallel dazu entwickelt werden.
+> **Critical path:** config -> operators -> generator -> execution -> result -> CLI
+> All other components can be developed in parallel.

@@ -123,12 +123,13 @@ A Dev Container configuration is included (`.devcontainer/`) for VS Code with Ru
 
 ## Architecture
 
-See [`docs/plan/architecture.md`](docs/plan/architecture.md) for the full design document, including:
+See [`docs/architecture/architecture.md`](docs/architecture/architecture.md) for the full design document, including:
 
 - Phase-Gate pipeline (5 gates)
 - AST-based operator implementation
 - Fork isolation model
 - Stryker JSON schema integration
+- Architecture decisions in [`docs/architecture/adr/`](docs/architecture/adr/)
 - Three-phase roadmap
 
 Research basis: [`docs/research/`](docs/research/) — summaries of 39 academic papers on mutation testing (1992–2025).
