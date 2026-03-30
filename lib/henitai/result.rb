@@ -81,7 +81,11 @@ module Henitai
 
     def build_files_section
       mutants.group_by { |m| m.location[:file] }.transform_values do |file_mutants|
-        source = File.read(file_mutants.first.location[:file]) rescue ""
+        source = begin
+          File.read(file_mutants.first.location[:file])
+        rescue StandardError
+          ""
+        end
         {
           language: "ruby",
           source:,
@@ -92,32 +96,51 @@ module Henitai
 
     def mutant_to_schema(mutant)
       {
-        id:          mutant.id,
+        id: mutant.id,
         mutatorName: mutant.operator,
-        replacement: Unparser.unparse(mutant.mutated_node),
-        location: {
-          start: { line: mutant.location[:start_line], column: mutant.location[:start_col] },
-          end:   { line: mutant.location[:end_line],   column: mutant.location[:end_col] }
-        },
-        status:       stryker_status(mutant.status),
-        description:  mutant.description,
-        duration:     mutant.duration&.then { |d| (d * 1000).round }
+        replacement: replacement_for(mutant),
+        location: location_for(mutant),
+        status: stryker_status(mutant.status),
+        description: mutant.description,
+        duration: duration_for(mutant)
       }.compact
+    end
+
+    def replacement_for(mutant)
+      Unparser.unparse(mutant.mutated_node)
+    end
+
+    def location_for(mutant)
+      {
+        start: line_column(mutant, :start),
+        end: line_column(mutant, :end)
+      }
+    end
+
+    def line_column(mutant, prefix)
+      {
+        line: mutant.location.fetch(:"#{prefix}_line"),
+        column: mutant.location.fetch(:"#{prefix}_col")
+      }
+    end
+
+    def duration_for(mutant)
+      mutant.duration&.then { |d| (d * 1000).round }
     end
 
     def stryker_status(status)
       # :equivalent wird als "Ignored" serialisiert — das Stryker-Schema kennt keinen
       # Equivalent-Status. Die interne Unterscheidung (für MS vs. MSI) bleibt im Result-Objekt.
       {
-        killed:        "Killed",
-        survived:      "Survived",
-        timeout:       "Timeout",
-        no_coverage:   "NoCoverage",
-        ignored:       "Ignored",
-        equivalent:    "Ignored",
+        killed: "Killed",
+        survived: "Survived",
+        timeout: "Timeout",
+        no_coverage: "NoCoverage",
+        ignored: "Ignored",
+        equivalent: "Ignored",
         compile_error: "CompileError",
         runtime_error: "RuntimeError",
-        pending:       "Pending"
+        pending: "Pending"
       }.fetch(status, "Pending")
     end
   end

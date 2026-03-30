@@ -71,8 +71,10 @@ module Henitai
       Mutant.new(
         subject:,
         operator: name,
-        original_node:,
-        mutated_node:,
+        nodes: {
+          original: original_node,
+          mutated: mutated_node
+        },
         description:,
         location: loc
       )
@@ -83,11 +85,11 @@ module Henitai
       return {} unless exp
 
       {
-        file:       exp.source_buffer.name,
+        file: exp.source_buffer.name,
         start_line: exp.line,
-        end_line:   exp.last_line,
-        start_col:  exp.column,
-        end_col:    exp.last_column
+        end_line: exp.last_line,
+        start_col: exp.column,
+        end_col: exp.last_column
       }
     end
   end

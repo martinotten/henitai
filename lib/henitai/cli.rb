@@ -58,34 +58,65 @@ module Henitai
 
     def parse_run_options
       options = {}
-      parser  = OptionParser.new do |opts|
-        opts.banner = "Usage: henitai run [options] [SUBJECT_PATTERN...]"
-
-        opts.on("--since GIT_REF", "Only mutate subjects changed since GIT_REF") do |ref|
-          options[:since] = ref
-        end
-
-        opts.on("--use INTEGRATION", "Test framework integration (rspec)") do |name|
-          options[:integration] = name
-        end
-
-        opts.on("--config PATH", "Path to .henitai.yml") do |path|
-          options[:config] = path
-        end
-
-        opts.on("--operators SET", "Operator set: light | full") do |set|
-          options[:operators] = set
-        end
-
-        opts.on("--jobs N", Integer, "Number of parallel workers") do |n|
-          options[:jobs] = n
-        end
-
-        opts.on("-h", "--help", "Show this help") { puts opts; exit }
-        opts.on("-v", "--version", "Show version") { puts Henitai::VERSION; exit }
-      end
-      parser.parse!(@argv)
+      build_run_option_parser(options).parse!(@argv)
       options
+    end
+
+    def build_run_option_parser(options)
+      OptionParser.new do |opts|
+        opts.banner = "Usage: henitai run [options] [SUBJECT_PATTERN...]"
+        add_since_option(opts, options)
+        add_integration_option(opts, options)
+        add_config_option(opts, options)
+        add_operator_option(opts, options)
+        add_jobs_option(opts, options)
+        add_help_option(opts)
+        add_version_option(opts)
+      end
+    end
+
+    def add_since_option(opts, options)
+      opts.on("--since GIT_REF", "Only mutate subjects changed since GIT_REF") do |ref|
+        options[:since] = ref
+      end
+    end
+
+    def add_integration_option(opts, options)
+      opts.on("--use INTEGRATION", "Test framework integration (rspec)") do |name|
+        options[:integration] = name
+      end
+    end
+
+    def add_config_option(opts, options)
+      opts.on("--config PATH", "Path to .henitai.yml") do |path|
+        options[:config] = path
+      end
+    end
+
+    def add_operator_option(opts, options)
+      opts.on("--operators SET", "Operator set: light | full") do |set|
+        options[:operators] = set
+      end
+    end
+
+    def add_jobs_option(opts, options)
+      opts.on("--jobs N", Integer, "Number of parallel workers") do |n|
+        options[:jobs] = n
+      end
+    end
+
+    def add_help_option(opts)
+      opts.on("-h", "--help", "Show this help") do
+        puts opts
+        exit
+      end
+    end
+
+    def add_version_option(opts)
+      opts.on("-v", "--version", "Show version") do
+        puts Henitai::VERSION
+        exit
+      end
     end
 
     def help_text

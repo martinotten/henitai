@@ -43,24 +43,28 @@ module Henitai
       attr_reader :config
     end
 
+    # Terminal reporter.
     class Terminal < Base
       def report(result)
         raise NotImplementedError
       end
     end
 
+    # JSON reporter.
     class Json < Base
       def report(result)
         raise NotImplementedError
       end
     end
 
+    # HTML reporter.
     class Html < Base
       def report(result)
         raise NotImplementedError
       end
     end
 
+    # Dashboard reporter.
     class Dashboard < Base
       def report(result)
         raise NotImplementedError

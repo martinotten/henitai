@@ -33,19 +33,17 @@ module Henitai
                 :mutation_type, :description, :location
     attr_accessor :status, :killing_test, :duration
 
-    # @param subject       [Subject]    the subject being mutated
-    # @param operator      [Symbol]     operator name, e.g. :ArithmeticOperator
-    # @param original_node [Parser::AST::Node]  the original AST node
-    # @param mutated_node  [Parser::AST::Node]  the mutated AST node
-    # @param description   [String]     human-readable description of the mutation
-    # @param location      [Hash]       { file:, start_line:, end_line:, start_col:, end_col: }
-    def initialize(subject:, operator:, original_node:, mutated_node:,
-                   description:, location:)
+    # @param subject [Subject] the subject being mutated
+    # @param operator [Symbol] operator name, e.g. :ArithmeticOperator
+    # @param nodes [Hash] AST nodes with :original and :mutated entries
+    # @param description [String] human-readable description of the mutation
+    # @param location [Hash] { file:, start_line:, end_line:, start_col:, end_col: }
+    def initialize(subject:, operator:, nodes:, description:, location:)
       @id            = SecureRandom.uuid
       @subject       = subject
       @operator      = operator
-      @original_node = original_node
-      @mutated_node  = mutated_node
+      @original_node = nodes.fetch(:original)
+      @mutated_node  = nodes.fetch(:mutated)
       @description   = description
       @location      = location
       @status        = :pending

@@ -338,7 +338,7 @@ result = wait_with_timeout(pid, config.timeout)
 - [x] **(P1)** SimpleCov setup with branch coverage
 - [x] **(P1)** Create `.henitai.yml` config schema
 - [x] **(P1)** `TASK: infra-01` - Prism spike as go/no-go: verify the Prism/unparser toolchain against Ruby 4.0.2 with real syntax fixtures, including `Prism::Translation::ParserCurrent` if it can produce the `Parser::AST::Node` shape used by `mutant` (`Unparser.parse_ast_either`); the result is either "upstream viable" or "fork / maintenance strategy required". Phase 1 must not start without this decision.
-- [ ] **(P1)** `TASK: infra-02` - Steep / RBS type annotations: decide the scope for Phase 1 (limit to the public API)
+- [ ] **(P1)** `TASK: infra-02` - Steep / RBS type annotations: Phase 1 scope is the public API only. Annotate the stable entry points that callers rely on (`Henitai`, `CLI`, `Configuration`, `Runner`, `Subject`, `Mutant`, `Result`, and any deliberately public extension interfaces such as `Operator` and reporter / integration bases). Leave internal pipeline stages, parser adapters, and concrete operator implementations untyped for now.
 
 ---
 

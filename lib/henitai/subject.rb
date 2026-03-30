@@ -23,10 +23,9 @@ module Henitai
     # @param namespace   [String]  fully-qualified module/class name
     # @param method_name [String]  method name (nil for wildcard subjects)
     # @param method_type [Symbol]  :instance or :class
-    # @param source_file [String]  absolute path to the defining file
-    # @param source_range [Range]  line range within source_file
+    # @param source_location [Hash] file/range metadata for the subject source
     def initialize(expression: nil, namespace: nil, method_name: nil,
-                   method_type: :instance, source_file: nil, source_range: nil)
+                   method_type: :instance, source_location: nil)
       if expression
         parse_expression(expression)
       else
@@ -34,8 +33,8 @@ module Henitai
         @method_name = method_name
         @method_type = method_type
       end
-      @source_file  = source_file
-      @source_range = source_range
+      @source_file  = source_location&.fetch(:file, nil)
+      @source_range = source_location&.fetch(:range, nil)
     end
 
     # Full addressable expression, e.g. "Foo::Bar#method"

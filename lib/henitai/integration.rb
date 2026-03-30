@@ -15,6 +15,10 @@ module Henitai
   # Built-in integrations:
   #   rspec  — RSpec 3.x
   module Integration
+    # Integration adapter for RSpec.
+    #
+    # This class exists as the stable public entry point for the RSpec
+    # integration, even though the concrete behavior is not implemented yet.
     # @param name [String] integration name, e.g. "rspec"
     # @return [Class] integration class
     def self.for(name)
@@ -43,6 +47,7 @@ module Henitai
       end
     end
 
+    # RSpec integration adapter.
     class Rspec < Base
       def select_tests(subject)
         raise NotImplementedError
