@@ -332,7 +332,7 @@ result = wait_with_timeout(pid, config.timeout)
 ### 5.1 Infrastructure & Gem Setup
 
 - [x] **(P1)** Create gem scaffold (`henitai.gemspec`, `Gemfile`, `.ruby-version`)
-- [x] **(P1)** Configure dev container (Ubuntu 24.04, mise, Ruby 4.0.2)
+- [x] **(P1)** Configure dev container (official `ruby:4.0.2-alpine` base image, Codex CLI preinstalled)
 - [x] **(P1)** CI pipeline (GitHub Actions: RSpec + RuboCop + incremental MT on PRs)
 - [x] **(P1)** RuboCop configuration (`TargetRubyVersion: 4.0`, frozen strings)
 - [x] **(P1)** SimpleCov setup with branch coverage
@@ -344,7 +344,7 @@ result = wait_with_timeout(pid, config.timeout)
 
 ### 5.2 Configuration (`Configuration`)
 
-- [~] **(P1)** `TASK: config-01` - YAML parser implementation: `YAML.safe_load_file` with symbolization, defaults, and merge semantics
+- [x] **(P1)** `TASK: config-01` - YAML parser implementation: `YAML.safe_load_file` with symbolization, defaults, and merge semantics
 - [ ] **(P1)** `TASK: config-02` - CLI override: CLI flags override YAML values (last wins)
 - [ ] **(P1)** `TASK: config-03` - Validation: warn on unknown keys, abort with a clear error for invalid values
 - [ ] **(P1)** `TASK: config-04` - Spec: 100% coverage for `Configuration` (unit tests without file-system access via tmp YAML)

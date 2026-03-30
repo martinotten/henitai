@@ -1,16 +1,21 @@
 # frozen_string_literal: true
 
+require "yaml"
+
 module Henitai
   # Loads and validates .henitai.yml configuration.
   #
-  # Configuration is resolved in the following order (last wins):
-  #   1. Built-in defaults
-  #   2. .henitai.yml in the project root
-  #   3. CLI flags
+  # Configuration is resolved from built-in defaults and the project-root
+  # `.henitai.yml` file.
   class Configuration
     DEFAULT_TIMEOUT   = 10.0
     DEFAULT_OPERATORS = :light
     DEFAULT_JOBS      = nil # auto-detect
+    DEFAULT_COVERAGE_CRITERIA = {
+      test_result: true,
+      timeout: false,
+      process_abort: false
+    }.freeze
     DEFAULT_THRESHOLDS = { high: 80, low: 60 }.freeze
     CONFIG_FILE        = ".henitai.yml"
 
@@ -31,16 +36,43 @@ module Henitai
     private
 
     def apply_defaults(raw)
-      @integration       = raw.dig(:integration, :name) || "rspec"
-      @includes          = raw[:includes] || ["lib"]
-      @operators         = (raw.dig(:mutation, :operators) || DEFAULT_OPERATORS).to_sym
-      @timeout           = raw.dig(:mutation, :timeout) || DEFAULT_TIMEOUT
-      @ignore_patterns   = raw.dig(:mutation, :ignore_patterns) || []
-      @jobs              = raw[:jobs]
-      @coverage_criteria = raw[:coverage_criteria] || { test_result: true, timeout: false, process_abort: false }
-      @thresholds        = raw[:thresholds] || DEFAULT_THRESHOLDS
-      @reporters         = raw[:reporters] || ["terminal"]
-      @dashboard         = raw[:dashboard] || {}
+      apply_general_defaults(raw)
+      apply_mutation_defaults(raw)
+      apply_analysis_defaults(raw)
+    end
+
+    def apply_general_defaults(raw)
+      @integration = raw.dig(:integration, :name) || "rspec"
+      @includes = raw[:includes] || ["lib"]
+      @jobs = raw[:jobs]
+      @reporters = raw[:reporters] || ["terminal"]
+      @dashboard = merge_defaults({}, raw[:dashboard])
+    end
+
+    def apply_mutation_defaults(raw)
+      mutation = raw[:mutation] || {}
+
+      @operators = (mutation[:operators] || DEFAULT_OPERATORS).to_sym
+      @timeout = mutation[:timeout] || DEFAULT_TIMEOUT
+      @ignore_patterns = mutation[:ignore_patterns] || []
+    end
+
+    def apply_analysis_defaults(raw)
+      @coverage_criteria = merge_defaults(DEFAULT_COVERAGE_CRITERIA,
+                                          raw[:coverage_criteria])
+      @thresholds = merge_defaults(DEFAULT_THRESHOLDS, raw[:thresholds])
+    end
+
+    def merge_defaults(defaults, overrides)
+      return defaults.dup if overrides.nil?
+
+      defaults.merge(overrides) do |_key, default_value, override_value|
+        if default_value.is_a?(Hash) && override_value.is_a?(Hash)
+          merge_defaults(default_value, override_value)
+        else
+          override_value
+        end
+      end
     end
   end
 end
