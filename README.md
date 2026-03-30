@@ -119,7 +119,7 @@ bundle exec rubocop      # lint
 bundle exec henitai run  # dogfood
 ```
 
-A Dev Container configuration is included (`.devcontainer/`) for VS Code with Ruby 4.0.2 pre-installed via `mise`.
+A Dev Container configuration is included (`.devcontainer/`) for VS Code with the official `ruby:4.0.2-alpine` image and the Codex CLI preinstalled.
 
 ## Architecture
 
