@@ -12,17 +12,21 @@ RUN apk add --no-cache \
     build-base \
     curl \
     git \
+    jq \
     libffi-dev \
     gdbm-dev \
     libxml2-dev \
     libxslt-dev \
     ncurses-dev \
+    python3 \
     nodejs \
     npm \
     openssl-dev \
     readline-dev \
     yaml-dev \
     zlib-dev \
+    ripgrep \
+    perl \
     && npm install -g @openai/codex \
     && addgroup -g ${USER_GID} ${USERNAME} \
     && adduser -D -u ${USER_UID} -G ${USERNAME} -s /bin/bash ${USERNAME}
