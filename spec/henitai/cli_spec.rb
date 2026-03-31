@@ -146,27 +146,39 @@ RSpec.describe Henitai::CLI do
     end
   end
 
-  it "compacts arrays inside nested CLI overrides" do
-    cli = described_class.new([])
+  it "omits unset override values when loading the configuration" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      captured_overrides = nil
+      runner = build_runner(result: instance_double(Henitai::Result, mutation_score: 100))
+      config = instance_double(Henitai::Configuration, thresholds: { low: 60 })
 
-    expect(
-      cli.send(
-        :deep_compact,
-        {
-          integration: "rspec",
-          mutation: {
-            ignore_patterns: ["(send _ :puts _)", nil]
-          },
-          reporters: ["terminal", nil],
-          jobs: nil
+      allow(Henitai::Configuration).to receive(:load) do |**kwargs|
+        captured_overrides = kwargs[:overrides]
+        config
+      end
+      allow(Henitai::Runner).to receive(:new).and_return(runner)
+
+      cli = described_class.new(
+        [
+          "run",
+          "--config",
+          config_path,
+          "--use",
+          "minitest",
+          "--operators",
+          "full"
+        ]
+      )
+      cli.define_singleton_method(:exit) { |_status = nil| nil }
+      cli.run
+
+      expect(captured_overrides).to eq(
+        integration: "minitest",
+        mutation: {
+          operators: "full"
         }
       )
-    ).to eq(
-      integration: "rspec",
-      mutation: {
-        ignore_patterns: ["(send _ :puts _)"]
-      },
-      reporters: ["terminal"]
-    )
+    end
   end
 end
