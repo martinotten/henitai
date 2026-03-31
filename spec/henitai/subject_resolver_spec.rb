@@ -64,4 +64,66 @@ RSpec.describe Henitai::SubjectResolver do
       expect(subjects.map(&:source_range)).to eq([2..3])
     end
   end
+
+  it "resolves methods inside singleton classes as class subjects" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Foo
+            class Bar
+              class << self
+                def qux
+                end
+              end
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects.map(&:expression)).to eq(["Foo::Bar.qux"])
+    end
+  end
+
+  it "ignores top-level methods without namespace context" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          def top_level
+          end
+
+          def self.top_level_class
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects).to be_empty
+    end
+  end
+
+  it "resolves compact nested namespace declarations" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          module Foo::Bar
+            def baz
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects.map(&:expression)).to eq(["Foo::Bar#baz"])
+    end
+  end
 end

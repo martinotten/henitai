@@ -83,6 +83,17 @@ RSpec.describe Henitai::CLI do
     expect { cli.run }.to output(/Hen'i-tai 変異体/).to_stdout
   end
 
+  it "prints the help text for --help" do
+    cli = described_class.new(["--help"])
+    cli.define_singleton_method(:exit) { |_status = nil| nil }
+
+    expect { cli.run }.to output(/Hen'i-tai 変異体/).to_stdout
+  end
+
+  it "prints the help text when no command is given" do
+    expect { described_class.new([]).run }.to output(/Hen'i-tai 変異体/).to_stdout
+  end
+
   it "warns and exits for unknown commands" do
     cli = described_class.new(["bogus"])
     exit_status = nil
