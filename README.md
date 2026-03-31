@@ -74,6 +74,8 @@ thresholds:
 Henitai warns on unknown config keys and aborts with `Henitai::ConfigurationError`
 when a value is invalid.
 
+CLI flags override the corresponding values from `.henitai.yml`.
+
 The repository ships a JSON Schema at [`assets/schema/henitai.schema.json`](/workspaces/henitai/assets/schema/henitai.schema.json) for editor autocompletion.
 
 ## Operator sets
