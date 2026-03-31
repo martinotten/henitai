@@ -175,6 +175,41 @@ RSpec.describe Henitai::SubjectResolver do
     end
   end
 
+  it "ignores anonymous classes and generated methods while keeping explicit defs" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Foo
+            class << self
+              def bar = 1
+            end
+
+            Class.new do
+              def hidden = 2
+            end
+          end
+
+          class Foo
+            attr_accessor :generated
+
+            def baz = 3
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects.map(&:expression)).to eq(
+        [
+          "Foo.bar",
+          "Foo#baz"
+        ]
+      )
+    end
+  end
+
   it "filters subjects by an exact expression" do
     subjects = [
       Henitai::Subject.parse("Foo#bar"),

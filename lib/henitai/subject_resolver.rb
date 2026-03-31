@@ -38,6 +38,7 @@ module Henitai
 
     def walk(node, namespace:, singleton_context:, subjects:)
       return unless node.respond_to?(:type)
+      return if anonymous_class_block?(node)
 
       namespace, singleton_context = update_context(
         node,
@@ -58,6 +59,20 @@ module Henitai
       node.children.each do |child|
         walk(child, namespace:, singleton_context:, subjects:)
       end
+    end
+
+    def anonymous_class_block?(node)
+      return false unless node.type == :block
+
+      call_node = node.children.first
+      return false unless call_node.respond_to?(:type)
+      return false unless call_node.type == :send
+
+      receiver = call_node.children.first
+      method_name = call_node.children[1]
+      receiver_name = constant_name(receiver)
+
+      %w[Class Module].include?(receiver_name) && method_name == :new
     end
 
     def update_context(node, namespace, singleton_context)

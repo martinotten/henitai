@@ -35,6 +35,35 @@ RSpec.describe Henitai::GitDiffAnalyzer do
     git!(dir, "rev-parse", "HEAD").strip
   end
 
+  def sample_initial_source
+    <<~RUBY
+      class Sample
+        def alpha
+          1
+        end
+
+        def beta
+          2
+        end
+      end
+    RUBY
+  end
+
+  def sample_updated_source
+    <<~RUBY
+      class Sample
+        def alpha
+        end
+
+        def beta
+          2
+        end
+
+        def gamma = 3
+      end
+    RUBY
+  end
+
   it "returns changed files between two refs" do
     Dir.mktmpdir do |dir|
       git!(dir, "init")
@@ -67,6 +96,62 @@ RSpec.describe Henitai::GitDiffAnalyzer do
       end
 
       expect(changed_files).to eq([])
+    end
+  end
+
+  it "returns changed methods between two refs" do
+    Dir.mktmpdir do |dir|
+      git!(dir, "init")
+      configure_git_identity(dir)
+
+      write_file(dir, "lib/sample.rb", sample_initial_source)
+      commit_all(dir, "Initial commit")
+
+      write_file(dir, "lib/sample.rb", sample_updated_source)
+      commit_all(dir, "Update sample")
+
+      changed_methods = Dir.chdir(dir) do
+        described_class.new.changed_methods(from: "HEAD~1", to: "HEAD")
+      end
+
+      expect(changed_methods.map(&:expression)).to eq(
+        [
+          "Sample#alpha",
+          "Sample#gamma"
+        ]
+      )
+    end
+  end
+
+  it "raises when git diff for changed methods fails" do
+    Dir.mktmpdir do |dir|
+      write_file(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Sample
+            def alpha
+              1
+            end
+          end
+        RUBY
+      )
+
+      analyzer = described_class.new
+
+      allow(Open3).to receive(:capture3) do |*args|
+        if args.include?("--name-only")
+          ["lib/sample.rb\n", "", instance_double(Process::Status, success?: true)]
+        else
+          ["", "fatal: broken diff", instance_double(Process::Status, success?: false)]
+        end
+      end
+
+      expect do
+        Dir.chdir(dir) do
+          analyzer.changed_methods(from: "HEAD~1", to: "HEAD")
+        end
+      end.to raise_error(RuntimeError, /fatal: broken diff/)
     end
   end
 
