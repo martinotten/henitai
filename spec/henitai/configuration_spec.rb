@@ -309,6 +309,14 @@ RSpec.describe Henitai::Configuration do
     end.to raise_error(Henitai::ConfigurationError, /dashboard\.project/)
   end
 
+  it "aborts when dashboard is not a hash" do
+    expect do
+      load_configuration(<<~YAML)
+        dashboard: nope
+      YAML
+    end.to raise_error(Henitai::ConfigurationError, /dashboard/)
+  end
+
   it "aborts on invalid top-level configuration shapes" do
     expect do
       load_configuration(<<~YAML)
