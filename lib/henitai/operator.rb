@@ -41,10 +41,10 @@ module Henitai
     ]).freeze
 
     # @param set [Symbol] :light or :full
-    # @return [Array<Class>] operator classes for the given set
+    # @return [Array<Operator>] operator instances for the given set
     def self.for_set(set)
       names = set.to_sym == :full ? FULL_SET : LIGHT_SET
-      names.map { |name| Henitai::Operators.const_get(name) }
+      names.map { |name| Henitai::Operators.const_get(name).new }
     end
 
     # Subclasses must declare which AST node types they handle.

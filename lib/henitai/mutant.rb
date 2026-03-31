@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "securerandom"
+
 module Henitai
   # Represents a single syntactic mutation applied to a Subject.
   #

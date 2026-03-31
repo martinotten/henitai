@@ -366,9 +366,9 @@ result = wait_with_timeout(pid, config.timeout)
 
 ### 5.4 Operator Base Class & Registry
 
-- [~] **(P1)** `TASK: op-01` - `Operator` base class: implement `#mutate(node, subject:)`, `self.node_types`, `#build_mutant`, `#node_location`
+- [x] **(P1)** `TASK: op-01` - `Operator` base class: implement `#mutate(node, subject:)`, `self.node_types`, `#build_mutant`, `#node_location`
 - [ ] **(P1)** `TASK: op-02` - `Operators` namespace and autoload entries in `henitai.rb`
-- [ ] **(P1)** `TASK: op-03` - `Operator.for_set(:light)` / `Operator.for_set(:full)`: return instantiated operator objects
+- [x] **(P1)** `TASK: op-03` - `Operator.for_set(:light)` / `Operator.for_set(:full)`: return instantiated operator objects
 - [ ] **(P1)** `TASK: op-04` - Arid-node filter: `AridNodeFilter#suppressed?(node, config)` - check against `ignore_patterns` regex list and the built-in catalog (logger, memoization, etc.)
 - [ ] **(P1)** `TASK: op-05` - Stillborn filter: after mutation run `unparser`, then `RubyVM::InstructionSequence.compile` - discard mutant on `SyntaxError`
 
@@ -430,8 +430,8 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 
 ### 5.7 Mutant Generator (Gate 2)
 
-- [ ] **(P1)** `TASK: gen-01` - `MutantGenerator#generate(subjects, operators)`: AST traversal per subject, applies all active operators to every matching node
-- [ ] **(P1)** `TASK: gen-02` - AST traversal strategy: `Parser::AST::Processor` subclasses (depth-first, pre-order), operate only within the subject line range
+- [x] **(P1)** `TASK: gen-01` - `MutantGenerator#generate(subjects, operators)`: AST traversal per subject, applies all active operators to every matching node
+- [x] **(P1)** `TASK: gen-02` - AST traversal strategy: `Parser::AST::Processor` subclasses (depth-first, pre-order), operate only within the subject line range
 - [ ] **(P1)** `TASK: gen-03` - Arid-node integration: check whether the node is suppressed before applying an operator
 - [ ] **(P1)** `TASK: gen-04` - Stillborn filter integration: after generation call `SyntaxValidator#valid?(mutant)`, discard invalid mutants
 - [ ] **(P1)** `TASK: gen-05` - `max_mutants_per_line: 1` constraint (Google recommendation): when multiple mutants exist on the same line, keep only the one with the highest signal priority

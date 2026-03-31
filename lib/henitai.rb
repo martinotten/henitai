@@ -29,6 +29,7 @@ module Henitai
   autoload :SourceParser, "henitai/source_parser"
   autoload :SubjectResolver, "henitai/subject_resolver"
   autoload :GitDiffAnalyzer, "henitai/git_diff_analyzer"
+  autoload :MutantGenerator, "henitai/mutant_generator"
   autoload :Runner, "henitai/runner"
   autoload :Reporter, "henitai/reporter"
   autoload :Integration, "henitai/integration"
