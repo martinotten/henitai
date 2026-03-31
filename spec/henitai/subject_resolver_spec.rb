@@ -126,4 +126,94 @@ RSpec.describe Henitai::SubjectResolver do
       expect(subjects.map(&:expression)).to eq(["Foo::Bar#baz"])
     end
   end
+
+  it "keeps sibling instance methods out of singleton-class context" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Foo
+            class << self
+              def bar
+              end
+            end
+
+            def baz
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects.map(&:expression)).to eq(
+        [
+          "Foo.bar",
+          "Foo#baz"
+        ]
+      )
+    end
+  end
+
+  it "resolves root-qualified namespaces" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          module ::Foo
+            def baz
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects.map(&:expression)).to eq(["Foo#baz"])
+    end
+  end
+
+  it "filters subjects by an exact expression" do
+    subjects = [
+      Henitai::Subject.parse("Foo#bar"),
+      Henitai::Subject.parse("Foo.bar"),
+      Henitai::Subject.parse("Foo::Bar#baz")
+    ]
+
+    filtered = described_class.new.apply_pattern(subjects, "Foo#bar")
+
+    expect(filtered.map(&:expression)).to eq(["Foo#bar"])
+  end
+
+  it "filters subjects by a namespace wildcard expression" do
+    subjects = [
+      Henitai::Subject.parse("Foo#bar"),
+      Henitai::Subject.parse("Foo.bar"),
+      Henitai::Subject.parse("Foo::Bar#baz"),
+      Henitai::Subject.parse("Bar#qux")
+    ]
+
+    filtered = described_class.new.apply_pattern(subjects, "Foo*")
+
+    expect(filtered.map(&:expression)).to eq(
+      [
+        "Foo#bar",
+        "Foo.bar",
+        "Foo::Bar#baz"
+      ]
+    )
+  end
+
+  it "skips subjects without namespace metadata when applying a wildcard" do
+    subjects = [
+      Henitai::Subject.new(method_name: "bar"),
+      Henitai::Subject.parse("Foo#baz")
+    ]
+
+    filtered = described_class.new.apply_pattern(subjects, "Foo*")
+
+    expect(filtered.map(&:expression)).to eq(["Foo#baz"])
+  end
 end

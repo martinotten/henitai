@@ -15,6 +15,14 @@ module Henitai
       end
     end
 
+    def apply_pattern(subjects, pattern)
+      pattern_subject = Subject.parse(pattern)
+
+      Array(subjects).select do |subject|
+        match_subject?(subject, pattern_subject)
+      end
+    end
+
     private
 
     def resolve_from_file(path)
@@ -133,6 +141,24 @@ module Henitai
         file: location.source_buffer.name,
         range: location.line..location.last_line
       }
+    end
+
+    def match_subject?(subject, pattern_subject)
+      if pattern_subject.wildcard?
+        wildcard_match?(subject, pattern_subject)
+      else
+        subject.expression == pattern_subject.expression
+      end
+    end
+
+    def wildcard_match?(subject, pattern_subject)
+      subject_namespace = subject.namespace
+      pattern_namespace = pattern_subject.namespace
+
+      return false unless subject_namespace
+
+      subject_namespace == pattern_namespace ||
+        subject_namespace.start_with?("#{pattern_namespace}::")
     end
   end
 end
