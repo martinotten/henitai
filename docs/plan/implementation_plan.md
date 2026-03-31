@@ -354,8 +354,8 @@ result = wait_with_timeout(pid, config.timeout)
 
 ### 5.3 Subject Resolver (Gate 1)
 
-- [ ] **(P1)** `TASK: subject-01` - `SubjectResolver#resolve_from_files(paths)`: parse Ruby files with Prism translation, extract all `def` / `def self.` nodes with namespace context
-- [ ] **(P1)** `TASK: subject-02` - Namespace resolution: correctly handle nested `module` / `class` definitions in the AST
+- [x] **(P1)** `TASK: subject-01` - `SubjectResolver#resolve_from_files(paths)`: parse Ruby files with Prism translation, extract all `def` / `def self.` nodes with namespace context
+- [x] **(P1)** `TASK: subject-02` - Namespace resolution: correctly handle nested `module` / `class` definitions in the AST
 - [ ] **(P1)** `TASK: subject-03` - `SubjectResolver#apply_pattern(subjects, pattern)`: filter the subject list by CLI expressions (`Foo#bar`, `Foo*`, etc.)
 - [ ] **(P1)** `TASK: subject-04` - `GitDiffAnalyzer#changed_files(from:, to:)`: shell wrapper around `git diff --name-only`, returns `Array<String>`
 - [ ] **(P1)** `TASK: subject-05` - `GitDiffAnalyzer#changed_methods(from:, to:)`: maps diff hunk line numbers to subject ranges

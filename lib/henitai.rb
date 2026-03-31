@@ -27,6 +27,7 @@ module Henitai
   autoload :Mutant, "henitai/mutant"
   autoload :Operator, "henitai/operator"
   autoload :SourceParser, "henitai/source_parser"
+  autoload :SubjectResolver, "henitai/subject_resolver"
   autoload :Runner, "henitai/runner"
   autoload :Reporter, "henitai/reporter"
   autoload :Integration, "henitai/integration"
