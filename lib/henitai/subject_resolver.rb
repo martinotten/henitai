@@ -72,7 +72,15 @@ module Henitai
       method_name = call_node.children[1]
       receiver_name = constant_name(receiver)
 
-      %w[Class Module].include?(receiver_name) && method_name == :new
+      anonymous_constructor_call?(receiver_name, method_name)
+    end
+
+    def anonymous_constructor_call?(receiver_name, method_name)
+      anonymous_receivers = %w[Class Module Struct Data]
+      anonymous_methods = %i[new define]
+
+      anonymous_receivers.include?(receiver_name) &&
+        anonymous_methods.include?(method_name)
     end
 
     def update_context(node, namespace, singleton_context)

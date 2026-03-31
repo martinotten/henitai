@@ -189,6 +189,14 @@ RSpec.describe Henitai::SubjectResolver do
             Class.new do
               def hidden = 2
             end
+
+            Struct.new(:token) do
+              def struct_hidden = 3
+            end
+
+            Data.define(:value) do
+              def data_hidden = 4
+            end
           end
 
           class Foo

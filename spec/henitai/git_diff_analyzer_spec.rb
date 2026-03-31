@@ -123,6 +123,38 @@ RSpec.describe Henitai::GitDiffAnalyzer do
     end
   end
 
+  it "treats deletion-only hunks as changes to the affected subject" do
+    Dir.mktmpdir do |dir|
+      git!(dir, "init")
+      configure_git_identity(dir)
+
+      write_file(dir, "lib/sample.rb", sample_initial_source)
+      commit_all(dir, "Initial commit")
+
+      write_file(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Sample
+            def alpha
+            end
+
+            def beta
+              2
+            end
+          end
+        RUBY
+      )
+      commit_all(dir, "Delete alpha body")
+
+      changed_methods = Dir.chdir(dir) do
+        described_class.new.changed_methods(from: "HEAD~1", to: "HEAD")
+      end
+
+      expect(changed_methods.map(&:expression)).to eq(["Sample#alpha"])
+    end
+  end
+
   it "raises when git diff for changed methods fails" do
     Dir.mktmpdir do |dir|
       write_file(

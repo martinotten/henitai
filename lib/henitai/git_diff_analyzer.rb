@@ -39,18 +39,26 @@ module Henitai
 
       raise stderr.strip unless status.success?
 
-      stdout.each_line.filter_map do |line|
-        match = line.match(
-          /\A@@ -\d+(?:,\d+)? \+(?<start>\d+)(?:,(?<count>\d+))? @@/
-        )
-        next unless match
+      stdout.each_line.filter_map { |line| changed_range_from_hunk(line) }
+    end
 
-        start_line = match[:start].to_i
-        line_count = match[:count].to_i
-        line_count = 1 if line_count.zero?
+    def changed_range_from_hunk(line)
+      match = line.match(/\A@@ -\d+(?:,\d+)? \+(?<start>\d+)(?:,(?<count>\d+))? @@/)
+      return unless match
 
-        start_line..(start_line + line_count - 1)
-      end
+      start_line = match[:start].to_i
+      line_count = hunk_line_count(match)
+
+      start_line..(start_line + line_count - 1)
+    end
+
+    def hunk_line_count(match)
+      line_count = match[:count].nil? ? 1 : match[:count].to_i
+      # Git uses `+start` for a one-line hunk and `+start,0` for a pure
+      # deletion. We still anchor both at the reported start line so the
+      # current subject range can absorb the change point.
+      line_count = 1 if line_count.zero?
+      line_count
     end
 
     def ranges_overlap?(left, right)
