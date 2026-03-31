@@ -216,4 +216,12 @@ RSpec.describe Henitai::SubjectResolver do
 
     expect(filtered.map(&:expression)).to eq(["Foo#baz"])
   end
+
+  it "does not match similarly prefixed namespaces for a wildcard" do
+    subjects = [Henitai::Subject.parse("FooBar#baz")]
+
+    filtered = described_class.new.apply_pattern(subjects, "Foo*")
+
+    expect(filtered).to be_empty
+  end
 end

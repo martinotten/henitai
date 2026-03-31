@@ -54,6 +54,22 @@ RSpec.describe Henitai::GitDiffAnalyzer do
     end
   end
 
+  it "returns an empty array when no files changed" do
+    Dir.mktmpdir do |dir|
+      git!(dir, "init")
+      configure_git_identity(dir)
+
+      write_file(dir, "lib/sample.rb", "class Sample; end\n")
+      commit_all(dir, "Initial commit")
+
+      changed_files = Dir.chdir(dir) do
+        described_class.new.changed_files(from: "HEAD", to: "HEAD")
+      end
+
+      expect(changed_files).to eq([])
+    end
+  end
+
   it "raises when git diff fails" do
     Dir.mktmpdir do |dir|
       git!(dir, "init")
