@@ -31,11 +31,10 @@ module Henitai
     end
 
     # Depth-first pre-order AST visitor for a single subject.
-    class SubjectVisitor < Parser::AST::Processor
+    class SubjectVisitor
       attr_reader :mutants
 
       def initialize(subject, operators)
-        super()
         @subject = subject
         @mutants = []
         @operators_by_node_type = operators.each_with_object(
@@ -47,14 +46,20 @@ module Henitai
         end
       end
 
-      def handler_missing(node)
-        return unless node_within_subject_range?(node)
-
-        apply_operators(node)
-        super
+      def process(node)
+        walk(node)
       end
 
       private
+
+      def walk(node)
+        return unless node.is_a?(Parser::AST::Node)
+
+        apply_operators(node) if node_within_subject_range?(node)
+        node.children.each do |child|
+          walk(child)
+        end
+      end
 
       def apply_operators(node)
         @operators_by_node_type[node.type].each do |operator|

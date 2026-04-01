@@ -13,7 +13,8 @@ module Henitai
   # Test selection uses longest-prefix matching against example group
   # descriptions in the test suite.
   class Subject
-    attr_reader :namespace, :method_name, :method_type, :source_file, :source_range
+    attr_reader :namespace, :method_name, :method_type, :source_file,
+                :source_range, :ast_node
 
     # @param expression [String] subject expression, e.g. "Foo::Bar#method"
     def self.parse(expression)
@@ -25,7 +26,7 @@ module Henitai
     # @param method_type [Symbol]  :instance or :class
     # @param source_location [Hash] file/range metadata for the subject source
     def initialize(expression: nil, namespace: nil, method_name: nil,
-                   method_type: :instance, source_location: nil)
+                   method_type: :instance, source_location: nil, ast_node: nil)
       if expression
         parse_expression(expression)
       else
@@ -35,6 +36,7 @@ module Henitai
       end
       @source_file  = source_location&.fetch(:file, nil)
       @source_range = source_location&.fetch(:range, nil)
+      @ast_node = ast_node
     end
 
     # Full addressable expression, e.g. "Foo::Bar#method"

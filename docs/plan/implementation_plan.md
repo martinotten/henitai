@@ -381,37 +381,37 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 #### ArithmeticOperator
 - [x] **(P1)** `TASK: op-arith-01` - Node types: `:send` with methods `+`, `-`, `*`, `/`, `**`, `%`
 - [x] **(P1)** `TASK: op-arith-02` - Mutation matrix: `+→-`, `-→+`, `*→/`, `/→*`, `**→*`, `%→*` (symmetrical, no double-counting)
-- [ ] **(P1)** `TASK: op-arith-03` - Spec: arithmetic with constants, method calls, parentheses, and float literals
+- [x] **(P1)** `TASK: op-arith-03` - Spec: arithmetic with constants, method calls, parentheses, and float literals
 
 #### EqualityOperator
-- [ ] **(P1)** `TASK: op-eq-01` - Node types: `:send` with `==`, `!=`, `<`, `>`, `<=`, `>=`, `<=>`, `eql?`, `equal?`
-- [ ] **(P1)** `TASK: op-eq-02` - Mutation matrix: replace each operator with every other operator (full 8×8 matrix)
-- [ ] **(P1)** `TASK: op-eq-03` - Spec: comparisons in conditionals, guard clauses, and `Comparable` implementations
+- [x] **(P1)** `TASK: op-eq-01` - Node types: `:send` with `==`, `!=`, `<`, `>`, `<=`, `>=`, `<=>`, `eql?`, `equal?`
+- [x] **(P1)** `TASK: op-eq-02` - Mutation matrix: replace each operator with every other operator (full 8×8 matrix)
+- [x] **(P1)** `TASK: op-eq-03` - Spec: comparisons in conditionals, guard clauses, and `Comparable` implementations
 
 #### LogicalOperator
-- [ ] **(P1)** `TASK: op-log-01` - Node types: `:and`, `:or`, `&&` / `||` as `:send`
-- [ ] **(P1)** `TASK: op-log-02` - Mutations: `&&→||`, `||→&&`, `&&→lhs`, `&&→rhs`, `||→lhs`, `||→rhs`
-- [ ] **(P1)** `TASK: op-log-03` - Spec: preserve short-circuit semantics, `and` / `or` vs `&&` / `||` AST differences
+- [x] **(P1)** `TASK: op-log-01` - Node types: `:and`, `:or`, `&&` / `||` as `:send`
+- [x] **(P1)** `TASK: op-log-02` - Mutations: `&&→||`, `||→&&`, `&&→lhs`, `&&→rhs`, `||→lhs`, `||→rhs`
+- [x] **(P1)** `TASK: op-log-03` - Spec: preserve short-circuit semantics, `and` / `or` vs `&&` / `||` AST differences
 
 #### BooleanLiteral
-- [ ] **(P1)** `TASK: op-bool-01` - Node types: `:true`, `:false`, `:send` (`!expr`)
-- [ ] **(P1)** `TASK: op-bool-02` - Mutations: `true→false`, `false→true`, `!expr→expr`
-- [ ] **(P1)** `TASK: op-bool-03` - Spec: boolean literals in hash values, default arguments, and ternaries
+- [x] **(P1)** `TASK: op-bool-01` - Node types: `:true`, `:false`, `:send` (`!expr`)
+- [x] **(P1)** `TASK: op-bool-02` - Mutations: `true→false`, `false→true`, `!expr→expr`
+- [x] **(P1)** `TASK: op-bool-03` - Spec: boolean literals in hash values, default arguments, and ternaries
 
 #### ConditionalExpression
-- [ ] **(P1)** `TASK: op-cond-01` - Node types: `:if` (including `unless`), `:case`, `:while`, `:until`
-- [ ] **(P1)** `TASK: op-cond-02` - Mutations: remove then-branch, remove else-branch, negate condition, replace condition with `true` / `false`
-- [ ] **(P1)** `TASK: op-cond-03` - Spec: modifier-if (`x if cond`), ternary (`cond ? a : b`), `unless`
+- [x] **(P1)** `TASK: op-cond-01` - Node types: `:if` (including `unless`), `:case`, `:while`, `:until`
+- [x] **(P1)** `TASK: op-cond-02` - Mutations: remove then-branch, remove else-branch, negate condition, replace condition with `true` / `false`
+- [x] **(P1)** `TASK: op-cond-03` - Spec: modifier-if (`x if cond`), ternary (`cond ? a : b`), `unless`
 
 #### StringLiteral
-- [ ] **(P1)** `TASK: op-str-01` - Node types: `:str`, `:dstr` (interpolation)
-- [ ] **(P1)** `TASK: op-str-02` - Mutations: `"foo"→""`, `"foo"→"Henitai was here"`, remove interpolation expression
-- [ ] **(P1)** `TASK: op-str-03` - Spec: frozen string literals, heredocs, `%w[]` arrays
+- [x] **(P1)** `TASK: op-str-01` - Node types: `:str`, `:dstr` (interpolation)
+- [x] **(P1)** `TASK: op-str-02` - Mutations: `"foo"→""`, `"foo"→"Henitai was here"`, remove interpolation expression
+- [x] **(P1)** `TASK: op-str-03` - Spec: frozen string literals, heredocs, `%w[]` arrays
 
 #### ReturnValue
-- [ ] **(P1)** `TASK: op-ret-01` - Node types: `:return`, final expression in method body (implicit return)
-- [ ] **(P1)** `TASK: op-ret-02` - Mutations: `return x` → `return nil`, `return x` → `return 0`, `return x` → `return false`, `return true` / `return false` reciprocally
-- [ ] **(P1)** `TASK: op-ret-03` - Spec: explicit `return`, implicit final expression, guard-clause `return nil if ...`
+- [x] **(P1)** `TASK: op-ret-01` - Node types: `:return`, final expression in method body (implicit return)
+- [x] **(P1)** `TASK: op-ret-02` - Mutations: `return x` → `return nil`, `return x` → `return 0`, `return x` → `return false`, `return true` / `return false` reciprocally
+- [x] **(P1)** `TASK: op-ret-03` - Spec: explicit `return`, implicit final expression, guard-clause `return nil if ...`
 
 ---
 

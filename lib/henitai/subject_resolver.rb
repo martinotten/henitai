@@ -111,7 +111,8 @@ module Henitai
         namespace:,
         method_name: method_name(node.children.first),
         method_type: singleton_context ? :class : :instance,
-        source_location: source_location_for(node)
+        source_location: source_location_for(node),
+        ast_node: node
       )
     end
 
@@ -122,7 +123,8 @@ module Henitai
         namespace:,
         method_name: method_name(node.children[1]),
         method_type: :class,
-        source_location: source_location_for(node)
+        source_location: source_location_for(node),
+        ast_node: node
       )
     end
 
