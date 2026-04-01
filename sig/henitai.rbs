@@ -64,7 +64,7 @@ module Henitai
     attr_reader source_range: Range[Integer]?
 
     def self.parse: (String) -> Subject
-    def initialize: (?expression: String, ?namespace: String, ?method_name: String, ?method_type: Symbol, ?source_location: Hash[Symbol, untyped]) -> void
+    def initialize: (?expression: String, ?namespace: String, ?method_name: String, ?method_type: Symbol, ?source_location: Hash[Symbol, untyped], ?ast_node: untyped) -> void
     def expression: () -> String
     def wildcard?: () -> bool
 

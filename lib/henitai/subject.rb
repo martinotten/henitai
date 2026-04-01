@@ -26,7 +26,7 @@ module Henitai
     # @param method_type [Symbol]  :instance or :class
     # @param source_location [Hash] file/range metadata for the subject source
     def initialize(expression: nil, namespace: nil, method_name: nil,
-                   method_type: :instance, source_location: nil, ast_node: nil)
+                   method_type: :instance, **options)
       if expression
         parse_expression(expression)
       else
@@ -34,9 +34,10 @@ module Henitai
         @method_name = method_name
         @method_type = method_type
       end
+      source_location = options[:source_location]
       @source_file  = source_location&.fetch(:file, nil)
       @source_range = source_location&.fetch(:range, nil)
-      @ast_node = ast_node
+      @ast_node = options[:ast_node]
     end
 
     # Full addressable expression, e.g. "Foo::Bar#method"
