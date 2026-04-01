@@ -133,7 +133,7 @@ RSpec.describe Henitai::MutantGenerator do
       path = write_source(dir, "lib/sample.rb", <<~RUBY)
         class Sample
           def announce
-            foo.bar
+            foo
           end
         end
       RUBY
@@ -162,6 +162,49 @@ RSpec.describe Henitai::MutantGenerator do
       mutants = described_class.new.generate([subject], [fake_operator])
 
       expect(mutants.map(&:description)).to include("fake send")
+    end
+  end
+
+  it "discards stillborn mutants after operator application" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", <<~RUBY)
+        class Sample
+          def announce
+            foo
+          end
+        end
+      RUBY
+
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      fake_operator = stub_const(
+        "Henitai::FakeSendOperator",
+        Class.new(Henitai::Operator) do
+          def self.node_types
+            [:send]
+          end
+
+          def mutate(node, subject:)
+            [
+              build_mutant(
+                subject:,
+                original_node: node,
+                mutated_node: node,
+                description: "valid send"
+              ),
+              build_mutant(
+                subject:,
+                original_node: node,
+                mutated_node: Object.new,
+                description: "invalid send"
+              )
+            ]
+          end
+        end
+      )
+
+      mutants = described_class.new.generate([subject], [fake_operator])
+
+      expect(mutants.map(&:description)).to eq(["valid send"])
     end
   end
 end

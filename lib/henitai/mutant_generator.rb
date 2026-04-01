@@ -39,6 +39,7 @@ module Henitai
         @config = config
         @mutants = []
         @arid_node_filter = AridNodeFilter.new
+        @syntax_validator = SyntaxValidator.new
         @operators_by_node_type = operators.each_with_object(
           Hash.new { |hash, key| hash[key] = [] }
         ) do |operator, map|
@@ -67,7 +68,9 @@ module Henitai
         return if @arid_node_filter.suppressed?(node, @config)
 
         @operators_by_node_type[node.type].each do |operator|
-          @mutants.concat(operator.mutate(node, subject: @subject))
+          operator.mutate(node, subject: @subject).each do |mutant|
+            @mutants << mutant if @syntax_validator.valid?(mutant)
+          end
         end
       end
 
