@@ -548,7 +548,7 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 - [~] **(P1)** `TASK: result-01` - `Result#mutation_score`: correct MS formula - exclude `:ignored`, `:no_coverage`, `:compile_error`, and **`:equivalent`** from numerator and denominator (implemented in `result.rb`)
 - [~] **(P1)** `TASK: result-02` - `Result#mutation_score_indicator`: naive MSI formula - `killed / total`, no exclusions (implemented in `result.rb`)
 - [ ] **(P1)** `TASK: result-03` - Terminal report shows MS **and** MSI side by side, plus estimated equivalence uncertainty (`~10-15% of live mutants`)
-- [ ] **(P1)** `TASK: result-04` - Spec: MS / MSI calculation with fixture mutants of all statuses, including `:equivalent` (regression guard against formula drift)
+- [x] **(P1)** `TASK: result-04` - Spec: MS / MSI calculation with fixture mutants of all statuses, including `:equivalent` (regression guard against formula drift)
 - [ ] **(P2)** `TASK: result-05` - Equivalence heuristics (MEDIC patterns): `EquivalenceDetector#analyze(mutant)` marks candidates as `:equivalent` - data-flow patterns (Use-Def, Use-Ret, Def-Def, Def-Ret). Detection rate around 50% of actually equivalent mutants.
 - [ ] **(P2)** `TASK: result-06` - Persistent mutant history: `MutantHistoryStore` on SQLite stores `mutant_id`, `first_seen_version`, `status_history`, `days_alive` and forms the basis for latent-mutant tracking
 - [ ] **(P2)** `TASK: result-07` - Trend tracking: reporter derives `reports/mutation-history.json` from the SQLite history for MS / MSI trends and persistent live mutants

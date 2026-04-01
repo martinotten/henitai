@@ -191,6 +191,7 @@ module Henitai
     def detected: () -> Integer
     def mutation_score: () -> Float?
     def mutation_score_indicator: () -> Float?
+    def scoring_summary: () -> Hash[Symbol, untyped]
     def duration: () -> Float
     def to_stryker_schema: () -> Hash[Symbol, untyped]
 
@@ -202,6 +203,7 @@ module Henitai
     def location_for: (Mutant) -> Hash[Symbol, untyped]
     def line_column: (Mutant, Symbol) -> Hash[Symbol, Integer]
     def duration_for: (Mutant) -> Integer?
+    def equivalence_uncertainty: () -> String?
     def stryker_status: (Symbol) -> String
   end
 

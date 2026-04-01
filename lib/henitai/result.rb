@@ -62,6 +62,18 @@ module Henitai
       ((killed.to_f / mutants.count) * 100.0).round(2).to_f
     end
 
+    # Compact public summary for reporters.
+    # The uncertainty note is intentionally qualitative: equivalent mutants are
+    # a known gray area, so the terminal report should communicate that
+    # uncertainty instead of pretending to be precise.
+    def scoring_summary
+      {
+        mutation_score: mutation_score,
+        mutation_score_indicator: mutation_score_indicator,
+        equivalence_uncertainty: equivalence_uncertainty
+      }
+    end
+
     # @return [Float] duration in seconds
     def duration
       finished_at - started_at
@@ -126,6 +138,12 @@ module Henitai
 
     def duration_for(mutant)
       mutant.duration&.then { |d| (d * 1000).round }
+    end
+
+    def equivalence_uncertainty
+      return nil if mutation_score.nil?
+
+      "~10-15% of live mutants"
     end
 
     def stryker_status(status)

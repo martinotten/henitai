@@ -73,22 +73,51 @@ RSpec.describe Henitai::Result do
     )
   end
 
-  it "returns nil and a score when evaluating mutation score" do
-    expect(
-      [
-        result([build_mutant(status: :ignored), build_mutant(status: :equivalent)]).mutation_score,
-        result([build_mutant(status: :killed), build_mutant(status: :survived)]).mutation_score
-      ]
-    ).to eq([nil, 50.0])
+  def status_mutant(status)
+    Struct.new(:status) do
+      def killed?
+        status == :killed
+      end
+
+      def survived?
+        status == :survived
+      end
+
+      def equivalent?
+        status == :equivalent
+      end
+    end.new(status)
   end
 
-  it "returns nil and a score when evaluating mutation score indicator" do
+  def scoring_mutants
+    %i[killed timeout runtime_error survived ignored no_coverage compile_error equivalent]
+      .map { |status| status_mutant(status) }
+  end
+
+  it "calculates mutation score with excluded statuses removed" do
+    expect(result(scoring_mutants).mutation_score).to eq(75.0)
+  end
+
+  it "calculates mutation score indicator from killed mutants only" do
+    expect(result(scoring_mutants).mutation_score_indicator).to eq(12.5)
+  end
+
+  it "summarises scoring for reporters" do
+    expect(result(scoring_mutants).scoring_summary).to eq(
+      mutation_score: 75.0,
+      mutation_score_indicator: 12.5,
+      equivalence_uncertainty: "~10-15% of live mutants"
+    )
+  end
+
+  it "omits equivalence uncertainty when there are no live mutants" do
     expect(
-      [
-        result([]).mutation_score_indicator,
-        result([build_mutant(status: :killed), build_mutant(status: :survived)]).mutation_score_indicator
-      ]
-    ).to eq([nil, 50.0])
+      result([status_mutant(:ignored), status_mutant(:equivalent)]).scoring_summary
+    ).to eq(
+      mutation_score: nil,
+      mutation_score_indicator: 0.0,
+      equivalence_uncertainty: nil
+    )
   end
 
   it "omits nil durations from the serialised mutant payload" do
