@@ -7,13 +7,16 @@ module Henitai
   class ExecutionEngine
     def run(mutants, integration, config, progress_reporter: nil)
       with_reports_dir(config) do
+        @flaky_retry_count = 0
         pending_mutants = Array(mutants).select(&:pending?)
+        mutex = Mutex.new
         if parallel_execution?(config, pending_mutants)
-          run_parallel(pending_mutants, integration, config, progress_reporter)
+          run_parallel(pending_mutants, integration, config, progress_reporter, mutex)
         else
-          run_linear(pending_mutants, integration, config, progress_reporter)
+          run_linear(pending_mutants, integration, config, progress_reporter, mutex)
         end
 
+        warn_flaky_mutants(pending_mutants.size)
         mutants
       end
     end
@@ -29,16 +32,15 @@ module Henitai
       configured_jobs || Etc.nprocessors
     end
 
-    def run_linear(mutants, integration, config, progress_reporter)
+    def run_linear(mutants, integration, config, progress_reporter, mutex)
       mutants.each do |mutant|
-        process_mutant(mutant, integration, config, progress_reporter)
+        process_mutant(mutant, integration, config, progress_reporter, mutex)
       end
     end
 
-    def run_parallel(mutants, integration, config, progress_reporter)
+    def run_parallel(mutants, integration, config, progress_reporter, mutex)
       queue = Queue.new
       mutants.each { |mutant| queue << mutant }
-      mutex = Mutex.new
 
       Array.new(worker_count(config)) do
         Thread.new do
@@ -54,11 +56,7 @@ module Henitai
 
     def process_mutant(mutant, integration, config, progress_reporter, mutex = nil)
       test_files = prioritized_tests_for(mutant, integration, config)
-      mutant.status = integration.run_mutant(
-        mutant:,
-        test_files:,
-        timeout: config.timeout
-      )
+      mutant.status = run_with_flaky_retry(mutant, integration, config, test_files, mutex)
 
       if mutex
         mutex.synchronize { progress_reporter&.progress(mutant) }
@@ -83,6 +81,46 @@ module Henitai
       return {} unless config.respond_to?(:history)
 
       config.history || {}
+    end
+
+    # Retry logic is kept in one place to preserve the status transition flow.
+    # rubocop:disable Metrics/MethodLength
+    def run_with_flaky_retry(mutant, integration, config, test_files, mutex)
+      status = integration.run_mutant(
+        mutant:,
+        test_files:,
+        timeout: config.timeout
+      )
+      return status unless status == :survived
+
+      retries = 0
+      3.times do
+        retries += 1
+        status = integration.run_mutant(
+          mutant:,
+          test_files:,
+          timeout: config.timeout
+        )
+        break unless status == :survived
+      end
+
+      mutex.synchronize { @flaky_retry_count += 1 } if retries.positive?
+      status
+    end
+    # rubocop:enable Metrics/MethodLength
+
+    def warn_flaky_mutants(total_mutants)
+      return if total_mutants.zero?
+
+      flaky_ratio = @flaky_retry_count.to_f / total_mutants
+      return unless flaky_ratio > 0.05
+
+      warn format(
+        "Flaky-test mitigation: %<flaky>d/%<total>d mutants required retries (%<ratio>.2f%%)",
+        flaky: @flaky_retry_count,
+        total: total_mutants,
+        ratio: flaky_ratio * 100.0
+      )
     end
 
     def with_reports_dir(config)

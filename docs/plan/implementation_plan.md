@@ -569,7 +569,7 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 
 - [x] **(P2)** `TASK: review-01` - CLI operator metadata safety: validate `OPERATOR_METADATA` against `Operator::FULL_SET`, add coverage for `henitai init <PATH>`, and keep `henitai operator` unknown-subcommand handling consistent
 - [x] **(P2)** `TASK: review-02` - Coverage formatter contract: align `CoverageFormatter` RBS with the Ruby implementation, and route the per-test coverage report path through the configured reports directory
-- [ ] **(P2)** `TASK: review-03` - Coverage formatter visibility: decide whether the formatter should warn when coverage is unavailable and whether formatter injection should be configurable
+- [x] **(P2)** `TASK: review-03` - Coverage formatter visibility: decide whether the formatter should warn when coverage is unavailable and whether formatter injection should be configurable
 - [x] **(P3)** `TASK: review-04` - Test cleanup: remove one redundant RSpec integration example if it stops adding unique branch coverage
 
 ---
@@ -628,7 +628,7 @@ the numbered implementation tasks above.
 - [x] **(P2)** `TODO: cli-metadata-02` - Harmonize CLI error handling for `init` and unknown subcommands, and add specs for `henitai init custom-path.yml` plus `henitai operator bogus`.
 - [x] **(P2)** `TODO: coverage-formatter-01` - Fix `CoverageFormatter` RBS declarations so they match the actual formatter hooks (`example_finished` / `dump_summary`).
 - [x] **(P2)** `TODO: coverage-formatter-02` - Route the per-test coverage report path through configuration instead of hardcoding `coverage/henitai_per_test.json`.
-- [ ] **(P2)** `TODO: coverage-formatter-03` - Decide whether per-test coverage formatter injection should be configurable and whether a missing `Coverage` runtime should warn once instead of silently no-oping.
+- [x] **(P2)** `TODO: coverage-formatter-03` - Decide whether per-test coverage formatter injection should be configurable and whether a missing `Coverage` runtime should warn once instead of silently no-oping.
 - [x] **(P3)** `TODO: coverage-formatter-04` - Remove the duplicate `coverage_formatter` integration assertions after the behavior is pinned by a single higher-level spec.
 
 ## 8. Risks & Mitigations

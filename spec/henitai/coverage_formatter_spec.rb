@@ -92,7 +92,7 @@ RSpec.describe Henitai::CoverageFormatter do
     end
   end
 
-  it "does not write a report when coverage is unavailable" do
+  it "warns once and skips the report when coverage is unavailable" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
         formatter = described_class.new(StringIO.new)
@@ -100,10 +100,15 @@ RSpec.describe Henitai::CoverageFormatter do
 
         allow(Coverage).to receive(:peek_result).and_raise(StandardError)
 
-        formatter.example_finished(notification)
-        formatter.dump_summary(nil)
+        aggregate_failures do
+          expect do
+            formatter.example_finished(notification)
+            formatter.example_finished(notification)
+            formatter.dump_summary(nil)
+          end.to output(/Per-test coverage unavailable/).to_stderr
 
-        expect(File.exist?("coverage/henitai_per_test.json")).to be(false)
+          expect(File.exist?("coverage/henitai_per_test.json")).to be(false)
+        end
       end
     end
   end

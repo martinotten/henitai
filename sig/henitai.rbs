@@ -222,12 +222,14 @@ module Henitai
 
     def parallel_execution?: (untyped, Array[Mutant]) -> bool
     def worker_count: (untyped) -> Integer
-    def run_linear: (Array[Mutant], untyped, untyped, untyped?) -> void
-    def run_parallel: (Array[Mutant], untyped, untyped, untyped?) -> void
+    def run_linear: (Array[Mutant], untyped, untyped, untyped?, untyped) -> void
+    def run_parallel: (Array[Mutant], untyped, untyped, untyped?, untyped) -> void
     def process_mutant: (Mutant, untyped, untyped, untyped?, ?untyped) -> void
     def prioritized_tests_for: (Mutant, untyped, untyped) -> Array[String]
     def test_prioritizer: () -> TestPrioritizer
     def test_history: (untyped) -> Hash[untyped, untyped]
+    def run_with_flaky_retry: (Mutant, untyped, untyped, Array[String], ?untyped) -> Symbol
+    def warn_flaky_mutants: (Integer) -> void
     def with_reports_dir: (untyped) { () -> untyped } -> untyped
   end
 

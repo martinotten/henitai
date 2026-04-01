@@ -17,11 +17,12 @@ module Henitai
         hash[test_file] = Hash.new { |nested, source_file| nested[source_file] = [] }
       end
       @previous_snapshot = {}
+      @warned_missing_coverage = false
     end
 
     def example_finished(notification)
       snapshot = current_snapshot
-      return unless snapshot
+      return warn_missing_coverage unless snapshot
 
       test_file = notification.example.metadata[:file_path]
       new_lines(snapshot).each do |source_file, lines|
@@ -53,6 +54,13 @@ module Henitai
       Coverage.peek_result
     rescue StandardError
       nil
+    end
+
+    def warn_missing_coverage
+      return if @warned_missing_coverage
+
+      warn "Per-test coverage unavailable; skipping coverage formatter output"
+      @warned_missing_coverage = true
     end
 
     def new_lines(snapshot)

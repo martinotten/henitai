@@ -118,6 +118,39 @@ RSpec.describe Henitai::ExecutionEngine do
     )
   end
 
+  it "retries survived mutants up to three times" do
+    pending = build_mutant(:pending, "Foo#bar")
+    integration = build_integration
+    call_count = 0
+
+    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
+    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
+      call_count += 1
+      mutant.status = call_count < 3 ? :survived : :killed
+    end
+
+    described_class.new.run([pending], integration, build_config)
+
+    expect([pending.status, call_count]).to eq([:killed, 3])
+  end
+
+  it "warns when a significant share of mutants required retries" do
+    pending = build_mutant(:pending, "Foo#bar")
+    integration = build_integration
+
+    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
+    allow(integration).to receive(:run_mutant).and_return(
+      :survived,
+      :survived,
+      :survived,
+      :survived
+    )
+
+    expect do
+      described_class.new.run([pending], integration, build_config)
+    end.to output(/Flaky-test mitigation:/).to_stderr
+  end
+
   it "uses configured jobs when running mutants in parallel" do
     first = build_mutant(:pending, "Foo#bar")
     second = build_mutant(:pending, "Foo#baz")
