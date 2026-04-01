@@ -471,13 +471,13 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 >
 > **Activation order:** `Activator.activate!` must run before RSpec loads the target source file for the first time. Because RSpec loads source files when spec files are required, calling `activate!` before `RSpec::Core::Runner.run` is sufficient - unless the source file was already loaded in the parent process and copied into the fork. In that case, `activate!` patches the already loaded class directly (which is correct, because `define_method` works on existing classes).
 
-- [ ] **(P1)** `TASK: exec-01` - `ExecutionEngine#run(mutants, integration, config)`: main loop over all `:pending` mutants
-- [ ] **(P1)** `TASK: exec-02` - Fork isolation: `Process.fork` per mutant, set `HENITAI_MUTANT_ID` env var, `Process.wait` with timeout in the parent process
-- [ ] **(P1)** `TASK: exec-03` - Mutant activation in the child (before RSpec): `Activator.activate!(mutant)` patches the target class via `Module#define_method` - **no exec, no second fork**
-- [ ] **(P1)** `TASK: exec-04` - Timeout handling: `Process.kill(:SIGTERM, pid)` after `config.timeout` seconds in the parent process, then `SIGKILL` after another 2 seconds
-- [ ] **(P1)** `TASK: exec-05` - Kill-on-first-failure: RSpec formatter reports the first test failure -> child process calls `exit(1)` (no `--fail-fast` needed because it is its own process)
-- [ ] **(P1)** `TASK: exec-06` - Exit-code evaluation in the parent process: 0 -> survived, != 0 -> killed, SIGTERM/SIGKILL -> timeout
-- [ ] **(P1)** `TASK: exec-07` - `Henitai::Mutant::Activator` class: activates the fork-inherited `Mutant` record in the child and patches target class/method via `Module#define_method`
+- [x] **(P1)** `TASK: exec-01` - `ExecutionEngine#run(mutants, integration, config)`: main loop over all `:pending` mutants
+- [x] **(P1)** `TASK: exec-02` - Fork isolation: `Process.fork` per mutant, set `HENITAI_MUTANT_ID` env var, `Process.wait` with timeout in the parent process
+- [x] **(P1)** `TASK: exec-03` - Mutant activation in the child (before RSpec): `Activator.activate!(mutant)` patches the target class via `Module#define_method` - **no exec, no second fork**
+- [x] **(P1)** `TASK: exec-04` - Timeout handling: `Process.kill(:SIGTERM, pid)` after `config.timeout` seconds in the parent process, then `SIGKILL` after another 2 seconds
+- [x] **(P1)** `TASK: exec-05` - Kill-on-first-failure: RSpec formatter reports the first test failure -> child process calls `exit(1)` (no `--fail-fast` needed because it is its own process)
+- [x] **(P1)** `TASK: exec-06` - Exit-code evaluation in the parent process: 0 -> survived, != 0 -> killed, SIGTERM/SIGKILL -> timeout
+- [x] **(P1)** `TASK: exec-07` - `Henitai::Mutant::Activator` class: activates the fork-inherited `Mutant` record in the child and patches target class/method via `Module#define_method`
 - [ ] **(P2)** `TASK: exec-08` - Parallel execution: worker pool (`Parallel` gem or native `Ractor`), number via `config.jobs` or CPU count
 - [ ] **(P2)** `TASK: exec-09` - Test prioritization: `TestPrioritizer#sort(tests, mutant, history)` - adaptive strategy (tests that have already killed other mutants first)
 - [ ] **(P2)** `TASK: exec-10` - Flaky-test mitigation: retry 3 times for a survived mutant, warn when > 5% unknown
@@ -486,11 +486,11 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 
 ### 5.10 RSpec Integration
 
-- [ ] **(P1)** `TASK: rspec-01` - `Integration::Rspec#select_tests(subject)`: longest-prefix matching - scan `spec/` for RSpec files whose `describe` / `context` strings contain the subject namespace
-- [ ] **(P1)** `TASK: rspec-02` - Fallback: if no tests are found by prefix, use all spec files that transitively `require` the source file
-- [ ] **(P1)** `TASK: rspec-03` - `Integration::Rspec#run_in_child(test_files)`: call `RSpec::Core::Runner.run(test_files + rspec_opts)` in the **current process** (called after `fork` by the ExecutionEngine child - no separate subprocess via `exec` or `system`)
-- [ ] **(P1)** `TASK: rspec-04` - Ensure activation order: `exec-03` (`Activator.activate!`) is called by `exec-02` (fork) **before** `rspec-03` (`RSpec::Core::Runner.run`) starts. A spec test verifies that the `define_method` patch is active when the first test runs.
-- [ ] **(P1)** `TASK: rspec-05` - Integration spec: unit tests for prefix matching logic (no real process needed)
+- [x] **(P1)** `TASK: rspec-01` - `Integration::Rspec#select_tests(subject)`: longest-prefix matching - scan `spec/` for RSpec files whose `describe` / `context` strings contain the subject namespace
+- [x] **(P1)** `TASK: rspec-02` - Fallback: if no tests are found by prefix, use all spec files that transitively `require` the source file
+- [x] **(P1)** `TASK: rspec-03` - `Integration::Rspec#run_in_child(test_files)`: call `RSpec::Core::Runner.run(test_files + rspec_opts)` in the **current process** (called after `fork` by the ExecutionEngine child - no separate subprocess via `exec` or `system`)
+- [x] **(P1)** `TASK: rspec-04` - Ensure activation order: `exec-03` (`Activator.activate!`) is called by `exec-02` (fork) **before** `rspec-03` (`RSpec::Core::Runner.run`) starts. A spec test verifies that the `define_method` patch is active when the first test runs.
+- [x] **(P1)** `TASK: rspec-05` - Integration spec: unit tests for prefix matching logic (no real process needed)
 - [ ] **(P2)** `TASK: rspec-06` - Per-test coverage: add `--require henitai/coverage_formatter` to RSpec options, produce `coverage/henitai_per_test.json`
 - [ ] **(P3)** `TASK: minitest-01` - Minitest integration analogous to the RSpec integration
 
