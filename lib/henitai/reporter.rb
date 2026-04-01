@@ -53,7 +53,7 @@ module Henitai
       }.freeze
 
       def report(result)
-        result.mutants.each { |mutant| progress(mutant) }
+        puts summary_lines(result)
       end
 
       def progress(mutant)
@@ -62,6 +62,48 @@ module Henitai
 
         print(glyph)
         $stdout.flush
+      end
+
+      private
+
+      def summary_lines(result)
+        [
+          "Mutation testing summary",
+          score_line(result),
+          format_row("Killed", count_status(result, :killed)),
+          format_row("Survived", count_status(result, :survived)),
+          format_row("Timeout", count_status(result, :timeout)),
+          format_row("No coverage", count_status(result, :no_coverage)),
+          format_row("Duration", format_duration(result.duration))
+        ]
+      end
+
+      def score_line(result)
+        summary = result.scoring_summary
+        [
+          format("MS %s", format_percent(summary[:mutation_score])),
+          format("MSI %s", format_percent(summary[:mutation_score_indicator])),
+          format(
+            "Equivalence uncertainty %s",
+            summary[:equivalence_uncertainty] || "n/a"
+          )
+        ].join(" | ")
+      end
+
+      def format_row(label, value)
+        format("%<label>-12s %<value>s", label:, value:)
+      end
+
+      def count_status(result, status)
+        result.mutants.count { |mutant| mutant.status == status }
+      end
+
+      def format_duration(duration)
+        format("%.2fs", duration)
+      end
+
+      def format_percent(value)
+        value.nil? ? "n/a" : format("%.2f%%", value)
       end
     end
 

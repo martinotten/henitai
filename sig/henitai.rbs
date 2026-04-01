@@ -165,6 +165,15 @@ module Henitai
 
       def report: (Result) -> void
       def progress: (untyped) -> void
+
+      private
+
+      def summary_lines: (Result) -> Array[String]
+      def score_line: (Result) -> String
+      def format_row: (String, untyped) -> String
+      def count_status: (Result, Symbol) -> Integer
+      def format_duration: (Float) -> String
+      def format_percent: (Float?) -> String
     end
 
     class Json < Base
