@@ -229,9 +229,11 @@ module Henitai
 
     def init_command
       path = @argv.shift || Configuration::CONFIG_FILE
-      warn "Unexpected arguments: #{@argv.join(' ')}" unless @argv.empty?
+      unexpected_arguments = @argv.dup
+      warn "Unexpected arguments: #{unexpected_arguments.join(' ')}" unless unexpected_arguments.empty?
       File.write(path, init_template)
       puts "Created #{path}"
+      exit 1 unless unexpected_arguments.empty?
     end
 
     def operator_command
@@ -297,13 +299,17 @@ module Henitai
     end
 
     def operator_description_row(name)
-      description, example = operator_metadata.fetch(name)
+      description, example = operator_metadata[name] || fallback_operator_metadata
 
       format("- %<name>s: %<description>s (%<example>s)", name:, description:, example:)
     end
 
     def operator_metadata
       OPERATOR_METADATA
+    end
+
+    def fallback_operator_metadata
+      ["No metadata available", "n/a"]
     end
   end
   # rubocop:enable Metrics/ClassLength

@@ -273,9 +273,78 @@ RSpec.describe Henitai::CLI do
     end
   end
 
+  it "creates the requested configuration file during init" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        cli = described_class.new(["init", "custom.yml"])
+        allow($stdin).to receive_messages(tty?: false, gets: nil)
+        cli.define_singleton_method(:exit) { |_status = nil| nil }
+
+        cli.run
+
+        expect(File).to exist("custom.yml")
+      end
+    end
+  end
+
+  it "prints a warning when init receives unexpected arguments" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        cli = described_class.new(["init", "custom.yml", "extra"])
+        allow($stdin).to receive_messages(tty?: false, gets: nil)
+        cli.define_singleton_method(:exit) { |_status = nil| nil }
+
+        expect { cli.run }.to output(/Unexpected arguments: extra/).to_stderr
+      end
+    end
+  end
+
+  it "exits non-zero when init receives unexpected arguments" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        cli = described_class.new(["init", "custom.yml", "extra"])
+        exit_status = nil
+        allow($stdin).to receive_messages(tty?: false, gets: nil)
+        cli.define_singleton_method(:exit) { |status = nil| exit_status = status }
+
+        cli.run
+
+        expect(exit_status).to eq(1)
+      end
+    end
+  end
+
   it "lists operators with descriptions and examples" do
     expect { described_class.new(%w[operator list]).run }.to output(
       /ArithmeticOperator.*a \+ b -> a - b/m
     ).to_stdout
+  end
+
+  it "falls back when operator metadata is missing" do
+    stub_const(
+      "Henitai::Operator::FULL_SET",
+      Henitai::Operator::FULL_SET + ["MissingOperator"]
+    )
+
+    expect { described_class.new(%w[operator list]).run }.to output(
+      %r{MissingOperator: No metadata available \(n/a\)}m
+    ).to_stdout
+  end
+
+  it "prints a warning for unknown operator subcommands" do
+    cli = described_class.new(%w[operator bogus])
+    cli.define_singleton_method(:exit) { |_status = nil| nil }
+
+    expect { cli.run }.to output(/Unknown operator command: bogus/).to_stderr
+  end
+
+  it "exits non-zero for unknown operator subcommands" do
+    cli = described_class.new(%w[operator bogus])
+    exit_status = nil
+    cli.define_singleton_method(:exit) { |status = nil| exit_status = status }
+
+    cli.run
+
+    expect(exit_status).to eq(1)
   end
 end
