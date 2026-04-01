@@ -231,9 +231,10 @@ module Henitai
       path = @argv.shift || Configuration::CONFIG_FILE
       unexpected_arguments = @argv.dup
       warn "Unexpected arguments: #{unexpected_arguments.join(' ')}" unless unexpected_arguments.empty?
+      exit 1 unless unexpected_arguments.empty?
+
       File.write(path, init_template)
       puts "Created #{path}"
-      exit 1 unless unexpected_arguments.empty?
     end
 
     def operator_command
@@ -285,6 +286,7 @@ module Henitai
     end
 
     def operator_list_text
+      validate_operator_metadata!
       sections = [
         operator_list_section("Light set", Operator::LIGHT_SET),
         operator_list_section("Full set", Operator::FULL_SET)
@@ -310,6 +312,13 @@ module Henitai
 
     def fallback_operator_metadata
       ["No metadata available", "n/a"]
+    end
+
+    def validate_operator_metadata!
+      missing = Operator::FULL_SET - operator_metadata.keys
+      return if missing.empty?
+
+      raise ArgumentError, "Missing operator metadata for: #{missing.join(', ')}"
     end
   end
   # rubocop:enable Metrics/ClassLength
