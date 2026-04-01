@@ -75,7 +75,28 @@ RSpec.describe Henitai::Operators::AssignmentExpression do
     )
   end
 
+  it "removes ||= from constant assignments" do
+    mutant = mutate("Foo::BAR ||= compute", :or_asgn).first
+
+    expect(mutant).to have_attributes(
+      description: "removed ||=",
+      mutated_node: satisfy { |node| node.type == :casgn }
+    )
+  end
+
   it "ignores unsupported compound assignments" do
     expect(mutate("x *= 1", :op_asgn)).to eq([])
+  end
+
+  it "ignores unsupported coalesce assignment targets" do
+    node = Parser::AST::Node.new(
+      :or_asgn,
+      [
+        Parser::AST::Node.new(:int, [1]),
+        Parser::AST::Node.new(:send, [nil, :compute])
+      ]
+    )
+
+    expect(described_class.new.mutate(node, subject: mutation_subject)).to eq([])
   end
 end
