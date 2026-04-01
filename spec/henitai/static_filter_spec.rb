@@ -99,6 +99,33 @@ RSpec.describe Henitai::StaticFilter do
     expect(described_class.new.coverage_lines_by_file("/tmp/missing-resultset.json")).to eq({})
   end
 
+  it "normalizes coverage file paths when building the coverage map" do
+    Dir.mktmpdir do |dir|
+      report_path = File.join(dir, "coverage", ".resultset.json")
+      FileUtils.mkdir_p(File.dirname(report_path))
+      File.write(
+        report_path,
+        {
+          "RSpec" => {
+            "coverage" => {
+              "lib/sample.rb" => {
+                "lines" => [nil, 1]
+              }
+            }
+          }
+        }.to_json
+      )
+
+      Dir.chdir(dir) do
+        coverage = described_class.new.coverage_lines_by_file(report_path)
+
+        expect(coverage).to eq(
+          File.expand_path("lib/sample.rb") => [2]
+        )
+      end
+    end
+  end
+
   it "builds a per-test coverage map from the formatter output" do
     Dir.mktmpdir do |dir|
       report_path = File.join(dir, "coverage", "henitai_per_test.json")
@@ -122,6 +149,50 @@ RSpec.describe Henitai::StaticFilter do
 
   it "returns an empty per-test coverage map when the report is missing" do
     expect(described_class.new.test_lines_by_file("/tmp/missing-per-test.json")).to eq({})
+  end
+
+  it "leaves mutants pending when the coverage report is missing" do
+    Dir.mktmpdir do |dir|
+      mutant = build_mutant("foo.bar")
+      mutant.location[:file] = "lib/sample.rb"
+      mutant.location[:start_line] = 2
+
+      Dir.chdir(dir) do
+        described_class.new.apply([mutant], config)
+      end
+
+      expect(mutant.status).to eq(:pending)
+    end
+  end
+
+  it "matches covered mutants when coverage and mutant paths differ in form" do
+    Dir.mktmpdir do |dir|
+      mutant = build_mutant("foo.bar")
+      FileUtils.mkdir_p(File.join(dir, "coverage"))
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib", "sample.rb"), "first\nsecond\n")
+      File.write(
+        File.join(dir, "coverage", ".resultset.json"),
+        {
+          "RSpec" => {
+            "coverage" => {
+              File.expand_path("lib/sample.rb", dir) => {
+                "lines" => [nil, 1]
+              }
+            }
+          }
+        }.to_json
+      )
+
+      mutant.location[:file] = "lib/sample.rb"
+      mutant.location[:start_line] = 2
+
+      Dir.chdir(dir) do
+        described_class.new.apply([mutant], config)
+      end
+
+      expect(mutant.status).to eq(:pending)
+    end
   end
 
   it "marks uncovered mutants as no_coverage" do
@@ -206,41 +277,53 @@ RSpec.describe Henitai::StaticFilter do
   end
 
   it "keeps mutants that do not match any ignore pattern pending" do
-    mutant = build_mutant("foo.bar")
+    Dir.mktmpdir do |dir|
+      mutant = build_mutant("foo.bar")
 
-    filter_with_coverage.apply([mutant], config(ignore_patterns: ["foo\\.baz"]))
+      Dir.chdir(dir) do
+        filter_with_coverage.apply([mutant], config(ignore_patterns: ["foo\\.baz"]))
+      end
 
-    expect(mutant.status).to eq(:pending)
+      expect(mutant.status).to eq(:pending)
+    end
   end
 
   it "treats a nil config as having no ignore patterns" do
-    mutant = build_mutant("foo.bar")
+    Dir.mktmpdir do |dir|
+      mutant = build_mutant("foo.bar")
 
-    filter_with_coverage.apply([mutant], nil)
+      Dir.chdir(dir) do
+        filter_with_coverage.apply([mutant], nil)
+      end
 
-    expect(mutant.status).to eq(:pending)
+      expect(mutant.status).to eq(:pending)
+    end
   end
 
   it "keeps mutants without source metadata pending" do
-    mutant = Henitai::Mutant.new(
-      subject: Henitai::Subject.new(namespace: "Example", method_name: "example"),
-      operator: "ArithmeticOperator",
-      nodes: {
-        original: Struct.new(:location).new(Struct.new(:expression).new(nil)),
-        mutated: Struct.new(:location).new(Struct.new(:expression).new(nil))
-      },
-      description: "example mutation",
-      location: {
-        file: "sample.rb",
-        start_line: 1,
-        end_line: 1,
-        start_col: 0,
-        end_col: 1
-      }
-    )
+    Dir.mktmpdir do |dir|
+      mutant = Henitai::Mutant.new(
+        subject: Henitai::Subject.new(namespace: "Example", method_name: "example"),
+        operator: "ArithmeticOperator",
+        nodes: {
+          original: Struct.new(:location).new(Struct.new(:expression).new(nil)),
+          mutated: Struct.new(:location).new(Struct.new(:expression).new(nil))
+        },
+        description: "example mutation",
+        location: {
+          file: "sample.rb",
+          start_line: 1,
+          end_line: 1,
+          start_col: 0,
+          end_col: 1
+        }
+      )
 
-    filter_with_coverage.apply([mutant], config(ignore_patterns: ["foo"]))
+      Dir.chdir(dir) do
+        filter_with_coverage.apply([mutant], config(ignore_patterns: ["foo"]))
+      end
 
-    expect(mutant.status).to eq(:pending)
+      expect(mutant.status).to eq(:pending)
+    end
   end
 end

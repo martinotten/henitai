@@ -10,9 +10,12 @@ module Henitai
 
     def apply(mutants, config)
       coverage_lines = coverage_lines_by_file
+      coverage_report_present = File.exist?(DEFAULT_COVERAGE_REPORT_PATH)
 
       Array(mutants).each do |mutant|
         next if mark_ignored_mutant(mutant, config)
+
+        next unless coverage_report_present
 
         mutant.status = :no_coverage unless covered?(mutant, coverage_lines)
       end
@@ -26,7 +29,7 @@ module Henitai
       coverage = Hash.new { |hash, key| hash[key] = [] }
       JSON.parse(File.read(path)).each_value do |result|
         result.fetch("coverage", {}).each do |file, file_coverage|
-          coverage[file].concat(covered_lines(file_coverage))
+          coverage[normalize_path(file)].concat(covered_lines(file_coverage))
         end
       end
 
@@ -61,7 +64,7 @@ module Henitai
     end
 
     def covered?(mutant, coverage_lines)
-      file = mutant.location[:file]
+      file = normalize_path(mutant.location[:file])
       start_line = mutant.location[:start_line]
       Array(coverage_lines[file]).include?(start_line)
     end
@@ -83,6 +86,10 @@ module Henitai
       Array(file_coverage["lines"]).each_with_index.filter_map do |count, index|
         index + 1 if count.to_i.positive?
       end
+    end
+
+    def normalize_path(path)
+      File.expand_path(path)
     end
   end
 end
