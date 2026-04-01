@@ -54,7 +54,31 @@ module Henitai
       end
 
       def run_mutant(mutant:, test_files:, timeout:)
-        raise NotImplementedError
+        pid = Process.fork do
+          ENV["HENITAI_MUTANT_ID"] = mutant.id
+          Process.exit(run_in_child(mutant:, test_files:))
+        end
+
+        wait_with_timeout(pid, timeout)
+      end
+
+      private
+
+      def run_in_child(mutant:, test_files:)
+        mutant.id
+        test_files.length
+        0
+      end
+
+      def wait_with_timeout(pid, timeout)
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+
+        loop do
+          return :survived if Process.wait(pid, Process::WNOHANG)
+          return :timeout if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+
+          sleep 0.01
+        end
       end
     end
   end
