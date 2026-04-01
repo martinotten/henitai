@@ -90,4 +90,78 @@ RSpec.describe Henitai::MutantGenerator do
 
     expect(mutants).to eq([])
   end
+
+  it "skips arid nodes before applying operators" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", <<~RUBY)
+        class Sample
+          def announce
+            puts "x"
+          end
+        end
+      RUBY
+
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      fake_operator = stub_const(
+        "Henitai::FakeSendOperator",
+        Class.new(Henitai::Operator) do
+          def self.node_types
+            [:send]
+          end
+
+          def mutate(node, subject:)
+            [
+              build_mutant(
+                subject:,
+                original_node: node,
+                mutated_node: node,
+                description: "fake send"
+              )
+            ]
+          end
+        end
+      )
+
+      mutants = described_class.new.generate([subject], [fake_operator])
+
+      expect(mutants).to eq([])
+    end
+  end
+
+  it "still mutates non-arid send nodes" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", <<~RUBY)
+        class Sample
+          def announce
+            foo.bar
+          end
+        end
+      RUBY
+
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      fake_operator = stub_const(
+        "Henitai::FakeSendOperator",
+        Class.new(Henitai::Operator) do
+          def self.node_types
+            [:send]
+          end
+
+          def mutate(node, subject:)
+            [
+              build_mutant(
+                subject:,
+                original_node: node,
+                mutated_node: node,
+                description: "fake send"
+              )
+            ]
+          end
+        end
+      )
+
+      mutants = described_class.new.generate([subject], [fake_operator])
+
+      expect(mutants.map(&:description)).to include("fake send")
+    end
+  end
 end

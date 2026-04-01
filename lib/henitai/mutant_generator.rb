@@ -6,11 +6,11 @@ require_relative "source_parser"
 module Henitai
   # Traverses a subject's AST and asks operators to build mutants.
   class MutantGenerator
-    def generate(subjects, operators)
+    def generate(subjects, operators, config: nil)
       normalized_operators = normalize_operators(operators)
 
       Array(subjects).flat_map do |subject|
-        generate_for_subject(subject, normalized_operators)
+        generate_for_subject(subject, normalized_operators, config:)
       end
     end
 
@@ -22,10 +22,10 @@ module Henitai
       end
     end
 
-    def generate_for_subject(subject, operators)
+    def generate_for_subject(subject, operators, config:)
       return [] unless subject.source_file && subject.source_range
 
-      visitor = SubjectVisitor.new(subject, operators)
+      visitor = SubjectVisitor.new(subject, operators, config:)
       visitor.process(SourceParser.parse_file(subject.source_file))
       visitor.mutants
     end
@@ -34,9 +34,11 @@ module Henitai
     class SubjectVisitor
       attr_reader :mutants
 
-      def initialize(subject, operators)
+      def initialize(subject, operators, config:)
         @subject = subject
+        @config = config
         @mutants = []
+        @arid_node_filter = AridNodeFilter.new
         @operators_by_node_type = operators.each_with_object(
           Hash.new { |hash, key| hash[key] = [] }
         ) do |operator, map|
@@ -62,6 +64,8 @@ module Henitai
       end
 
       def apply_operators(node)
+        return if @arid_node_filter.suppressed?(node, @config)
+
         @operators_by_node_type[node.type].each do |operator|
           @mutants.concat(operator.mutate(node, subject: @subject))
         end
