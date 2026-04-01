@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
+require "json"
 require "spec_helper"
+require "tmpdir"
 
 RSpec.describe Henitai::StaticFilter do
   def build_mutant(source)
@@ -43,6 +45,45 @@ RSpec.describe Henitai::StaticFilter do
     filter.apply([mutant], config(ignore_patterns: ["foo\\.bar"]))
 
     expect(Regexp).to have_received(:new).once
+  end
+
+  it "builds a coverage map from a SimpleCov resultset" do
+    Dir.mktmpdir do |dir|
+      report_path = File.join(dir, ".resultset.json")
+      File.write(
+        report_path,
+        {
+          "RSpec" => {
+            "coverage" => {
+              "/tmp/sample.rb" => {
+                "lines" => [nil, 1, 0, 3]
+              }
+            }
+          },
+          "Other" => {
+            "coverage" => {
+              "/tmp/sample.rb" => {
+                "lines" => [nil, 0, 2, nil]
+              },
+              "/tmp/other.rb" => {
+                "lines" => [1, nil]
+              }
+            }
+          }
+        }.to_json
+      )
+
+      coverage = described_class.new.coverage_lines_by_file(report_path)
+
+      expect(coverage).to eq(
+        "/tmp/other.rb" => [1],
+        "/tmp/sample.rb" => [2, 3, 4]
+      )
+    end
+  end
+
+  it "returns an empty coverage map when the report is missing" do
+    expect(described_class.new.coverage_lines_by_file("/tmp/missing-resultset.json")).to eq({})
   end
 
   it "keeps mutants that do not match any ignore pattern pending" do
