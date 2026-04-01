@@ -338,7 +338,7 @@ result = wait_with_timeout(pid, config.timeout)
 - [x] **(P1)** SimpleCov setup with branch coverage
 - [x] **(P1)** Create `.henitai.yml` config schema
 - [x] **(P1)** `TASK: infra-01` - Prism spike as go/no-go: verify the Prism/unparser toolchain against Ruby 4.0.2 with real syntax fixtures, including `Prism::Translation::ParserCurrent` if it can produce the `Parser::AST::Node` shape used by `mutant` (`Unparser.parse_ast_either`); the result is either "upstream viable" or "fork / maintenance strategy required". Phase 1 must not start without this decision.
-- [ ] **(P1)** `TASK: infra-02` - Steep / RBS type annotations: Phase 1 scope is the public API only. Annotate the stable entry points that callers rely on (`Henitai`, `CLI`, `Configuration`, `Runner`, `Subject`, `Mutant`, `Result`, and any deliberately public extension interfaces such as `Operator` and reporter / integration bases). Leave internal pipeline stages, parser adapters, and concrete operator implementations untyped for now.
+- [x] **(P1)** `TASK: infra-02` - Steep / RBS type annotations: Phase 1 scope is the public API only. Annotate the stable entry points that callers rely on (`Henitai`, `CLI`, `Configuration`, `Runner`, `Subject`, `Mutant`, `Result`, and any deliberately public extension interfaces such as `Operator` and reporter / integration bases). Leave internal pipeline stages, parser adapters, and concrete operator implementations untyped for now.
 
 ---
 
@@ -565,6 +565,15 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 
 ---
 
+### 5.15 Review Backlog
+
+- [ ] **(P2)** `TASK: review-01` - CLI operator metadata safety: validate `OPERATOR_METADATA` against `Operator::FULL_SET`, add coverage for `henitai init <PATH>`, and keep `henitai operator` unknown-subcommand handling consistent
+- [ ] **(P2)** `TASK: review-02` - Coverage formatter contract: align `CoverageFormatter` RBS with the Ruby implementation, and route the per-test coverage report path through the configured reports directory
+- [ ] **(P2)** `TASK: review-03` - Coverage formatter visibility: decide whether the formatter should warn when coverage is unavailable and whether formatter injection should be configurable
+- [ ] **(P3)** `TASK: review-04` - Test cleanup: remove one redundant RSpec integration example if it stops adding unique branch coverage
+
+---
+
 ## 6. Technical Decisions (ADRs)
 
 The decisions now live in individual files under `../architecture/adr/`. That directory is the canonical source.
@@ -609,6 +618,18 @@ Each operator must document:
 | 20,000 LOC | < 10 min | < 60 min |
 
 ---
+
+### 7.4 Review Backlog
+
+These items came out of the latest code review and are tracked separately from
+the numbered implementation tasks above.
+
+- [ ] **(P2)** `TODO: cli-metadata-01` - Validate `OPERATOR_METADATA` against the registered operator sets, or provide a fallback description for unknown operators so `operator list` cannot fail with a `KeyError` when the registry grows.
+- [ ] **(P2)** `TODO: cli-metadata-02` - Harmonize CLI error handling for `init` and unknown subcommands, and add specs for `henitai init custom-path.yml` plus `henitai operator bogus`.
+- [ ] **(P2)** `TODO: coverage-formatter-01` - Fix `CoverageFormatter` RBS declarations so they match the actual formatter hooks (`example_finished` / `dump_summary`).
+- [ ] **(P2)** `TODO: coverage-formatter-02` - Route the per-test coverage report path through configuration instead of hardcoding `coverage/henitai_per_test.json`.
+- [ ] **(P2)** `TODO: coverage-formatter-03` - Decide whether per-test coverage formatter injection should be configurable and whether a missing `Coverage` runtime should warn once instead of silently no-oping.
+- [ ] **(P3)** `TODO: coverage-formatter-04` - Remove the duplicate `coverage_formatter` integration assertions after the behavior is pinned by a single higher-level spec.
 
 ## 8. Risks & Mitigations
 

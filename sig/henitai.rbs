@@ -104,8 +104,7 @@ module Henitai
 
   class CoverageFormatter
     def initialize: (untyped) -> void
-    def example_group_started: (untyped) -> void
-    def example_group_finished: (untyped) -> void
+    def example_finished: (untyped) -> void
     def dump_summary: (untyped) -> void
   end
 
