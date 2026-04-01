@@ -127,6 +127,37 @@ RSpec.describe Henitai::SubjectResolver do
     end
   end
 
+  it "resolves define_method subjects with static names" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Foo
+            define_method(:bar) do
+              1
+            end
+
+            class << self
+              define_method("baz") do
+                2
+              end
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects.map(&:expression)).to eq(
+        [
+          "Foo#bar",
+          "Foo.baz"
+        ]
+      )
+    end
+  end
+
   it "keeps sibling instance methods out of singleton-class context" do
     Dir.mktmpdir do |dir|
       path = write_source(

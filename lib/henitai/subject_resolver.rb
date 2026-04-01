@@ -97,6 +97,8 @@ module Henitai
 
     def subject_for(node, namespace, singleton_context)
       case node.type
+      when :block
+        define_method_subject(node, namespace, singleton_context)
       when :def
         instance_subject(node, namespace, singleton_context)
       when :defs
@@ -128,6 +130,23 @@ module Henitai
       )
     end
 
+    def define_method_subject(node, namespace, singleton_context)
+      call_node = node.children.first
+      return unless define_method_call?(call_node)
+      return unless namespace
+
+      method_name = define_method_name(call_node)
+      return unless method_name
+
+      Subject.new(
+        namespace:,
+        method_name:,
+        method_type: singleton_context ? :class : :instance,
+        source_location: source_location_for(node),
+        ast_node: node
+      )
+    end
+
     def qualify_namespace(namespace, name)
       return name if namespace.nil? || namespace.empty?
       return namespace if name.nil? || name.empty?
@@ -153,6 +172,28 @@ module Henitai
 
     def method_name(value)
       symbol_name(value)
+    end
+
+    def define_method_call?(call_node)
+      return false unless call_node.respond_to?(:type)
+      return false unless call_node.type == :send
+      return false unless call_node.children[1] == :define_method
+
+      receiver = call_node.children.first
+      receiver.nil? || receiver.type == :self
+    end
+
+    def define_method_name(call_node)
+      literal_method_name(call_node.children[2])
+    end
+
+    def literal_method_name(node)
+      return unless node.respond_to?(:type)
+
+      case node.type
+      when :sym, :str
+        symbol_name(node.children.first)
+      end
     end
 
     def symbol_name(value)

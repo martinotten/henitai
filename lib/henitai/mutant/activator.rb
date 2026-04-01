@@ -99,6 +99,8 @@ module Henitai
           subject_node.children[2]
         when :defs
           subject_node.children[3]
+        when :block
+          block_body(subject_node)
         else
           subject_node
         end
@@ -120,6 +122,8 @@ module Henitai
           subject_node.children[1]
         when :defs
           subject_node.children[2]
+        when :block
+          block_arguments(subject_node)
         end
       end
 
@@ -165,6 +169,14 @@ module Henitai
       def prefixed_parameter(argument, prefix)
         name = argument.children[0]
         name ? "#{prefix}#{name}" : prefix
+      end
+
+      def block_body(subject_node)
+        subject_node.children[2]
+      end
+
+      def block_arguments(subject_node)
+        subject_node.children[1]
       end
 
       def load_target(subject)

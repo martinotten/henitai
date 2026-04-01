@@ -205,6 +205,28 @@ RSpec.describe Henitai::Mutant::Activator do
     end
   end
 
+  it "patches define_method bodies" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, <<~RUBY)
+        class ActivatorDefineMethodSample
+          define_method(:value) do
+            1 + 2
+          end
+        end
+      RUBY
+
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      mutant = Henitai::MutantGenerator.new.generate(
+        [subject],
+        [Henitai::Operators::ArithmeticOperator.new]
+      ).first
+
+      described_class.activate!(mutant)
+
+      expect(ActivatorDefineMethodSample.new.value).to eq(-1)
+    end
+  end
+
   it "infers the source file from AST metadata when none is provided" do
     Dir.mktmpdir do |dir|
       path = write_source(dir, <<~RUBY)
