@@ -235,4 +235,47 @@ RSpec.describe Henitai::CLI do
       )
     end
   end
+
+  it "creates a default configuration file during init" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        cli = described_class.new(["init"])
+        allow($stdin).to receive_messages(tty?: false, gets: nil)
+
+        expect { cli.run }.to output(/Created \.henitai\.yml/).to_stdout
+      end
+    end
+  end
+
+  it "includes the default integration block during init" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        cli = described_class.new(["init"])
+        allow($stdin).to receive_messages(tty?: false, gets: nil)
+
+        cli.run
+
+        expect(File.read(".henitai.yml")).to include("integration:\n  name: rspec")
+      end
+    end
+  end
+
+  it "can skip the explicit integration block during init" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        cli = described_class.new(["init"])
+        allow($stdin).to receive_messages(tty?: true, gets: "n\n")
+
+        cli.run
+
+        expect(File.read(".henitai.yml")).not_to include("integration:")
+      end
+    end
+  end
+
+  it "lists operators with descriptions and examples" do
+    expect { described_class.new(%w[operator list]).run }.to output(
+      /ArithmeticOperator.*a \+ b -> a - b/m
+    ).to_stdout
+  end
 end
