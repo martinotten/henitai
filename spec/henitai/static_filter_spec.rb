@@ -24,8 +24,8 @@ RSpec.describe Henitai::StaticFilter do
     )
   end
 
-  def config(ignore_patterns: [])
-    Struct.new(:ignore_patterns).new(ignore_patterns)
+  def config(ignore_patterns: [], reports_dir: nil)
+    Struct.new(:ignore_patterns, :reports_dir).new(ignore_patterns, reports_dir)
   end
 
   def write_coverage_report(dir, data)
@@ -186,6 +186,35 @@ RSpec.describe Henitai::StaticFilter do
 
       Dir.chdir(dir) do
         described_class.new.apply([mutant], config)
+      end
+
+      expect(mutant.status).to eq(:pending)
+    end
+  end
+
+  it "uses the configured reports dir when looking up coverage reports" do
+    Dir.mktmpdir do |dir|
+      mutant = build_mutant("foo.bar")
+      coverage_dir = File.join(dir, "artifacts")
+      FileUtils.mkdir_p(coverage_dir)
+      File.write(
+        File.join(coverage_dir, ".resultset.json"),
+        {
+          "RSpec" => {
+            "coverage" => {
+              File.join(dir, "lib", "sample.rb") => {
+                "lines" => [nil, 1, 1]
+              }
+            }
+          }
+        }.to_json
+      )
+
+      mutant.location[:file] = File.join(dir, "lib", "sample.rb")
+      mutant.location[:start_line] = 2
+
+      Dir.chdir(dir) do
+        described_class.new.apply([mutant], config(reports_dir: coverage_dir))
       end
 
       expect(mutant.status).to eq(:pending)

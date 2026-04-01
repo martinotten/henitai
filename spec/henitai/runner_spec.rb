@@ -16,7 +16,8 @@ RSpec.describe Henitai::Runner do
         :timeout,
         :reporters,
         :thresholds,
-        :integration
+        :integration,
+        :reports_dir
       )
     )
   end
@@ -30,7 +31,8 @@ RSpec.describe Henitai::Runner do
       values[:timeout],
       values[:reporters],
       values[:thresholds],
-      values[:integration]
+      values[:integration],
+      values[:reports_dir]
     )
   end
 
@@ -41,7 +43,8 @@ RSpec.describe Henitai::Runner do
       timeout: 10.0,
       reporters: ["terminal"],
       thresholds: { low: 60, high: 80 },
-      integration: "rspec"
+      integration: "rspec",
+      reports_dir: "reports"
     }
   end
 
@@ -196,6 +199,73 @@ RSpec.describe Henitai::Runner do
         expect(calls).to eq([%w[lib/sample.rb app/tool.rb]])
       end
     end
+  end
+
+  it "sets the reports dir while executing mutants" do
+    config = build_config(reporters: [], reports_dir: "custom-reports")
+    runner = described_class.new(config:)
+    subject_resolver = instance_double(Henitai::SubjectResolver)
+    mutant_generator = instance_double(Henitai::MutantGenerator)
+    static_filter = instance_double(Henitai::StaticFilter)
+    execution_engine = instance_double(Henitai::ExecutionEngine)
+    integration = instance_double(Henitai::Integration::Rspec)
+    result = build_result([])
+    captured_reports_dir = nil
+
+    allow(runner).to receive_messages(
+      source_files: ["lib/sample.rb"],
+      subject_resolver:,
+      mutant_generator:,
+      static_filter:,
+      execution_engine:,
+      integration:,
+      progress_reporter: nil
+    )
+    allow(subject_resolver).to receive(:resolve_from_files).and_return([])
+    allow(mutant_generator).to receive(:generate).and_return([])
+    allow(static_filter).to receive(:apply).and_return([])
+    allow(execution_engine).to receive(:run) do |_mutants, _integration, _config, **_kwargs|
+      captured_reports_dir = ENV.fetch("HENITAI_REPORTS_DIR", nil)
+      []
+    end
+    allow(Henitai::Result).to receive(:new).and_return(result)
+    allow(Henitai::Reporter).to receive(:run_all)
+
+    runner.run
+
+    expect(captured_reports_dir).to eq("custom-reports")
+  end
+
+  it "restores the reports dir after execution" do
+    config = build_config(reporters: [], reports_dir: "custom-reports")
+    runner = described_class.new(config:)
+    subject_resolver = instance_double(Henitai::SubjectResolver)
+    mutant_generator = instance_double(Henitai::MutantGenerator)
+    static_filter = instance_double(Henitai::StaticFilter)
+    execution_engine = instance_double(Henitai::ExecutionEngine)
+    integration = instance_double(Henitai::Integration::Rspec)
+    result = build_result([])
+    original_reports_dir = ENV.fetch("HENITAI_REPORTS_DIR", nil)
+
+    allow(runner).to receive_messages(
+      source_files: ["lib/sample.rb"],
+      subject_resolver:,
+      mutant_generator:,
+      static_filter:,
+      execution_engine:,
+      integration:,
+      progress_reporter: nil
+    )
+    allow(subject_resolver).to receive(:resolve_from_files).and_return([])
+    allow(mutant_generator).to receive(:generate).and_return([])
+    allow(static_filter).to receive(:apply).and_return([])
+    allow(execution_engine).to receive(:run).and_return([])
+    allow(Henitai::Result).to receive(:new).and_return(result)
+    allow(Henitai::Reporter).to receive(:run_all)
+
+    runner.run
+
+    expect(ENV.fetch("HENITAI_REPORTS_DIR", nil)).to eq(original_reports_dir)
   end
 
   it "restricts Gate 1 to changed files when --since is given" do

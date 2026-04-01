@@ -6,6 +6,14 @@ module ::JSON
   def self.pretty_generate: (untyped) -> String
 end
 
+module ::Coverage
+  def self.peek_result: () -> untyped
+end
+
+module ::RSpec::Core::Formatters
+  def self.register: (untyped, *untyped) -> void
+end
+
 module Henitai
   VERSION: String
 
@@ -103,9 +111,24 @@ module Henitai
   end
 
   class CoverageFormatter
+    REPORT_DIR_ENV: String
+    REPORT_FILE_NAME: String
+
     def initialize: (untyped) -> void
     def example_finished: (untyped) -> void
     def dump_summary: (untyped) -> void
+
+    private
+
+    def report_path: () -> String
+    def reports_dir: () -> String
+    def current_snapshot: () -> untyped
+    def new_lines: (untyped) -> untyped
+    def new_line_numbers: (untyped, untyped) -> untyped
+    def previous_line_counts: (String) -> untyped
+    def line_counts_for: (untyped) -> Array[untyped]
+    def source_file?: (String) -> bool
+    def serializable_report: () -> untyped
   end
 
   class SamplingStrategy
@@ -331,6 +354,8 @@ module Henitai
     def normalize_path: (String) -> String
 
     private
+
+    def with_reports_dir: () { () -> untyped } -> untyped
   end
 
   class CLI

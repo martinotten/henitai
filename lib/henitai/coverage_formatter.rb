@@ -7,7 +7,8 @@ require "json"
 module Henitai
   # Collects per-test coverage data for static filtering heuristics.
   class CoverageFormatter
-    REPORT_PATH = "coverage/henitai_per_test.json"
+    REPORT_DIR_ENV = "HENITAI_REPORTS_DIR"
+    REPORT_FILE_NAME = "henitai_per_test.json"
 
     RSpec::Core::Formatters.register self, :example_finished, :dump_summary
 
@@ -34,11 +35,19 @@ module Henitai
     def dump_summary(_summary)
       return if @coverage_by_test.empty?
 
-      FileUtils.mkdir_p(File.dirname(REPORT_PATH))
-      File.write(REPORT_PATH, JSON.pretty_generate(serializable_report))
+      FileUtils.mkdir_p(File.dirname(report_path))
+      File.write(report_path, JSON.pretty_generate(serializable_report))
     end
 
     private
+
+    def report_path
+      File.join(reports_dir, REPORT_FILE_NAME)
+    end
+
+    def reports_dir
+      ENV.fetch(REPORT_DIR_ENV, "coverage")
+    end
 
     def current_snapshot
       Coverage.peek_result

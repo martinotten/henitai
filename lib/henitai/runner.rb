@@ -74,12 +74,14 @@ module Henitai
     end
 
     def execute_mutants(mutants)
-      execution_engine.run(
-        mutants,
-        integration,
-        config,
-        progress_reporter: progress_reporter
-      )
+      with_reports_dir do
+        execution_engine.run(
+          mutants,
+          integration,
+          config,
+          progress_reporter: progress_reporter
+        )
+      end
     end
 
     def report(result)

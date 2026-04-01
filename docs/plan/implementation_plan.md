@@ -568,7 +568,7 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 ### 5.15 Review Backlog
 
 - [x] **(P2)** `TASK: review-01` - CLI operator metadata safety: validate `OPERATOR_METADATA` against `Operator::FULL_SET`, add coverage for `henitai init <PATH>`, and keep `henitai operator` unknown-subcommand handling consistent
-- [ ] **(P2)** `TASK: review-02` - Coverage formatter contract: align `CoverageFormatter` RBS with the Ruby implementation, and route the per-test coverage report path through the configured reports directory
+- [x] **(P2)** `TASK: review-02` - Coverage formatter contract: align `CoverageFormatter` RBS with the Ruby implementation, and route the per-test coverage report path through the configured reports directory
 - [ ] **(P2)** `TASK: review-03` - Coverage formatter visibility: decide whether the formatter should warn when coverage is unavailable and whether formatter injection should be configurable
 - [ ] **(P3)** `TASK: review-04` - Test cleanup: remove one redundant RSpec integration example if it stops adding unique branch coverage
 

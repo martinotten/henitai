@@ -41,7 +41,19 @@ RSpec.describe Henitai::ExecutionEngine do
   end
 
   def build_config
-    Struct.new(:timeout).new(12.5)
+    Struct.new(:timeout, :reports_dir).new(12.5, "coverage")
+  end
+
+  def with_env(key, value)
+    original = ENV.fetch(key, nil)
+    ENV[key] = value
+    yield
+  ensure
+    if original.nil?
+      ENV.delete(key)
+    else
+      ENV[key] = original
+    end
   end
 
   it "runs only pending mutants" do
@@ -80,5 +92,33 @@ RSpec.describe Henitai::ExecutionEngine do
     described_class.new.run([pending, skipped], integration, build_config, progress_reporter: progress)
 
     expect(progress.calls).to eq([:killed])
+  end
+
+  it "exposes the configured reports dir to the integration run" do
+    pending = build_mutant(:pending, "Foo#bar")
+    integration = build_integration
+    config = Struct.new(:timeout, :reports_dir).new(12.5, "artifacts")
+    observed_reports_dir = nil
+
+    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
+      observed_reports_dir = ENV.fetch("HENITAI_REPORTS_DIR", nil)
+      mutant.status = :killed
+    end
+
+    described_class.new.run([pending], integration, config)
+
+    expect(observed_reports_dir).to eq("artifacts")
+  end
+
+  it "restores the reports dir environment variable after execution" do
+    pending = build_mutant(:pending, "Foo#bar")
+    integration = build_integration
+    config = Struct.new(:timeout, :reports_dir).new(12.5, "artifacts")
+
+    with_env("HENITAI_REPORTS_DIR", "preexisting") do
+      described_class.new.run([pending], integration, config)
+
+      expect(ENV.fetch("HENITAI_REPORTS_DIR", nil)).to eq("preexisting")
+    end
   end
 end
