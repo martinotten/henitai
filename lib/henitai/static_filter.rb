@@ -6,6 +6,7 @@ module Henitai
   # Applies static, pre-execution filtering to generated mutants.
   class StaticFilter
     DEFAULT_COVERAGE_REPORT_PATH = "coverage/.resultset.json"
+    DEFAULT_PER_TEST_COVERAGE_REPORT_PATH = "coverage/henitai_per_test.json"
 
     def apply(mutants, config)
       coverage_lines = coverage_lines_by_file
@@ -30,6 +31,15 @@ module Henitai
       end
 
       coverage.transform_values(&:uniq).transform_values(&:sort)
+    end
+
+    def test_lines_by_file(path = DEFAULT_PER_TEST_COVERAGE_REPORT_PATH)
+      return {} unless File.exist?(path)
+
+      parsed = JSON.parse(File.read(path))
+      return {} unless parsed.is_a?(Hash)
+
+      parsed.transform_values { |lines| Array(lines).grep(Integer).uniq.sort }
     end
 
     private

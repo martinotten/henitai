@@ -99,6 +99,31 @@ RSpec.describe Henitai::StaticFilter do
     expect(described_class.new.coverage_lines_by_file("/tmp/missing-resultset.json")).to eq({})
   end
 
+  it "builds a per-test coverage map from the formatter output" do
+    Dir.mktmpdir do |dir|
+      report_path = File.join(dir, "coverage", "henitai_per_test.json")
+      FileUtils.mkdir_p(File.dirname(report_path))
+      File.write(
+        report_path,
+        {
+          "spec/models/sample_spec.rb" => [5, 1, 5, 3],
+          "spec/models/other_spec.rb" => [2]
+        }.to_json
+      )
+
+      coverage = described_class.new.test_lines_by_file(report_path)
+
+      expect(coverage).to eq(
+        "spec/models/other_spec.rb" => [2],
+        "spec/models/sample_spec.rb" => [1, 3, 5]
+      )
+    end
+  end
+
+  it "returns an empty per-test coverage map when the report is missing" do
+    expect(described_class.new.test_lines_by_file("/tmp/missing-per-test.json")).to eq({})
+  end
+
   it "marks uncovered mutants as no_coverage" do
     Dir.mktmpdir do |dir|
       mutant = build_mutant("foo.bar")
