@@ -419,7 +419,7 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 
 - [x] **(P2)** `TASK: op-safe-01` - `SafeNavigation`: `&.` → `.` (remove nil guard)
 - [x] **(P2)** `TASK: op-range-01` - `RangeLiteral`: `..` ↔ `...` (inclusive ↔ exclusive)
-- [ ] **(P2)** `TASK: op-hash-01` - `HashLiteral`: empty hash replacement, symbol-key mutation
+- [x] **(P2)** `TASK: op-hash-01` - `HashLiteral`: empty hash replacement, symbol-key mutation
 - [ ] **(P2)** `TASK: op-pattern-01` - `PatternMatch`: remove `in` arm, mutate guard clause
 - [ ] **(P2)** `TASK: op-array-01` - `ArrayDeclaration`: `[]` → `[nil]`, remove elements
 - [ ] **(P2)** `TASK: op-block-01` - `BlockStatement`: `{ ... }` → `{}` (empty block)
