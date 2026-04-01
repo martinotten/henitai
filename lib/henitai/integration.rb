@@ -65,9 +65,8 @@ module Henitai
       private
 
       def run_in_child(mutant:, test_files:)
-        mutant.id
-        test_files.length
-        0
+        activate_mutant(mutant)
+        run_tests(test_files)
       end
 
       def wait_with_timeout(pid, timeout)
@@ -79,6 +78,15 @@ module Henitai
 
           sleep 0.01
         end
+      end
+
+      def activate_mutant(mutant)
+        mutant.id
+      end
+
+      def run_tests(test_files)
+        test_files.length
+        0
       end
     end
   end

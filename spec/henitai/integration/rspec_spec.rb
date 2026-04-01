@@ -39,4 +39,50 @@ RSpec.describe Henitai::Integration::Rspec do
       ENV["HENITAI_MUTANT_ID"] = original_env
     end
   end
+
+  it "activates the mutant before running child tests" do
+    mutant = Struct.new(:id).new("mutant-2")
+    integration = described_class.new
+    order = []
+    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+    begin
+      allow(Process).to receive(:exit) { |status| order << [:exit, status] }
+      allow(Process).to receive(:fork) do |&block|
+        order << :fork
+        block.call
+        9876
+      end
+      allow(integration).to receive(:activate_mutant) do |_mutant|
+        order << :activate
+        0
+      end
+      allow(integration).to receive(:run_tests) do |test_files|
+        order << [:tests, test_files]
+        0
+      end
+      allow(integration).to receive(:wait_with_timeout) do |pid, timeout|
+        order << [:wait, pid, timeout]
+        :survived
+      end
+
+      integration.run_mutant(
+        mutant:,
+        test_files: ["spec/bar_spec.rb"],
+        timeout: 2.0
+      )
+
+      expect(order).to eq(
+        [
+          :fork,
+          :activate,
+          [:tests, ["spec/bar_spec.rb"]],
+          [:exit, 0],
+          [:wait, 9876, 2.0]
+        ]
+      )
+    ensure
+      ENV["HENITAI_MUTANT_ID"] = original_env
+    end
+  end
 end
