@@ -101,7 +101,7 @@ module Henitai
       end
 
       def run_tests(test_files)
-        RSpec::Core::Runner.run(test_files) ? 0 : 1
+        RSpec::Core::Runner.run(test_files + rspec_options) ? 0 : 1
       end
 
       def pause(seconds)
@@ -110,6 +110,10 @@ module Henitai
 
       def classify_exit_status(status)
         status.success? ? :survived : :killed
+      end
+
+      def rspec_options
+        []
       end
 
       def spec_files

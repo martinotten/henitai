@@ -62,9 +62,9 @@ RSpec.describe Henitai::Integration::Rspec do
         order << :activate
         0
       end
-      allow(integration).to receive(:run_tests) do |test_files|
-        order << [:tests, test_files]
-        0
+      allow(RSpec::Core::Runner).to receive(:run) do |test_files|
+        order << [:rspec, test_files]
+        true
       end
       allow(integration).to receive(:wait_with_timeout) do |pid, timeout|
         order << [:wait, pid, timeout]
@@ -81,7 +81,7 @@ RSpec.describe Henitai::Integration::Rspec do
         [
           :fork,
           :activate,
-          [:tests, ["spec/bar_spec.rb"]],
+          [:rspec, ["spec/bar_spec.rb"]],
           [:exit, 0],
           [:wait, 9876, 2.0]
         ]
