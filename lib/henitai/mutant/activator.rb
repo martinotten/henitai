@@ -7,6 +7,17 @@ module Henitai
   class Mutant
     # Activates a mutant inside the forked child process.
     class Activator
+      SERIALIZER_METHODS = {
+        arg: :argument_parameter_fragment,
+        optarg: :optional_parameter_fragment,
+        restarg: :rest_parameter_fragment,
+        kwarg: :keyword_parameter_fragment,
+        kwoptarg: :optional_keyword_parameter_fragment,
+        kwrestarg: :keyword_rest_parameter_fragment,
+        blockarg: :block_parameter_fragment,
+        forward_arg: :forward_parameter_fragment
+      }.freeze
+
       def self.activate!(mutant)
         new.activate!(mutant)
       end
@@ -27,10 +38,11 @@ module Henitai
 
       def method_source(mutant)
         method_name = mutant.subject.method_name
+        parameters = parameter_source(mutant)
         replacement = body_source(mutant)
 
         <<~RUBY
-          define_method(:#{method_name}) do |*args, **kwargs, &block|
+          define_method(:#{method_name}) do |#{parameters}|
             #{replacement}
           end
         RUBY
@@ -90,6 +102,68 @@ module Henitai
         else
           subject_node
         end
+      end
+
+      def parameter_source(mutant)
+        args_node = method_arguments(mutant.subject.ast_node)
+        return "" unless args_node
+
+        args_node.children.filter_map do |argument|
+          parameter_fragment(argument)
+        end.join(", ")
+      end
+
+      def method_arguments(subject_node)
+        case subject_node&.type
+        when :def
+          subject_node.children[1]
+        when :defs
+          subject_node.children[2]
+        end
+      end
+
+      def parameter_fragment(argument)
+        method_name = SERIALIZER_METHODS[argument&.type]
+        return unless method_name
+
+        send(method_name, argument)
+      end
+
+      def argument_parameter_fragment(argument)
+        argument.children[0].to_s
+      end
+
+      def optional_parameter_fragment(argument)
+        "#{argument.children[0]} = #{Unparser.unparse(argument.children[1])}"
+      end
+
+      def rest_parameter_fragment(argument)
+        prefixed_parameter(argument, "*")
+      end
+
+      def keyword_parameter_fragment(argument)
+        "#{argument.children[0]}:"
+      end
+
+      def optional_keyword_parameter_fragment(argument)
+        "#{argument.children[0]}: #{Unparser.unparse(argument.children[1])}"
+      end
+
+      def keyword_rest_parameter_fragment(argument)
+        prefixed_parameter(argument, "**")
+      end
+
+      def block_parameter_fragment(argument)
+        "&#{argument.children[0]}"
+      end
+
+      def forward_parameter_fragment(_argument)
+        "..."
+      end
+
+      def prefixed_parameter(argument, prefix)
+        name = argument.children[0]
+        name ? "#{prefix}#{name}" : prefix
       end
 
       def load_target(subject)

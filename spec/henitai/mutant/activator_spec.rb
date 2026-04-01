@@ -143,6 +143,28 @@ RSpec.describe Henitai::Mutant::Activator do
     end
   end
 
+  it "preserves method parameters when activating a mutant" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, <<~RUBY)
+        class Gate4ArgumentSample
+          def value(x)
+            x + 1
+          end
+        end
+      RUBY
+
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      mutant = Henitai::MutantGenerator.new.generate(
+        [subject],
+        [Henitai::Operators::ArithmeticOperator.new]
+      ).first
+
+      described_class.activate!(mutant)
+
+      expect(Gate4ArgumentSample.new.value(3)).to eq(2)
+    end
+  end
+
   it "rejects wildcard subjects" do
     subject = Henitai::Subject.new(namespace: "Sample", method_name: nil)
     mutant = Struct.new(:subject, :mutated_node).new(

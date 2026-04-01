@@ -117,7 +117,7 @@ module Henitai
         status = RSpec::Core::Runner.run(test_files + rspec_options)
         return status if status.is_a?(Integer)
 
-        status ? 1 : 0
+        status ? 0 : 1
       end
 
       def pause(seconds)
