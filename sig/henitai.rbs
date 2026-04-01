@@ -186,7 +186,13 @@ module Henitai
 
       private
 
+      def report_lines: (Result) -> Array[String]
       def summary_lines: (Result) -> Array[String]
+      def survived_detail_lines: (Result) -> Array[String]
+      def survived_mutant_lines: (Mutant) -> Array[String]
+      def survived_mutant_header: (Mutant) -> String
+      def original_line: (Mutant) -> String
+      def mutated_line: (Mutant) -> String
       def score_line: (Result) -> String
       def format_row: (String, untyped) -> String
       def count_status: (Result, Symbol) -> Integer

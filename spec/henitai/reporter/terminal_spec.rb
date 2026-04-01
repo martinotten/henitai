@@ -1,10 +1,22 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "parser/current"
 
 RSpec.describe Henitai::Reporter::Terminal do
-  def build_mutant(status)
-    Struct.new(:status).new(status)
+  def build_mutant(status:, survived: false, attributes: {})
+    Struct.new(:status, :survived, :operator, :location, :original_node, :mutated_node) do
+      def survived?
+        survived
+      end
+    end.new(
+      status,
+      survived,
+      attributes[:operator],
+      attributes[:location],
+      attributes[:original_node],
+      attributes[:mutated_node]
+    )
   end
 
   def build_config
@@ -23,9 +35,66 @@ RSpec.describe Henitai::Reporter::Terminal do
     "#{label.ljust(12)} #{value}"
   end
 
+  def parse_node(source)
+    Parser::CurrentRuby.parse(source)
+  end
+
+  def survived_detail_mutant(file:, line:, operator:, original_source:, mutated_source:)
+    build_mutant(
+      status: :survived,
+      survived: true,
+      attributes: {
+        operator:,
+        location: { file:, start_line: line },
+        original_node: parse_node(original_source),
+        mutated_node: parse_node(mutated_source)
+      }
+    )
+  end
+
+  def first_survived_detail_mutant
+    survived_detail_mutant(
+      file: "lib/foo.rb",
+      line: 12,
+      operator: "ArithmeticOperator",
+      original_source: "1",
+      mutated_source: "2"
+    )
+  end
+
+  def second_survived_detail_mutant
+    survived_detail_mutant(
+      file: "lib/bar.rb",
+      line: 7,
+      operator: "BooleanLiteral",
+      original_source: "true",
+      mutated_source: "false"
+    )
+  end
+
+  def survived_detail_mutants
+    [first_survived_detail_mutant, second_survived_detail_mutant]
+  end
+
+  def survived_detail_scoring_summary
+    {
+      mutation_score: 75.0,
+      mutation_score_indicator: 12.5,
+      equivalence_uncertainty: "~10-15% of live mutants"
+    }
+  end
+
+  def build_survived_detail_result
+    build_result(
+      mutants: survived_detail_mutants,
+      scoring_summary: survived_detail_scoring_summary,
+      duration: 12.34
+    )
+  end
+
   it "prints progress glyphs for known statuses" do
     reporter = described_class.new(config: build_config)
-    mutants = %i[killed survived timeout ignored].map { |status| build_mutant(status) }
+    mutants = %i[killed survived timeout ignored].map { |status| build_mutant(status:) }
 
     expect { mutants.each { |mutant| reporter.progress(mutant) } }
       .to output("·STI").to_stdout
@@ -34,13 +103,13 @@ RSpec.describe Henitai::Reporter::Terminal do
   it "does not print a glyph for unknown statuses" do
     reporter = described_class.new(config: build_config)
 
-    expect { reporter.progress(build_mutant(:pending)) }.not_to output.to_stdout
+    expect { reporter.progress(build_mutant(status: :pending)) }.not_to output.to_stdout
   end
 
   it "prints a summary table with score, counts, and duration" do
     reporter = described_class.new(config: build_config)
     result = build_result(
-      mutants: %i[killed survived timeout no_coverage].map { |status| build_mutant(status) },
+      mutants: %i[killed survived timeout no_coverage].map { |status| build_mutant(status:) },
       scoring_summary: {
         mutation_score: 75.0,
         mutation_score_indicator: 12.5,
@@ -82,6 +151,31 @@ RSpec.describe Henitai::Reporter::Terminal do
       #{summary_row('Timeout', 0)}
       #{summary_row('No coverage', 0)}
       #{summary_row('Duration', '0.00s')}
+    OUTPUT
+
+    expect { reporter.report(result) }.to output(expected_output).to_stdout
+  end
+
+  it "prints survived mutant details after the summary block" do
+    reporter = described_class.new(config: build_config)
+    result = build_survived_detail_result
+
+    expected_output = <<~OUTPUT
+      Mutation testing summary
+      MS 75.00% | MSI 12.50% | Equivalence uncertainty ~10-15% of live mutants
+      #{summary_row('Killed', 0)}
+      #{summary_row('Survived', 2)}
+      #{summary_row('Timeout', 0)}
+      #{summary_row('No coverage', 0)}
+      #{summary_row('Duration', '12.34s')}
+
+      Survived mutants
+      lib/foo.rb:12 ArithmeticOperator
+      - 1
+      + 2
+      lib/bar.rb:7 BooleanLiteral
+      - true
+      + false
     OUTPUT
 
     expect { reporter.report(result) }.to output(expected_output).to_stdout

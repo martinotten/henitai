@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "unparser"
+
 module Henitai
   # Namespace for result reporters.
   #
@@ -53,7 +55,7 @@ module Henitai
       }.freeze
 
       def report(result)
-        puts summary_lines(result)
+        puts report_lines(result)
       end
 
       def progress(mutant)
@@ -66,6 +68,14 @@ module Henitai
 
       private
 
+      def report_lines(result)
+        lines = summary_lines(result)
+        detail_lines = survived_detail_lines(result)
+        return lines if detail_lines.empty?
+
+        lines + [""] + detail_lines
+      end
+
       def summary_lines(result)
         [
           "Mutation testing summary",
@@ -76,6 +86,38 @@ module Henitai
           format_row("No coverage", count_status(result, :no_coverage)),
           format_row("Duration", format_duration(result.duration))
         ]
+      end
+
+      def survived_detail_lines(result)
+        survivors = result.mutants.select(&:survived?)
+        return [] if survivors.empty?
+
+        ["Survived mutants"] + survivors.flat_map { |mutant| survived_mutant_lines(mutant) }
+      end
+
+      def survived_mutant_lines(mutant)
+        [
+          survived_mutant_header(mutant),
+          original_line(mutant),
+          mutated_line(mutant)
+        ]
+      end
+
+      def survived_mutant_header(mutant)
+        format(
+          "%<file>s:%<line>d %<operator>s",
+          file: mutant.location.fetch(:file),
+          line: mutant.location.fetch(:start_line),
+          operator: mutant.operator
+        )
+      end
+
+      def original_line(mutant)
+        format("- %s", Unparser.unparse(mutant.original_node))
+      end
+
+      def mutated_line(mutant)
+        format("+ %s", Unparser.unparse(mutant.mutated_node))
       end
 
       def score_line(result)
