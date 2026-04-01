@@ -123,7 +123,32 @@ module Henitai
     class Rspec < Base
       def select_tests: (Subject) -> Array[String]
       def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> Symbol
+
+      private
+
+      def run_in_child: (mutant: Mutant, test_files: Array[String]) -> Integer
+      def wait_with_timeout: (Integer, Float) -> Symbol
+      def handle_timeout: (Integer) -> Symbol
+      def run_tests: (Array[String]) -> Integer
+      def pause: (Float) -> void
+      def classify_exit_status: (untyped) -> Symbol
+      def rspec_options: () -> Array[String]
+      def spec_files: () -> Array[String]
+      def fallback_spec_files: (Subject) -> Array[String]
+      def selection_patterns: (Subject) -> Array[String]
+      def requires_source_file?: (String, String) -> bool
     end
+  end
+
+  class Mutant::Activator
+    def self.activate!: (untyped) -> void
+    def initialize: () -> void
+    def activate!: (untyped) -> void
+
+    private
+
+    def target_for: (Subject) -> untyped
+    def method_source: (Mutant) -> String
   end
 
   module Reporter
@@ -200,5 +225,22 @@ module Henitai
     def self.start: (Array[String]) -> untyped
     def initialize: (Array[String]) -> void
     def run: () -> untyped
+  end
+end
+
+module Process
+  def self.fork: () { () -> untyped } -> Integer
+  def self.exit: (Integer?) -> void
+  def self.wait: (Integer, ?Integer) -> Integer?
+  def self.last_status: () -> untyped
+  def self.kill: (Symbol, Integer) -> Integer
+  def self.clock_gettime: (Symbol) -> Float
+end
+
+module RSpec
+  module Core
+    class Runner
+      def self.run: (Array[String]) -> Integer
+    end
   end
 end

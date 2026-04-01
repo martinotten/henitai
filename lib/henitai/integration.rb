@@ -96,10 +96,6 @@ module Henitai
         :timeout
       end
 
-      def activate_mutant(mutant)
-        mutant.id
-      end
-
       def run_tests(test_files)
         RSpec::Core::Runner.run(test_files + rspec_options) ? 0 : 1
       end
