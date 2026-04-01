@@ -379,8 +379,8 @@ result = wait_with_timeout(pid, config.timeout)
 Each operator needs: implementation + spec + at least 3 documented example mutations.
 
 #### ArithmeticOperator
-- [ ] **(P1)** `TASK: op-arith-01` - Node types: `:send` with methods `+`, `-`, `*`, `/`, `**`, `%`
-- [ ] **(P1)** `TASK: op-arith-02` - Mutation matrix: `+→-`, `-→+`, `*→/`, `/→*`, `**→*`, `%→*` (symmetrical, no double-counting)
+- [x] **(P1)** `TASK: op-arith-01` - Node types: `:send` with methods `+`, `-`, `*`, `/`, `**`, `%`
+- [x] **(P1)** `TASK: op-arith-02` - Mutation matrix: `+→-`, `-→+`, `*→/`, `/→*`, `**→*`, `%→*` (symmetrical, no double-counting)
 - [ ] **(P1)** `TASK: op-arith-03` - Spec: arithmetic with constants, method calls, parentheses, and float literals
 
 #### EqualityOperator
