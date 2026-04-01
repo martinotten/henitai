@@ -41,7 +41,7 @@ RSpec.describe Henitai::ExecutionEngine do
   end
 
   def build_config
-    Struct.new(:timeout, :reports_dir).new(12.5, "coverage")
+    Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", 1)
   end
 
   def with_env(key, value)
@@ -92,6 +92,43 @@ RSpec.describe Henitai::ExecutionEngine do
     described_class.new.run([pending, skipped], integration, build_config, progress_reporter: progress)
 
     expect(progress.calls).to eq([:killed])
+  end
+
+  it "uses configured jobs when running mutants in parallel" do
+    first = build_mutant(:pending, "Foo#bar")
+    second = build_mutant(:pending, "Foo#baz")
+    integration = build_integration
+    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", 2)
+    thread_ids = []
+
+    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
+      thread_ids << Thread.current.object_id
+      sleep 0.01
+      mutant.status = :killed
+    end
+
+    described_class.new.run([first, second], integration, config)
+
+    expect(thread_ids.uniq.size).to be > 1
+  end
+
+  it "falls back to the CPU count when jobs are not configured" do
+    first = build_mutant(:pending, "Foo#bar")
+    second = build_mutant(:pending, "Foo#baz")
+    integration = build_integration
+    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", nil)
+    thread_ids = []
+
+    allow(Etc).to receive(:nprocessors).and_return(2)
+    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
+      thread_ids << Thread.current.object_id
+      sleep 0.01
+      mutant.status = :killed
+    end
+
+    described_class.new.run([first, second], integration, config)
+
+    expect(thread_ids.uniq.size).to be > 1
   end
 
   it "exposes the configured reports dir to the integration run" do

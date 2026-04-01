@@ -23,6 +23,9 @@ module Henitai
   class SubjectNotFound < StandardError
   end
 
+  class GitDiffError < StandardError
+  end
+
   module Operators
   end
 
@@ -209,6 +212,15 @@ module Henitai
 
   class ExecutionEngine
     def run: (Array[Mutant], untyped, untyped, ?progress_reporter: untyped) -> Array[Mutant]
+
+    private
+
+    def parallel_execution?: (untyped, Array[Mutant]) -> bool
+    def worker_count: (untyped) -> Integer
+    def run_linear: (Array[Mutant], untyped, untyped, untyped?) -> void
+    def run_parallel: (Array[Mutant], untyped, untyped, untyped?) -> void
+    def process_mutant: (Mutant, untyped, untyped, untyped?, ?untyped) -> void
+    def with_reports_dir: (untyped) { () -> untyped } -> untyped
   end
 
   class Mutant::Activator

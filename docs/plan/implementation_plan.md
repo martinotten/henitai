@@ -478,7 +478,7 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 - [x] **(P1)** `TASK: exec-05` - Kill-on-first-failure: RSpec formatter reports the first test failure -> child process calls `exit(1)` (no `--fail-fast` needed because it is its own process)
 - [x] **(P1)** `TASK: exec-06` - Exit-code evaluation in the parent process: 0 -> survived, != 0 -> killed, SIGTERM/SIGKILL -> timeout
 - [x] **(P1)** `TASK: exec-07` - `Henitai::Mutant::Activator` class: activates the fork-inherited `Mutant` record in the child and patches target class/method via `Module#define_method`
-- [ ] **(P2)** `TASK: exec-08` - Parallel execution: worker pool (`Parallel` gem or native `Ractor`), number via `config.jobs` or CPU count
+- [x] **(P2)** `TASK: exec-08` - Parallel execution: worker pool (`Parallel` gem or native `Ractor`), number via `config.jobs` or CPU count
 - [ ] **(P2)** `TASK: exec-09` - Test prioritization: `TestPrioritizer#sort(tests, mutant, history)` - adaptive strategy (tests that have already killed other mutants first)
 - [ ] **(P2)** `TASK: exec-10` - Flaky-test mitigation: retry 3 times for a survived mutant, warn when > 5% unknown
 
@@ -624,10 +624,10 @@ Each operator must document:
 These items came out of the latest code review and are tracked separately from
 the numbered implementation tasks above.
 
-- [ ] **(P2)** `TODO: cli-metadata-01` - Validate `OPERATOR_METADATA` against the registered operator sets, or provide a fallback description for unknown operators so `operator list` cannot fail with a `KeyError` when the registry grows.
-- [ ] **(P2)** `TODO: cli-metadata-02` - Harmonize CLI error handling for `init` and unknown subcommands, and add specs for `henitai init custom-path.yml` plus `henitai operator bogus`.
-- [ ] **(P2)** `TODO: coverage-formatter-01` - Fix `CoverageFormatter` RBS declarations so they match the actual formatter hooks (`example_finished` / `dump_summary`).
-- [ ] **(P2)** `TODO: coverage-formatter-02` - Route the per-test coverage report path through configuration instead of hardcoding `coverage/henitai_per_test.json`.
+- [x] **(P2)** `TODO: cli-metadata-01` - Validate `OPERATOR_METADATA` against the registered operator sets, or provide a fallback description for unknown operators so `operator list` cannot fail with a `KeyError` when the registry grows.
+- [x] **(P2)** `TODO: cli-metadata-02` - Harmonize CLI error handling for `init` and unknown subcommands, and add specs for `henitai init custom-path.yml` plus `henitai operator bogus`.
+- [x] **(P2)** `TODO: coverage-formatter-01` - Fix `CoverageFormatter` RBS declarations so they match the actual formatter hooks (`example_finished` / `dump_summary`).
+- [x] **(P2)** `TODO: coverage-formatter-02` - Route the per-test coverage report path through configuration instead of hardcoding `coverage/henitai_per_test.json`.
 - [ ] **(P2)** `TODO: coverage-formatter-03` - Decide whether per-test coverage formatter injection should be configurable and whether a missing `Coverage` runtime should warn once instead of silently no-oping.
 - [ ] **(P3)** `TODO: coverage-formatter-04` - Remove the duplicate `coverage_formatter` integration assertions after the behavior is pinned by a single higher-level spec.
 
