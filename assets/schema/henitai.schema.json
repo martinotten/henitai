@@ -50,6 +50,7 @@
         "sampling": {
           "type": "object",
           "additionalProperties": false,
+          "required": ["ratio", "strategy"],
           "properties": {
             "ratio": {
               "type": "number",

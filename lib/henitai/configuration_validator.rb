@@ -192,6 +192,7 @@ module Henitai
 
         ensure_hash!(value, "mutation.sampling")
         warn_unknown_keys(value, VALID_SAMPLING_KEYS, "mutation.sampling")
+        validate_sampling_completeness(value)
         validate_sampling_ratio(value[:ratio])
         validate_sampling_strategy(value[:strategy])
       end
@@ -214,6 +215,14 @@ module Henitai
 
         configuration_error(
           "Invalid configuration value for mutation.sampling.strategy: expected stratified, got #{value.inspect}"
+        )
+      end
+
+      def validate_sampling_completeness(value)
+        return if value.key?(:ratio) && value.key?(:strategy)
+
+        configuration_error(
+          "Invalid configuration value for mutation.sampling: expected both ratio and strategy"
         )
       end
 

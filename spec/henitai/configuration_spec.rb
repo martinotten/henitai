@@ -237,6 +237,19 @@ RSpec.describe Henitai::Configuration do
     )
   end
 
+  it "aborts on incomplete sampling settings" do
+    expect do
+      load_configuration(<<~YAML)
+        mutation:
+          sampling:
+            strategy: stratified
+      YAML
+    end.to raise_error(
+      Henitai::ConfigurationError,
+      /mutation\.sampling/
+    )
+  end
+
   it "loads dashboard settings and array overrides" do
     config = load_configuration_with_overrides(
       <<~YAML,

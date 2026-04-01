@@ -35,6 +35,18 @@ RSpec.describe "Configuration schema" do
     )
   end
 
+  it "documents sampling as a complete configuration block" do
+    sampling = properties.fetch("mutation").fetch("properties").fetch("sampling")
+
+    expect(sampling.fetch("required")).to eq(%w[ratio strategy])
+  end
+
+  it "documents the sampling keys" do
+    sampling = properties.fetch("mutation").fetch("properties").fetch("sampling")
+
+    expect(sampling.fetch("properties").keys).to eq(%w[ratio strategy])
+  end
+
   it "documents the coverage criteria keys" do
     expect(properties.fetch("coverage_criteria").fetch("properties").keys).to eq(
       %w[test_result timeout process_abort]
