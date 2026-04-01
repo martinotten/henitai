@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "minitest"
 require "rspec/core"
 
 module Henitai
@@ -214,6 +215,23 @@ module Henitai
         Process.wait(pid)
       rescue Errno::ECHILD, Errno::ESRCH
         nil
+      end
+    end
+
+    # Minitest integration adapter.
+    class Minitest < Rspec
+      private
+
+      def run_tests(test_files)
+        test_files.each { |file| require File.expand_path(file) }
+        status = ::Minitest.run([])
+        return status if status.is_a?(Integer)
+
+        status == true ? 0 : 1
+      end
+
+      def spec_files
+        Dir.glob("test/**/*_test.rb") + Dir.glob("test/**/*_spec.rb")
       end
     end
   end

@@ -194,6 +194,13 @@ module Henitai
       def expand_candidates: (String, String) -> Array[String]
       def reap_child: (Integer) -> void
     end
+
+    class Minitest < Rspec
+      private
+
+      def run_tests: (Array[String]) -> Integer
+      def spec_files: () -> Array[String]
+    end
   end
 
   class SubjectResolver
@@ -314,6 +321,12 @@ module Henitai
 
     class Html < Base
       def report: (Result) -> void
+
+      private
+
+      def report_path: () -> String
+      def html_document: (Result) -> String
+      def escaped_report_json: (Result) -> String
     end
 
     class Dashboard < Base

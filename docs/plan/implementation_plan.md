@@ -492,7 +492,7 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 - [x] **(P1)** `TASK: rspec-04` - Ensure activation order: `exec-03` (`Activator.activate!`) is called by `exec-02` (fork) **before** `rspec-03` (`RSpec::Core::Runner.run`) starts. A spec test verifies that the `define_method` patch is active when the first test runs.
 - [x] **(P1)** `TASK: rspec-05` - Integration spec: unit tests for prefix matching logic (no real process needed)
 - [x] **(P2)** `TASK: rspec-06` - Per-test coverage: add `--require henitai/coverage_formatter` to RSpec options, produce `coverage/henitai_per_test.json`
-- [ ] **(P3)** `TASK: minitest-01` - Minitest integration analogous to the RSpec integration
+- [x] **(P3)** `TASK: minitest-01` - Minitest integration analogous to the RSpec integration
 
 ---
 
@@ -510,9 +510,9 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 - [x] **(P1)** `TASK: rep-json-03` - Schema validation in specs: validate against JSON Schema v3.5.1 (via `json_schemer` gem)
 
 #### HTML Reporter
-- [ ] **(P2)** `TASK: rep-html-01` - HTML template: include `mutation-testing-elements` via CDN (`unpkg.com/mutation-testing-elements`)
-- [ ] **(P2)** `TASK: rep-html-02` - Self-contained HTML: embed the JSON report inline as a `<mutation-test-report-app>` web-component attribute
-- [ ] **(P2)** `TASK: rep-html-03` - Output: `reports/mutation-report.html`
+- [x] **(P2)** `TASK: rep-html-01` - HTML template: include `mutation-testing-elements` via CDN (`unpkg.com/mutation-testing-elements`)
+- [x] **(P2)** `TASK: rep-html-02` - Self-contained HTML: embed the JSON report inline as a `<mutation-test-report-app>` web-component attribute
+- [x] **(P2)** `TASK: rep-html-03` - Output: `reports/mutation-report.html`
 
 #### Dashboard Reporter
 - [ ] **(P2)** `TASK: rep-dash-01` - REST API client: `PUT /api/reports/{project}/{version}` with bearer auth (`STRYKER_DASHBOARD_API_KEY`)
