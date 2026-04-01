@@ -480,7 +480,7 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 - [x] **(P1)** `TASK: exec-07` - `Henitai::Mutant::Activator` class: activates the fork-inherited `Mutant` record in the child and patches target class/method via `Module#define_method`
 - [x] **(P2)** `TASK: exec-08` - Parallel execution: worker pool (`Parallel` gem or native `Ractor`), number via `config.jobs` or CPU count
 - [x] **(P2)** `TASK: exec-09` - Test prioritization: `TestPrioritizer#sort(tests, mutant, history)` - adaptive strategy (tests that have already killed other mutants first)
-- [ ] **(P2)** `TASK: exec-10` - Flaky-test mitigation: retry 3 times for a survived mutant, warn when > 5% unknown
+- [x] **(P2)** `TASK: exec-10` - Flaky-test mitigation: retry 3 times for a survived mutant, warn when > 5% unknown
 
 ---
 
