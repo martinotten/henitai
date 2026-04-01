@@ -7,6 +7,14 @@ module Henitai
   class SubjectNotFound < StandardError
   end
 
+module FileUtils
+  def self.mkdir_p: (String) -> Array[String]
+end
+
+module JSON
+  def self.pretty_generate: (untyped) -> String
+end
+
   module Operators
   end
 
