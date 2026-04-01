@@ -33,16 +33,15 @@ RSpec.describe Henitai::Configuration do
       operators: config.operators,
       jobs: config.jobs,
       timeout: config.timeout,
+      max_mutants_per_line: config.max_mutants_per_line,
+      sampling: config.sampling,
       coverage_criteria: config.coverage_criteria,
       thresholds: config.thresholds
     }
   end
 
   def expected_snapshot
-    {
-      integration: "rspec",
-      operators: :light,
-      jobs: nil,
+    shared_snapshot.merge(
       timeout: 12.5,
       coverage_criteria: {
         test_result: false,
@@ -53,11 +52,11 @@ RSpec.describe Henitai::Configuration do
         high: 90,
         low: 60
       }
-    }
+    )
   end
 
   def overridden_snapshot
-    {
+    shared_snapshot.merge(
       integration: "minitest",
       operators: :full,
       jobs: 4,
@@ -71,6 +70,16 @@ RSpec.describe Henitai::Configuration do
         high: 95,
         low: 75
       }
+    )
+  end
+
+  def shared_snapshot
+    {
+      integration: "rspec",
+      operators: :light,
+      jobs: nil,
+      max_mutants_per_line: 1,
+      sampling: nil
     }
   end
 
@@ -128,6 +137,8 @@ RSpec.describe Henitai::Configuration do
       operators: :light,
       jobs: nil,
       timeout: 10.0,
+      max_mutants_per_line: 1,
+      sampling: nil,
       coverage_criteria: {
         test_result: true,
         timeout: false,
@@ -146,6 +157,8 @@ RSpec.describe Henitai::Configuration do
       operators: :light,
       jobs: nil,
       timeout: 10.0,
+      max_mutants_per_line: 1,
+      sampling: nil,
       coverage_criteria: {
         test_result: true,
         timeout: false,
@@ -198,6 +211,32 @@ RSpec.describe Henitai::Configuration do
     )
   end
 
+  it "aborts on invalid max mutants per line values" do
+    expect do
+      load_configuration(<<~YAML)
+        mutation:
+          max_mutants_per_line: 0
+      YAML
+    end.to raise_error(
+      Henitai::ConfigurationError,
+      /mutation\.max_mutants_per_line/
+    )
+  end
+
+  it "aborts on invalid sampling settings" do
+    expect do
+      load_configuration(<<~YAML)
+        mutation:
+          sampling:
+            ratio: 1.5
+            strategy: random
+      YAML
+    end.to raise_error(
+      Henitai::ConfigurationError,
+      /mutation\.sampling/
+    )
+  end
+
   it "loads dashboard settings and array overrides" do
     config = load_configuration_with_overrides(
       <<~YAML,
@@ -233,6 +272,29 @@ RSpec.describe Henitai::Configuration do
       dashboard: {
         project: "example/repo",
         base_url: "https://dashboard.example.test"
+      }
+    )
+  end
+
+  it "loads sampling and max mutants per line settings" do
+    config = load_configuration(<<~YAML)
+      mutation:
+        max_mutants_per_line: 2
+        sampling:
+          ratio: 0.25
+          strategy: stratified
+    YAML
+
+    expect(
+      {
+        max_mutants_per_line: config.max_mutants_per_line,
+        sampling: config.sampling
+      }
+    ).to eq(
+      max_mutants_per_line: 2,
+      sampling: {
+        ratio: 0.25,
+        strategy: "stratified"
       }
     )
   end

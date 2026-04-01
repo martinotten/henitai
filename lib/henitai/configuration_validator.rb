@@ -14,7 +14,8 @@ module Henitai
       dashboard
       jobs
     ].freeze
-    VALID_MUTATION_KEYS = %i[operators timeout ignore_patterns].freeze
+    VALID_MUTATION_KEYS = %i[operators timeout ignore_patterns max_mutants_per_line sampling].freeze
+    VALID_SAMPLING_KEYS = %i[ratio strategy].freeze
     VALID_COVERAGE_CRITERIA_KEYS = %i[test_result timeout process_abort].freeze
     VALID_THRESHOLDS_KEYS = %i[high low].freeze
     VALID_DASHBOARD_KEYS = %i[project base_url].freeze
@@ -88,8 +89,10 @@ module Henitai
         warn_unknown_keys(value, VALID_MUTATION_KEYS, "mutation")
         validate_operator(value[:operators])
         validate_timeout(value[:timeout])
+        validate_max_mutants_per_line(value[:max_mutants_per_line])
         validate_string_array(value[:ignore_patterns], "mutation.ignore_patterns")
         validate_ignore_patterns(value[:ignore_patterns])
+        validate_sampling(value[:sampling])
       end
 
       def validate_coverage_criteria(raw)
@@ -173,6 +176,45 @@ module Henitai
             "invalid regular expression #{pattern.inspect}: #{e.message}"
           )
         end
+      end
+
+      def validate_max_mutants_per_line(value)
+        return if value.nil?
+        return if value.is_a?(Integer) && value >= 1
+
+        configuration_error(
+          "Invalid configuration value for mutation.max_mutants_per_line: expected Integer >= 1, got #{value.inspect}"
+        )
+      end
+
+      def validate_sampling(value)
+        return if value.nil?
+
+        ensure_hash!(value, "mutation.sampling")
+        warn_unknown_keys(value, VALID_SAMPLING_KEYS, "mutation.sampling")
+        validate_sampling_ratio(value[:ratio])
+        validate_sampling_strategy(value[:strategy])
+      end
+
+      def validate_sampling_ratio(value)
+        return if value.nil?
+        return if value.is_a?(Numeric) && value >= 0.0 && value <= 1.0
+
+        configuration_error(
+          "Invalid configuration value for mutation.sampling.ratio: " \
+          "expected Numeric between 0 and 1, got #{value.inspect}"
+        )
+      end
+
+      def validate_sampling_strategy(value)
+        return if value.nil?
+
+        strategy = value.respond_to?(:to_sym) ? value.to_sym : nil
+        return if strategy == :stratified
+
+        configuration_error(
+          "Invalid configuration value for mutation.sampling.strategy: expected stratified, got #{value.inspect}"
+        )
       end
 
       def warn_unknown_keys(raw, allowed_keys, path = nil)

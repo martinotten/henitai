@@ -8,10 +8,21 @@ module Henitai
   class MutantGenerator
     def generate(subjects, operators, config: nil)
       normalized_operators = normalize_operators(operators)
+      arid_node_filter = AridNodeFilter.new
+      syntax_validator = SyntaxValidator.new
+      sampling_strategy = SamplingStrategy.new
 
-      Array(subjects).flat_map do |subject|
-        generate_for_subject(subject, normalized_operators, config:)
+      mutants = Array(subjects).flat_map do |subject|
+        generate_for_subject(
+          subject,
+          normalized_operators,
+          config:,
+          arid_node_filter:,
+          syntax_validator:
+        )
       end
+
+      sample_mutants(mutants, config:, sampling_strategy:)
     end
 
     private
@@ -22,24 +33,33 @@ module Henitai
       end
     end
 
-    def generate_for_subject(subject, operators, config:)
+    def generate_for_subject(subject, operators, config:, arid_node_filter:, syntax_validator:)
       return [] unless subject.source_file && subject.source_range
 
-      visitor = SubjectVisitor.new(subject, operators, config:)
+      visitor = SubjectVisitor.new(
+        subject,
+        operators,
+        config:,
+        arid_node_filter:,
+        syntax_validator:
+      )
       visitor.process(SourceParser.parse_file(subject.source_file))
-      prune_mutants_per_line(visitor.mutants)
+      prune_mutants_per_line(
+        visitor.mutants,
+        max_mutants_per_line: config&.max_mutants_per_line || 1
+      )
     end
 
     # Depth-first pre-order AST visitor for a single subject.
     class SubjectVisitor
       attr_reader :mutants
 
-      def initialize(subject, operators, config:)
+      def initialize(subject, operators, config:, arid_node_filter:, syntax_validator:)
         @subject = subject
         @config = config
         @mutants = []
-        @arid_node_filter = AridNodeFilter.new
-        @syntax_validator = SyntaxValidator.new
+        @arid_node_filter = arid_node_filter
+        @syntax_validator = syntax_validator
         @operators_by_node_type = operators.each_with_object(
           Hash.new { |hash, key| hash[key] = [] }
         ) do |operator, map|
@@ -87,14 +107,28 @@ module Henitai
       end
     end
 
-    def prune_mutants_per_line(mutants)
-      mutants.each_with_object({}) do |mutant, selected|
+    def prune_mutants_per_line(mutants, max_mutants_per_line:)
+      grouped = mutants.each_with_object({}) do |mutant, selected|
         key = line_key(mutant)
-        current = selected[key]
-        if current.nil? || (mutant_priority_key(mutant) <=> mutant_priority_key(current)).negative?
-          selected[key] = mutant
-        end
-      end.values
+        selected[key] ||= []
+        selected[key] << mutant
+      end
+
+      grouped.values.flat_map do |mutants_for_line|
+        mutants_for_line.sort_by { |mutant| mutant_priority_key(mutant) }.take(max_mutants_per_line)
+      end
+    end
+
+    def sample_mutants(mutants, config:, sampling_strategy:)
+      sampling = config&.sampling
+      return mutants unless sampling
+      return mutants if sampling[:ratio].nil?
+
+      sampling_strategy.sample(
+        mutants,
+        ratio: sampling[:ratio],
+        strategy: sampling[:strategy] || :stratified
+      )
     end
 
     def line_key(mutant)
@@ -117,6 +151,7 @@ module Henitai
     end
 
     def operator_priority_map
+      # The constant order defines signal priority for per-line pruning.
       @operator_priority_map ||= Operator::FULL_SET.each_with_index.to_h
     end
   end

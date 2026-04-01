@@ -4,6 +4,8 @@ module Henitai
   # Samples mutants in a strategy-aware, deterministic way.
   class SamplingStrategy
     def sample(mutants, ratio:, strategy: :stratified)
+      strategy = strategy.to_sym if strategy.respond_to?(:to_sym)
+
       case strategy
       when :stratified
         stratified_sample(Array(mutants), ratio:)

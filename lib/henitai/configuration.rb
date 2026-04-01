@@ -13,6 +13,7 @@ module Henitai
     DEFAULT_TIMEOUT   = 10.0
     DEFAULT_OPERATORS = :light
     DEFAULT_JOBS      = nil # auto-detect
+    DEFAULT_MAX_MUTANTS_PER_LINE = 1
     DEFAULT_COVERAGE_CRITERIA = {
       test_result: true,
       timeout: false,
@@ -22,8 +23,8 @@ module Henitai
     CONFIG_FILE        = ".henitai.yml"
 
     attr_reader :integration, :includes, :operators, :timeout,
-                :ignore_patterns, :jobs, :coverage_criteria,
-                :thresholds, :reporters, :dashboard
+                :ignore_patterns, :max_mutants_per_line, :sampling, :jobs,
+                :coverage_criteria, :thresholds, :reporters, :dashboard
 
     # @param path [String] path to .henitai.yml (default: project root)
     def self.load(path: CONFIG_FILE, overrides: {})
@@ -79,6 +80,8 @@ module Henitai
       @operators = (mutation[:operators] || DEFAULT_OPERATORS).to_sym
       @timeout = mutation[:timeout] || DEFAULT_TIMEOUT
       @ignore_patterns = mutation[:ignore_patterns] || []
+      @max_mutants_per_line = mutation[:max_mutants_per_line] || DEFAULT_MAX_MUTANTS_PER_LINE
+      @sampling = mutation[:sampling]
     end
 
     def apply_analysis_defaults(raw)

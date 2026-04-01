@@ -65,6 +65,10 @@ includes:
 mutation:
   operators: light   # light | full
   timeout: 10.0
+  max_mutants_per_line: 1
+  sampling:
+    ratio: 0.05
+    strategy: stratified
 
 thresholds:
   high: 80

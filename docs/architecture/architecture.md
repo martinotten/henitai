@@ -196,6 +196,7 @@ Representative configuration contract:
 mutation:
   operators: light
   timeout: 10
+  max_mutants_per_line: 1
   sampling:
     ratio: 0.05
     strategy: stratified

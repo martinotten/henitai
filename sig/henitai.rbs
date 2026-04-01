@@ -14,6 +14,7 @@ module Henitai
     DEFAULT_TIMEOUT: Float
     DEFAULT_OPERATORS: Symbol
     DEFAULT_JOBS: untyped
+    DEFAULT_MAX_MUTANTS_PER_LINE: Integer
     DEFAULT_COVERAGE_CRITERIA: Hash[Symbol, bool]
     DEFAULT_THRESHOLDS: Hash[Symbol, Integer]
     CONFIG_FILE: String
@@ -23,6 +24,8 @@ module Henitai
     attr_reader operators: Symbol
     attr_reader timeout: Float
     attr_reader ignore_patterns: Array[untyped]
+    attr_reader max_mutants_per_line: Integer
+    attr_reader sampling: untyped
     attr_reader jobs: untyped
     attr_reader coverage_criteria: Hash[Symbol, untyped]
     attr_reader thresholds: Hash[Symbol, Integer]
@@ -82,6 +85,16 @@ module Henitai
     def ignored?: () -> bool
     def equivalent?: () -> bool
     def to_s: () -> String
+  end
+
+  class SyntaxValidator
+    def initialize: () -> void
+    def valid?: (Mutant) -> bool
+  end
+
+  class SamplingStrategy
+    def initialize: () -> void
+    def sample: (Array[Mutant], ratio: Float, ?strategy: Symbol) -> Array[Mutant]
   end
 
   class Operator

@@ -37,10 +37,28 @@
         "timeout": {
           "type": "number"
         },
+        "max_mutants_per_line": {
+          "type": "integer",
+          "minimum": 1
+        },
         "ignore_patterns": {
           "type": "array",
           "items": {
             "type": "string"
+          }
+        },
+        "sampling": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ratio": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "strategy": {
+              "enum": ["stratified"]
+            }
           }
         }
       }

@@ -12,6 +12,12 @@ RSpec.describe Henitai::MutantGenerator do
     path
   end
 
+  def write_configuration(dir, yaml)
+    path = File.join(dir, ".henitai.yml")
+    File.write(path, yaml)
+    Henitai::Configuration.load(path:)
+  end
+
   def source_with_two_subjects
     <<~RUBY
       class Sample
@@ -227,6 +233,69 @@ RSpec.describe Henitai::MutantGenerator do
       mutants = described_class.new.generate([subject], operators)
 
       expect(mutants.map(&:description)).to eq(["replaced + with -"])
+    end
+  end
+
+  it "honors the configured max mutants per line" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", <<~RUBY)
+        class Sample
+          def announce
+            1 + 2 - 3
+          end
+        end
+      RUBY
+
+      config = write_configuration(
+        dir,
+        <<~YAML
+          mutation:
+            max_mutants_per_line: 2
+        YAML
+      )
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+
+      mutants = described_class.new.generate(
+        [subject],
+        [Henitai::Operators::ArithmeticOperator.new],
+        config:
+      )
+
+      expect(mutants.map(&:description)).to contain_exactly(
+        "replaced + with -",
+        "replaced - with +"
+      )
+    end
+  end
+
+  it "applies stratified sampling when configured" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", <<~RUBY)
+        class Sample
+          def announce
+            1 + 2
+          end
+        end
+      RUBY
+
+      config = write_configuration(
+        dir,
+        <<~YAML
+          mutation:
+            sampling:
+              ratio: 0.0
+              strategy: stratified
+        YAML
+      )
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+
+      mutants = described_class.new.generate(
+        [subject],
+        [Henitai::Operators::ArithmeticOperator.new],
+        config:
+      )
+
+      expect(mutants).to eq([])
     end
   end
 end
