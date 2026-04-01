@@ -26,6 +26,7 @@ module Henitai
   autoload :GitDiffError, "henitai/git_diff_analyzer"
   autoload :MutantGenerator, "henitai/mutant_generator"
   autoload :AridNodeFilter, "henitai/arid_node_filter"
+  autoload :StaticFilter, "henitai/static_filter"
   autoload :StillbornFilter, "henitai/stillborn_filter"
   autoload :SyntaxValidator, "henitai/syntax_validator"
   autoload :SamplingStrategy, "henitai/sampling_strategy"

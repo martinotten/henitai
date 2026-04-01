@@ -441,7 +441,7 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 
 ### 5.8 Static Filter (Gate 3)
 
-- [ ] **(P1)** `TASK: filter-01` - `StaticFilter#apply(mutants, config)`: mark mutants as `:ignored` when the location matches `ignore_patterns`
+- [x] **(P1)** `TASK: filter-01` - `StaticFilter#apply(mutants, config)`: mark mutants as `:ignored` when the location matches `ignore_patterns`
 - [ ] **(P1)** `TASK: filter-02` - Coverage integration: read the `SimpleCov` JSON coverage report (`coverage/.resultset.json`), build a `file → [line_numbers]` map
 - [ ] **(P1)** `TASK: filter-03` - No-coverage marking: mutants whose `start_line` is not in the coverage map receive status `:no_coverage`
 - [ ] **(P2)** `TASK: filter-04` - Per-test coverage: `SimpleCov::RSpec` integration for a granular `test_file → covered_lines` map (40-60% speedup according to research)
