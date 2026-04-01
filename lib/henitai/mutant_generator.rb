@@ -27,7 +27,7 @@ module Henitai
 
       visitor = SubjectVisitor.new(subject, operators, config:)
       visitor.process(SourceParser.parse_file(subject.source_file))
-      visitor.mutants
+      prune_mutants_per_line(visitor.mutants)
     end
 
     # Depth-first pre-order AST visitor for a single subject.
@@ -85,6 +85,39 @@ module Henitai
       def ranges_overlap?(left, right)
         left.begin <= right.end && right.begin <= left.end
       end
+    end
+
+    def prune_mutants_per_line(mutants)
+      mutants.each_with_object({}) do |mutant, selected|
+        key = line_key(mutant)
+        current = selected[key]
+        if current.nil? || (mutant_priority_key(mutant) <=> mutant_priority_key(current)).negative?
+          selected[key] = mutant
+        end
+      end.values
+    end
+
+    def line_key(mutant)
+      [
+        mutant.location[:file],
+        mutant.location[:start_line]
+      ]
+    end
+
+    def mutant_priority_key(mutant)
+      [
+        operator_priority(mutant.operator),
+        mutant.location[:start_col] || 0,
+        mutant.description
+      ]
+    end
+
+    def operator_priority(operator_name)
+      operator_priority_map.fetch(operator_name, operator_priority_map.length)
+    end
+
+    def operator_priority_map
+      @operator_priority_map ||= Operator::FULL_SET.each_with_index.to_h
     end
   end
 end

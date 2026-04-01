@@ -207,4 +207,26 @@ RSpec.describe Henitai::MutantGenerator do
       expect(mutants.map(&:description)).to eq(["valid send"])
     end
   end
+
+  it "keeps the highest priority mutant on a line" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", <<~RUBY)
+        class Sample
+          def announce
+            1 + 2 == 3
+          end
+        end
+      RUBY
+
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      operators = [
+        Henitai::Operators::EqualityOperator.new,
+        Henitai::Operators::ArithmeticOperator.new
+      ]
+
+      mutants = described_class.new.generate([subject], operators)
+
+      expect(mutants.map(&:description)).to eq(["replaced + with -"])
+    end
+  end
 end

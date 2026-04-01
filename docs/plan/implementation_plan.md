@@ -434,7 +434,7 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 - [x] **(P1)** `TASK: gen-02` - AST traversal strategy: `Parser::AST::Processor` subclasses (depth-first, pre-order), operate only within the subject line range
 - [x] **(P1)** `TASK: gen-03` - Arid-node integration: check whether the node is suppressed before applying an operator
 - [x] **(P1)** `TASK: gen-04` - Stillborn filter integration: after generation call `SyntaxValidator#valid?(mutant)`, discard invalid mutants
-- [ ] **(P1)** `TASK: gen-05` - `max_mutants_per_line: 1` constraint (Google recommendation): when multiple mutants exist on the same line, keep only the one with the highest signal priority
+- [x] **(P1)** `TASK: gen-05` - `max_mutants_per_line: 1` constraint (Google recommendation): when multiple mutants exist on the same line, keep only the one with the highest signal priority
 - [ ] **(P2)** `TASK: gen-06` - Stratified sampling: `SamplingStrategy#sample(mutants, ratio:, strategy: :stratified)` - sample by method, not globally
 
 ---
