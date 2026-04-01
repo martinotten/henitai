@@ -11,14 +11,6 @@ RSpec.describe Henitai::Operators::ConditionalExpression do
     Henitai::Subject.new(namespace: "Example", method_name: "conditional")
   end
 
-  def find_nodes(node, type, results = [])
-    return results unless node.respond_to?(:type)
-
-    results << node if node.type == type
-    node.children.each { |child| find_nodes(child, type, results) }
-    results
-  end
-
   def mutate(source)
     node = %i[if case while until].flat_map do |type|
       find_nodes(parse(source), type)
@@ -105,7 +97,7 @@ RSpec.describe Henitai::Operators::ConditionalExpression do
       "replaced condition with true",
       "replaced condition with false",
       "negated condition",
-      "kept when branch",
+      "kept when branch 1",
       "kept else branch"
     )
   end
@@ -126,8 +118,8 @@ RSpec.describe Henitai::Operators::ConditionalExpression do
       "replaced condition with true",
       "replaced condition with false",
       "negated condition",
-      "kept when branch",
-      "kept when branch",
+      "kept when branch 1",
+      "kept when branch 2",
       "kept else branch"
     )
   end

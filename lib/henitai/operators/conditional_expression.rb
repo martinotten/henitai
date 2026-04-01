@@ -2,7 +2,6 @@
 
 require "parser/current"
 
-# rubocop:disable Lint/BooleanSymbol, Style/MultilineIfModifier, Layout/MultilineOperationIndentation, Layout/HashAlignment
 module Henitai
   module Operators
     # Rewrites conditional expressions and loop guards.
@@ -32,11 +31,9 @@ module Henitai
         condition, then_branch, else_branch = node.children
         mutations = condition_variants(node, subject:, condition:)
 
-        mutations.concat(removed_else_branch(node, subject:, then_branch:)) if then_branch &&
-          else_branch
-        mutations.concat(
-          removed_then_branch(node, subject:, else_branch:)
-        ) if then_branch
+        has_else_branch = then_branch && else_branch
+        append_removed_else_branch(mutations, node, subject:, then_branch:) if has_else_branch
+        append_removed_then_branch(mutations, node, subject:, else_branch:) if then_branch
 
         mutations
       end
@@ -66,12 +63,12 @@ module Henitai
       end
 
       def case_when_mutants(subject:, node:, when_nodes:)
-        when_nodes.map do |when_node|
+        when_nodes.each_with_index.map do |when_node, index|
           branch_mutant(
             subject:,
             node:,
             replacement: when_node.children.last || nil_node,
-            description: "kept when branch"
+            description: "kept when branch #{index + 1}"
           )
         end
       end
@@ -88,13 +85,37 @@ module Henitai
 
       def condition_variants(node, subject:, condition:)
         [
-          condition_mutant(node, subject:, replacement: true_node,
-            description: "replaced condition with true"),
-          condition_mutant(node, subject:, replacement: false_node,
-            description: "replaced condition with false"),
-          condition_mutant(node, subject:, replacement: negate(condition),
-            description: "negated condition")
+          true_condition_mutant(node, subject:),
+          false_condition_mutant(node, subject:),
+          negated_condition_mutant(node, subject:, condition:)
         ]
+      end
+
+      def true_condition_mutant(node, subject:)
+        condition_mutant(
+          node,
+          subject:,
+          replacement: true_node,
+          description: "replaced condition with true"
+        )
+      end
+
+      def false_condition_mutant(node, subject:)
+        condition_mutant(
+          node,
+          subject:,
+          replacement: false_node,
+          description: "replaced condition with false"
+        )
+      end
+
+      def negated_condition_mutant(node, subject:, condition:)
+        condition_mutant(
+          node,
+          subject:,
+          replacement: negate(condition),
+          description: "negated condition"
+        )
       end
 
       def condition_mutant(node, subject:, replacement:, description:)
@@ -106,26 +127,22 @@ module Henitai
         )
       end
 
-      def removed_else_branch(node, subject:, then_branch:)
-        [
-          branch_mutant(
-            subject:,
-            node:,
-            replacement: then_branch,
-            description: "removed else branch"
-          )
-        ]
+      def append_removed_else_branch(mutations, node, subject:, then_branch:)
+        mutations << branch_mutant(
+          subject:,
+          node:,
+          replacement: then_branch,
+          description: "removed else branch"
+        )
       end
 
-      def removed_then_branch(node, subject:, else_branch:)
-        [
-          branch_mutant(
-            subject:,
-            node:,
-            replacement: else_branch || nil_node,
-            description: "removed then branch"
-          )
-        ]
+      def append_removed_then_branch(mutations, node, subject:, else_branch:)
+        mutations << branch_mutant(
+          subject:,
+          node:,
+          replacement: else_branch || nil_node,
+          description: "removed then branch"
+        )
       end
 
       def branch_mutant(subject:, node:, replacement:, description:)
@@ -147,6 +164,7 @@ module Henitai
         Parser::AST::Node.new(:send, [node, :!])
       end
 
+      # rubocop:disable Lint/BooleanSymbol
       def true_node
         Parser::AST::Node.new(:true, [])
       end
@@ -158,7 +176,7 @@ module Henitai
       def nil_node
         Parser::AST::Node.new(:nil, [])
       end
+      # rubocop:enable Lint/BooleanSymbol
     end
   end
 end
-# rubocop:enable Lint/BooleanSymbol, Style/MultilineIfModifier, Layout/MultilineOperationIndentation, Layout/HashAlignment

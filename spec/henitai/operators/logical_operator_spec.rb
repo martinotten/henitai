@@ -11,14 +11,6 @@ RSpec.describe Henitai::Operators::LogicalOperator do
     Henitai::Subject.new(namespace: "Example", method_name: "predicate")
   end
 
-  def find_nodes(node, type, results = [])
-    return results unless node.respond_to?(:type)
-
-    results << node if node.type == type
-    node.children.each { |child| find_nodes(child, type, results) }
-    results
-  end
-
   def mutate(source)
     node = find_nodes(parse(source), :and).first || find_nodes(parse(source), :or).first
     described_class.new.mutate(node, subject: mutation_subject)

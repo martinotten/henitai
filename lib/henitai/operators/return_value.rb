@@ -2,17 +2,18 @@
 
 require "parser/current"
 
-# rubocop:disable Lint/BooleanSymbol
 module Henitai
   module Operators
     # Replaces return values and implicit final expressions with neutral values.
     class ReturnValue < Henitai::Operator
+      # rubocop:disable Lint/BooleanSymbol
       NODE_TYPES = %i[return send int float str dstr true false if case while until array hash].freeze
       REPLACEMENT_FACTORIES = [
         -> { Parser::AST::Node.new(:nil, []) },
         -> { Parser::AST::Node.new(:int, [0]) },
         -> { Parser::AST::Node.new(:false, []) }
       ].freeze
+      # rubocop:enable Lint/BooleanSymbol
 
       def self.node_types
         NODE_TYPES
@@ -66,6 +67,7 @@ module Henitai
         body.children.rfind { |child| child.is_a?(Parser::AST::Node) }
       end
 
+      # rubocop:disable Lint/BooleanSymbol
       def replacement_nodes(node)
         nodes = REPLACEMENT_FACTORIES.map(&:call)
 
@@ -94,7 +96,7 @@ module Henitai
           node.type.to_s
         end
       end
+      # rubocop:enable Lint/BooleanSymbol
     end
   end
 end
-# rubocop:enable Lint/BooleanSymbol
