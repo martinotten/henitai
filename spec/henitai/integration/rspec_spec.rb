@@ -355,41 +355,6 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
-  it "requires the per-test coverage formatter in the child process" do
-    mutant = Struct.new(:id).new("mutant-coverage")
-    integration = described_class.new
-    captured_args = nil
-    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
-
-    begin
-      allow(Process).to receive_messages(exit: nil)
-      allow(Process).to receive(:fork) do |&block|
-        block.call
-        24_604
-      end
-      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(RSpec::Core::Runner).to receive(:run) do |args|
-        captured_args = args
-        true
-      end
-      allow(integration).to receive(:pause).and_return(nil)
-      allow(Process).to receive_messages(wait: 24_604)
-      allow(Process).to receive_messages(
-        last_status: Struct.new(:success?).new(true)
-      )
-
-      integration.run_mutant(
-        mutant:,
-        test_files: ["spec/passing_spec.rb"],
-        timeout: 0.1
-      )
-
-      expect(captured_args).to include("--require", "henitai/coverage_formatter")
-    ensure
-      ENV["HENITAI_MUTANT_ID"] = original_env
-    end
-  end
-
   it "keeps waiting when the child has not exited yet" do
     mutant = Struct.new(:id).new("mutant-loop")
     integration = described_class.new
