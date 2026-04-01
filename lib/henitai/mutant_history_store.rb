@@ -174,19 +174,17 @@ module Henitai
       existing = existing_mutant_row(mutant_id)
       history = existing_status_history(existing)
       history << mutation_history_entry(mutant, version, recorded_at)
-
-      first_seen_at = existing ? existing["first_seen_at"] : recorded_at.iso8601
-      first_seen_version = existing ? existing["first_seen_version"] : version
+      first_seen = first_seen_metadata(existing, version, recorded_at)
 
       {
         mutant_id: mutant_id,
-        first_seen_version: first_seen_version,
-        first_seen_at: first_seen_at,
+        first_seen_version: first_seen[:version],
+        first_seen_at: first_seen[:at],
         version: version,
         recorded_at: recorded_at,
         mutant: mutant,
         history: history,
-        days_alive: days_alive_since(first_seen_at, recorded_at)
+        days_alive: days_alive_since(first_seen[:at], recorded_at)
       }
     end
 
@@ -203,6 +201,13 @@ module Henitai
       return [] unless existing
 
       JSON.parse(existing["status_history"], symbolize_names: true)
+    end
+
+    def first_seen_metadata(existing, version, recorded_at)
+      {
+        version: existing ? existing["first_seen_version"] : version,
+        at: existing ? existing["first_seen_at"] : recorded_at.iso8601
+      }
     end
 
     def days_alive_since(first_seen_at, recorded_at)
