@@ -58,7 +58,10 @@ module Henitai
 
       def progress(mutant)
         glyph = PROGRESS_GLYPHS[mutant.status]
-        print(glyph) if glyph
+        return unless glyph
+
+        print(glyph)
+        $stdout.flush
       end
     end
 
