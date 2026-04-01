@@ -81,6 +81,10 @@ when a value is invalid.
 
 CLI flags override the corresponding values from `.henitai.yml`.
 
+`henitai version` prints the installed version. `henitai run` exits with `0`
+when the mutation score meets the low threshold, `1` when it does not, and `2`
+for framework errors.
+
 The repository ships a JSON Schema at [`assets/schema/henitai.schema.json`](/workspaces/henitai/assets/schema/henitai.schema.json) for editor autocompletion.
 
 ## Operator sets

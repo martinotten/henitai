@@ -13,5 +13,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI pipeline (RuboCop + RSpec + incremental mutation testing on PRs)
 - `.henitai.yml` configuration schema
 - Module structure: `Configuration`, `Subject`, `Mutant`, `Operator`, `Runner`, `Reporter`, `Integration`, `Result`
+- CLI critical path: `henitai run` now executes the full pipeline, supports `--since`, returns CI-friendly exit codes, and `henitai version` prints `Henitai::VERSION`
 
 [Unreleased]: https://github.com/martinotten/henitai/commits/main

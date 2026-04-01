@@ -523,10 +523,10 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 
 ### 5.12 CLI
 
-- [~] **(P1)** `TASK: cli-01` - `henitai run`: full pipeline execution with OptionParser
-- [ ] **(P1)** `TASK: cli-02` - `henitai run --since GIT_REF`: incremental mode, restrict Gate 1 to changed files
-- [ ] **(P1)** `TASK: cli-03` - Exit codes: 0 = MS ≥ low threshold, 1 = MS < low threshold, 2 = framework error
-- [ ] **(P1)** `TASK: cli-04` - `henitai version`: print `Henitai::VERSION`
+- [x] **(P1)** `TASK: cli-01` - `henitai run`: full pipeline execution with OptionParser
+- [x] **(P1)** `TASK: cli-02` - `henitai run --since GIT_REF`: incremental mode, restrict Gate 1 to changed files
+- [x] **(P1)** `TASK: cli-03` - Exit codes: 0 = MS ≥ low threshold, 1 = MS < low threshold, 2 = framework error
+- [x] **(P1)** `TASK: cli-04` - `henitai version`: print `Henitai::VERSION`
 - [ ] **(P2)** `TASK: cli-05` - `henitai init`: create `.henitai.yml` with sensible defaults, ask interactively about integrations
 - [ ] **(P2)** `TASK: cli-06` - `henitai operator list`: list all available operators with descriptions and example mutations
 
