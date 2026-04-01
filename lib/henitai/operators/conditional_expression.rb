@@ -2,6 +2,7 @@
 
 require "parser/current"
 
+# rubocop:disable Lint/BooleanSymbol, Style/MultilineIfModifier, Layout/MultilineOperationIndentation, Layout/HashAlignment
 module Henitai
   module Operators
     # Rewrites conditional expressions and loop guards.
@@ -31,42 +32,30 @@ module Henitai
         condition, then_branch, else_branch = node.children
         mutations = condition_variants(node, subject:, condition:)
 
-        mutations << branch_mutant(
-          subject:,
-          node:,
-          replacement: then_branch,
-          description: "removed else branch"
-        ) if then_branch && else_branch
-
-        mutations << branch_mutant(
-          subject:,
-          node:,
-          replacement: else_branch || nil_node,
-          description: "removed then branch"
+        mutations.concat(removed_else_branch(node, subject:, then_branch:)) if then_branch &&
+          else_branch
+        mutations.concat(
+          removed_then_branch(node, subject:, else_branch:)
         ) if then_branch
 
         mutations
       end
 
       def mutate_case(node, subject:)
-        condition, when_node, else_branch = node.children
+        condition = node.children.first
+        when_nodes, else_branch = case_children(node.children.drop(1))
         mutations = condition_variants(node, subject:, condition:)
 
-        if when_node&.type == :when
+        mutations.concat(case_when_mutants(subject:, node:, when_nodes:))
+
+        if else_branch
           mutations << branch_mutant(
             subject:,
             node:,
-            replacement: when_node.children.last || nil_node,
-            description: "kept when branch"
+            replacement: else_branch,
+            description: "kept else branch"
           )
         end
-
-        mutations << branch_mutant(
-          subject:,
-          node:,
-          replacement: else_branch || nil_node,
-          description: "kept else branch"
-        ) if else_branch
 
         mutations
       end
@@ -76,25 +65,65 @@ module Henitai
         condition_variants(node, subject:, condition:)
       end
 
+      def case_when_mutants(subject:, node:, when_nodes:)
+        when_nodes.map do |when_node|
+          branch_mutant(
+            subject:,
+            node:,
+            replacement: when_node.children.last || nil_node,
+            description: "kept when branch"
+          )
+        end
+      end
+
+      def case_children(children)
+        return [[], nil] if children.empty?
+
+        if children.last&.type == :when
+          [children, nil]
+        else
+          [children[0...-1], children.last]
+        end
+      end
+
       def condition_variants(node, subject:, condition:)
+        [
+          condition_mutant(node, subject:, replacement: true_node,
+            description: "replaced condition with true"),
+          condition_mutant(node, subject:, replacement: false_node,
+            description: "replaced condition with false"),
+          condition_mutant(node, subject:, replacement: negate(condition),
+            description: "negated condition")
+        ]
+      end
+
+      def condition_mutant(node, subject:, replacement:, description:)
+        branch_mutant(
+          subject:,
+          node:,
+          replacement: with_condition(node, replacement),
+          description:
+        )
+      end
+
+      def removed_else_branch(node, subject:, then_branch:)
         [
           branch_mutant(
             subject:,
             node:,
-            replacement: with_condition(node, Parser::AST::Node.new(:true, [])),
-            description: "replaced condition with true"
-          ),
+            replacement: then_branch,
+            description: "removed else branch"
+          )
+        ]
+      end
+
+      def removed_then_branch(node, subject:, else_branch:)
+        [
           branch_mutant(
             subject:,
             node:,
-            replacement: with_condition(node, Parser::AST::Node.new(:false, [])),
-            description: "replaced condition with false"
-          ),
-          branch_mutant(
-            subject:,
-            node:,
-            replacement: with_condition(node, negate(condition)),
-            description: "negated condition"
+            replacement: else_branch || nil_node,
+            description: "removed then branch"
           )
         ]
       end
@@ -118,9 +147,18 @@ module Henitai
         Parser::AST::Node.new(:send, [node, :!])
       end
 
+      def true_node
+        Parser::AST::Node.new(:true, [])
+      end
+
+      def false_node
+        Parser::AST::Node.new(:false, [])
+      end
+
       def nil_node
         Parser::AST::Node.new(:nil, [])
       end
     end
   end
 end
+# rubocop:enable Lint/BooleanSymbol, Style/MultilineIfModifier, Layout/MultilineOperationIndentation, Layout/HashAlignment

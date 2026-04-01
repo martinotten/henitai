@@ -110,6 +110,28 @@ RSpec.describe Henitai::Operators::ConditionalExpression do
     )
   end
 
+  it "mutates case expressions with multiple when branches" do
+    mutants = mutate(<<~RUBY)
+      case state
+      when :ready
+        :go
+      when :waiting
+        :hold
+      else
+        :stop
+      end
+    RUBY
+
+    expect(mutants.map(&:description)).to contain_exactly(
+      "replaced condition with true",
+      "replaced condition with false",
+      "negated condition",
+      "kept when branch",
+      "kept when branch",
+      "kept else branch"
+    )
+  end
+
   it "mutates empty case expressions conservatively" do
     mutants = mutate(<<~RUBY)
       case state

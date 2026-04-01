@@ -2,6 +2,7 @@
 
 require "parser/current"
 
+# rubocop:disable Lint/BooleanSymbol
 module Henitai
   module Operators
     # Replaces return values and implicit final expressions with neutral values.
@@ -62,7 +63,7 @@ module Henitai
         body = method_node.children.last
         return body unless body&.type == :begin
 
-        body.children.reverse.find { |child| child.is_a?(Parser::AST::Node) }
+        body.children.rfind { |child| child.is_a?(Parser::AST::Node) }
       end
 
       def replacement_nodes(node)
@@ -72,6 +73,7 @@ module Henitai
         when :true
           nodes << Parser::AST::Node.new(:false, [])
         when :false
+          nodes.delete_if { |replacement| replacement.type == :false }
           nodes << Parser::AST::Node.new(:true, [])
         end
 
@@ -95,3 +97,4 @@ module Henitai
     end
   end
 end
+# rubocop:enable Lint/BooleanSymbol

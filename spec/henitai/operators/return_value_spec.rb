@@ -105,8 +105,7 @@ RSpec.describe Henitai::Operators::ReturnValue do
       expect(false_mutants.map(&:description)).to contain_exactly(
         "replaced return value with nil",
         "replaced return value with 0",
-        "replaced return value with true",
-        "replaced return value with false"
+        "replaced return value with true"
       )
     end
   end
@@ -150,6 +149,23 @@ RSpec.describe Henitai::Operators::ReturnValue do
       "replaced final expression with nil",
       "replaced final expression with 0",
       "replaced final expression with false"
+    )
+  end
+
+  it "does not preserve false as an equivalent final expression" do
+    source = <<~RUBY
+      def run
+        false
+      end
+    RUBY
+
+    subject = method_subject(source)
+    mutants = mutate(final_expression_node(source), subject:)
+
+    expect(mutants.map(&:description)).to contain_exactly(
+      "replaced final expression with nil",
+      "replaced final expression with 0",
+      "replaced final expression with true"
     )
   end
 
