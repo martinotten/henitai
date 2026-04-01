@@ -30,4 +30,10 @@ RSpec.describe Henitai::Subject do
       ["foo/bar.rb", 12..18]
     )
   end
+
+  it "rejects unknown keyword options" do
+    expect do
+      described_class.new(namespace: "Foo", method_name: "bar", unsupported: true)
+    end.to raise_error(ArgumentError, /unknown keyword: :unsupported/)
+  end
 end

@@ -148,4 +148,15 @@ RSpec.describe Henitai::Result do
 
     expect(schema[:files][file][:mutants].first[:duration]).to eq(1234)
   end
+
+  it "serialises column offsets as 1-based positions" do
+    schema = result([build_mutant(status: :pending)]).to_stryker_schema
+    file = schema[:files].keys.first
+    location = schema[:files][file][:mutants].first[:location]
+
+    expect(location).to eq(
+      start: { line: 2, column: 1 },
+      end: { line: 2, column: 21 }
+    )
+  end
 end

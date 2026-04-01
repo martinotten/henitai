@@ -166,6 +166,8 @@ module Henitai
       end
 
       def colorize(text, color)
+        return text if ENV.key?("NO_COLOR")
+
         "\e[#{color}m#{text}\e[0m"
       end
     end

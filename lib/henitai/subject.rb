@@ -25,8 +25,11 @@ module Henitai
     # @param method_name [String]  method name (nil for wildcard subjects)
     # @param method_type [Symbol]  :instance or :class
     # @param source_location [Hash] file/range metadata for the subject source
+    # The explicit keyword API matches the public call sites and keeps the
+    # metadata fields discoverable without a single options hash.
+    # rubocop:disable Metrics/ParameterLists
     def initialize(expression: nil, namespace: nil, method_name: nil,
-                   method_type: :instance, **options)
+                   method_type: :instance, source_location: nil, ast_node: nil)
       if expression
         parse_expression(expression)
       else
@@ -34,11 +37,11 @@ module Henitai
         @method_name = method_name
         @method_type = method_type
       end
-      source_location = options[:source_location]
       @source_file  = source_location&.fetch(:file, nil)
       @source_range = source_location&.fetch(:range, nil)
-      @ast_node = options[:ast_node]
+      @ast_node = ast_node
     end
+    # rubocop:enable Metrics/ParameterLists
 
     # Full addressable expression, e.g. "Foo::Bar#method"
     def expression

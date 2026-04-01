@@ -6,6 +6,7 @@ module Henitai
   module Operators
     # Replaces return values and implicit final expressions with neutral values.
     class ReturnValue < Henitai::Operator
+      # Parser uses :true / :false node types, so the AST symbols are intentional.
       # rubocop:disable Lint/BooleanSymbol
       NODE_TYPES = %i[return send int float str dstr true false if case while until array hash].freeze
       REPLACEMENT_FACTORIES = [

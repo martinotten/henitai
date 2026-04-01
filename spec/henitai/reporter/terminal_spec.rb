@@ -31,6 +31,30 @@ RSpec.describe Henitai::Reporter::Terminal do
     )
   end
 
+  def with_no_color
+    original = ENV.fetch("NO_COLOR", nil)
+    ENV["NO_COLOR"] = "1"
+    yield
+  ensure
+    if original.nil?
+      ENV.delete("NO_COLOR")
+    else
+      ENV["NO_COLOR"] = original
+    end
+  end
+
+  def with_color
+    original = ENV.fetch("NO_COLOR", nil)
+    ENV.delete("NO_COLOR")
+    yield
+  ensure
+    if original.nil?
+      ENV.delete("NO_COLOR")
+    else
+      ENV["NO_COLOR"] = original
+    end
+  end
+
   def summary_row(label, value)
     "#{label.ljust(12)} #{value}"
   end
@@ -150,7 +174,9 @@ RSpec.describe Henitai::Reporter::Terminal do
       #{summary_row('Duration', '12.34s')}
     OUTPUT
 
-    expect { reporter.report(result) }.to output(expected_output).to_stdout
+    with_color do
+      expect { reporter.report(result) }.to output(expected_output).to_stdout
+    end
   end
 
   it "colors the score line green when the score meets the high threshold" do
@@ -180,7 +206,9 @@ RSpec.describe Henitai::Reporter::Terminal do
       #{summary_row('Duration', '0.00s')}
     OUTPUT
 
-    expect { reporter.report(result) }.to output(expected_output).to_stdout
+    with_color do
+      expect { reporter.report(result) }.to output(expected_output).to_stdout
+    end
   end
 
   it "colors the score line yellow when the score meets the low threshold" do
@@ -210,7 +238,9 @@ RSpec.describe Henitai::Reporter::Terminal do
       #{summary_row('Duration', '0.00s')}
     OUTPUT
 
-    expect { reporter.report(result) }.to output(expected_output).to_stdout
+    with_color do
+      expect { reporter.report(result) }.to output(expected_output).to_stdout
+    end
   end
 
   it "colors the score line red when the score is below the low threshold" do
@@ -240,7 +270,40 @@ RSpec.describe Henitai::Reporter::Terminal do
       #{summary_row('Duration', '0.00s')}
     OUTPUT
 
-    expect { reporter.report(result) }.to output(expected_output).to_stdout
+    with_color do
+      expect { reporter.report(result) }.to output(expected_output).to_stdout
+    end
+  end
+
+  it "does not emit ANSI colors when NO_COLOR is set" do
+    reporter = described_class.new(config: build_config)
+    result = build_result(
+      mutants: [],
+      scoring_summary: {
+        mutation_score: 80.0,
+        mutation_score_indicator: 10.0,
+        equivalence_uncertainty: nil
+      },
+      duration: 0.0
+    )
+
+    expected_output = <<~OUTPUT
+      Mutation testing summary
+      #{score_summary_line(
+        mutation_score: '80.00%',
+        mutation_score_indicator: '10.00%',
+        equivalence_uncertainty: 'n/a'
+      )}
+      #{summary_row('Killed', 0)}
+      #{summary_row('Survived', 0)}
+      #{summary_row('Timeout', 0)}
+      #{summary_row('No coverage', 0)}
+      #{summary_row('Duration', '0.00s')}
+    OUTPUT
+
+    with_no_color do
+      expect { reporter.report(result) }.to output(expected_output).to_stdout
+    end
   end
 
   it "prints n/a when the scoring summary does not include live mutants" do
@@ -269,7 +332,9 @@ RSpec.describe Henitai::Reporter::Terminal do
       #{summary_row('Duration', '0.00s')}
     OUTPUT
 
-    expect { reporter.report(result) }.to output(expected_output).to_stdout
+    with_color do
+      expect { reporter.report(result) }.to output(expected_output).to_stdout
+    end
   end
 
   it "prints survived mutant details after the summary block" do
@@ -299,6 +364,8 @@ RSpec.describe Henitai::Reporter::Terminal do
       + false
     OUTPUT
 
-    expect { reporter.report(result) }.to output(expected_output).to_stdout
+    with_color do
+      expect { reporter.report(result) }.to output(expected_output).to_stdout
+    end
   end
 end

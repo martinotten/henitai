@@ -132,6 +132,7 @@ module Henitai
     end
 
     def line_column(mutant, prefix)
+      # Stryker schema columns are 1-based; Parser locations are 0-based.
       {
         line: mutant.location.fetch(:"#{prefix}_line"),
         column: mutant.location.fetch(:"#{prefix}_col") + 1

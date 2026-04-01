@@ -166,10 +166,12 @@ module Henitai
 
       # rubocop:disable Lint/BooleanSymbol
       def true_node
+        # Parser uses :true / :false node types, so the AST symbols are intentional.
         Parser::AST::Node.new(:true, [])
       end
 
       def false_node
+        # Parser uses :true / :false node types, so the AST symbols are intentional.
         Parser::AST::Node.new(:false, [])
       end
 

@@ -13,6 +13,7 @@ module Henitai
       end
 
       def mutate(node, subject:)
+        # Parser uses :true / :false node types, so the AST symbols are intentional.
         # rubocop:disable Lint/BooleanSymbol
         case node.type
         when :true
@@ -29,6 +30,7 @@ module Henitai
 
       private
 
+      # Parser uses :true / :false node types, so the AST symbols are intentional.
       # rubocop:disable Lint/BooleanSymbol
       def mutate_true_literal(node, subject:)
         build_mutant(
