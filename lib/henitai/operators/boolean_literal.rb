@@ -13,29 +13,41 @@ module Henitai
       end
 
       def mutate(node, subject:)
+        # rubocop:disable Lint/BooleanSymbol
         case node.type
         when :true
-          [build_mutant(
-            subject:,
-            original_node: node,
-            mutated_node: Parser::AST::Node.new(:false, []),
-            description: "replaced true with false"
-          )]
+          [mutate_true_literal(node, subject:)]
         when :false
-          [build_mutant(
-            subject:,
-            original_node: node,
-            mutated_node: Parser::AST::Node.new(:true, []),
-            description: "replaced false with true"
-          )]
+          [mutate_false_literal(node, subject:)]
         when :send
           mutate_negation(node, subject:)
         else
           []
         end
+        # rubocop:enable Lint/BooleanSymbol
       end
 
       private
+
+      # rubocop:disable Lint/BooleanSymbol
+      def mutate_true_literal(node, subject:)
+        build_mutant(
+          subject:,
+          original_node: node,
+          mutated_node: Parser::AST::Node.new(:false, []),
+          description: "replaced true with false"
+        )
+      end
+
+      def mutate_false_literal(node, subject:)
+        build_mutant(
+          subject:,
+          original_node: node,
+          mutated_node: Parser::AST::Node.new(:true, []),
+          description: "replaced false with true"
+        )
+      end
+      # rubocop:enable Lint/BooleanSymbol
 
       def mutate_negation(node, subject:)
         receiver, method_name, *arguments = node.children

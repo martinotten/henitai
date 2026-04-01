@@ -260,6 +260,20 @@ RSpec.describe Henitai::Configuration do
     )
   end
 
+  it "aborts on non-symbolizable sampling strategy values" do
+    expect do
+      load_configuration(<<~YAML)
+        mutation:
+          sampling:
+            ratio: 0.5
+            strategy: 123
+      YAML
+    end.to raise_error(
+      Henitai::ConfigurationError,
+      /mutation\.sampling\.strategy/
+    )
+  end
+
   it "aborts on incomplete sampling settings" do
     expect do
       load_configuration(<<~YAML)

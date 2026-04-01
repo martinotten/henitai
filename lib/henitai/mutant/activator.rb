@@ -107,6 +107,7 @@ module Henitai
       def parameter_source(mutant)
         args_node = method_arguments(mutant.subject.ast_node)
         return "" unless args_node
+        return forward_parameter_fragment(nil) if args_node.type == :forward_args
 
         args_node.children.filter_map do |argument|
           parameter_fragment(argument)
@@ -158,7 +159,7 @@ module Henitai
       end
 
       def forward_parameter_fragment(_argument)
-        "..."
+        "*args, **kwargs, &block"
       end
 
       def prefixed_parameter(argument, prefix)

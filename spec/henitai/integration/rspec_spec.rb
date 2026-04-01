@@ -1,8 +1,96 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "spec_helper"
+require "tmpdir"
 
 RSpec.describe Henitai::Integration::Rspec do
+  def with_temp_workspace
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) { yield dir }
+    end
+  end
+
+  def write_file(dir, relative_path, source)
+    path = File.join(dir, relative_path)
+    FileUtils.mkdir_p(File.dirname(path))
+    File.write(path, source)
+    path
+  end
+
+  def sample_source
+    <<~RUBY
+      class Sample
+        def value
+        end
+      end
+    RUBY
+  end
+
+  def sample_spec_source
+    <<~RUBY
+      require_relative "../lib/sample"
+
+      RSpec.describe Sample do
+        it "mentions Sample#value" do
+        end
+      end
+    RUBY
+  end
+
+  def support_spec_source
+    <<~RUBY
+      require_relative "support/sample_support"
+
+      RSpec.describe "support loader" do
+        it "loads the helper" do
+        end
+      end
+    RUBY
+  end
+
+  def require_spec_source
+    <<~RUBY
+      require "lib/sample"
+
+      RSpec.describe Sample do
+        it "loads the helper through require" do
+        end
+      end
+    RUBY
+  end
+
+  def cyclic_a_spec_source
+    <<~RUBY
+      require_relative "cyclic_b_spec"
+
+      RSpec.describe "cycle a" do
+        it "loads the other side" do
+        end
+      end
+    RUBY
+  end
+
+  def cyclic_b_spec_source
+    <<~RUBY
+      require_relative "cyclic_a_spec"
+
+      RSpec.describe "cycle b" do
+        it "loads the other side" do
+        end
+      end
+    RUBY
+  end
+
+  def unrelated_spec_source
+    <<~RUBY
+      RSpec.describe String do
+        it "does not mention the subject" do
+        end
+      end
+    RUBY
+  end
+
   def stub_timeout_child(integration, record, child_pid:, raise_esrch_on_kill: false)
     stub_process_exit(record)
     stub_process_fork(record, child_pid)
@@ -139,12 +227,113 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
-  it "returns the rspec exit status from run_tests" do
+  it "converts a true rspec result to a survived mutant" do
+    mutant = Struct.new(:id).new("mutant-true")
     integration = described_class.new
+    record = {}
+    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
 
-    allow(RSpec::Core::Runner).to receive(:run).and_return(1)
+    begin
+      allow(Process).to receive(:exit) { |status| record[:child_status] = status }
+      allow(Process).to receive(:fork) do |&block|
+        block.call
+        24_601
+      end
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+      allow(RSpec::Core::Runner).to receive(:run).and_return(true)
+      allow(integration).to receive(:pause).and_return(nil)
+      allow(Process).to receive(:wait).and_return(24_601)
+      allow(Process).to receive_messages(
+        last_status: Struct.new(:success?).new(true)
+      )
 
-    expect(integration.send(:run_tests, ["spec/failing_spec.rb"])).to eq(1)
+      record[:result] = integration.run_mutant(
+        mutant:,
+        test_files: ["spec/passing_spec.rb"],
+        timeout: 0.1
+      )
+
+      expect(record).to include(
+        child_status: 0,
+        result: :survived
+      )
+    ensure
+      ENV["HENITAI_MUTANT_ID"] = original_env
+    end
+  end
+
+  it "converts a false rspec result to a killed mutant" do
+    mutant = Struct.new(:id).new("mutant-false")
+    integration = described_class.new
+    record = {}
+    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+    begin
+      allow(Process).to receive(:exit) { |status| record[:child_status] = status }
+      allow(Process).to receive(:fork) do |&block|
+        block.call
+        24_602
+      end
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+      allow(RSpec::Core::Runner).to receive(:run).and_return(false)
+      allow(integration).to receive(:pause).and_return(nil)
+      allow(Process).to receive(:wait).and_return(24_602)
+      allow(Process).to receive_messages(
+        last_status: Struct.new(:success?).new(false)
+      )
+
+      record[:result] = integration.run_mutant(
+        mutant:,
+        test_files: ["spec/failing_spec.rb"],
+        timeout: 0.1
+      )
+
+      expect(record).to include(
+        child_status: 1,
+        result: :killed
+      )
+    ensure
+      ENV["HENITAI_MUTANT_ID"] = original_env
+    end
+  end
+
+  it "keeps waiting when the child has not exited yet" do
+    mutant = Struct.new(:id).new("mutant-loop")
+    integration = described_class.new
+    record = { pauses: [] }
+    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+    begin
+      allow(Process).to receive(:exit) { |status| record[:child_status] = status }
+      allow(Process).to receive(:fork) do |&block|
+        block.call
+        24_603
+      end
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+      allow(RSpec::Core::Runner).to receive(:run).and_return(true)
+      allow(integration).to receive(:pause) do |seconds|
+        record[:pauses] << seconds
+      end
+      allow(Process).to receive(:wait).and_return(nil, 24_603)
+      allow(Process).to receive(:clock_gettime).and_return(0.0, 0.05, 0.05)
+      allow(Process).to receive_messages(
+        last_status: Struct.new(:success?).new(true)
+      )
+
+      record[:result] = integration.run_mutant(
+        mutant:,
+        test_files: ["spec/pending_spec.rb"],
+        timeout: 0.1
+      )
+
+      expect(record).to include(
+        pauses: [0.01],
+        child_status: 0,
+        result: :survived
+      )
+    ensure
+      ENV["HENITAI_MUTANT_ID"] = original_env
+    end
   end
 
   it "escalates a stuck child from SIGTERM to SIGKILL" do
@@ -244,6 +433,136 @@ RSpec.describe Henitai::Integration::Rspec do
       )
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env
+    end
+  end
+
+  it "selects matching spec files by subject expression" do
+    with_temp_workspace do |dir|
+      source_path = write_file(dir, "lib/sample.rb", sample_source)
+
+      write_file(dir, "spec/sample_spec.rb", sample_spec_source)
+
+      write_file(dir, "spec/unrelated_spec.rb", unrelated_spec_source)
+
+      subject = Henitai::Subject.new(
+        namespace: "Sample",
+        method_name: "value",
+        source_location: {
+          file: source_path,
+          range: 1..4
+        }
+      )
+
+      expect(described_class.new.select_tests(subject)).to eq(["spec/sample_spec.rb"])
+    end
+  end
+
+  it "falls back to source-file based selection when no direct match exists" do
+    with_temp_workspace do |dir|
+      source_path = write_file(dir, "lib/sample.rb", sample_source)
+
+      write_file(
+        dir,
+        "spec/other_spec.rb",
+        <<~RUBY
+          RSpec.describe String do
+            it "does not mention the subject" do
+            end
+          end
+        RUBY
+      )
+
+      subject = Henitai::Subject.new(
+        namespace: "Example",
+        method_name: "value",
+        source_location: {
+          file: source_path,
+          range: 1..4
+        }
+      )
+
+      expect(described_class.new.select_tests(subject)).to contain_exactly(
+        "spec/other_spec.rb"
+      )
+    end
+  end
+
+  it "falls back through transitive requires when no direct match exists" do
+    with_temp_workspace do |dir|
+      source_path = write_file(dir, "lib/sample.rb", sample_source)
+
+      write_file(
+        dir,
+        "spec/support/sample_support.rb",
+        <<~RUBY
+          require_relative "../../lib/sample"
+        RUBY
+      )
+
+      write_file(dir, "spec/sample_spec.rb", support_spec_source)
+
+      subject = Henitai::Subject.new(
+        namespace: "Sample",
+        method_name: "value",
+        source_location: {
+          file: source_path,
+          range: 1..4
+        }
+      )
+
+      expect(described_class.new.select_tests(subject)).to eq(["spec/sample_spec.rb"])
+    end
+  end
+
+  it "follows plain requires when selecting fallback spec files" do
+    with_temp_workspace do |dir|
+      source_path = write_file(dir, "lib/sample.rb", sample_source)
+
+      write_file(dir, "spec/require_spec.rb", require_spec_source)
+
+      subject = Henitai::Subject.new(
+        namespace: "Example",
+        method_name: "value",
+        source_location: {
+          file: source_path,
+          range: 1..4
+        }
+      )
+
+      expect(described_class.new.select_tests(subject)).to eq(["spec/require_spec.rb"])
+    end
+  end
+
+  it "avoids infinite loops when requires cycle" do
+    with_temp_workspace do |dir|
+      source_path = write_file(dir, "lib/sample.rb", sample_source)
+
+      write_file(dir, "spec/cyclic_a_spec.rb", cyclic_a_spec_source)
+      write_file(dir, "spec/cyclic_b_spec.rb", cyclic_b_spec_source)
+
+      subject = Henitai::Subject.new(
+        namespace: "Example",
+        method_name: "value",
+        source_location: {
+          file: source_path,
+          range: 1..4
+        }
+      )
+
+      expect(described_class.new.select_tests(subject)).to contain_exactly(
+        "spec/cyclic_a_spec.rb",
+        "spec/cyclic_b_spec.rb"
+      )
+    end
+  end
+
+  it "returns no tests when the subject has no source file and no direct match" do
+    with_temp_workspace do
+      write_file(Dir.pwd, "spec/other_spec.rb", unrelated_spec_source)
+
+      subject = Henitai::Subject.new(namespace: "Sample", method_name: "value")
+
+      expect(described_class.new.select_tests(subject)).to eq([])
     end
   end
 end

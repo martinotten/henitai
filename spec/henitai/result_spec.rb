@@ -102,6 +102,17 @@ RSpec.describe Henitai::Result do
     expect(result(scoring_mutants).mutation_score_indicator).to eq(12.5)
   end
 
+  it "returns nil scores for an empty mutant set" do
+    empty_result = result([])
+
+    expect(
+      [
+        empty_result.mutation_score,
+        empty_result.mutation_score_indicator
+      ]
+    ).to eq([nil, nil])
+  end
+
   it "summarises scoring for reporters" do
     expect(result(scoring_mutants).scoring_summary).to eq(
       mutation_score: 75.0,
