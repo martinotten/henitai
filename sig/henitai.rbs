@@ -150,6 +150,8 @@ module Henitai
   end
 
   class Mutant::Activator
+    SERIALIZER_METHODS: Hash[Symbol, Symbol]
+
     def self.activate!: (untyped) -> void
     def initialize: () -> void
     def activate!: (untyped) -> void
@@ -161,6 +163,18 @@ module Henitai
     def target_for: (Subject) -> untyped
     def method_source: (Mutant) -> String
     def body_source: (Mutant) -> String
+    def parameter_source: (Mutant) -> String
+    def method_arguments: (untyped) -> untyped
+    def parameter_fragment: (untyped) -> String?
+    def argument_parameter_fragment: (untyped) -> String
+    def optional_parameter_fragment: (untyped) -> String
+    def rest_parameter_fragment: (untyped) -> String
+    def keyword_parameter_fragment: (untyped) -> String
+    def optional_keyword_parameter_fragment: (untyped) -> String
+    def keyword_rest_parameter_fragment: (untyped) -> String
+    def block_parameter_fragment: (untyped) -> String
+    def forward_parameter_fragment: (untyped) -> String
+    def prefixed_parameter: (untyped, String) -> String
     def replace_node: (untyped, untyped, untyped) -> untyped
     def same_node?: (untyped, untyped) -> bool
     def replace_child: (untyped, untyped, untyped) -> untyped
@@ -176,6 +190,10 @@ module Henitai
     class Base
       def initialize: (config: Configuration) -> void
       def report: (Result) -> void
+
+      private
+
+      def config: () -> Configuration
     end
 
     class Terminal < Base
@@ -198,6 +216,8 @@ module Henitai
       def count_status: (Result, Symbol) -> Integer
       def format_duration: (Float) -> String
       def format_percent: (Float?) -> String
+      def score_color: (Float?) -> String?
+      def colorize: (String, String) -> String
     end
 
     class Json < Base

@@ -122,7 +122,7 @@ module Henitai
 
       def score_line(result)
         summary = result.scoring_summary
-        [
+        line = [
           format("MS %s", format_percent(summary[:mutation_score])),
           format("MSI %s", format_percent(summary[:mutation_score_indicator])),
           format(
@@ -130,6 +130,8 @@ module Henitai
             summary[:equivalence_uncertainty] || "n/a"
           )
         ].join(" | ")
+        color = score_color(summary[:mutation_score])
+        color ? colorize(line, color) : line
       end
 
       def format_row(label, value)
@@ -146,6 +148,23 @@ module Henitai
 
       def format_percent(value)
         value.nil? ? "n/a" : format("%.2f%%", value)
+      end
+
+      def score_color(score)
+        return nil if score.nil?
+
+        thresholds = config.thresholds || {}
+        high = thresholds.fetch(:high, 80)
+        low = thresholds.fetch(:low, 60)
+
+        return "32" if score >= high
+        return "33" if score >= low
+
+        "31"
+      end
+
+      def colorize(text, color)
+        "\e[#{color}m#{text}\e[0m"
       end
     end
 

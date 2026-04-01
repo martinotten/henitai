@@ -19,8 +19,8 @@ RSpec.describe Henitai::Reporter::Terminal do
     )
   end
 
-  def build_config
-    Struct.new(:thresholds).new({})
+  def build_config(thresholds: { high: 80, low: 60 })
+    Struct.new(:thresholds).new(thresholds)
   end
 
   def build_result(mutants:, scoring_summary:, duration:)
@@ -33,6 +33,23 @@ RSpec.describe Henitai::Reporter::Terminal do
 
   def summary_row(label, value)
     "#{label.ljust(12)} #{value}"
+  end
+
+  def score_summary_line(
+    mutation_score:,
+    mutation_score_indicator:,
+    equivalence_uncertainty:,
+    color_code: nil
+  )
+    line = format(
+      "MS %<ms>s | MSI %<msi>s | Equivalence uncertainty %<uncertainty>s",
+      ms: mutation_score,
+      msi: mutation_score_indicator,
+      uncertainty: equivalence_uncertainty
+    )
+    return line if color_code.nil?
+
+    "\e[#{color_code}m#{line}\e[0m"
   end
 
   def parse_node(source)
@@ -106,10 +123,10 @@ RSpec.describe Henitai::Reporter::Terminal do
     expect { reporter.progress(build_mutant(status: :pending)) }.not_to output.to_stdout
   end
 
-  it "prints a summary table with score, counts, and duration" do
+  it "prints a yellow summary table with score, counts, and duration" do
     reporter = described_class.new(config: build_config)
     result = build_result(
-      mutants: %i[killed survived timeout no_coverage].map { |status| build_mutant(status:) },
+      mutants: %i[killed timeout no_coverage].map { |status| build_mutant(status:) },
       scoring_summary: {
         mutation_score: 75.0,
         mutation_score_indicator: 12.5,
@@ -120,12 +137,77 @@ RSpec.describe Henitai::Reporter::Terminal do
 
     expected_output = <<~OUTPUT
       Mutation testing summary
-      MS 75.00% | MSI 12.50% | Equivalence uncertainty ~10-15% of live mutants
+      #{score_summary_line(
+        color_code: 33,
+        mutation_score: '75.00%',
+        mutation_score_indicator: '12.50%',
+        equivalence_uncertainty: '~10-15% of live mutants'
+      )}
       #{summary_row('Killed', 1)}
-      #{summary_row('Survived', 1)}
+      #{summary_row('Survived', 0)}
       #{summary_row('Timeout', 1)}
       #{summary_row('No coverage', 1)}
       #{summary_row('Duration', '12.34s')}
+    OUTPUT
+
+    expect { reporter.report(result) }.to output(expected_output).to_stdout
+  end
+
+  it "prints a green summary table when the score meets the high threshold" do
+    reporter = described_class.new(config: build_config)
+    result = build_result(
+      mutants: [build_mutant(status: :killed)],
+      scoring_summary: {
+        mutation_score: 90.0,
+        mutation_score_indicator: 50.0,
+        equivalence_uncertainty: "~10-15% of live mutants"
+      },
+      duration: 1.0
+    )
+
+    expected_output = <<~OUTPUT
+      Mutation testing summary
+      #{score_summary_line(
+        color_code: 32,
+        mutation_score: '90.00%',
+        mutation_score_indicator: '50.00%',
+        equivalence_uncertainty: '~10-15% of live mutants'
+      )}
+      #{summary_row('Killed', 1)}
+      #{summary_row('Survived', 0)}
+      #{summary_row('Timeout', 0)}
+      #{summary_row('No coverage', 0)}
+      #{summary_row('Duration', '1.00s')}
+    OUTPUT
+
+    expect { reporter.report(result) }.to output(expected_output).to_stdout
+  end
+
+  it "prints a red summary table when the score falls below the low threshold" do
+    reporter = described_class.new(config: build_config)
+    result = build_result(
+      mutants: [build_mutant(status: :killed)],
+      scoring_summary: {
+        mutation_score: 50.0,
+        mutation_score_indicator: 25.0,
+        equivalence_uncertainty: "~10-15% of live mutants"
+      },
+      duration: 3.5
+    )
+
+    expected_output = <<~OUTPUT
+      Mutation testing summary
+      #{score_summary_line(
+        color_code: 31,
+        mutation_score: '50.00%',
+        mutation_score_indicator: '25.00%',
+        equivalence_uncertainty: '~10-15% of live mutants'
+      )}
+      #{summary_row('Killed', 1)}
+      #{summary_row('Survived', 0)}
+      #{summary_row('Timeout', 0)}
+      #{summary_row('No coverage', 0)}
+      #{summary_row('Duration', '3.50s')}
     OUTPUT
 
     expect { reporter.report(result) }.to output(expected_output).to_stdout
@@ -145,7 +227,11 @@ RSpec.describe Henitai::Reporter::Terminal do
 
     expected_output = <<~OUTPUT
       Mutation testing summary
-      MS n/a | MSI n/a | Equivalence uncertainty n/a
+      #{score_summary_line(
+        mutation_score: 'n/a',
+        mutation_score_indicator: 'n/a',
+        equivalence_uncertainty: 'n/a'
+      )}
       #{summary_row('Killed', 0)}
       #{summary_row('Survived', 0)}
       #{summary_row('Timeout', 0)}
@@ -162,7 +248,12 @@ RSpec.describe Henitai::Reporter::Terminal do
 
     expected_output = <<~OUTPUT
       Mutation testing summary
-      MS 75.00% | MSI 12.50% | Equivalence uncertainty ~10-15% of live mutants
+      #{score_summary_line(
+        color_code: 33,
+        mutation_score: '75.00%',
+        mutation_score_indicator: '12.50%',
+        equivalence_uncertainty: '~10-15% of live mutants'
+      )}
       #{summary_row('Killed', 0)}
       #{summary_row('Survived', 2)}
       #{summary_row('Timeout', 0)}

@@ -502,7 +502,7 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 - [x] **(P1)** `TASK: rep-term-01` - Live progress during Gate 4: `·` for killed, `S` for survived, `T` for timeout, `I` for ignored
 - [x] **(P1)** `TASK: rep-term-02` - Summary after Gate 5: table with MS %, killed/survived/timeout/no-coverage counts, duration
 - [x] **(P1)** `TASK: rep-term-03` - Survived details: for each survived mutant show file, line, diff (original vs. mutated), and operator name
-- [ ] **(P1)** `TASK: rep-term-04` - Threshold check: colored output (green/yellow/red) based on `thresholds.high` / `thresholds.low`
+- [x] **(P1)** `TASK: rep-term-04` - Threshold check: colored output (green/yellow/red) based on `thresholds.high` / `thresholds.low`
 
 #### JSON Reporter (Stryker Schema)
 - [~] **(P1)** `TASK: rep-json-01` - `Result#to_stryker_schema`: complete implementation including `files` section, `mutants` array, and correct status mapping
