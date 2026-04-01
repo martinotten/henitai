@@ -441,6 +441,9 @@ The reporting stack is layered:
 
 The JSON report is the primary contract. HTML and terminal output are derived from it, and dashboard upload is a transport concern rather than a separate result model.
 
+By default, the JSON reporter writes `reports/mutation-report.json`; callers
+can override the base directory via `reports_dir` in `.henitai.yml`.
+
 The expected JSON shape follows the Stryker ecosystem conventions:
 
 - 1-based line and column positions

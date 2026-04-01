@@ -14,6 +14,7 @@ module Henitai
     DEFAULT_OPERATORS = :light
     DEFAULT_JOBS      = nil # auto-detect
     DEFAULT_MAX_MUTANTS_PER_LINE = 1
+    DEFAULT_REPORTS_DIR = "reports"
     DEFAULT_COVERAGE_CRITERIA = {
       test_result: true,
       timeout: false,
@@ -24,7 +25,8 @@ module Henitai
 
     attr_reader :integration, :includes, :operators, :timeout,
                 :ignore_patterns, :max_mutants_per_line, :sampling, :jobs,
-                :coverage_criteria, :thresholds, :reporters, :dashboard
+                :coverage_criteria, :thresholds, :reporters, :reports_dir,
+                :dashboard
 
     # @param path [String] path to .henitai.yml (default: project root)
     def self.load(path: CONFIG_FILE, overrides: {})
@@ -69,6 +71,7 @@ module Henitai
       @includes = raw[:includes] || ["lib"]
       @jobs = raw[:jobs]
       @reporters = raw[:reporters] || ["terminal"]
+      @reports_dir = raw[:reports_dir] || DEFAULT_REPORTS_DIR
       # @type var empty_dashboard: Hash[Symbol, untyped]
       empty_dashboard = {}
       @dashboard = merge_defaults(empty_dashboard, raw[:dashboard])

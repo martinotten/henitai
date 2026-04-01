@@ -69,6 +69,7 @@ mutation:
   sampling:
     ratio: 0.05
     strategy: stratified
+reports_dir: reports
 
 thresholds:
   high: 80
@@ -119,6 +120,9 @@ dashboard:
 ```
 
 Set `STRYKER_DASHBOARD_API_KEY` in your CI environment to publish reports.
+
+JSON reports are written to `reports/mutation-report.json` by default. Set
+`reports_dir` to change the output directory.
 
 ## Development
 

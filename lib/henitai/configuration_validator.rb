@@ -11,6 +11,7 @@ module Henitai
       coverage_criteria
       thresholds
       reporters
+      reports_dir
       dashboard
       jobs
     ].freeze
@@ -27,6 +28,7 @@ module Henitai
       validate_includes
       validate_jobs
       validate_reporters
+      validate_reports_dir
       validate_dashboard
       validate_mutation
       validate_coverage_criteria
@@ -69,6 +71,10 @@ module Henitai
 
       def validate_reporters(raw)
         validate_string_array(raw[:reporters], "reporters")
+      end
+
+      def validate_reports_dir(raw)
+        validate_optional_string(raw[:reports_dir], "reports_dir")
       end
 
       def validate_dashboard(raw)

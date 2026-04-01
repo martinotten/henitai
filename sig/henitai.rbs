@@ -15,6 +15,7 @@ module Henitai
     DEFAULT_OPERATORS: Symbol
     DEFAULT_JOBS: untyped
     DEFAULT_MAX_MUTANTS_PER_LINE: Integer
+    DEFAULT_REPORTS_DIR: String
     DEFAULT_COVERAGE_CRITERIA: Hash[Symbol, bool]
     DEFAULT_THRESHOLDS: Hash[Symbol, Integer]
     CONFIG_FILE: String
@@ -30,6 +31,7 @@ module Henitai
     attr_reader coverage_criteria: Hash[Symbol, untyped]
     attr_reader thresholds: Hash[Symbol, Integer]
     attr_reader reporters: Array[String]
+    attr_reader reports_dir: String
     attr_reader dashboard: Hash[Symbol, untyped]
 
     def self.load: (?path: String, ?overrides: Hash[Symbol, untyped]) -> Configuration
@@ -222,6 +224,10 @@ module Henitai
 
     class Json < Base
       def report: (Result) -> void
+
+      private
+
+      def report_path: () -> String
     end
 
     class Html < Base

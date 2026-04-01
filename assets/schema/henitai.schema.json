@@ -97,6 +97,9 @@
         "type": "string"
       }
     },
+    "reports_dir": {
+      "type": "string"
+    },
     "dashboard": {
       "type": "object",
       "additionalProperties": false,

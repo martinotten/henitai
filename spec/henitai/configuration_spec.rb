@@ -32,6 +32,7 @@ RSpec.describe Henitai::Configuration do
       integration: config.integration,
       operators: config.operators,
       jobs: config.jobs,
+      reports_dir: config.reports_dir,
       timeout: config.timeout,
       max_mutants_per_line: config.max_mutants_per_line,
       sampling: config.sampling,
@@ -78,6 +79,7 @@ RSpec.describe Henitai::Configuration do
       integration: "rspec",
       operators: :light,
       jobs: nil,
+      reports_dir: "reports",
       max_mutants_per_line: 1,
       sampling: nil
     }
@@ -136,6 +138,7 @@ RSpec.describe Henitai::Configuration do
       integration: "rspec",
       operators: :light,
       jobs: nil,
+      reports_dir: "reports",
       timeout: 10.0,
       max_mutants_per_line: 1,
       sampling: nil,
@@ -156,6 +159,7 @@ RSpec.describe Henitai::Configuration do
       integration: "rspec",
       operators: :light,
       jobs: nil,
+      reports_dir: "reports",
       timeout: 10.0,
       max_mutants_per_line: 1,
       sampling: nil,
@@ -187,6 +191,14 @@ RSpec.describe Henitai::Configuration do
     end.to output(/Unknown configuration key/).to_stderr
   end
 
+  it "loads a custom reports directory" do
+    config = load_configuration(<<~YAML)
+      reports_dir: custom-reports
+    YAML
+
+    expect(config.reports_dir).to eq("custom-reports")
+  end
+
   it "aborts on invalid mutation operators" do
     expect do
       load_configuration(<<~YAML)
@@ -196,6 +208,17 @@ RSpec.describe Henitai::Configuration do
     end.to raise_error(
       Henitai::ConfigurationError,
       /mutation\.operators/
+    )
+  end
+
+  it "aborts on invalid report directory types" do
+    expect do
+      load_configuration(<<~YAML)
+        reports_dir: 123
+      YAML
+    end.to raise_error(
+      Henitai::ConfigurationError,
+      /reports_dir/
     )
   end
 

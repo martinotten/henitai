@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require "unparser"
 
 module Henitai
@@ -171,7 +172,26 @@ module Henitai
     # JSON reporter.
     class Json < Base
       def report(result)
-        raise NotImplementedError
+        ensure_report_directory
+        File.write(report_path, result.to_stryker_schema.to_json)
+      end
+
+      private
+
+      def report_path
+        File.join(config.reports_dir, "mutation-report.json")
+      end
+
+      def ensure_report_directory
+        mkdir_p(File.dirname(report_path))
+      end
+
+      def mkdir_p(path)
+        return if Dir.exist?(path)
+
+        parent = File.dirname(path)
+        mkdir_p(parent) unless parent == path
+        Dir.mkdir(path)
       end
     end
 

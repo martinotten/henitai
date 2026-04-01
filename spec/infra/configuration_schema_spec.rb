@@ -24,6 +24,7 @@ RSpec.describe "Configuration schema" do
       "coverage_criteria",
       "thresholds",
       "reporters",
+      "reports_dir",
       "dashboard",
       "jobs"
     )

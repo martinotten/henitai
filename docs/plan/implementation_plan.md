@@ -506,7 +506,7 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 
 #### JSON Reporter (Stryker Schema)
 - [x] **(P1)** `TASK: rep-json-01` - `Result#to_stryker_schema`: complete implementation including `files` section, `mutants` array, and correct status mapping
-- [ ] **(P1)** `TASK: rep-json-02` - File output: `mutation-report.json` in a configurable directory (`reports/`)
+- [x] **(P1)** `TASK: rep-json-02` - File output: `mutation-report.json` in a configurable directory (`reports/`)
 - [ ] **(P1)** `TASK: rep-json-03` - Schema validation in specs: validate against JSON Schema v3.5.1 (via `json_schemer` gem)
 
 #### HTML Reporter
