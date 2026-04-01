@@ -50,7 +50,12 @@ module Henitai
     # RSpec integration adapter.
     class Rspec < Base
       def select_tests(subject)
-        raise NotImplementedError
+        spec_files.select do |path|
+          content = File.read(path)
+          selection_patterns(subject).any? { |pattern| content.include?(pattern) }
+        rescue StandardError
+          false
+        end
       end
 
       def run_mutant(mutant:, test_files:, timeout:)
@@ -101,6 +106,17 @@ module Henitai
 
       def classify_exit_status(status)
         status.success? ? :survived : :killed
+      end
+
+      def spec_files
+        Dir.glob("spec/**/*_spec.rb")
+      end
+
+      def selection_patterns(subject)
+        [
+          subject.expression,
+          subject.namespace
+        ].compact.uniq.sort_by(&:length).reverse
       end
     end
   end
