@@ -550,8 +550,8 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 - [x] **(P1)** `TASK: result-03` - Terminal report shows MS **and** MSI side by side, plus estimated equivalence uncertainty (`~10-15% of live mutants`)
 - [x] **(P1)** `TASK: result-04` - Spec: MS / MSI calculation with fixture mutants of all statuses, including `:equivalent` (regression guard against formula drift)
 - [x] **(P2)** `TASK: result-05` - Equivalence heuristics (MEDIC patterns): `EquivalenceDetector#analyze(mutant)` marks candidates as `:equivalent` - data-flow patterns (Use-Def, Use-Ret, Def-Def, Def-Ret). Detection rate around 50% of actually equivalent mutants.
-- [ ] **(P2)** `TASK: result-06` - Persistent mutant history: `MutantHistoryStore` on SQLite stores `mutant_id`, `first_seen_version`, `status_history`, `days_alive` and forms the basis for latent-mutant tracking
-- [ ] **(P2)** `TASK: result-07` - Trend tracking: reporter derives `reports/mutation-history.json` from the SQLite history for MS / MSI trends and persistent live mutants
+- [x] **(P2)** `TASK: result-06` - Persistent mutant history: `MutantHistoryStore` on SQLite stores `mutant_id`, `first_seen_version`, `status_history`, `days_alive` and forms the basis for latent-mutant tracking
+- [x] **(P2)** `TASK: result-07` - Trend tracking: reporter derives `reports/mutation-history.json` from the SQLite history for MS / MSI trends and persistent live mutants
 
 ---
 

@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-# rubocop:disable Metrics/MethodLength
-
 require "spec_helper"
 require "tmpdir"
 require "parser/current"
@@ -21,6 +19,7 @@ RSpec.describe Henitai::MutantHistoryStore do
     }
   end
 
+  # rubocop:disable Metrics/MethodLength
   def build_mutant(status:, mutated_source: "1 + 0")
     Struct.new(
       :subject,
@@ -50,6 +49,7 @@ RSpec.describe Henitai::MutantHistoryStore do
       Parser::CurrentRuby.parse(mutated_source)
     )
   end
+  # rubocop:enable Metrics/MethodLength
 
   def build_result(mutants, summary)
     Struct.new(:mutants, :scoring_summary).new(mutants, summary)
@@ -145,4 +145,3 @@ RSpec.describe Henitai::MutantHistoryStore do
     end
   end
 end
-# rubocop:enable Metrics/MethodLength
