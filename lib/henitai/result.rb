@@ -1,12 +1,14 @@
 # frozen_string_literal: true
 
+require "unparser"
+
 module Henitai
   # Aggregates the outcome of a complete mutation testing run.
   #
   # Provides metrics and the serialised Stryker mutation-testing-report-schema
   # JSON payload. The schema version follows stryker-mutator/mutation-testing-elements.
   class Result
-    SCHEMA_VERSION = "3"
+    SCHEMA_VERSION = "1.0"
 
     attr_reader :mutants, :started_at, :finished_at
 
@@ -79,7 +81,7 @@ module Henitai
       finished_at - started_at
     end
 
-    # Serialise to Stryker mutation-testing-report-schema JSON (v3).
+    # Serialise to Stryker mutation-testing-report-schema JSON (schema 1.0).
     # @return [Hash]
     def to_stryker_schema
       {
@@ -132,7 +134,7 @@ module Henitai
     def line_column(mutant, prefix)
       {
         line: mutant.location.fetch(:"#{prefix}_line"),
-        column: mutant.location.fetch(:"#{prefix}_col")
+        column: mutant.location.fetch(:"#{prefix}_col") + 1
       }
     end
 

@@ -110,6 +110,10 @@ RSpec.describe Henitai::Result do
     )
   end
 
+  it "serialises the expected schema version" do
+    expect(result([build_mutant(status: :pending)]).to_stryker_schema[:schemaVersion]).to eq("1.0")
+  end
+
   it "omits equivalence uncertainty when there are no live mutants" do
     expect(
       result([status_mutant(:ignored), status_mutant(:equivalent)]).scoring_summary
