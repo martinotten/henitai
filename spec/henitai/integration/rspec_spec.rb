@@ -139,6 +139,47 @@ RSpec.describe Henitai::Integration::Rspec do
     allow(integration).to receive_messages(run_tests: 0, pause: nil)
   end
 
+  def stub_ordered_mutant_run(order, integration, child_pid:)
+    stub_ordered_exit(order)
+    stub_ordered_fork(order, child_pid)
+    stub_ordered_activation(order)
+    stub_ordered_rspec(order)
+    stub_ordered_wait(integration, order)
+  end
+
+  def stub_ordered_exit(order)
+    allow(Process).to receive(:exit) { |status| order << [:exit, status] }
+  end
+
+  def stub_ordered_fork(order, child_pid)
+    allow(Process).to receive(:fork) do |&block|
+      order << :fork
+      block.call
+      child_pid
+    end
+  end
+
+  def stub_ordered_activation(order)
+    allow(Henitai::Mutant::Activator).to receive(:activate!) do |_mutant|
+      order << :activate
+      0
+    end
+  end
+
+  def stub_ordered_rspec(order)
+    allow(RSpec::Core::Runner).to receive(:run) do |test_files|
+      order << [:rspec, test_files]
+      0
+    end
+  end
+
+  def stub_ordered_wait(integration, order)
+    allow(integration).to receive(:wait_with_timeout) do |pid, timeout|
+      order << [:wait, pid, timeout]
+      :survived
+    end
+  end
+
   it "forks a child, sets the mutant id, and waits with timeout" do
     mutant = Struct.new(:id).new("mutant-1")
     integration = described_class.new
@@ -188,24 +229,7 @@ RSpec.describe Henitai::Integration::Rspec do
     original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
 
     begin
-      allow(Process).to receive(:exit) { |status| order << [:exit, status] }
-      allow(Process).to receive(:fork) do |&block|
-        order << :fork
-        block.call
-        9876
-      end
-      allow(Henitai::Mutant::Activator).to receive(:activate!) do |_mutant|
-        order << :activate
-        0
-      end
-      allow(RSpec::Core::Runner).to receive(:run) do |test_files|
-        order << [:rspec, test_files]
-        0
-      end
-      allow(integration).to receive(:wait_with_timeout) do |pid, timeout|
-        order << [:wait, pid, timeout]
-        :survived
-      end
+      stub_ordered_mutant_run(order, integration, child_pid: 9876)
 
       integration.run_mutant(
         mutant:,
@@ -217,7 +241,10 @@ RSpec.describe Henitai::Integration::Rspec do
         [
           :fork,
           :activate,
-          [:rspec, ["spec/bar_spec.rb"]],
+          [
+            :rspec,
+            ["spec/bar_spec.rb", "--require", "henitai/coverage_formatter"]
+          ],
           [:exit, 0],
           [:wait, 9876, 2.0]
         ]
@@ -292,6 +319,72 @@ RSpec.describe Henitai::Integration::Rspec do
         child_status: 1,
         result: :killed
       )
+    ensure
+      ENV["HENITAI_MUTANT_ID"] = original_env
+    end
+  end
+
+  it "requires the coverage formatter in rspec options" do
+    mutant = Struct.new(:id).new("mutant-coverage")
+    integration = described_class.new
+    record = {}
+    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+    begin
+      allow(Process).to receive(:exit)
+      allow(Process).to receive(:fork) do |&block|
+        block.call
+        24_604
+      end
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+      allow(RSpec::Core::Runner).to receive(:run) do |args|
+        record[:args] = args
+        0
+      end
+      allow(integration).to receive(:wait_with_timeout).and_return(:survived)
+
+      integration.run_mutant(
+        mutant:,
+        test_files: ["spec/coverage_spec.rb"],
+        timeout: 0.1
+      )
+
+      expect(record[:args]).to include("--require", "henitai/coverage_formatter")
+    ensure
+      ENV["HENITAI_MUTANT_ID"] = original_env
+    end
+  end
+
+  it "requires the per-test coverage formatter in the child process" do
+    mutant = Struct.new(:id).new("mutant-coverage")
+    integration = described_class.new
+    captured_args = nil
+    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+    begin
+      allow(Process).to receive_messages(exit: nil)
+      allow(Process).to receive(:fork) do |&block|
+        block.call
+        24_604
+      end
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+      allow(RSpec::Core::Runner).to receive(:run) do |args|
+        captured_args = args
+        true
+      end
+      allow(integration).to receive(:pause).and_return(nil)
+      allow(Process).to receive_messages(wait: 24_604)
+      allow(Process).to receive_messages(
+        last_status: Struct.new(:success?).new(true)
+      )
+
+      integration.run_mutant(
+        mutant:,
+        test_files: ["spec/passing_spec.rb"],
+        timeout: 0.1
+      )
+
+      expect(captured_args).to include("--require", "henitai/coverage_formatter")
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env
     end
@@ -427,7 +520,11 @@ RSpec.describe Henitai::Integration::Rspec do
       )
 
       expect(record).to include(
-        rspec_files: ["spec/failing_spec.rb"],
+        rspec_files: [
+          "spec/failing_spec.rb",
+          "--require",
+          "henitai/coverage_formatter"
+        ],
         child_status: 1,
         result: :killed
       )

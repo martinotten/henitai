@@ -11,6 +11,9 @@ module Henitai
     def apply(mutants, config)
       coverage_lines = coverage_lines_by_file
       coverage_report_present = File.exist?(DEFAULT_COVERAGE_REPORT_PATH)
+      coverage_report_present ||= File.exist?(DEFAULT_PER_TEST_COVERAGE_REPORT_PATH)
+
+      coverage_lines = coverage_lines_from_test_lines(test_lines_by_file) if coverage_lines.empty?
 
       Array(mutants).each do |mutant|
         next if mark_ignored_mutant(mutant, config)
@@ -42,7 +45,9 @@ module Henitai
       parsed = JSON.parse(File.read(path))
       return {} unless parsed.is_a?(Hash)
 
-      parsed.transform_values { |lines| Array(lines).grep(Integer).uniq.sort }
+      parsed.transform_values do |coverage|
+        normalize_test_coverage(coverage)
+      end
     end
 
     private
@@ -66,6 +71,7 @@ module Henitai
     def covered?(mutant, coverage_lines)
       file = normalize_path(mutant.location[:file])
       start_line = mutant.location[:start_line]
+
       Array(coverage_lines[file]).include?(start_line)
     end
 
@@ -86,6 +92,31 @@ module Henitai
       Array(file_coverage["lines"]).each_with_index.filter_map do |count, index|
         index + 1 if count.to_i.positive?
       end
+    end
+
+    def normalize_test_coverage(coverage)
+      case coverage
+      when Hash
+        coverage.transform_values do |lines|
+          Array(lines).grep(Integer).uniq.sort
+        end
+      else
+        Array(coverage).grep(Integer).uniq.sort
+      end
+    end
+
+    def coverage_lines_from_test_lines(test_lines)
+      coverage = Hash.new { |hash, key| hash[key] = [] }
+
+      test_lines.each_value do |source_coverage|
+        next unless source_coverage.is_a?(Hash)
+
+        source_coverage.each do |source_file, lines|
+          coverage[normalize_path(source_file)].concat(Array(lines).grep(Integer))
+        end
+      end
+
+      coverage.transform_values(&:uniq).transform_values(&:sort)
     end
 
     def normalize_path(path)

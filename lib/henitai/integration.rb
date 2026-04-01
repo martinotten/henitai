@@ -129,7 +129,7 @@ module Henitai
       end
 
       def rspec_options
-        []
+        ["--require", "henitai/coverage_formatter"]
       end
 
       def spec_files

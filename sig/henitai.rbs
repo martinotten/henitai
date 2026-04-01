@@ -102,6 +102,13 @@ module Henitai
     def valid?: (Mutant) -> bool
   end
 
+  class CoverageFormatter
+    def initialize: (untyped) -> void
+    def example_group_started: (untyped) -> void
+    def example_group_finished: (untyped) -> void
+    def dump_summary: (untyped) -> void
+  end
+
   class SamplingStrategy
     def initialize: () -> void
     def sample: (Array[Mutant], ratio: Float, ?strategy: Symbol) -> Array[Mutant]
@@ -174,6 +181,8 @@ module Henitai
 
   class StaticFilter
     def apply: (Array[Mutant], untyped) -> Array[Mutant]
+    def coverage_lines_by_file: (?String) -> Hash[String, Array[Integer]]
+    def test_lines_by_file: (?String) -> Hash[String, Hash[String, Array[Integer]]]
   end
 
   class ExecutionEngine

@@ -34,6 +34,12 @@ RSpec.describe Henitai::StaticFilter do
     File.write(File.join(coverage_dir, ".resultset.json"), data.to_json)
   end
 
+  def write_per_test_coverage_report(dir, data)
+    coverage_dir = File.join(dir, "coverage")
+    FileUtils.mkdir_p(coverage_dir)
+    File.write(File.join(coverage_dir, "henitai_per_test.json"), data.to_json)
+  end
+
   def filter_with_coverage
     filter = described_class.new
     allow(filter).to receive(:coverage_lines_by_file).and_return("sample.rb" => [1])
@@ -133,22 +139,57 @@ RSpec.describe Henitai::StaticFilter do
       File.write(
         report_path,
         {
-          "spec/models/sample_spec.rb" => [5, 1, 5, 3],
-          "spec/models/other_spec.rb" => [2]
+          File.expand_path("spec/models/sample_spec.rb", dir) => {
+            File.expand_path("lib/sample.rb", dir) => [5, 1, 5, 3],
+            File.expand_path("lib/other.rb", dir) => [2]
+          },
+          File.expand_path("spec/models/other_spec.rb", dir) => {
+            File.expand_path("lib/sample.rb", dir) => [2]
+          }
         }.to_json
       )
 
       coverage = described_class.new.test_lines_by_file(report_path)
 
       expect(coverage).to eq(
-        "spec/models/other_spec.rb" => [2],
-        "spec/models/sample_spec.rb" => [1, 3, 5]
+        File.expand_path("spec/models/other_spec.rb", dir) => {
+          File.expand_path("lib/sample.rb", dir) => [2]
+        },
+        File.expand_path("spec/models/sample_spec.rb", dir) => {
+          File.expand_path("lib/other.rb", dir) => [2],
+          File.expand_path("lib/sample.rb", dir) => [1, 3, 5]
+        }
       )
     end
   end
 
   it "returns an empty per-test coverage map when the report is missing" do
     expect(described_class.new.test_lines_by_file("/tmp/missing-per-test.json")).to eq({})
+  end
+
+  it "uses per-test coverage as a fallback when the global report is missing" do
+    Dir.mktmpdir do |dir|
+      mutant = build_mutant("foo.bar")
+      per_test_path = File.join(dir, "coverage", "henitai_per_test.json")
+      FileUtils.mkdir_p(File.dirname(per_test_path))
+      File.write(
+        per_test_path,
+        {
+          File.expand_path("spec/sample_spec.rb", dir) => {
+            File.expand_path("lib/sample.rb", dir) => [2, 4]
+          }
+        }.to_json
+      )
+
+      mutant.location[:file] = File.expand_path("lib/sample.rb", dir)
+      mutant.location[:start_line] = 4
+
+      Dir.chdir(dir) do
+        described_class.new.apply([mutant], config)
+      end
+
+      expect(mutant.status).to eq(:pending)
+    end
   end
 
   it "leaves mutants pending when the coverage report is missing" do
@@ -240,6 +281,29 @@ RSpec.describe Henitai::StaticFilter do
 
       mutant.location[:file] = File.join(dir, "sample.rb")
       mutant.location[:start_line] = 2
+
+      Dir.chdir(dir) do
+        described_class.new.apply([mutant], config)
+      end
+
+      expect(mutant.status).to eq(:pending)
+    end
+  end
+
+  it "uses per-test coverage data when the resultset report is absent" do
+    Dir.mktmpdir do |dir|
+      mutant = build_mutant("foo.bar")
+      write_per_test_coverage_report(
+        dir,
+        {
+          "spec/models/sample_spec.rb" => {
+            File.join(dir, "sample.rb") => [1, 3]
+          }
+        }
+      )
+
+      mutant.location[:file] = File.join(dir, "sample.rb")
+      mutant.location[:start_line] = 3
 
       Dir.chdir(dir) do
         described_class.new.apply([mutant], config)

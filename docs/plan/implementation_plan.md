@@ -360,7 +360,7 @@ result = wait_with_timeout(pid, config.timeout)
 - [x] **(P1)** `TASK: subject-04` - `GitDiffAnalyzer#changed_files(from:, to:)`: shell wrapper around `git diff --name-only`, returns `Array<String>`
 - [x] **(P1)** `TASK: subject-05` - `GitDiffAnalyzer#changed_methods(from:, to:)`: maps diff hunk line numbers to subject ranges
 - [x] **(P1)** `TASK: subject-06` - Spec: edge cases - anonymous classes, singleton classes (`class << self`), `attr_accessor`-generated methods, endless methods (`def f = expr`)
-- [ ] **(P2)** `TASK: subject-07` - Metaprogramming detection: capture `define_method` calls as subjects (document the limitation if it cannot be solved)
+- [x] **(P2)** `TASK: subject-07` - Metaprogramming detection: capture `define_method` calls as subjects (document the limitation if it cannot be solved)
 
 ---
 
@@ -444,7 +444,7 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 - [x] **(P1)** `TASK: filter-01` - `StaticFilter#apply(mutants, config)`: mark mutants as `:ignored` when the location matches `ignore_patterns`
 - [x] **(P1)** `TASK: filter-02` - Coverage integration: read the `SimpleCov` JSON coverage report (`coverage/.resultset.json`), build a `file → [line_numbers]` map
 - [x] **(P1)** `TASK: filter-03` - No-coverage marking: mutants whose `start_line` is not in the coverage map receive status `:no_coverage`
-- [ ] **(P2)** `TASK: filter-04` - Per-test coverage: `StaticFilter#test_lines_by_file` can parse `coverage/henitai_per_test.json`, but the execution pipeline does not consume it yet; integrate `SimpleCov::RSpec` output via `rspec-06`
+- [x] **(P2)** `TASK: filter-04` - Per-test coverage: `StaticFilter#test_lines_by_file` can parse `coverage/henitai_per_test.json`, but the execution pipeline does not consume it yet; integrate `SimpleCov::RSpec` output via `rspec-06`
 
 ---
 
@@ -491,7 +491,7 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 - [x] **(P1)** `TASK: rspec-03` - `Integration::Rspec#run_in_child(test_files)`: call `RSpec::Core::Runner.run(test_files + rspec_opts)` in the **current process** (called after `fork` by the ExecutionEngine child - no separate subprocess via `exec` or `system`)
 - [x] **(P1)** `TASK: rspec-04` - Ensure activation order: `exec-03` (`Activator.activate!`) is called by `exec-02` (fork) **before** `rspec-03` (`RSpec::Core::Runner.run`) starts. A spec test verifies that the `define_method` patch is active when the first test runs.
 - [x] **(P1)** `TASK: rspec-05` - Integration spec: unit tests for prefix matching logic (no real process needed)
-- [ ] **(P2)** `TASK: rspec-06` - Per-test coverage: add `--require henitai/coverage_formatter` to RSpec options, produce `coverage/henitai_per_test.json`
+- [x] **(P2)** `TASK: rspec-06` - Per-test coverage: add `--require henitai/coverage_formatter` to RSpec options, produce `coverage/henitai_per_test.json`
 - [ ] **(P3)** `TASK: minitest-01` - Minitest integration analogous to the RSpec integration
 
 ---
@@ -527,8 +527,8 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 - [x] **(P1)** `TASK: cli-02` - `henitai run --since GIT_REF`: incremental mode, restrict Gate 1 to changed files
 - [x] **(P1)** `TASK: cli-03` - Exit codes: 0 = MS ≥ low threshold, 1 = MS < low threshold, 2 = framework error
 - [x] **(P1)** `TASK: cli-04` - `henitai version`: print `Henitai::VERSION`
-- [ ] **(P2)** `TASK: cli-05` - `henitai init`: create `.henitai.yml` with sensible defaults, ask interactively about integrations
-- [ ] **(P2)** `TASK: cli-06` - `henitai operator list`: list all available operators with descriptions and example mutations
+- [x] **(P2)** `TASK: cli-05` - `henitai init`: create `.henitai.yml` with sensible defaults, ask interactively about integrations
+- [x] **(P2)** `TASK: cli-06` - `henitai operator list`: list all available operators with descriptions and example mutations
 
 ---
 
