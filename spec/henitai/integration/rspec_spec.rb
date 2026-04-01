@@ -17,6 +17,7 @@ RSpec.describe Henitai::Integration::Rspec do
         record[:env_id] = ENV.fetch("HENITAI_MUTANT_ID", nil)
         4321
       end
+      allow(integration).to receive(:run_tests).and_return(0)
       allow(integration).to receive(:wait_with_timeout) do |pid, timeout|
         record[:wait_args] = [pid, timeout]
         :survived
@@ -123,6 +124,46 @@ RSpec.describe Henitai::Integration::Rspec do
         forked: true,
         child_status: 0,
         result: :timeout
+      )
+    ensure
+      ENV["HENITAI_MUTANT_ID"] = original_env
+    end
+  end
+
+  it "exits the child with status 1 when RSpec reports a failure" do
+    mutant = Struct.new(:id).new("mutant-4")
+    integration = described_class.new
+    record = {}
+    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+    begin
+      allow(Process).to receive(:exit) { |status| record[:child_status] = status }
+      allow(Process).to receive(:fork) do |&block|
+        block.call
+        1357
+      end
+      allow(Process).to receive_messages(
+        wait: Process::Status.allocate,
+        clock_gettime: 0.0
+      )
+      allow(integration).to receive_messages(
+        activate_mutant: 0,
+        pause: nil
+      )
+      allow(RSpec::Core::Runner).to receive(:run) do |test_files|
+        record[:rspec_files] = test_files
+        false
+      end
+
+      integration.run_mutant(
+        mutant:,
+        test_files: ["spec/failing_spec.rb"],
+        timeout: 0.1
+      )
+
+      expect(record).to include(
+        rspec_files: ["spec/failing_spec.rb"],
+        child_status: 1
       )
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env

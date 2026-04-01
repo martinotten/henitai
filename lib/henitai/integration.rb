@@ -92,8 +92,7 @@ module Henitai
       end
 
       def run_tests(test_files)
-        test_files.length
-        0
+        RSpec::Core::Runner.run(test_files) ? 0 : 1
       end
 
       def pause(seconds)
