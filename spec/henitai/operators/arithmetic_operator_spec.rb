@@ -88,7 +88,14 @@ RSpec.describe Henitai::Operators::ArithmeticOperator do
   end
 
   it "traverses nested parentheses" do
-    expect(generate_descriptions("((foo + 1) * 2)")).to contain_exactly(
+    expression = <<~EXPRESSION
+      (
+        foo +
+        1 * 2
+      )
+    EXPRESSION
+
+    expect(generate_descriptions(expression)).to contain_exactly(
       "replaced + with -",
       "replaced * with /"
     )

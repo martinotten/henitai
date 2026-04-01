@@ -28,6 +28,7 @@ module Henitai
   autoload :AridNodeFilter, "henitai/arid_node_filter"
   autoload :StillbornFilter, "henitai/stillborn_filter"
   autoload :SyntaxValidator, "henitai/syntax_validator"
+  autoload :SamplingStrategy, "henitai/sampling_strategy"
   autoload :Runner, "henitai/runner"
   autoload :Reporter, "henitai/reporter"
   autoload :Integration, "henitai/integration"
