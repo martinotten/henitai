@@ -94,6 +94,30 @@ RSpec.describe Henitai::ExecutionEngine do
     expect(progress.calls).to eq([:killed])
   end
 
+  it "prioritizes tests that have already killed other mutants" do
+    pending = build_mutant(:pending, "Foo#bar")
+    integration = build_integration
+    config = Struct.new(:timeout, :reports_dir, :jobs, :history).new(
+      12.5,
+      "coverage",
+      1,
+      {
+        "spec/b_spec.rb" => 5,
+        "spec/a_spec.rb" => 1
+      }
+    )
+
+    allow(integration).to receive(:select_tests).and_return(
+      %w[spec/a_spec.rb spec/b_spec.rb spec/c_spec.rb]
+    )
+
+    described_class.new.run([pending], integration, config)
+
+    expect(integration.calls[:last_test_files]).to eq(
+      %w[spec/b_spec.rb spec/a_spec.rb spec/c_spec.rb]
+    )
+  end
+
   it "uses configured jobs when running mutants in parallel" do
     first = build_mutant(:pending, "Foo#bar")
     second = build_mutant(:pending, "Foo#baz")

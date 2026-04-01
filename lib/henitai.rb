@@ -31,6 +31,7 @@ module Henitai
   autoload :CoverageFormatter, "henitai/coverage_formatter"
   autoload :SyntaxValidator, "henitai/syntax_validator"
   autoload :SamplingStrategy, "henitai/sampling_strategy"
+  autoload :TestPrioritizer, "henitai/test_prioritizer"
   autoload :ExecutionEngine, "henitai/execution_engine"
   autoload :Runner, "henitai/runner"
   autoload :Reporter, "henitai/reporter"

@@ -139,6 +139,11 @@ module Henitai
     def sample: (Array[Mutant], ratio: Float, ?strategy: Symbol) -> Array[Mutant]
   end
 
+  class TestPrioritizer
+    def initialize: () -> void
+    def sort: (Array[String], untyped, Hash[untyped, untyped]) -> Array[String]
+  end
+
   class Operator
     LIGHT_SET: Array[String]
     FULL_SET: Array[String]
@@ -220,6 +225,9 @@ module Henitai
     def run_linear: (Array[Mutant], untyped, untyped, untyped?) -> void
     def run_parallel: (Array[Mutant], untyped, untyped, untyped?) -> void
     def process_mutant: (Mutant, untyped, untyped, untyped?, ?untyped) -> void
+    def prioritized_tests_for: (Mutant, untyped, untyped) -> Array[String]
+    def test_prioritizer: () -> TestPrioritizer
+    def test_history: (untyped) -> Hash[untyped, untyped]
     def with_reports_dir: (untyped) { () -> untyped } -> untyped
   end
 

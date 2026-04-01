@@ -53,7 +53,7 @@ module Henitai
     end
 
     def process_mutant(mutant, integration, config, progress_reporter, mutex = nil)
-      test_files = integration.select_tests(mutant.subject)
+      test_files = prioritized_tests_for(mutant, integration, config)
       mutant.status = integration.run_mutant(
         mutant:,
         test_files:,
@@ -65,6 +65,24 @@ module Henitai
       else
         progress_reporter&.progress(mutant)
       end
+    end
+
+    def prioritized_tests_for(mutant, integration, config)
+      test_prioritizer.sort(
+        integration.select_tests(mutant.subject),
+        mutant,
+        test_history(config)
+      )
+    end
+
+    def test_prioritizer
+      @test_prioritizer ||= TestPrioritizer.new
+    end
+
+    def test_history(config)
+      return {} unless config.respond_to?(:history)
+
+      config.history || {}
     end
 
     def with_reports_dir(config)
