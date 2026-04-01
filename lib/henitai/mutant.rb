@@ -15,6 +15,8 @@ module Henitai
   #   :pending, :killed, :survived, :timeout, :compile_error, :runtime_error,
   #   :ignored, :no_coverage
   class Mutant
+    autoload :Activator, "henitai/mutant/activator"
+
     # Status-Vokabular folgt dem Stryker mutation-testing-report-schema.
     # :equivalent ist ein Henitai-interner Status (wird im JSON als "Ignored" serialisiert,
     # aber in der Scoring-Berechnung separat behandelt: confirmed equivalent mutants

@@ -17,6 +17,7 @@ RSpec.describe Henitai::Integration::Rspec do
         record[:env_id] = ENV.fetch("HENITAI_MUTANT_ID", nil)
         4321
       end
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
       allow(integration).to receive(:run_tests).and_return(0)
       allow(Process).to receive(:wait) do |pid, flags|
         record[:wait_args] = [pid, flags]
@@ -57,7 +58,7 @@ RSpec.describe Henitai::Integration::Rspec do
         block.call
         9876
       end
-      allow(integration).to receive(:activate_mutant) do |_mutant|
+      allow(Henitai::Mutant::Activator).to receive(:activate!) do |_mutant|
         order << :activate
         0
       end
@@ -108,10 +109,8 @@ RSpec.describe Henitai::Integration::Rspec do
       allow(Process).to receive(:kill) do |signal, pid|
         record[:signals] << [signal, pid]
       end
-      allow(integration).to receive_messages(
-        activate_mutant: 0,
-        run_tests: 0
-      )
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+      allow(integration).to receive(:run_tests).and_return(0)
       allow(integration).to receive(:pause) do |seconds|
         record[:pauses] << seconds
       end
@@ -149,10 +148,8 @@ RSpec.describe Henitai::Integration::Rspec do
         wait: 1357,
         last_status: Struct.new(:success?).new(false)
       )
-      allow(integration).to receive_messages(
-        activate_mutant: 0,
-        pause: nil
-      )
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+      allow(integration).to receive(:pause).and_return(nil)
       allow(RSpec::Core::Runner).to receive(:run) do |test_files|
         record[:rspec_files] = test_files
         false

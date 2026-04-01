@@ -65,7 +65,7 @@ module Henitai
       private
 
       def run_in_child(mutant:, test_files:)
-        activate_mutant(mutant)
+        Mutant::Activator.activate!(mutant)
         run_tests(test_files)
       end
 
