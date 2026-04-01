@@ -52,10 +52,4 @@ RSpec.describe Henitai::Operators::PatternMatch do
 
     expect(mutant.mutated_node.children[1].children[1]).to be_nil
   end
-
-  it "ignores non case-match nodes" do
-    node = find_nodes(parse("value"), :send).first
-
-    expect(described_class.new.mutate(node, subject: mutation_subject)).to eq([])
-  end
 end

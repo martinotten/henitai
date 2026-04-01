@@ -4,27 +4,32 @@ require "open3"
 require_relative "subject_resolver"
 
 module Henitai
-  # Shells out to git to discover changed files between two refs.
-  class GitDiffAnalyzer
-    def changed_files(from:, to:)
-      stdout, stderr, status = git_diff("--name-only", from, to)
+  class GitDiffError < StandardError; end
 
-      raise stderr.strip unless status.success?
+  # Shells out to git to discover changed files between two refs.
+  #
+  # By default the analyzer runs in the current working directory. Callers can
+  # pass dir: to point it at another repository root without changing cwd.
+  class GitDiffAnalyzer
+    def changed_files(from:, to:, dir: Dir.pwd)
+      stdout, stderr, status = git_diff(dir, "--name-only", from, to)
+
+      raise GitDiffError, stderr.strip unless status.success?
 
       stdout.split("\n").reject(&:empty?)
     end
 
-    def changed_methods(from:, to:)
-      changed_files(from:, to:).flat_map do |path|
-        changed_methods_in_file(path, from:, to:)
+    def changed_methods(from:, to:, dir: Dir.pwd)
+      changed_files(from:, to:, dir:).flat_map do |path|
+        changed_methods_in_file(path, from:, to:, dir:)
       end
     end
 
     private
 
-    def changed_methods_in_file(path, from:, to:)
-      subjects = SubjectResolver.new.resolve_from_files([path])
-      changed_ranges = changed_line_ranges(path, from:, to:)
+    def changed_methods_in_file(path, from:, to:, dir:)
+      subjects = SubjectResolver.new.resolve_from_files([File.expand_path(path, dir)])
+      changed_ranges = changed_line_ranges(path, from:, to:, dir:)
 
       subjects.select do |subject|
         subject.source_range &&
@@ -34,10 +39,10 @@ module Henitai
       end
     end
 
-    def changed_line_ranges(path, from:, to:)
-      stdout, stderr, status = git_diff("--unified=0", from, to, "--", path)
+    def changed_line_ranges(path, from:, to:, dir:)
+      stdout, stderr, status = git_diff(dir, "--unified=0", from, to, "--", path)
 
-      raise stderr.strip unless status.success?
+      raise GitDiffError, stderr.strip unless status.success?
 
       stdout.each_line.filter_map { |line| changed_range_from_hunk(line) }
     end
@@ -65,8 +70,13 @@ module Henitai
       left.begin <= right.end && right.begin <= left.end
     end
 
-    def git_diff(...)
-      Open3.capture3("git", "diff", ...)
+    def git_diff(dir, *git_args)
+      command = ["git"]
+      command += ["-C", dir] if dir
+      command << "diff"
+      command.concat(git_args)
+
+      Open3.capture3(*command)
     end
   end
 end

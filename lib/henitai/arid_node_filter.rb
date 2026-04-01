@@ -20,9 +20,15 @@ module Henitai
       source = node.location&.expression&.source
       return false unless source
 
-      Array(config&.ignore_patterns).any? do |pattern|
-        Regexp.new(pattern).match?(source)
+      compiled_ignore_patterns(config).any? do |pattern|
+        pattern.match?(source)
       end
+    end
+
+    def compiled_ignore_patterns(config)
+      patterns = Array(config&.ignore_patterns).dup.freeze
+      @compiled_ignore_patterns ||= {}
+      @compiled_ignore_patterns[patterns] ||= patterns.map { |pattern| Regexp.new(pattern) }
     end
 
     def catalog_match?(node)

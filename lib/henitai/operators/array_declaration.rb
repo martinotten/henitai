@@ -13,8 +13,6 @@ module Henitai
       end
 
       def mutate(node, subject:)
-        return [] unless node.type == :array
-
         if node.children.empty?
           [empty_array_mutant(subject:, node:)]
         else

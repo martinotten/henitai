@@ -13,7 +13,6 @@ module Henitai
       end
 
       def mutate(node, subject:)
-        return [] unless node.type == :block
         return [] if node.children.last.nil?
 
         call, args, _body = node.children

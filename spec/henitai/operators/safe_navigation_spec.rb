@@ -35,10 +35,4 @@ RSpec.describe Henitai::Operators::SafeNavigation do
 
     expect(mutant.mutated_node.children[2].type).to eq(:int)
   end
-
-  it "ignores regular sends" do
-    node = find_nodes(parse("user.name"), :send).first
-
-    expect(described_class.new.mutate(node, subject: mutation_subject)).to eq([])
-  end
 end

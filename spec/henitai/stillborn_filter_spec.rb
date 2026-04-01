@@ -34,4 +34,12 @@ RSpec.describe Henitai::StillbornFilter do
 
     expect(described_class.new.suppressed?(mutant)).to be(true)
   end
+
+  it "suppresses mutants when unparsing raises" do
+    mutant = build_mutant("1")
+
+    allow(Unparser).to receive(:unparse).with(mutant.mutated_node).and_raise(StandardError, "boom")
+
+    expect(described_class.new.suppressed?(mutant)).to be(true)
+  end
 end

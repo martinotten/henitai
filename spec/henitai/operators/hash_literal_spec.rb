@@ -51,6 +51,16 @@ RSpec.describe Henitai::Operators::HashLiteral do
     )
   end
 
+  it "leaves string keys unchanged in mixed hashes" do
+    mutant = mutate('{ foo: 1, "bar" => 2 }').find do |candidate|
+      candidate.description == "replaced symbol key with string key"
+    end
+
+    expect(mutant.mutated_node.children.map { |pair| pair.children.first.type }).to eq(
+      %i[str str]
+    )
+  end
+
   it "ignores empty hashes" do
     expect(mutate("{}")).to eq([])
   end

@@ -13,8 +13,6 @@ module Henitai
       end
 
       def mutate(node, subject:)
-        return [] unless node.type == :case_match
-
         mutants = []
         arm_number = 0
 

@@ -51,6 +51,8 @@ module Henitai
       end
 
       def static_string(node)
+        # Fully interpolated strings collapse to an empty string, which still
+        # gives us a valid neutral mutation target.
         node.children.each_with_object(+"") do |child, string|
           next unless child.type == :str
 

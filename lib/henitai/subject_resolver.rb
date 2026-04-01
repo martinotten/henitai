@@ -156,6 +156,8 @@ module Henitai
     end
 
     def symbol_name(value)
+      # Prism exposes identifiers as symbols (for example, :foo), so normalize
+      # them to the string form used by Subject expressions.
       value.to_s.delete_prefix(":")
     end
 

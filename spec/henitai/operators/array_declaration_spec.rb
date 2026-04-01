@@ -48,10 +48,4 @@ RSpec.describe Henitai::Operators::ArrayDeclaration do
       "removed array element 2"
     )
   end
-
-  it "ignores non-array nodes" do
-    node = find_nodes(parse("value"), :send).first
-
-    expect(described_class.new.mutate(node, subject: mutation_subject)).to eq([])
-  end
 end

@@ -13,7 +13,6 @@ module Henitai
       end
 
       def mutate(node, subject:)
-        return [] unless node.type == :hash
         return [] if node.children.empty?
 
         mutants = [empty_hash_mutant(node, subject:)]

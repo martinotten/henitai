@@ -22,6 +22,18 @@ RSpec.describe Henitai::AridNodeFilter do
     expect(described_class.new.suppressed?(node, config(ignore_patterns: ["foo\\.bar"]))).to be(true)
   end
 
+  it "caches compiled ignore patterns across repeated checks" do
+    node = parse("foo.bar")
+    filter = described_class.new
+
+    allow(Regexp).to receive(:new).and_call_original
+
+    filter.suppressed?(node, config(ignore_patterns: ["foo\\.bar"]))
+    filter.suppressed?(node, config(ignore_patterns: ["foo\\.bar"]))
+
+    expect(Regexp).to have_received(:new).once
+  end
+
   it "treats a nil config as having no ignore patterns" do
     node = parse("foo.bar")
 

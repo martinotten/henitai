@@ -75,9 +75,11 @@ RSpec.describe Henitai::GitDiffAnalyzer do
       write_file(dir, "lib/sample.rb", "class Sample\n  def answer = 42\nend\n")
       commit_all(dir, "Update sample")
 
-      changed_files = Dir.chdir(dir) do
-        described_class.new.changed_files(from: "HEAD~1", to: "HEAD")
-      end
+      changed_files = described_class.new.changed_files(
+        from: "HEAD~1",
+        to: "HEAD",
+        dir:
+      )
 
       expect(changed_files).to eq(["lib/sample.rb"])
     end
@@ -91,9 +93,7 @@ RSpec.describe Henitai::GitDiffAnalyzer do
       write_file(dir, "lib/sample.rb", "class Sample; end\n")
       commit_all(dir, "Initial commit")
 
-      changed_files = Dir.chdir(dir) do
-        described_class.new.changed_files(from: "HEAD", to: "HEAD")
-      end
+      changed_files = described_class.new.changed_files(from: "HEAD", to: "HEAD", dir:)
 
       expect(changed_files).to eq([])
     end
@@ -110,9 +110,11 @@ RSpec.describe Henitai::GitDiffAnalyzer do
       write_file(dir, "lib/sample.rb", sample_updated_source)
       commit_all(dir, "Update sample")
 
-      changed_methods = Dir.chdir(dir) do
-        described_class.new.changed_methods(from: "HEAD~1", to: "HEAD")
-      end
+      changed_methods = described_class.new.changed_methods(
+        from: "HEAD~1",
+        to: "HEAD",
+        dir:
+      )
 
       expect(changed_methods.map(&:expression)).to eq(
         [
@@ -147,9 +149,11 @@ RSpec.describe Henitai::GitDiffAnalyzer do
       )
       commit_all(dir, "Delete alpha body")
 
-      changed_methods = Dir.chdir(dir) do
-        described_class.new.changed_methods(from: "HEAD~1", to: "HEAD")
-      end
+      changed_methods = described_class.new.changed_methods(
+        from: "HEAD~1",
+        to: "HEAD",
+        dir:
+      )
 
       expect(changed_methods.map(&:expression)).to eq(["Sample#alpha"])
     end
@@ -180,10 +184,8 @@ RSpec.describe Henitai::GitDiffAnalyzer do
       end
 
       expect do
-        Dir.chdir(dir) do
-          analyzer.changed_methods(from: "HEAD~1", to: "HEAD")
-        end
-      end.to raise_error(RuntimeError, /fatal: broken diff/)
+        analyzer.changed_methods(from: "HEAD~1", to: "HEAD", dir:)
+      end.to raise_error(Henitai::GitDiffError, /fatal: broken diff/)
     end
   end
 
@@ -196,10 +198,8 @@ RSpec.describe Henitai::GitDiffAnalyzer do
       commit_all(dir, "Initial commit")
 
       expect do
-        Dir.chdir(dir) do
-          described_class.new.changed_files(from: "HEAD", to: "missing-ref")
-        end
-      end.to raise_error(RuntimeError, /fatal/i)
+        described_class.new.changed_files(from: "HEAD", to: "missing-ref", dir:)
+      end.to raise_error(Henitai::GitDiffError, /fatal/i)
     end
   end
 end

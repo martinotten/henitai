@@ -21,6 +21,7 @@ module Henitai
         when :op_asgn
           mutate_compound_assignment(node, subject:)
         when :or_asgn
+          # Memoization-style ||= is usually filtered earlier by AridNodeFilter.
           mutate_coalesce_assignment(node, subject:)
         else
           []
