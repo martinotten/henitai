@@ -159,6 +159,27 @@ module Henitai
     end
   end
 
+  class SubjectResolver
+    def resolve_from_files: (Array[String]?) -> Array[Subject]
+    def apply_pattern: (Array[Subject], String) -> Array[Subject]
+  end
+
+  class GitDiffAnalyzer
+    def changed_files: (from: String, to: String, ?dir: String) -> Array[String]
+  end
+
+  class MutantGenerator
+    def generate: (Array[Subject], Array[untyped], ?config: untyped) -> Array[Mutant]
+  end
+
+  class StaticFilter
+    def apply: (Array[Mutant], untyped) -> Array[Mutant]
+  end
+
+  class ExecutionEngine
+    def run: (Array[Mutant], untyped, untyped, ?progress_reporter: untyped) -> Array[Mutant]
+  end
+
   class Mutant::Activator
     SERIALIZER_METHODS: Hash[Symbol, Symbol]
 
@@ -283,14 +304,25 @@ module Henitai
 
     def initialize: (?config: Configuration, ?subjects: Array[Subject], ?since: String) -> void
     def run: () -> Result
-
-    private
-
     def resolve_subjects: () -> untyped
     def generate_mutants: (untyped) -> untyped
     def filter_mutants: (untyped) -> untyped
     def execute_mutants: (untyped) -> untyped
     def report: (Result) -> void
+    def subject_resolver: () -> untyped
+    def git_diff_analyzer: () -> untyped
+    def mutant_generator: () -> untyped
+    def static_filter: () -> untyped
+    def execution_engine: () -> untyped
+    def integration: () -> untyped
+    def operators: () -> untyped
+    def progress_reporter: () -> untyped?
+    def source_files: () -> Array[String]
+    def pattern_subjects: () -> Array[Subject]
+    def unique_subjects: (Array[Subject]) -> Array[Subject]
+    def normalize_path: (String) -> String
+
+    private
   end
 
   class CLI

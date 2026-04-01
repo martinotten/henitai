@@ -37,35 +37,114 @@ module Henitai
     # Entry point — runs the full pipeline and returns a Result.
     # @return [Result]
     def run
-      # TODO: implement pipeline phases
-      raise NotImplementedError, "Runner#run is not yet implemented"
+      started_at = Time.now
+      subjects = resolve_subjects
+      mutants = generate_mutants(subjects)
+      mutants = filter_mutants(mutants)
+      mutants = execute_mutants(mutants)
+      finished_at = Time.now
+
+      @result = Result.new(
+        mutants:,
+        started_at:,
+        finished_at:
+      )
+      report(@result)
+      @result
     end
 
     private
 
     def resolve_subjects
-      # Gate 1: discover source files, parse ASTs, build Subject objects
-      raise NotImplementedError
+      subjects = subject_resolver.resolve_from_files(source_files)
+      return subjects if pattern_subjects.empty?
+
+      selected_subjects = pattern_subjects.flat_map do |pattern|
+        subject_resolver.apply_pattern(subjects, pattern.expression)
+      end
+      unique_subjects(selected_subjects)
     end
 
     def generate_mutants(subjects)
-      # Gate 2: apply operators, filter arid nodes
-      raise NotImplementedError
+      mutant_generator.generate(subjects, operators, config:)
     end
 
     def filter_mutants(mutants)
-      # Gate 3: static filtering, coverage data
-      raise NotImplementedError
+      static_filter.apply(mutants, config)
     end
 
     def execute_mutants(mutants)
-      # Gate 4: fork-based isolation, collect results
-      raise NotImplementedError
+      execution_engine.run(
+        mutants,
+        integration,
+        config,
+        progress_reporter: progress_reporter
+      )
     end
 
     def report(result)
-      # Gate 5: invoke each configured reporter
-      raise NotImplementedError
+      Reporter.run_all(names: config.reporters, result:, config:)
+    end
+
+    def subject_resolver
+      @subject_resolver ||= SubjectResolver.new
+    end
+
+    def git_diff_analyzer
+      @git_diff_analyzer ||= GitDiffAnalyzer.new
+    end
+
+    def mutant_generator
+      @mutant_generator ||= MutantGenerator.new
+    end
+
+    def static_filter
+      @static_filter ||= StaticFilter.new
+    end
+
+    def execution_engine
+      @execution_engine ||= ExecutionEngine.new
+    end
+
+    def integration
+      @integration ||= Integration.for(config.integration).new
+    end
+
+    def operators
+      @operators ||= Operator.for_set(config.operators)
+    end
+
+    def progress_reporter
+      return nil unless Array(config.reporters).map(&:to_s).include?("terminal")
+
+      Reporter::Terminal.new(config:)
+    end
+
+    def source_files
+      included_files = Array(config.includes).flat_map do |include_path|
+        Dir.glob(File.join(include_path, "**", "*.rb"))
+      end.uniq
+
+      return included_files unless @since
+
+      changed_files = git_diff_analyzer.changed_files(from: @since, to: "HEAD")
+      changed_file_set = changed_files.map { |path| normalize_path(path) }
+
+      included_files.select do |path|
+        changed_file_set.include?(normalize_path(path))
+      end
+    end
+
+    def pattern_subjects
+      Array(@subjects)
+    end
+
+    def unique_subjects(subjects)
+      subjects.uniq { |subject| [subject.expression, subject.source_file] }
+    end
+
+    def normalize_path(path)
+      File.expand_path(path)
     end
   end
 end

@@ -42,21 +42,11 @@ module Henitai
 
     def run_command
       options = parse_run_options
-      config = Configuration.load(
-        path: options.fetch(:config, Configuration::CONFIG_FILE),
-        overrides: configuration_overrides(options)
-      )
-      subjects = @argv.empty? ? nil : @argv.map { |expr| Subject.parse(expr) }
-
-      runner = Runner.new(
-        config:,
-        subjects:,
-        since: options[:since]
-      )
-
-      result = runner.run
-
-      exit(result.mutation_score.to_i >= config.thresholds[:low] ? 0 : 1)
+      config = load_config(options)
+      result = run_pipeline(options, config)
+      exit(exit_status_for(result, config))
+    rescue StandardError => e
+      handle_run_error(e)
     end
 
     def parse_run_options
@@ -165,6 +155,35 @@ module Henitai
 
         Run `henitai run --help` for full option list.
       HELP
+    end
+
+    def run_pipeline(options, config)
+      runner = Runner.new(
+        config:,
+        subjects: subjects_from_argv,
+        since: options[:since]
+      )
+      runner.run
+    end
+
+    def load_config(options)
+      Configuration.load(
+        path: options.fetch(:config, Configuration::CONFIG_FILE),
+        overrides: configuration_overrides(options)
+      )
+    end
+
+    def subjects_from_argv
+      @argv.empty? ? nil : @argv.map { |expr| Subject.parse(expr) }
+    end
+
+    def handle_run_error(error)
+      warn "#{error.class}: #{error.message}"
+      exit 2
+    end
+
+    def exit_status_for(result, config)
+      result.mutation_score.to_i >= config.thresholds.fetch(:low, 60) ? 0 : 1
     end
   end
 end

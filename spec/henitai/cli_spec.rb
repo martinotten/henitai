@@ -157,6 +157,49 @@ RSpec.describe Henitai::CLI do
     end
   end
 
+  it "exits zero for a high score" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      exit_status = nil
+      result = instance_double(Henitai::Result, mutation_score: 100)
+      runner = build_runner(result:)
+
+      allow(Henitai::Runner).to receive(:new) do |**_kwargs|
+        runner
+      end
+
+      cli = described_class.new(
+        [
+          "run",
+          "--config",
+          config_path,
+          "Foo#bar"
+        ]
+      )
+      cli.define_singleton_method(:exit) { |status = nil| exit_status = status }
+      cli.run
+
+      expect(exit_status).to eq(0)
+    end
+  end
+
+  it "exits with a framework error code when the runner fails" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      runner = instance_double(Henitai::Runner)
+
+      allow(Henitai::Runner).to receive(:new).and_return(runner)
+      allow(runner).to receive(:run).and_raise(Henitai::ConfigurationError, "boom")
+
+      cli = described_class.new(["run", "--config", config_path])
+      cli.define_singleton_method(:exit) do |status = nil|
+        raise "expected exit status 2, got #{status.inspect}" unless status == 2
+      end
+
+      expect { cli.run }.to output(/boom/).to_stderr
+    end
+  end
+
   it "omits unset override values when loading the configuration" do
     Dir.mktmpdir do |dir|
       config_path = write_configuration(dir)
