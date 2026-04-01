@@ -177,6 +177,7 @@ module Henitai
       def report(result)
         FileUtils.mkdir_p(File.dirname(report_path))
         File.write(report_path, JSON.pretty_generate(result.to_stryker_schema))
+        write_history_report
       end
 
       private
@@ -184,12 +185,66 @@ module Henitai
       def report_path
         File.join(config.reports_dir, "mutation-report.json")
       end
+
+      def write_history_report
+        history_store = MutantHistoryStore.new(path: history_store_path)
+        return unless File.exist?(history_store_path)
+
+        FileUtils.mkdir_p(File.dirname(history_report_path))
+        File.write(history_report_path, JSON.pretty_generate(history_store.trend_report))
+      end
+
+      def history_store_path
+        File.join(config.reports_dir, "mutation-history.sqlite3")
+      end
+
+      def history_report_path
+        File.join(config.reports_dir, "mutation-history.json")
+      end
     end
 
     # HTML reporter.
     class Html < Base
       def report(result)
-        raise NotImplementedError
+        FileUtils.mkdir_p(File.dirname(report_path))
+        File.write(report_path, html_document(result))
+      end
+
+      private
+
+      def report_path
+        File.join(config.reports_dir, "mutation-report.html")
+      end
+
+      def html_document(result)
+        <<~HTML
+          <!DOCTYPE html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <title>Henitai mutation report</title>
+            </head>
+            <body>
+              <mutation-test-report-app titlePostfix="Henitai"></mutation-test-report-app>
+              <script src="https://www.unpkg.com/mutation-testing-elements"></script>
+              <script type="application/json" id="henitai-report-data">#{escaped_report_json(result)}</script>
+              <script>
+                const report = JSON.parse(
+                  document.getElementById("henitai-report-data").textContent
+                );
+                document.querySelector("mutation-test-report-app").report = report;
+              </script>
+            </body>
+          </html>
+        HTML
+      end
+
+      def escaped_report_json(result)
+        JSON.pretty_generate(result.to_stryker_schema)
+            .gsub("&", "\\u0026")
+            .gsub("<", "\\u003c")
+            .gsub(">", "\\u003e")
       end
     end
 

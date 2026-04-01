@@ -25,6 +25,7 @@ module Henitai
   autoload :GitDiffAnalyzer, "henitai/git_diff_analyzer"
   autoload :GitDiffError, "henitai/git_diff_analyzer"
   autoload :MutantGenerator, "henitai/mutant_generator"
+  autoload :MutantHistoryStore, "henitai/mutant_history_store"
   autoload :AridNodeFilter, "henitai/arid_node_filter"
   autoload :EquivalenceDetector, "henitai/equivalence_detector"
   autoload :MutantHistoryStore, "henitai/mutant_history_store"

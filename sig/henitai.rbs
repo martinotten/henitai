@@ -10,6 +10,10 @@ module ::Coverage
   def self.peek_result: () -> untyped
 end
 
+module ::Minitest
+  def self.run: (Array[String]) -> bool
+end
+
 module ::RSpec::Core::Formatters
   def self.register: (untyped, *untyped) -> void
 end
@@ -216,6 +220,17 @@ module Henitai
     def generate: (Array[Subject], Array[untyped], ?config: untyped) -> Array[Mutant]
   end
 
+  class MutantHistoryStore
+    def initialize: (path: String) -> void
+    def record: (Result, version: String, ?recorded_at: Time) -> void
+    def trend_report: () -> Hash[Symbol, untyped]
+  end
+
+  class EquivalenceDetector
+    def initialize: () -> void
+    def analyze: (Mutant) -> Mutant
+  end
+
   class StaticFilter
     def apply: (Array[Mutant], untyped) -> Array[Mutant]
     def coverage_lines_by_file: (?String) -> Hash[String, Array[Integer]]
@@ -317,6 +332,9 @@ module Henitai
       private
 
       def report_path: () -> String
+      def write_history_report: () -> void
+      def history_store_path: () -> String
+      def history_report_path: () -> String
     end
 
     class Html < Base
@@ -383,6 +401,8 @@ module Henitai
     def integration: () -> untyped
     def operators: () -> untyped
     def progress_reporter: () -> untyped?
+    def history_store: () -> untyped
+    def history_store_path: () -> String
     def source_files: () -> Array[String]
     def pattern_subjects: () -> Array[Subject]
     def unique_subjects: (Array[Subject]) -> Array[Subject]
@@ -390,6 +410,7 @@ module Henitai
 
     private
 
+    def persist_history: (Result, Time) -> void
     def with_reports_dir: () { () -> untyped } -> untyped
   end
 

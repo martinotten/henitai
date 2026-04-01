@@ -49,6 +49,7 @@ module Henitai
         started_at:,
         finished_at:
       )
+      persist_history(@result, finished_at)
       report(@result)
       @result
     end
@@ -86,6 +87,14 @@ module Henitai
       Reporter.run_all(names: config.reporters, result:, config:)
     end
 
+    def persist_history(result, recorded_at)
+      history_store.record(
+        result,
+        version: Henitai::VERSION,
+        recorded_at:
+      )
+    end
+
     def subject_resolver
       @subject_resolver ||= SubjectResolver.new
     end
@@ -118,6 +127,14 @@ module Henitai
       return nil unless Array(config.reporters).map(&:to_s).include?("terminal")
 
       Reporter::Terminal.new(config:)
+    end
+
+    def history_store
+      @history_store ||= MutantHistoryStore.new(path: history_store_path)
+    end
+
+    def history_store_path
+      File.join(config.reports_dir, "mutation-history.sqlite3")
     end
 
     def source_files

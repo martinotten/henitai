@@ -65,6 +65,14 @@ RSpec.describe Henitai::Runner do
     Struct.new(:mutants).new(mutants)
   end
 
+  def build_history_store(calls = nil)
+    history_store = instance_double(Henitai::MutantHistoryStore)
+    allow(history_store).to receive(:record) do |_result, **_kwargs|
+      calls << :history if calls
+    end
+    history_store
+  end
+
   it "runs the pipeline and reports the result" do
     config = build_config
     runner = described_class.new(config:)
@@ -78,6 +86,7 @@ RSpec.describe Henitai::Runner do
     static_filter = instance_double(Henitai::StaticFilter)
     execution_engine = instance_double(Henitai::ExecutionEngine)
     integration = instance_double(Henitai::Integration::Rspec)
+    history_store = build_history_store(calls)
     reporter = instance_double(Henitai::Reporter::Terminal)
 
     allow(runner).to receive_messages(
@@ -87,6 +96,7 @@ RSpec.describe Henitai::Runner do
       static_filter:,
       execution_engine:,
       integration:,
+      history_store:,
       progress_reporter: reporter
     )
     allow(subject_resolver).to receive(:resolve_from_files) do |paths|
@@ -146,6 +156,7 @@ RSpec.describe Henitai::Runner do
           true,
           true
         ],
+        :history,
         [
           :report,
           {
@@ -173,6 +184,7 @@ RSpec.describe Henitai::Runner do
         static_filter = instance_double(Henitai::StaticFilter)
         execution_engine = instance_double(Henitai::ExecutionEngine)
         integration = instance_double(Henitai::Integration::Rspec)
+        history_store = build_history_store
         result = build_result([])
         calls = []
 
@@ -182,6 +194,7 @@ RSpec.describe Henitai::Runner do
           static_filter:,
           execution_engine:,
           integration:,
+          history_store:,
           progress_reporter: nil
         )
         allow(subject_resolver).to receive(:resolve_from_files) do |paths|
@@ -209,6 +222,7 @@ RSpec.describe Henitai::Runner do
     static_filter = instance_double(Henitai::StaticFilter)
     execution_engine = instance_double(Henitai::ExecutionEngine)
     integration = instance_double(Henitai::Integration::Rspec)
+    history_store = build_history_store
     result = build_result([])
 
     allow(runner).to receive_messages(
@@ -218,6 +232,7 @@ RSpec.describe Henitai::Runner do
       static_filter:,
       execution_engine:,
       integration:,
+      history_store:,
       progress_reporter: nil
     )
     allow(subject_resolver).to receive(:resolve_from_files).and_return([])
@@ -247,6 +262,7 @@ RSpec.describe Henitai::Runner do
         static_filter = instance_double(Henitai::StaticFilter)
         execution_engine = instance_double(Henitai::ExecutionEngine)
         integration = instance_double(Henitai::Integration::Rspec)
+        history_store = build_history_store
         result = build_result([])
         calls = []
 
@@ -257,6 +273,7 @@ RSpec.describe Henitai::Runner do
           static_filter:,
           execution_engine:,
           integration:,
+          history_store:,
           progress_reporter: nil
         )
         allow(diff_analyzer).to receive(:changed_files) do |kwargs|
@@ -296,6 +313,7 @@ RSpec.describe Henitai::Runner do
     static_filter = instance_double(Henitai::StaticFilter)
     execution_engine = instance_double(Henitai::ExecutionEngine)
     integration = instance_double(Henitai::Integration::Rspec)
+    history_store = build_history_store
     result = build_result([])
     alpha = build_subject("Sample#alpha", source_file: "lib/sample.rb")
     beta = build_subject("Sample#beta", source_file: "lib/sample.rb")
@@ -309,6 +327,7 @@ RSpec.describe Henitai::Runner do
       static_filter:,
       execution_engine:,
       integration:,
+      history_store:,
       progress_reporter: nil
     )
     allow(subject_resolver).to receive_messages(

@@ -14,3 +14,5 @@ group :development do
   gem "simplecov", "~> 0.22", require: false
   gem "steep", require: false # Type checking via RBS
 end
+
+gem "sqlite3", "~> 1.7"

@@ -224,7 +224,9 @@ module Henitai
 
       def run_tests(test_files)
         test_files.each { |file| require File.expand_path(file) }
-        status = ::Minitest.run([])
+        # @type var empty_args: Array[String]
+        empty_args = []
+        status = ::Minitest.run(empty_args)
         return status if status.is_a?(Integer)
 
         status == true ? 0 : 1
