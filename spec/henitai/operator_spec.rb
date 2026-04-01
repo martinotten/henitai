@@ -31,4 +31,35 @@ RSpec.describe Henitai::Operator do
       described_class::FULL_SET.map { |name| "Henitai::Operators::#{name}" }
     )
   end
+
+  it "builds a mutant without location metadata when the node has no source location" do
+    operator_class = stub_const(
+      "Henitai::NoLocationOperator",
+      Class.new(described_class) do
+        def self.node_types
+          [:int]
+        end
+
+        def mutate(node, subject:)
+          [
+            build_mutant(
+              subject:,
+              original_node: node,
+              mutated_node: node,
+              description: "no-op"
+            )
+          ]
+        end
+      end
+    )
+
+    node = Struct.new(:location).new(Struct.new(:expression).new(nil))
+
+    mutant = operator_class.new.mutate(node, subject: Henitai::Subject.new(
+      namespace: "Example",
+      method_name: "example"
+    )).first
+
+    expect(mutant.location).to eq({})
+  end
 end

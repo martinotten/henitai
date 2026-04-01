@@ -15,21 +15,17 @@ module Henitai
   # Raised when a subject expression cannot be resolved
   class SubjectNotFound < StandardError; end
 
-  # Namespace for concrete mutation operators.
-  #
-  # The namespace exists as part of the public extension surface even before
-  # the individual operators are loaded.
-  module Operators
-  end
-
   autoload :Configuration, "henitai/configuration"
   autoload :Subject, "henitai/subject"
   autoload :Mutant, "henitai/mutant"
   autoload :Operator, "henitai/operator"
+  autoload :Operators, "henitai/operators"
   autoload :SourceParser, "henitai/source_parser"
   autoload :SubjectResolver, "henitai/subject_resolver"
   autoload :GitDiffAnalyzer, "henitai/git_diff_analyzer"
   autoload :MutantGenerator, "henitai/mutant_generator"
+  autoload :AridNodeFilter, "henitai/arid_node_filter"
+  autoload :StillbornFilter, "henitai/stillborn_filter"
   autoload :Runner, "henitai/runner"
   autoload :Reporter, "henitai/reporter"
   autoload :Integration, "henitai/integration"

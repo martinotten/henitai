@@ -367,10 +367,10 @@ result = wait_with_timeout(pid, config.timeout)
 ### 5.4 Operator Base Class & Registry
 
 - [x] **(P1)** `TASK: op-01` - `Operator` base class: implement `#mutate(node, subject:)`, `self.node_types`, `#build_mutant`, `#node_location`
-- [ ] **(P1)** `TASK: op-02` - `Operators` namespace and autoload entries in `henitai.rb`
+- [x] **(P1)** `TASK: op-02` - `Operators` namespace and autoload entries in `henitai.rb`
 - [x] **(P1)** `TASK: op-03` - `Operator.for_set(:light)` / `Operator.for_set(:full)`: return instantiated operator objects
-- [ ] **(P1)** `TASK: op-04` - Arid-node filter: `AridNodeFilter#suppressed?(node, config)` - check against `ignore_patterns` regex list and the built-in catalog (logger, memoization, etc.)
-- [ ] **(P1)** `TASK: op-05` - Stillborn filter: after mutation run `unparser`, then `RubyVM::InstructionSequence.compile` - discard mutant on `SyntaxError`
+- [x] **(P1)** `TASK: op-04` - Arid-node filter: `AridNodeFilter#suppressed?(node, config)` - check against `ignore_patterns` regex list and the built-in catalog (logger, memoization, etc.)
+- [x] **(P1)** `TASK: op-05` - Stillborn filter: after mutation run `unparser`, then `RubyVM::InstructionSequence.compile` - discard mutant on `SyntaxError`
 
 ---
 
