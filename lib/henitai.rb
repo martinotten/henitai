@@ -30,6 +30,7 @@ module Henitai
   autoload :StillbornFilter, "henitai/stillborn_filter"
   autoload :SyntaxValidator, "henitai/syntax_validator"
   autoload :SamplingStrategy, "henitai/sampling_strategy"
+  autoload :ExecutionEngine, "henitai/execution_engine"
   autoload :Runner, "henitai/runner"
   autoload :Reporter, "henitai/reporter"
   autoload :Integration, "henitai/integration"
