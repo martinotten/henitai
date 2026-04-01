@@ -3,7 +3,7 @@
 module Henitai
   # Runs pending mutants through the selected integration.
   class ExecutionEngine
-    def run(mutants, integration, config)
+    def run(mutants, integration, config, progress_reporter: nil)
       mutants.each do |mutant|
         next unless mutant.pending?
 
@@ -13,6 +13,7 @@ module Henitai
           test_files:,
           timeout: config.timeout
         )
+        progress_reporter&.progress(mutant)
       end
 
       mutants

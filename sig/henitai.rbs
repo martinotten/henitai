@@ -161,7 +161,10 @@ module Henitai
     end
 
     class Terminal < Base
+      PROGRESS_GLYPHS: Hash[Symbol, String]
+
       def report: (Result) -> void
+      def progress: (untyped) -> void
     end
 
     class Json < Base

@@ -40,12 +40,16 @@ RSpec.describe Henitai::ExecutionEngine do
     IntegrationSpy.new
   end
 
+  def build_config
+    Struct.new(:timeout).new(12.5)
+  end
+
   it "runs only pending mutants" do
     pending = build_mutant(:pending, "Foo#bar")
     ignored = build_mutant(:ignored, "Foo#baz")
     integration = build_integration
 
-    described_class.new.run([pending, ignored], integration, Struct.new(:timeout).new(12.5))
+    described_class.new.run([pending, ignored], integration, build_config)
 
     expect(integration.calls.slice(:select_tests, :run_mutant)).to eq(
       select_tests: 1,
@@ -58,8 +62,23 @@ RSpec.describe Henitai::ExecutionEngine do
     ignored = build_mutant(:ignored, "Foo#baz")
     integration = build_integration
 
-    result = described_class.new.run([pending, ignored], integration, Struct.new(:timeout).new(12.5))
+    result = described_class.new.run([pending, ignored], integration, build_config)
 
     expect(result.map(&:status)).to eq(%i[killed ignored])
+  end
+
+  it "reports progress for pending mutants when a reporter is provided" do
+    pending = build_mutant(:pending, "Foo#bar")
+    skipped = build_mutant(:ignored, "Foo#baz")
+    integration = build_integration
+    progress = Struct.new(:calls) do
+      def progress(mutant)
+        calls << mutant.status
+      end
+    end.new([])
+
+    described_class.new.run([pending, skipped], integration, build_config, progress_reporter: progress)
+
+    expect(progress.calls).to eq([:killed])
   end
 end

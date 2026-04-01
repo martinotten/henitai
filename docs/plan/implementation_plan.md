@@ -499,7 +499,7 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 ### 5.11 Reporters
 
 #### Terminal Reporter
-- [ ] **(P1)** `TASK: rep-term-01` - Live progress during Gate 4: `·` for killed, `S` for survived, `T` for timeout, `I` for ignored
+- [x] **(P1)** `TASK: rep-term-01` - Live progress during Gate 4: `·` for killed, `S` for survived, `T` for timeout, `I` for ignored
 - [ ] **(P1)** `TASK: rep-term-02` - Summary after Gate 5: table with MS %, killed/survived/timeout/no-coverage counts, duration
 - [ ] **(P1)** `TASK: rep-term-03` - Survived details: for each survived mutant show file, line, diff (original vs. mutated), and operator name
 - [ ] **(P1)** `TASK: rep-term-04` - Threshold check: colored output (green/yellow/red) based on `thresholds.high` / `thresholds.low`

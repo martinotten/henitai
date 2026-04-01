@@ -45,8 +45,20 @@ module Henitai
 
     # Terminal reporter.
     class Terminal < Base
+      PROGRESS_GLYPHS = {
+        killed: "·",
+        survived: "S",
+        timeout: "T",
+        ignored: "I"
+      }.freeze
+
       def report(result)
-        raise NotImplementedError
+        result.mutants.each { |mutant| progress(mutant) }
+      end
+
+      def progress(mutant)
+        glyph = PROGRESS_GLYPHS[mutant.status]
+        print(glyph) if glyph
       end
     end
 
