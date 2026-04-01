@@ -487,7 +487,7 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 ### 5.10 RSpec Integration
 
 - [x] **(P1)** `TASK: rspec-01` - `Integration::Rspec#select_tests(subject)`: longest-prefix matching - scan `spec/` for RSpec files whose `describe` / `context` strings contain the subject namespace
-- [x] **(P1)** `TASK: rspec-02` - Fallback: if no tests are found by prefix, use all spec files that transitively `require` the source file
+- [x] **(P1)** `TASK: rspec-02` - Fallback: if no tests are found by prefix, use specs that transitively `require` the source file; if none match, fall back to all spec files to avoid empty runs
 - [x] **(P1)** `TASK: rspec-03` - `Integration::Rspec#run_in_child(test_files)`: call `RSpec::Core::Runner.run(test_files + rspec_opts)` in the **current process** (called after `fork` by the ExecutionEngine child - no separate subprocess via `exec` or `system`)
 - [x] **(P1)** `TASK: rspec-04` - Ensure activation order: `exec-03` (`Activator.activate!`) is called by `exec-02` (fork) **before** `rspec-03` (`RSpec::Core::Runner.run`) starts. A spec test verifies that the `define_method` patch is active when the first test runs.
 - [x] **(P1)** `TASK: rspec-05` - Integration spec: unit tests for prefix matching logic (no real process needed)

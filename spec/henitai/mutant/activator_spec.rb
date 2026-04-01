@@ -86,6 +86,63 @@ RSpec.describe Henitai::Mutant::Activator do
     end
   end
 
+  it "loads an unloaded target constant before patching" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, <<~RUBY)
+        class Gate4TransientSample
+          def value
+            1
+          end
+        end
+      RUBY
+
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      original_node = find_nodes(subject.ast_node, :int).first
+      mutant = Henitai::Mutant.new(
+        subject:,
+        operator: "FakeOperator",
+        nodes: {
+          original: original_node,
+          mutated: Parser::AST::Node.new(:int, [2])
+        },
+        description: "replace 1 with 2",
+        location: location_for(original_node)
+      )
+
+      described_class.activate!(mutant)
+
+      expect(Gate4TransientSample.new.value).to eq(2)
+    end
+  end
+
+  it "patches the full method body for nested mutations" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, <<~RUBY)
+        class Gate4NestedSample
+          def wrap(value)
+            value * 10
+          end
+
+          def value
+            wrap(1 + 2)
+          end
+        end
+      RUBY
+
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).find do |candidate|
+        candidate.expression == "Gate4NestedSample#value"
+      end
+      mutant = Henitai::MutantGenerator.new.generate(
+        [subject],
+        [Henitai::Operators::ArithmeticOperator.new]
+      ).first
+
+      described_class.activate!(mutant)
+
+      expect(Gate4NestedSample.new.value).to eq(-10)
+    end
+  end
+
   it "rejects wildcard subjects" do
     subject = Henitai::Subject.new(namespace: "Sample", method_name: nil)
     mutant = Struct.new(:subject, :mutated_node).new(

@@ -121,6 +121,8 @@ module Henitai
     end
 
     class Rspec < Base
+      REQUIRE_DIRECTIVE_PATTERN: Regexp
+
       def select_tests: (Subject) -> Array[String]
       def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> Symbol
 
@@ -137,6 +139,13 @@ module Henitai
       def fallback_spec_files: (Subject) -> Array[String]
       def selection_patterns: (Subject) -> Array[String]
       def requires_source_file?: (String, String) -> bool
+      def requires_source_file_transitively?: (String, String, ?Array[String]) -> bool
+      def required_files: (String) -> Array[String]
+      def resolve_required_file: (String, String, String) -> String?
+      def relative_candidates: (String, String) -> Array[String]
+      def require_candidates: (String, String) -> Array[String]
+      def expand_candidates: (String, String) -> Array[String]
+      def reap_child: (Integer) -> void
     end
   end
 
@@ -147,8 +156,17 @@ module Henitai
 
     private
 
+    def load_target: (Subject) -> untyped
+    def load_source_file: (Subject) -> void
     def target_for: (Subject) -> untyped
     def method_source: (Mutant) -> String
+    def body_source: (Mutant) -> String
+    def replace_node: (untyped, untyped, untyped) -> untyped
+    def same_node?: (untyped, untyped) -> bool
+    def replace_child: (untyped, untyped, untyped) -> untyped
+    def method_body: (untyped) -> untyped
+    def source_file_from_ast: (Subject) -> String?
+    def node_location_signature: (untyped) -> Array[untyped]?
   end
 
   module Reporter
