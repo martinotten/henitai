@@ -270,6 +270,19 @@ RSpec.describe Henitai::Configuration do
     )
   end
 
+  it "aborts on invalid ignore pattern regexes" do
+    expect do
+      load_configuration(<<~YAML)
+        mutation:
+          ignore_patterns:
+            - "("
+      YAML
+    end.to raise_error(
+      Henitai::ConfigurationError,
+      /mutation\.ignore_patterns: invalid regular expression/
+    )
+  end
+
   it "aborts on invalid mutation timeout values" do
     expect do
       load_configuration(<<~YAML)

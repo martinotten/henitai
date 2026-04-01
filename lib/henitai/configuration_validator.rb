@@ -89,6 +89,7 @@ module Henitai
         validate_operator(value[:operators])
         validate_timeout(value[:timeout])
         validate_string_array(value[:ignore_patterns], "mutation.ignore_patterns")
+        validate_ignore_patterns(value[:ignore_patterns])
       end
 
       def validate_coverage_criteria(raw)
@@ -161,6 +162,17 @@ module Henitai
         configuration_error(
           "Invalid configuration value for #{path}: expected Array<String>, got #{describe_array_type(value)}"
         )
+      end
+
+      def validate_ignore_patterns(value)
+        Array(value).each do |pattern|
+          Regexp.new(pattern)
+        rescue RegexpError => e
+          configuration_error(
+            "Invalid configuration value for mutation.ignore_patterns: " \
+            "invalid regular expression #{pattern.inspect}: #{e.message}"
+          )
+        end
       end
 
       def warn_unknown_keys(raw, allowed_keys, path = nil)
