@@ -50,12 +50,16 @@ module Henitai
     # RSpec integration adapter.
     class Rspec < Base
       def select_tests(subject)
-        spec_files.select do |path|
+        matches = spec_files.select do |path|
           content = File.read(path)
           selection_patterns(subject).any? { |pattern| content.include?(pattern) }
         rescue StandardError
           false
         end
+
+        return matches unless matches.empty?
+
+        fallback_spec_files(subject)
       end
 
       def run_mutant(mutant:, test_files:, timeout:)
@@ -112,11 +116,27 @@ module Henitai
         Dir.glob("spec/**/*_spec.rb")
       end
 
+      def fallback_spec_files(subject)
+        return [] unless subject.source_file
+
+        spec_files.select do |path|
+          requires_source_file?(path, subject.source_file)
+        rescue StandardError
+          false
+        end
+      end
+
       def selection_patterns(subject)
         [
           subject.expression,
           subject.namespace
         ].compact.uniq.sort_by(&:length).reverse
+      end
+
+      def requires_source_file?(spec_file, source_file)
+        content = File.read(spec_file)
+        basename = File.basename(source_file, ".rb")
+        content.include?(basename) || content.include?(source_file)
       end
     end
   end
