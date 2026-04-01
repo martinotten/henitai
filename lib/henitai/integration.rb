@@ -73,7 +73,7 @@ module Henitai
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
 
         loop do
-          return :survived if Process.wait(pid, Process::WNOHANG)
+          return classify_exit_status(Process.last_status) if Process.wait(pid, Process::WNOHANG)
           return handle_timeout(pid) if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
 
           pause(0.01)
@@ -97,6 +97,10 @@ module Henitai
 
       def pause(seconds)
         sleep(seconds)
+      end
+
+      def classify_exit_status(status)
+        status.success? ? :survived : :killed
       end
     end
   end

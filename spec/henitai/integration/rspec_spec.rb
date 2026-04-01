@@ -18,10 +18,13 @@ RSpec.describe Henitai::Integration::Rspec do
         4321
       end
       allow(integration).to receive(:run_tests).and_return(0)
-      allow(integration).to receive(:wait_with_timeout) do |pid, timeout|
-        record[:wait_args] = [pid, timeout]
-        :survived
+      allow(Process).to receive(:wait) do |pid, flags|
+        record[:wait_args] = [pid, flags]
+        4321
       end
+      allow(Process).to receive(:last_status).and_return(
+        Struct.new(:success?).new(true)
+      )
 
       record[:result] = integration.run_mutant(
         mutant:,
@@ -33,7 +36,7 @@ RSpec.describe Henitai::Integration::Rspec do
         forked: true,
         child_status: 0,
         env_id: "mutant-1",
-        wait_args: [4321, 1.5],
+        wait_args: [4321, Process::WNOHANG],
         result: :survived
       )
     ensure
@@ -143,8 +146,8 @@ RSpec.describe Henitai::Integration::Rspec do
         1357
       end
       allow(Process).to receive_messages(
-        wait: Process::Status.allocate,
-        clock_gettime: 0.0
+        wait: 1357,
+        last_status: Struct.new(:success?).new(false)
       )
       allow(integration).to receive_messages(
         activate_mutant: 0,
@@ -155,7 +158,7 @@ RSpec.describe Henitai::Integration::Rspec do
         false
       end
 
-      integration.run_mutant(
+      record[:result] = integration.run_mutant(
         mutant:,
         test_files: ["spec/failing_spec.rb"],
         timeout: 0.1
@@ -163,7 +166,8 @@ RSpec.describe Henitai::Integration::Rspec do
 
       expect(record).to include(
         rspec_files: ["spec/failing_spec.rb"],
-        child_status: 1
+        child_status: 1,
+        result: :killed
       )
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env
