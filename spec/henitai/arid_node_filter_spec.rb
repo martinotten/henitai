@@ -58,8 +58,8 @@ RSpec.describe Henitai::AridNodeFilter do
     expect(described_class.new.suppressed?(node, config)).to be(true)
   end
 
-  it "suppresses memoization assignments" do
-    node = parse("@foo ||= compute")
+  it "suppresses memoization assignments like @var ||= compute_value" do
+    node = parse("@var ||= compute_value")
 
     expect(described_class.new.suppressed?(node, config)).to be(true)
   end

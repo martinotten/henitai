@@ -424,7 +424,7 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 - [x] **(P2)** `TASK: op-array-01` - `ArrayDeclaration`: `[]` → `[nil]`, remove elements
 - [x] **(P2)** `TASK: op-block-01` - `BlockStatement`: `{ ... }` → `{}` (empty block)
 - [x] **(P2)** `TASK: op-method-01` - `MethodExpression`: replace method call result with `nil`
-- [ ] **(P2)** `TASK: op-assign-01` - `AssignmentExpression`: `+=` ↔ `-=`, remove `||=`; documentation and specs must explicitly note that the default arid filter suppresses memoization patterns such as `@var ||= compute_value`
+- [x] **(P2)** `TASK: op-assign-01` - `AssignmentExpression`: `+=` ↔ `-=`, remove `||=`; documentation and specs must explicitly note that the default arid filter suppresses memoization patterns such as `@var ||= compute_value`
 
 ---
 
