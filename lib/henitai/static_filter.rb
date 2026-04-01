@@ -8,8 +8,12 @@ module Henitai
     DEFAULT_COVERAGE_REPORT_PATH = "coverage/.resultset.json"
 
     def apply(mutants, config)
+      coverage_lines = coverage_lines_by_file
+
       Array(mutants).each do |mutant|
-        mutant.status = :ignored if ignored?(mutant, config)
+        next if mark_ignored_mutant(mutant, config)
+
+        mutant.status = :no_coverage unless covered?(mutant, coverage_lines)
       end
 
       mutants
@@ -37,6 +41,19 @@ module Henitai
       compiled_ignore_patterns(config).any? do |pattern|
         pattern.match?(source)
       end
+    end
+
+    def mark_ignored_mutant(mutant, config)
+      return unless ignored?(mutant, config)
+
+      mutant.status = :ignored
+      mutant
+    end
+
+    def covered?(mutant, coverage_lines)
+      file = mutant.location[:file]
+      start_line = mutant.location[:start_line]
+      Array(coverage_lines[file]).include?(start_line)
     end
 
     def source_for(mutant)
