@@ -85,4 +85,47 @@ RSpec.describe Henitai::Integration::Rspec do
       ENV["HENITAI_MUTANT_ID"] = original_env
     end
   end
+
+  it "escalates a stuck child from SIGTERM to SIGKILL" do
+    mutant = Struct.new(:id).new("mutant-3")
+    integration = described_class.new
+    record = { pauses: [], signals: [] }
+    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+    begin
+      allow(Process).to receive(:exit) { |status| record[:child_status] = status }
+      allow(Process).to receive(:fork) do |&block|
+        record[:forked] = true
+        block.call
+        2468
+      end
+      allow(Process).to receive(:wait).and_return(nil, nil)
+      allow(Process).to receive(:clock_gettime).and_return(0.0, 0.2)
+      allow(Process).to receive(:kill) do |signal, pid|
+        record[:signals] << [signal, pid]
+      end
+      allow(integration).to receive_messages(
+        activate_mutant: 0,
+        run_tests: 0
+      )
+      allow(integration).to receive(:pause) do |seconds|
+        record[:pauses] << seconds
+      end
+
+      record[:result] = integration.run_mutant(
+        mutant:,
+        test_files: ["spec/baz_spec.rb"],
+        timeout: 0.1
+      )
+
+      expect(record).to include(
+        signals: [[:SIGTERM, 2468], [:SIGKILL, 2468]],
+        forked: true,
+        child_status: 0,
+        result: :timeout
+      )
+    ensure
+      ENV["HENITAI_MUTANT_ID"] = original_env
+    end
+  end
 end

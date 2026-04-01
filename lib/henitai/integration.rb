@@ -74,10 +74,17 @@ module Henitai
 
         loop do
           return :survived if Process.wait(pid, Process::WNOHANG)
-          return :timeout if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+          return handle_timeout(pid) if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
 
-          sleep 0.01
+          pause(0.01)
         end
+      end
+
+      def handle_timeout(pid)
+        Process.kill(:SIGTERM, pid)
+        pause(2.0)
+        Process.kill(:SIGKILL, pid)
+        :timeout
       end
 
       def activate_mutant(mutant)
@@ -87,6 +94,10 @@ module Henitai
       def run_tests(test_files)
         test_files.length
         0
+      end
+
+      def pause(seconds)
+        sleep(seconds)
       end
     end
   end
