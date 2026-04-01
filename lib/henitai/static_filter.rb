@@ -25,11 +25,14 @@ module Henitai
       end
 
       Array(mutants).each do |mutant|
-        next if mark_ignored_mutant(mutant, config)
+        next if ignored_mutant?(mutant, config)
 
-        next unless coverage_report_present
-
-        mutant.status = :no_coverage unless covered?(mutant, coverage_lines)
+        mark_equivalent_mutant(mutant)
+        mark_no_coverage_mutant(
+          mutant,
+          coverage_report_present:,
+          coverage_lines:
+        )
       end
 
       mutants
@@ -71,11 +74,25 @@ module Henitai
       end
     end
 
-    def mark_ignored_mutant(mutant, config)
-      return unless ignored?(mutant, config)
+    def ignored_mutant?(mutant, config)
+      return false unless ignored?(mutant, config)
 
       mutant.status = :ignored
-      mutant
+      true
+    end
+
+    def mark_equivalent_mutant(mutant)
+      return unless mutant.pending?
+
+      equivalence_detector.analyze(mutant)
+    end
+
+    def mark_no_coverage_mutant(mutant, coverage_report_present:, coverage_lines:)
+      return unless coverage_report_present
+      return unless mutant.pending?
+      return if covered?(mutant, coverage_lines)
+
+      mutant.status = :no_coverage
     end
 
     def covered?(mutant, coverage_lines)
@@ -131,6 +148,10 @@ module Henitai
 
     def normalize_path(path)
       File.expand_path(path)
+    end
+
+    def equivalence_detector
+      @equivalence_detector ||= EquivalenceDetector.new
     end
 
     def coverage_report_path(config)

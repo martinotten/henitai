@@ -46,12 +46,44 @@ RSpec.describe Henitai::StaticFilter do
     filter
   end
 
+  def sample_subject(path)
+    Henitai::Subject.new(namespace: "Sample", method_name: "value", source_location: { file: path, range: 1..4 })
+  end
+
   it "marks mutants whose source matches an ignore pattern as ignored" do
     mutant = build_mutant("foo.bar")
 
     filter_with_coverage.apply([mutant], config(ignore_patterns: ["foo\\.bar"]))
 
     expect(mutant.status).to eq(:ignored)
+  end
+
+  it "marks arithmetic neutral mutants as equivalent" do
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "sample.rb")
+      File.write(
+        path,
+        <<~RUBY
+          class Sample
+            def value(input)
+              input + 0
+            end
+          end
+        RUBY
+      )
+
+      subject = sample_subject(path)
+      mutant = Henitai::MutantGenerator.new.generate(
+        [subject],
+        [Henitai::Operators::ArithmeticOperator.new]
+      ).find { |candidate| candidate.description == "replaced + with -" }
+
+      Dir.chdir(dir) do
+        described_class.new.apply([mutant], config)
+      end
+
+      expect(mutant.status).to eq(:equivalent)
+    end
   end
 
   it "caches compiled ignore patterns across repeated applications" do
