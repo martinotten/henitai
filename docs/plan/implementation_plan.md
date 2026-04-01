@@ -417,8 +417,8 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 
 ### 5.6 Concrete Operators (Full Set - Phase 2)
 
-- [ ] **(P2)** `TASK: op-safe-01` - `SafeNavigation`: `&.` → `.` (remove nil guard)
-- [ ] **(P2)** `TASK: op-range-01` - `RangeLiteral`: `..` ↔ `...` (inclusive ↔ exclusive)
+- [x] **(P2)** `TASK: op-safe-01` - `SafeNavigation`: `&.` → `.` (remove nil guard)
+- [x] **(P2)** `TASK: op-range-01` - `RangeLiteral`: `..` ↔ `...` (inclusive ↔ exclusive)
 - [ ] **(P2)** `TASK: op-hash-01` - `HashLiteral`: empty hash replacement, symbol-key mutation
 - [ ] **(P2)** `TASK: op-pattern-01` - `PatternMatch`: remove `in` arm, mutate guard clause
 - [ ] **(P2)** `TASK: op-array-01` - `ArrayDeclaration`: `[]` → `[nil]`, remove elements
