@@ -133,6 +133,26 @@ RSpec.describe Henitai::ConfigurationValidator do
   end
 
   # ---------------------------------------------------------------------------
+  # all_logs
+  # ---------------------------------------------------------------------------
+  describe "all_logs validation" do
+    it "accepts absent all_logs" do
+      expect { described_class.validate!({}) }.not_to raise_error
+    end
+
+    it "accepts a boolean all_logs value" do
+      expect { described_class.validate!({ all_logs: true }) }.not_to raise_error
+    end
+
+    it "rejects a non-boolean all_logs value with path in error" do
+      expect { described_class.validate!({ all_logs: "yes" }) }.to raise_error(
+        Henitai::ConfigurationError,
+        'Invalid configuration value for all_logs: expected true or false, got "yes"'
+      )
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # reports_dir
   # ---------------------------------------------------------------------------
   describe "reports_dir validation" do
@@ -211,6 +231,15 @@ RSpec.describe Henitai::ConfigurationValidator do
       expect do
         described_class.validate!({ mutation: { typo_key: true } })
       end.to output(/mutation\.typo_key/).to_stderr
+    end
+
+    it "rejects non-string ignore patterns with the full path in error" do
+      expect do
+        described_class.validate!({ mutation: { ignore_patterns: ["(send _ :puts _)", 1] } })
+      end.to raise_error(
+        Henitai::ConfigurationError,
+        /mutation\.ignore_patterns: expected Array<String>, got Array<String, Integer>/
+      )
     end
 
     # Muster C: validate_sampling(value[:sampling]) → 0
@@ -410,7 +439,8 @@ RSpec.describe Henitai::ConfigurationValidator do
     # Muster A: Interpolation im Fehlertext
     it "rejects a non-numeric timeout with path in error" do
       expect { described_class.send(:validate_timeout, "30s") }.to raise_error(
-        Henitai::ConfigurationError, /mutation\.timeout/
+        Henitai::ConfigurationError,
+        "Invalid configuration value for mutation.timeout: expected Numeric, got String"
       )
     end
   end

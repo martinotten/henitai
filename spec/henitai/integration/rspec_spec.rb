@@ -400,6 +400,39 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  it "assigns a unique coverage dir to each mutant child" do
+    mutant = Struct.new(:id).new("mutant-coverage-dir")
+    integration = described_class.new
+    record = {}
+    original_env = ENV.fetch("HENITAI_COVERAGE_DIR", nil)
+
+    begin
+      allow(Process).to receive(:exit)
+      allow(Process).to receive(:fork) do |&block|
+        block.call
+        24_606
+      end
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+      allow(RSpec::Core::Runner).to receive(:run) do |_args|
+        record[:coverage_dir] = ENV.fetch("HENITAI_COVERAGE_DIR", nil)
+        0
+      end
+      allow(integration).to receive(:wait_with_timeout).and_return(:survived)
+
+      integration.run_mutant(
+        mutant:,
+        test_files: ["spec/coverage_spec.rb"],
+        timeout: 0.1
+      )
+
+      expect(record[:coverage_dir]).to eq(
+        File.join("reports", "mutation-coverage", mutant.id)
+      )
+    ensure
+      ENV["HENITAI_COVERAGE_DIR"] = original_env
+    end
+  end
+
   it "keeps waiting when the child has not exited yet" do
     mutant = Struct.new(:id).new("mutant-loop")
     integration = described_class.new
@@ -564,8 +597,15 @@ RSpec.describe Henitai::Integration::Rspec do
         timeout: 0.1
       )
 
-      expect(record[:child_status]).to eq(2)
-      expect(result.status).to eq(:compile_error)
+      expect(
+        {
+          child_status: record[:child_status],
+          result_status: result.status
+        }
+      ).to eq(
+        child_status: 2,
+        result_status: :compile_error
+      )
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env
     end

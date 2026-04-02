@@ -28,6 +28,18 @@ module Henitai
         close_child_output(output_files)
       end
 
+      def with_coverage_dir(mutant_id)
+        original_coverage_dir = ENV.fetch("HENITAI_COVERAGE_DIR", nil)
+        ENV["HENITAI_COVERAGE_DIR"] = mutation_coverage_dir(mutant_id)
+        yield
+      ensure
+        if original_coverage_dir.nil?
+          ENV.delete("HENITAI_COVERAGE_DIR")
+        else
+          ENV["HENITAI_COVERAGE_DIR"] = original_coverage_dir
+        end
+      end
+
       def open_child_output(log_paths)
         FileUtils.mkdir_p(File.dirname(log_paths[:log_path]))
         output_files = build_child_output_files(log_paths)
@@ -75,6 +87,13 @@ module Henitai
         %i[stdout_file stderr_file original_stdout original_stderr].each do |key|
           output_files[key]&.close
         end
+      end
+
+      private
+
+      def mutation_coverage_dir(mutant_id)
+        reports_dir = ENV.fetch("HENITAI_REPORTS_DIR", "reports")
+        File.join(reports_dir, "mutation-coverage", mutant_id.to_s)
       end
     end
 
@@ -165,10 +184,12 @@ module Henitai
       private
 
       def run_in_child(mutant:, test_files:, log_paths:)
-        scenario_log_support.capture_child_output(log_paths) do
-          return 2 if Mutant::Activator.activate!(mutant) == :compile_error
+        scenario_log_support.with_coverage_dir(mutant.id) do
+          scenario_log_support.capture_child_output(log_paths) do
+            return 2 if Mutant::Activator.activate!(mutant) == :compile_error
 
-          run_tests(test_files)
+            run_tests(test_files)
+          end
         end
       end
 

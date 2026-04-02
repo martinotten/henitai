@@ -273,6 +273,22 @@ RSpec.describe Henitai::ExecutionEngine do
     expect(observed_reports_dir).to eq("artifacts")
   end
 
+  it "exposes the configured coverage dir to the integration run" do
+    pending = build_mutant(:pending, "Foo#bar")
+    integration = build_integration
+    config = Struct.new(:timeout, :reports_dir).new(12.5, "artifacts")
+    observed_coverage_dir = nil
+
+    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
+      observed_coverage_dir = ENV.fetch("HENITAI_COVERAGE_DIR", nil)
+      mutant.status = :killed
+    end
+
+    described_class.new.run([pending], integration, config)
+
+    expect(observed_coverage_dir).to eq("artifacts/mutation-coverage")
+  end
+
   it "restores the reports dir environment variable after execution" do
     pending = build_mutant(:pending, "Foo#bar")
     integration = build_integration
@@ -282,6 +298,18 @@ RSpec.describe Henitai::ExecutionEngine do
       described_class.new.run([pending], integration, config)
 
       expect(ENV.fetch("HENITAI_REPORTS_DIR", nil)).to eq("preexisting")
+    end
+  end
+
+  it "restores the coverage dir environment variable after execution" do
+    pending = build_mutant(:pending, "Foo#bar")
+    integration = build_integration
+    config = Struct.new(:timeout, :reports_dir).new(12.5, "artifacts")
+
+    with_env("HENITAI_COVERAGE_DIR", "preexisting") do
+      described_class.new.run([pending], integration, config)
+
+      expect(ENV.fetch("HENITAI_COVERAGE_DIR", nil)).to eq("preexisting")
     end
   end
 end

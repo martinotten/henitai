@@ -224,13 +224,13 @@ RSpec.describe Henitai::StaticFilter do
     end
   end
 
-  it "uses the default SimpleCov report path even when reports_dir is configured" do
+  it "uses the configured reports dir for the SimpleCov resultset" do
     Dir.mktmpdir do |dir|
       mutant = build_mutant("foo.bar")
       coverage_dir = File.join(dir, "artifacts")
-      FileUtils.mkdir_p(coverage_dir)
-      write_coverage_report(
-        dir,
+      FileUtils.mkdir_p(File.join(coverage_dir, "coverage"))
+      File.write(
+        File.join(coverage_dir, "coverage", ".resultset.json"),
         {
           "RSpec" => {
             "coverage" => {
@@ -239,7 +239,7 @@ RSpec.describe Henitai::StaticFilter do
               }
             }
           }
-        }
+        }.to_json
       )
 
       mutant.location[:file] = File.join(dir, "lib", "sample.rb")

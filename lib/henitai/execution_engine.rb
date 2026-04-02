@@ -7,17 +7,19 @@ module Henitai
   class ExecutionEngine
     def run(mutants, integration, config, progress_reporter: nil)
       with_reports_dir(config) do
-        @flaky_retry_count = 0
-        pending_mutants = Array(mutants).select(&:pending?)
-        mutex = Mutex.new
-        if parallel_execution?(config, pending_mutants)
-          run_parallel(pending_mutants, integration, config, progress_reporter, mutex)
-        else
-          run_linear(pending_mutants, integration, config, progress_reporter, mutex)
-        end
+        with_coverage_dir(config) do
+          @flaky_retry_count = 0
+          pending_mutants = Array(mutants).select(&:pending?)
+          mutex = Mutex.new
+          if parallel_execution?(config, pending_mutants)
+            run_parallel(pending_mutants, integration, config, progress_reporter, mutex)
+          else
+            run_linear(pending_mutants, integration, config, progress_reporter, mutex)
+          end
 
-        warn_flaky_mutants(pending_mutants.size)
-        mutants
+          warn_flaky_mutants(pending_mutants.size)
+          mutants
+        end
       end
     end
 
@@ -142,6 +144,25 @@ module Henitai
       else
         ENV["HENITAI_REPORTS_DIR"] = original_reports_dir
       end
+    end
+
+    def with_coverage_dir(config)
+      original_coverage_dir = ENV.fetch("HENITAI_COVERAGE_DIR", nil)
+      ENV["HENITAI_COVERAGE_DIR"] = mutation_coverage_dir(config)
+      yield
+    ensure
+      if original_coverage_dir.nil?
+        ENV.delete("HENITAI_COVERAGE_DIR")
+      else
+        ENV["HENITAI_COVERAGE_DIR"] = original_coverage_dir
+      end
+    end
+
+    def mutation_coverage_dir(config)
+      base_dir = config.respond_to?(:reports_dir) ? config.reports_dir : nil
+      base_dir = "reports" if base_dir.nil? || base_dir.empty?
+
+      File.join(base_dir, "mutation-coverage")
     end
 
     def max_flaky_retries(config)

@@ -154,8 +154,8 @@ module Henitai
       @equivalence_detector ||= EquivalenceDetector.new
     end
 
-    def coverage_report_path(_config)
-      DEFAULT_COVERAGE_REPORT_PATH
+    def coverage_report_path(config)
+      File.join(coverage_dir_for(config), ".resultset.json")
     end
 
     def coverage_report_present?(config)
@@ -168,6 +168,13 @@ module Henitai
     def per_test_coverage_report_path(config)
       reports_dir = reports_dir_for(config)
       File.join(reports_dir, File.basename(DEFAULT_PER_TEST_COVERAGE_REPORT_PATH))
+    end
+
+    def coverage_dir_for(config)
+      return "coverage" unless config.respond_to?(:reports_dir)
+      return "coverage" if config.reports_dir.nil? || config.reports_dir.empty?
+
+      File.join(config.reports_dir, "coverage")
     end
 
     def reports_dir_for(config)

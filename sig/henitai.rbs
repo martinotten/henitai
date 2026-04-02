@@ -227,6 +227,7 @@ module Henitai
 
     class ScenarioLogSupport
       def capture_child_output: (Hash[Symbol, String]) { () -> untyped } -> untyped
+      def with_coverage_dir: (String) { () -> untyped } -> untyped
 
       private
 
@@ -238,6 +239,7 @@ module Henitai
       def restore_child_output: (Hash[Symbol, untyped]) -> void
       def reopen_child_output_stream: (untyped, untyped) -> void
       def close_child_output_files: (Hash[Symbol, untyped]) -> void
+      def mutation_coverage_dir: (String) -> String
     end
 
     class Rspec < Base

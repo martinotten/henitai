@@ -318,6 +318,12 @@ RSpec.describe Henitai::CLI do
     end
   end
 
+  it "builds the exact default integration block" do
+    cli = described_class.new(["init"])
+
+    expect(cli.send(:integration_block)).to eq("integration:\n  name: rspec")
+  end
+
   it "can skip the explicit integration block during init" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
@@ -439,6 +445,19 @@ RSpec.describe Henitai::CLI do
     expect { described_class.new(%w[operator list]).run }.to output(
       /Available operators/
     ).to_stdout
+  end
+
+  it "builds the exact operator help text" do
+    cli = described_class.new(%w[operator list])
+
+    expect(cli.send(:operator_help_text)).to eq(<<~HELP)
+      Hen'i-tai operator commands
+
+      Usage:
+        henitai operator list
+
+      Run `henitai operator list` to see all built-in operators.
+    HELP
   end
 
   # L299 — "\n"-Separator zwischen Sektionen (join("\n") → join(""))

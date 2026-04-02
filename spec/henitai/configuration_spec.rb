@@ -375,6 +375,42 @@ RSpec.describe Henitai::Configuration do
     )
   end
 
+  it "symbolizes string-keyed overrides recursively" do
+    config = load_configuration_with_overrides(
+      <<~YAML,
+        mutation:
+          operators: light
+      YAML
+      overrides: {
+        "integration" => {
+          "name" => "minitest"
+        },
+        "mutation" => {
+          "operators" => "full",
+          "sampling" => {
+            "ratio" => 0.25,
+            "strategy" => "stratified"
+          }
+        }
+      }
+    )
+
+    expect(
+      {
+        integration: config.integration,
+        operators: config.operators,
+        sampling: config.sampling
+      }
+    ).to eq(
+      integration: "minitest",
+      operators: :full,
+      sampling: {
+        ratio: 0.25,
+        strategy: "stratified"
+      }
+    )
+  end
+
   it "loads sampling and max mutants per line settings" do
     config = load_configuration(<<~YAML)
       mutation:

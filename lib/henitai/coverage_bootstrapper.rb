@@ -35,7 +35,7 @@ module Henitai
     end
 
     def bootstrap_coverage(integration, config)
-      with_reports_dir(config) do
+      with_coverage_dir(config) do
         result = integration.run_suite(integration.test_files)
         return if result == :survived
 
@@ -53,16 +53,23 @@ module Henitai
       message
     end
 
-    def with_reports_dir(config)
-      original_reports_dir = ENV.fetch("HENITAI_REPORTS_DIR", nil)
-      ENV["HENITAI_REPORTS_DIR"] = config.reports_dir
+    def with_coverage_dir(config)
+      original_coverage_dir = ENV.fetch("HENITAI_COVERAGE_DIR", nil)
+      ENV["HENITAI_COVERAGE_DIR"] = coverage_dir(config)
       yield
     ensure
-      if original_reports_dir.nil?
-        ENV.delete("HENITAI_REPORTS_DIR")
+      if original_coverage_dir.nil?
+        ENV.delete("HENITAI_COVERAGE_DIR")
       else
-        ENV["HENITAI_REPORTS_DIR"] = original_reports_dir
+        ENV["HENITAI_COVERAGE_DIR"] = original_coverage_dir
       end
+    end
+
+    def coverage_dir(config)
+      reports_dir = config.respond_to?(:reports_dir) ? config.reports_dir : nil
+      return "coverage" if reports_dir.nil? || reports_dir.empty?
+
+      File.join(reports_dir, "coverage")
     end
   end
 end
