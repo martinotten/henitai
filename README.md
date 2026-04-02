@@ -85,6 +85,10 @@ CLI flags override the corresponding values from `.henitai.yml`.
 Surviving mutants are retried up to `mutation.max_flaky_retries` times before
 they are classified as survivors. The default retry budget is 3.
 
+Per-test coverage reporting is currently wired through the RSpec child runner.
+Minitest integration reuses the same selection and execution flow, but does not
+yet enable the per-test coverage formatter.
+
 `henitai version` prints the installed version. `henitai run` exits with `0`
 when the mutation score meets the low threshold, `1` when it does not, and `2`
 for framework errors.
