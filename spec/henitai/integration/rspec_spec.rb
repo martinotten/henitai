@@ -180,48 +180,6 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
-  it "forks a child, sets the mutant id, and waits with timeout" do
-    mutant = Struct.new(:id).new("mutant-1")
-    integration = described_class.new
-    record = {}
-    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
-
-    begin
-      allow(Process).to receive(:exit) { |status| record[:child_status] = status }
-      allow(Process).to receive(:fork) do |&block|
-        record[:forked] = true
-        block.call
-        record[:env_id] = ENV.fetch("HENITAI_MUTANT_ID", nil)
-        4321
-      end
-      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive(:run_tests).and_return(0)
-      allow(Process).to receive(:wait) do |pid, flags|
-        record[:wait_args] = [pid, flags]
-        4321
-      end
-      allow(Process).to receive(:last_status).and_return(
-        Struct.new(:success?).new(true)
-      )
-
-      record[:result] = integration.run_mutant(
-        mutant:,
-        test_files: ["spec/foo_spec.rb"],
-        timeout: 1.5
-      )
-
-      expect(record).to eq(
-        forked: true,
-        child_status: 0,
-        env_id: "mutant-1",
-        wait_args: [4321, Process::WNOHANG],
-        result: :survived
-      )
-    ensure
-      ENV["HENITAI_MUTANT_ID"] = original_env
-    end
-  end
-
   it "runs the full suite" do
     integration = described_class.new
 
@@ -272,6 +230,48 @@ RSpec.describe Henitai::Integration::Rspec do
     integration.run_suite(["spec/foo_spec.rb"])
 
     expect(Henitai::Mutant::Activator).not_to have_received(:activate!)
+  end
+
+  it "forks a child, sets the mutant id, and waits with timeout" do
+    mutant = Struct.new(:id).new("mutant-1")
+    integration = described_class.new
+    record = {}
+    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+    begin
+      allow(Process).to receive(:exit) { |status| record[:child_status] = status }
+      allow(Process).to receive(:fork) do |&block|
+        record[:forked] = true
+        block.call
+        record[:env_id] = ENV.fetch("HENITAI_MUTANT_ID", nil)
+        4321
+      end
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+      allow(integration).to receive(:run_tests).and_return(0)
+      allow(Process).to receive(:wait) do |pid, flags|
+        record[:wait_args] = [pid, flags]
+        4321
+      end
+      allow(Process).to receive(:last_status).and_return(
+        Struct.new(:success?).new(true)
+      )
+
+      record[:result] = integration.run_mutant(
+        mutant:,
+        test_files: ["spec/foo_spec.rb"],
+        timeout: 1.5
+      )
+
+      expect(record).to eq(
+        forked: true,
+        child_status: 0,
+        env_id: "mutant-1",
+        wait_args: [4321, Process::WNOHANG],
+        result: :survived
+      )
+    ensure
+      ENV["HENITAI_MUTANT_ID"] = original_env
+    end
   end
 
   it "activates the mutant before running child tests" do

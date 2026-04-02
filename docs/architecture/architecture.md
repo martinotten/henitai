@@ -104,7 +104,7 @@ Henitai sits between a Ruby codebase and the developer feedback loop.
 | Git repository | local filesystem and git diff | identify changed subjects and changed methods |
 | Ruby source tree | Prism-translated parser-compatible AST input | discover mutation points |
 | Test framework | process execution of RSpec or Minitest | execute only the relevant tests |
-| Coverage data | SimpleCov JSON or equivalent produced by a prior test-suite run | prioritize tests and mark uncovered code |
+| Coverage data | SimpleCov JSON or equivalent, bootstrapped on demand by a full test-suite run | prioritize tests and mark uncovered code |
 | Stryker Dashboard | HTTP upload and project metadata | share results with the existing mutation-testing ecosystem |
 | mutation-testing-elements | embedded JSON in HTML | render a standalone browser report |
 
@@ -263,8 +263,9 @@ The implementation maps onto the following module layout:
 
 1. CI starts Henitai with PR metadata and branch information.
 2. The source analyzer resolves changed files and methods.
-3. Henitai validates that coverage exists for the configured source files.
-4. If coverage is missing or unusable, Henitai aborts with `Henitai::CoverageError` and asks the user to run the test suite first.
+3. If the current coverage artifacts do not cover the configured source files,
+   Henitai runs the configured test suite once to bootstrap a usable baseline.
+4. If coverage is still missing or unusable, Henitai aborts with `Henitai::CoverageError` and asks the user to run the test suite first.
 5. Coverage data and test inventory are used to prioritize tests.
 6. The execution engine runs the filtered mutant set.
 7. The analysis stage classifies killed, survived, ignored, timeout, and equivalent outcomes.

@@ -39,7 +39,6 @@ RSpec.describe Henitai::CLI do
   describe "run --help output" do
     subject(:help_output) do
       cli = described_class.new(["run", "--help"])
-      cli.define_singleton_method(:exit) { |_status = nil| nil }
       capture_stdout { cli.run }
     end
 
