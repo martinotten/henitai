@@ -219,6 +219,10 @@ module Henitai
     end
 
     # Minitest integration adapter.
+    #
+    # Coverage formatter injection remains implemented in the RSpec child
+    # runner. Minitest shares selection and execution semantics, but per-test
+    # coverage collection is not yet wired into this path.
     class Minitest < Rspec
       private
 

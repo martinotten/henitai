@@ -130,11 +130,9 @@ module Henitai
     end
 
     def history_store
-      @history_store ||= MutantHistoryStore.new(path: history_store_path)
-    end
-
-    def history_store_path
-      File.join(config.reports_dir, "mutation-history.sqlite3")
+      @history_store ||= MutantHistoryStore.new(
+        path: File.join(config.reports_dir, Henitai::HISTORY_STORE_FILENAME)
+      )
     end
 
     def source_files

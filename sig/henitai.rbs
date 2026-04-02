@@ -19,6 +19,7 @@ module ::RSpec::Core::Formatters
 end
 
 module Henitai
+  HISTORY_STORE_FILENAME: String
   VERSION: String
 
   class ConfigurationError < StandardError

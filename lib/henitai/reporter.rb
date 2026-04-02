@@ -187,15 +187,12 @@ module Henitai
       end
 
       def write_history_report
-        history_store = MutantHistoryStore.new(path: history_store_path)
-        return unless File.exist?(history_store_path)
+        path = File.join(config.reports_dir, Henitai::HISTORY_STORE_FILENAME)
+        history_store = MutantHistoryStore.new(path:)
+        return unless File.exist?(path)
 
         FileUtils.mkdir_p(File.dirname(history_report_path))
         File.write(history_report_path, JSON.pretty_generate(history_store.trend_report))
-      end
-
-      def history_store_path
-        File.join(config.reports_dir, "mutation-history.sqlite3")
       end
 
       def history_report_path

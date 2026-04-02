@@ -9,6 +9,8 @@ require_relative "henitai/version"
 #   henitai run --since HEAD~1 'MyClass#my_method'
 #
 module Henitai
+  HISTORY_STORE_FILENAME = "mutation-history.sqlite3"
+
   # Raised when the framework encounters a configuration error
   class ConfigurationError < StandardError; end
 
@@ -28,7 +30,6 @@ module Henitai
   autoload :MutantHistoryStore, "henitai/mutant_history_store"
   autoload :AridNodeFilter, "henitai/arid_node_filter"
   autoload :EquivalenceDetector, "henitai/equivalence_detector"
-  autoload :MutantHistoryStore, "henitai/mutant_history_store"
   autoload :StaticFilter, "henitai/static_filter"
   autoload :StillbornFilter, "henitai/stillborn_filter"
   autoload :CoverageFormatter, "henitai/coverage_formatter"

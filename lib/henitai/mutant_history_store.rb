@@ -86,12 +86,12 @@ module Henitai
 
       with_database do |db|
         ensure_schema(db)
-        db.transaction
-        insert_run(db, result, version, recorded_at)
-        Array(result.mutants).each do |mutant|
-          upsert_mutant(db, mutant, version, recorded_at)
+        db.transaction do
+          insert_run(db, result, version, recorded_at)
+          Array(result.mutants).each do |mutant|
+            upsert_mutant(db, mutant, version, recorded_at)
+          end
         end
-        db.commit
       end
     end
 
@@ -128,7 +128,7 @@ module Henitai
     def upsert_mutant(db, mutant, version, recorded_at)
       db.execute(
         UPSERT_MUTANT_SQL,
-        upsert_mutant_bindings(mutant_history_data(mutant, version, recorded_at))
+        upsert_mutant_bindings(mutant_history_data(db, mutant, version, recorded_at))
       )
     end
 
@@ -169,9 +169,9 @@ module Henitai
       }
     end
 
-    def mutant_history_data(mutant, version, recorded_at)
+    def mutant_history_data(db, mutant, version, recorded_at)
       mutant_id = stable_mutant_id(mutant)
-      existing = existing_mutant_row(mutant_id)
+      existing = existing_mutant_row(db, mutant_id)
       history = existing_status_history(existing)
       history << mutation_history_entry(mutant, version, recorded_at)
       first_seen = first_seen_metadata(existing, version, recorded_at)
@@ -188,13 +188,11 @@ module Henitai
       }
     end
 
-    def existing_mutant_row(mutant_id)
-      with_database do |db|
-        db.get_first_row(
-          "SELECT * FROM mutants WHERE mutant_id = ?",
-          mutant_id
-        )
-      end
+    def existing_mutant_row(db, mutant_id)
+      db.get_first_row(
+        "SELECT * FROM mutants WHERE mutant_id = ?",
+        mutant_id
+      )
     end
 
     def existing_status_history(existing)
