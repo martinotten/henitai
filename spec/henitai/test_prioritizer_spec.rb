@@ -20,4 +20,18 @@ RSpec.describe Henitai::TestPrioritizer do
       %w[spec/b_spec.rb spec/a_spec.rb spec/c_spec.rb]
     )
   end
+
+  it "matches absolute test paths against relative history keys" do
+    tests = %w[spec/a_spec.rb spec/b_spec.rb spec/c_spec.rb].map do |path|
+      File.expand_path(path)
+    end
+    history = {
+      "spec/b_spec.rb" => 5,
+      "spec/a_spec.rb" => 1
+    }
+
+    expect(described_class.new.sort(tests, nil, history)).to eq(
+      tests.values_at(1, 0, 2)
+    )
+  end
 end
