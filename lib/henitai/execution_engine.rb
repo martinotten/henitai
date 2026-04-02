@@ -54,7 +54,7 @@ module Henitai
       end.each(&:join)
     end
 
-    def process_mutant(mutant, integration, config, progress_reporter, mutex = nil)
+    def process_mutant(mutant, integration, config, progress_reporter, mutex)
       test_files = prioritized_tests_for(mutant, integration, config)
       mutant.status = run_with_flaky_retry(mutant, integration, config, test_files, mutex)
 
@@ -84,6 +84,8 @@ module Henitai
     end
 
     # Retry logic is kept in one place to preserve the status transition flow.
+    # The retry budget is configurable because repeated survivors can multiply
+    # runtime on real CI workloads.
     # rubocop:disable Metrics/MethodLength
     def run_with_flaky_retry(mutant, integration, config, test_files, mutex)
       status = integration.run_mutant(
@@ -94,7 +96,7 @@ module Henitai
       return status unless status == :survived
 
       retries = 0
-      3.times do
+      max_flaky_retries(config).times do
         retries += 1
         status = integration.run_mutant(
           mutant:,
@@ -133,6 +135,12 @@ module Henitai
       else
         ENV["HENITAI_REPORTS_DIR"] = original_reports_dir
       end
+    end
+
+    def max_flaky_retries(config)
+      return 3 unless config.respond_to?(:max_flaky_retries)
+
+      config.max_flaky_retries || 3
     end
   end
 end

@@ -14,6 +14,7 @@ module Henitai
     DEFAULT_OPERATORS = :light
     DEFAULT_JOBS      = nil # auto-detect
     DEFAULT_MAX_MUTANTS_PER_LINE = 1
+    DEFAULT_MAX_FLAKY_RETRIES = 3
     DEFAULT_REPORTS_DIR = "reports"
     DEFAULT_COVERAGE_CRITERIA = {
       test_result: true,
@@ -25,7 +26,8 @@ module Henitai
 
     attr_reader :integration, :includes, :operators, :timeout,
                 :ignore_patterns, :max_mutants_per_line, :sampling, :jobs,
-                :coverage_criteria, :thresholds, :reporters, :reports_dir,
+                :max_flaky_retries, :coverage_criteria, :thresholds,
+                :reporters, :reports_dir,
                 :dashboard
 
     # @param path [String] path to .henitai.yml (default: project root)
@@ -84,6 +86,11 @@ module Henitai
       @timeout = mutation[:timeout] || DEFAULT_TIMEOUT
       @ignore_patterns = mutation[:ignore_patterns] || []
       @max_mutants_per_line = mutation[:max_mutants_per_line] || DEFAULT_MAX_MUTANTS_PER_LINE
+      @max_flaky_retries = if mutation.key?(:max_flaky_retries)
+                             mutation[:max_flaky_retries]
+                           else
+                             DEFAULT_MAX_FLAKY_RETRIES
+                           end
       @sampling = mutation[:sampling]
     end
 

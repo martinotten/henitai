@@ -35,6 +35,7 @@ RSpec.describe Henitai::Configuration do
       reports_dir: config.reports_dir,
       timeout: config.timeout,
       max_mutants_per_line: config.max_mutants_per_line,
+      max_flaky_retries: config.max_flaky_retries,
       sampling: config.sampling,
       coverage_criteria: config.coverage_criteria,
       thresholds: config.thresholds
@@ -81,6 +82,7 @@ RSpec.describe Henitai::Configuration do
       jobs: nil,
       reports_dir: "reports",
       max_mutants_per_line: 1,
+      max_flaky_retries: 3,
       sampling: nil
     }
   end
@@ -141,6 +143,7 @@ RSpec.describe Henitai::Configuration do
       reports_dir: "reports",
       timeout: 10.0,
       max_mutants_per_line: 1,
+      max_flaky_retries: 3,
       sampling: nil,
       coverage_criteria: {
         test_result: true,
@@ -162,6 +165,7 @@ RSpec.describe Henitai::Configuration do
       reports_dir: "reports",
       timeout: 10.0,
       max_mutants_per_line: 1,
+      max_flaky_retries: 3,
       sampling: nil,
       coverage_criteria: {
         test_result: true,
@@ -243,6 +247,18 @@ RSpec.describe Henitai::Configuration do
     end.to raise_error(
       Henitai::ConfigurationError,
       /mutation\.max_mutants_per_line/
+    )
+  end
+
+  it "aborts on invalid max flaky retry values" do
+    expect do
+      load_configuration(<<~YAML)
+        mutation:
+          max_flaky_retries: -1
+      YAML
+    end.to raise_error(
+      Henitai::ConfigurationError,
+      /mutation\.max_flaky_retries/
     )
   end
 
@@ -330,6 +346,7 @@ RSpec.describe Henitai::Configuration do
     config = load_configuration(<<~YAML)
       mutation:
         max_mutants_per_line: 2
+        max_flaky_retries: 4
         sampling:
           ratio: 0.25
           strategy: stratified
@@ -338,10 +355,12 @@ RSpec.describe Henitai::Configuration do
     expect(
       {
         max_mutants_per_line: config.max_mutants_per_line,
+        max_flaky_retries: config.max_flaky_retries,
         sampling: config.sampling
       }
     ).to eq(
       max_mutants_per_line: 2,
+      max_flaky_retries: 4,
       sampling: {
         ratio: 0.25,
         strategy: "stratified"

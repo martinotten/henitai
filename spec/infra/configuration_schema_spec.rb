@@ -36,6 +36,12 @@ RSpec.describe "Configuration schema" do
     )
   end
 
+  it "documents the flaky retry budget" do
+    mutation = properties.fetch("mutation").fetch("properties")
+
+    expect(mutation.fetch("max_flaky_retries").fetch("minimum")).to eq(0)
+  end
+
   it "documents sampling as a complete configuration block" do
     sampling = properties.fetch("mutation").fetch("properties").fetch("sampling")
 

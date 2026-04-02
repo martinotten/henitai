@@ -41,7 +41,12 @@ RSpec.describe Henitai::ExecutionEngine do
   end
 
   def build_config
-    Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", 1)
+    Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(
+      12.5,
+      "coverage",
+      1,
+      3
+    )
   end
 
   def with_env(key, value)
@@ -132,6 +137,28 @@ RSpec.describe Henitai::ExecutionEngine do
     described_class.new.run([pending], integration, build_config)
 
     expect([pending.status, call_count]).to eq([:killed, 3])
+  end
+
+  it "honors a configured flaky retry budget" do
+    pending = build_mutant(:pending, "Foo#bar")
+    integration = build_integration
+    call_count = 0
+    config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(
+      12.5,
+      "coverage",
+      1,
+      1
+    )
+
+    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
+    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
+      call_count += 1
+      mutant.status = :survived
+    end
+
+    described_class.new.run([pending], integration, config)
+
+    expect(call_count).to eq(2)
   end
 
   it "warns when a significant share of mutants required retries" do

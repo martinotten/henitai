@@ -15,7 +15,7 @@ module Henitai
       dashboard
       jobs
     ].freeze
-    VALID_MUTATION_KEYS = %i[operators timeout ignore_patterns max_mutants_per_line sampling].freeze
+    VALID_MUTATION_KEYS = %i[operators timeout ignore_patterns max_mutants_per_line max_flaky_retries sampling].freeze
     VALID_SAMPLING_KEYS = %i[ratio strategy].freeze
     VALID_COVERAGE_CRITERIA_KEYS = %i[test_result timeout process_abort].freeze
     VALID_THRESHOLDS_KEYS = %i[high low].freeze
@@ -94,11 +94,20 @@ module Henitai
         ensure_hash!(value, "mutation")
         warn_unknown_keys(value, VALID_MUTATION_KEYS, "mutation")
         validate_operator(value[:operators])
+        validate_mutation_limits(value)
+        validate_mutation_filters(value)
+        validate_sampling(value[:sampling])
+      end
+
+      def validate_mutation_limits(value)
         validate_timeout(value[:timeout])
         validate_max_mutants_per_line(value[:max_mutants_per_line])
+        validate_max_flaky_retries(value[:max_flaky_retries])
+      end
+
+      def validate_mutation_filters(value)
         validate_string_array(value[:ignore_patterns], "mutation.ignore_patterns")
         validate_ignore_patterns(value[:ignore_patterns])
-        validate_sampling(value[:sampling])
       end
 
       def validate_coverage_criteria(raw)
@@ -190,6 +199,15 @@ module Henitai
 
         configuration_error(
           "Invalid configuration value for mutation.max_mutants_per_line: expected Integer >= 1, got #{value.inspect}"
+        )
+      end
+
+      def validate_max_flaky_retries(value)
+        return if value.nil?
+        return if value.is_a?(Integer) && value >= 0
+
+        configuration_error(
+          "Invalid configuration value for mutation.max_flaky_retries: expected Integer >= 0, got #{value.inspect}"
         )
       end
 

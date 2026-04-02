@@ -41,6 +41,10 @@
           "type": "integer",
           "minimum": 1
         },
+        "max_flaky_retries": {
+          "type": "integer",
+          "minimum": 0
+        },
         "ignore_patterns": {
           "type": "array",
           "items": {

@@ -66,6 +66,7 @@ mutation:
   operators: light   # light | full
   timeout: 10.0
   max_mutants_per_line: 1
+  max_flaky_retries: 3
   sampling:
     ratio: 0.05
     strategy: stratified
@@ -80,6 +81,9 @@ Henitai warns on unknown config keys and aborts with `Henitai::ConfigurationErro
 when a value is invalid.
 
 CLI flags override the corresponding values from `.henitai.yml`.
+
+Surviving mutants are retried up to `mutation.max_flaky_retries` times before
+they are classified as survivors. The default retry budget is 3.
 
 `henitai version` prints the installed version. `henitai run` exits with `0`
 when the mutation score meets the low threshold, `1` when it does not, and `2`
