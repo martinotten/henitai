@@ -80,7 +80,9 @@ module Henitai
           nodes << Parser::AST::Node.new(:true, [])
         end
 
-        nodes.uniq { |replacement| [replacement.type, replacement.children] }
+        nodes
+          .uniq { |replacement| [replacement.type, replacement.children] }
+          .reject { |replacement| replacement == node }
       end
 
       def replacement_label(node)

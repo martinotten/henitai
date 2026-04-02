@@ -161,6 +161,38 @@ RSpec.describe Henitai::Operators::ReturnValue do
     )
   end
 
+  it "does not generate an equivalent mutant when the final expression is already 0" do
+    source = <<~RUBY
+      def run
+        0
+      end
+    RUBY
+
+    subject = method_subject(source)
+    mutants = mutate(final_expression_node(source), subject:)
+
+    expect(mutants.map(&:description)).to contain_exactly(
+      "replaced final expression with nil",
+      "replaced final expression with false"
+    )
+  end
+
+  it "does not generate an equivalent mutant when the final expression is nil" do
+    source = <<~RUBY
+      def run
+        nil
+      end
+    RUBY
+
+    subject = method_subject(source)
+    mutants = mutate(final_expression_node(source), subject:)
+
+    expect(mutants.map(&:description)).to contain_exactly(
+      "replaced final expression with 0",
+      "replaced final expression with false"
+    )
+  end
+
   it "ignores guard-clause return nil expressions" do
     source = <<~RUBY
       def run(flag)
