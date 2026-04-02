@@ -3,12 +3,20 @@
 **Pronunciation:** *hen-i-tai* (へんいたい) — three syllables, stress on first: **HEN**-i-tai.
 Not *heh-ni-tai*. The kanji 変異体 means "mutant" (lit. "changed-form body").
 
-A Ruby 4 mutation testing framework
+A Ruby mutation testing framework
 
 [![CI](https://github.com/martinotten/henitai/actions/workflows/ci.yml/badge.svg)](https://github.com/martinotten/henitai/actions/workflows/ci.yml)
 [![Gem Version](https://badge.fury.io/rb/henitai.svg)](https://badge.fury.io/rb/henitai)
 
 ---
+
+## Maturaty
+
+- This is alpha software, there will be bugs
+- Henitai tests itself
+- Stryker Dashboard support is untested
+- Minitest support is untested
+- Lots of code has been carefully crafted by AI agents, not everything has been reviewed by humans (yet)
 
 ## What is mutation testing?
 
@@ -16,11 +24,7 @@ Mutation testing answers the question that code coverage cannot: **does your tes
 
 A mutation testing tool makes small, systematic changes — *mutants* — to your source code (e.g. replacing `>` with `>=`, removing a `return` statement, flipping a boolean) and then runs your tests. A mutant that causes at least one test to fail is *killed*. A mutant that passes all tests is *survived* — evidence that your tests are not covering that behaviour.
 
-The ratio of killed mutants to total mutants is the **Mutation Score** (MS). A high mutation score is a stronger quality signal than line or branch coverage.
-
-## Why henitai?
-
-Henitai adopts the [mutation-testing-report-schema](https://github.com/stryker-mutator/mutation-testing-elements/tree/master/packages/report-schema) as its native output format. This means you get the Stryker Dashboard, interactive HTML reports, and badges for free — without any additional tooling.
+The ratio of killed mutants to total mutants is the **Mutation Score** (MS). A high mutation score is a strong quality signal.
 
 ## Installation
 
@@ -127,7 +131,7 @@ The repository ships a JSON Schema at [`assets/schema/henitai.schema.json`](/wor
 - `MethodExpression` — remove calls
 - `AssignmentExpression` — mutate compound assignment
 
-## Stryker Dashboard integration
+## Stryker Dashboard integration (untested)
 
 ```yaml
 # .henitai.yml
@@ -170,12 +174,6 @@ See [`docs/architecture/architecture.md`](docs/architecture/architecture.md) for
 - Stryker JSON schema integration
 - Architecture decisions in [`docs/architecture/adr/`](docs/architecture/adr/)
 - Three-phase roadmap
-
-Research basis: [`docs/research/`](docs/research/) — summaries of 39 academic papers on mutation testing (1992–2025).
-
-## Name
-
-**変異体** (*hen'i-tai*) is the Japanese word for *mutant* — a direct conceptual counterpart to the Ruby `mutant` gem, with an open license and Ruby 4 as its native platform.
 
 ## License
 
