@@ -9,20 +9,9 @@ module Henitai
     DEFAULT_PER_TEST_COVERAGE_REPORT_PATH = "coverage/henitai_per_test.json"
 
     # This method is the gate-level filter orchestrator.
-    # rubocop:disable Metrics/MethodLength
     def apply(mutants, config)
-      coverage_report_path = coverage_report_path(config)
-      per_test_coverage_report_path = per_test_coverage_report_path(config)
-
-      coverage_lines = coverage_lines_by_file(coverage_report_path)
-      coverage_report_present = File.exist?(coverage_report_path)
-      coverage_report_present ||= File.exist?(per_test_coverage_report_path)
-
-      if coverage_lines.empty?
-        coverage_lines = coverage_lines_from_test_lines(
-          test_lines_by_file(per_test_coverage_report_path)
-        )
-      end
+      coverage_lines = coverage_lines_for(config)
+      coverage_report_present = coverage_report_present?(config)
 
       Array(mutants).each do |mutant|
         next if ignored_mutant?(mutant, config)
@@ -37,7 +26,18 @@ module Henitai
 
       mutants
     end
-    # rubocop:enable Metrics/MethodLength
+
+    def coverage_lines_for(config)
+      coverage_report_path = coverage_report_path(config)
+      per_test_coverage_report_path = per_test_coverage_report_path(config)
+
+      coverage_lines = coverage_lines_by_file(coverage_report_path)
+      return coverage_lines unless coverage_lines.empty?
+
+      coverage_lines_from_test_lines(
+        test_lines_by_file(per_test_coverage_report_path)
+      )
+    end
 
     def coverage_lines_by_file(path = DEFAULT_COVERAGE_REPORT_PATH)
       return {} unless File.exist?(path)
@@ -156,6 +156,13 @@ module Henitai
 
     def coverage_report_path(_config)
       DEFAULT_COVERAGE_REPORT_PATH
+    end
+
+    def coverage_report_present?(config)
+      coverage_report_path = coverage_report_path(config)
+      per_test_coverage_report_path = per_test_coverage_report_path(config)
+
+      File.exist?(coverage_report_path) || File.exist?(per_test_coverage_report_path)
     end
 
     def per_test_coverage_report_path(config)

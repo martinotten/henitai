@@ -222,6 +222,43 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  it "runs the full suite" do
+    integration = described_class.new
+
+    allow(Process).to receive(:exit)
+    allow(Process).to receive(:fork) do |&block|
+      block.call
+      4321
+    end
+    allow(Process).to receive(:wait).with(4321).and_return(4321)
+    allow(Process).to receive(:last_status).and_return(
+      Struct.new(:success?).new(true)
+    )
+    allow(integration).to receive(:run_tests).and_return(0)
+
+    expect(integration.run_suite(["spec/foo_spec.rb"])).to eq(:survived)
+  end
+
+  it "does not activate a mutant when running the full suite" do
+    integration = described_class.new
+
+    allow(Process).to receive(:exit)
+    allow(Process).to receive(:fork) do |&block|
+      block.call
+      4321
+    end
+    allow(Process).to receive(:wait).with(4321).and_return(4321)
+    allow(Process).to receive(:last_status).and_return(
+      Struct.new(:success?).new(true)
+    )
+    allow(integration).to receive(:run_tests).and_return(0)
+    allow(Henitai::Mutant::Activator).to receive(:activate!)
+
+    integration.run_suite(["spec/foo_spec.rb"])
+
+    expect(Henitai::Mutant::Activator).not_to have_received(:activate!)
+  end
+
   it "activates the mutant before running child tests" do
     mutant = Struct.new(:id).new("mutant-2")
     integration = described_class.new

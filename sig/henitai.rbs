@@ -53,6 +53,9 @@ module Henitai
   class SubjectNotFound < StandardError
   end
 
+  class CoverageError < StandardError
+  end
+
   class GitDiffError < StandardError
   end
 
@@ -196,14 +199,18 @@ module Henitai
 
     class Base
       def select_tests: (Subject) -> Array[String]
+      def test_files: () -> Array[String]
       def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> Symbol
+      def run_suite: (Array[String]) -> Symbol
     end
 
     class Rspec < Base
       REQUIRE_DIRECTIVE_PATTERN: Regexp
 
       def select_tests: (Subject) -> Array[String]
+      def test_files: () -> Array[String]
       def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> Symbol
+      def run_suite: (Array[String]) -> Symbol
 
       private
 
@@ -282,6 +289,7 @@ module Henitai
 
   class StaticFilter
     def apply: (Array[Mutant], untyped) -> Array[Mutant]
+    def coverage_lines_for: (untyped) -> Hash[String, Array[Integer]]
     def coverage_lines_by_file: (?String) -> Hash[String, Array[Integer]]
     def test_lines_by_file: (?String) -> Hash[String, Hash[String, Array[Integer]]]
   end
@@ -468,7 +476,7 @@ module Henitai
 
     def initialize: (?config: Configuration, ?subjects: Array[Subject], ?since: String) -> void
     def run: () -> Result
-    def resolve_subjects: () -> untyped
+    def resolve_subjects: (?Array[String]) -> untyped
     def generate_mutants: (untyped) -> untyped
     def filter_mutants: (untyped) -> untyped
     def execute_mutants: (untyped) -> untyped
@@ -478,6 +486,7 @@ module Henitai
     def mutant_generator: () -> untyped
     def static_filter: () -> untyped
     def execution_engine: () -> untyped
+    def coverage_bootstrapper: () -> untyped
     def integration: () -> untyped
     def operators: () -> untyped
     def progress_reporter: () -> untyped?
@@ -490,8 +499,22 @@ module Henitai
 
     private
 
+    def build_result: (Array[Mutant], Time, Time) -> Result
     def persist_history: (Result, Time) -> void
+    def bootstrap_coverage: (Array[String]) -> void
     def with_reports_dir: () { () -> untyped } -> untyped
+  end
+
+  class CoverageBootstrapper
+    def initialize: (?static_filter: StaticFilter) -> void
+    def ensure!: (source_files: Array[String], config: Configuration, integration: Integration::Base) -> void
+
+    private
+
+    def static_filter: () -> StaticFilter
+    def coverage_available?: (Array[String], Configuration) -> bool
+    def bootstrap_coverage: (Integration::Base) -> void
+    def source_file_paths: (Array[String]) -> Array[String]
   end
 
   class CLI

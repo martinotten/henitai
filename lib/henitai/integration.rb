@@ -38,6 +38,11 @@ module Henitai
         raise NotImplementedError
       end
 
+      # @return [Array<String>] all test files for the configured framework
+      def test_files
+        raise NotImplementedError
+      end
+
       # Run test files in a child process with the mutant active.
       # Returns :killed, :survived, or :timeout.
       #
@@ -74,6 +79,10 @@ module Henitai
         fallback_spec_files(subject)
       end
 
+      def test_files
+        spec_files
+      end
+
       def run_mutant(mutant:, test_files:, timeout:)
         pid = Process.fork do
           ENV["HENITAI_MUTANT_ID"] = mutant.id
@@ -81,6 +90,15 @@ module Henitai
         end
 
         wait_with_timeout(pid, timeout)
+      end
+
+      def run_suite(test_files)
+        pid = Process.fork do
+          Process.exit(run_tests(test_files))
+        end
+
+        Process.wait(pid)
+        classify_exit_status(Process.last_status)
       end
 
       private

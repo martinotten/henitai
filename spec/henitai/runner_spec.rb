@@ -20,6 +20,12 @@ RSpec.describe Henitai::Runner do
         :reports_dir
       )
     )
+
+    coverage_bootstrapper = instance_double(Henitai::CoverageBootstrapper)
+    allow(coverage_bootstrapper).to receive(:ensure!)
+    allow(Henitai::CoverageBootstrapper).to receive(:new).and_return(
+      coverage_bootstrapper
+    )
   end
 
   def build_config(overrides = {})
@@ -84,6 +90,7 @@ RSpec.describe Henitai::Runner do
     subject_resolver = instance_double(Henitai::SubjectResolver)
     mutant_generator = instance_double(Henitai::MutantGenerator)
     static_filter = instance_double(Henitai::StaticFilter)
+    coverage_bootstrapper = instance_double(Henitai::CoverageBootstrapper)
     execution_engine = instance_double(Henitai::ExecutionEngine)
     integration = instance_double(Henitai::Integration::Rspec)
     history_store = build_history_store(calls)
@@ -91,6 +98,7 @@ RSpec.describe Henitai::Runner do
 
     allow(runner).to receive_messages(
       source_files: ["lib/sample.rb"],
+      coverage_bootstrapper:,
       subject_resolver:,
       mutant_generator:,
       static_filter:,
@@ -102,6 +110,9 @@ RSpec.describe Henitai::Runner do
     allow(subject_resolver).to receive(:resolve_from_files) do |paths|
       calls << [:resolve_from_files, paths]
       subjects
+    end
+    allow(coverage_bootstrapper).to receive(:ensure!) do |kwargs|
+      calls << [:bootstrap, kwargs[:source_files], kwargs[:config], kwargs[:integration]]
     end
     allow(mutant_generator).to receive(:generate) do |resolved_subjects, operators, kwargs|
       calls << [:generate, resolved_subjects, operators.map(&:class), kwargs[:config]]
@@ -141,6 +152,12 @@ RSpec.describe Henitai::Runner do
 
     expect(calls).to eq(
       [
+        [
+          :bootstrap,
+          ["lib/sample.rb"],
+          config,
+          integration
+        ],
         [:resolve_from_files, ["lib/sample.rb"]],
         [
           :generate,

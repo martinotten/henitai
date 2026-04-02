@@ -54,3 +54,16 @@ or with the architecture docs, stop and resolve the conflict before coding.
 
 When in doubt, choose the simplest change that satisfies the spec and stays
 aligned with `CODE_PRINCIPLES.md`.
+
+## Mutation Testing Framework Reference
+
+Research about mutation testing `docs/research`
+
+The following frameworks use apache or BSD licences and can be used as reference for implementation details, edge cases or test design. Do not copy tests, APIs or implementations 1:1.
+
+https://github.com/sourcefrog/cargo-mutants.git
+https://github.com/infection/infection.git
+https://github.com/stryker-mutator/stryker-net.git
+https://github.com/stryker-mutator/stryker-js.git
+
+You can clone the repositories here `/tmp/mutation-test-frameworks` with depth 1 or use the cloned versions if available.

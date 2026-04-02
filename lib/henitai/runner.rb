@@ -38,25 +38,20 @@ module Henitai
     # @return [Result]
     def run
       started_at = Time.now
-      subjects = resolve_subjects
+      source_files = self.source_files
+      bootstrap_coverage(source_files)
+      subjects = resolve_subjects(source_files)
       mutants = generate_mutants(subjects)
       mutants = filter_mutants(mutants)
       mutants = execute_mutants(mutants)
       finished_at = Time.now
 
-      @result = Result.new(
-        mutants:,
-        started_at:,
-        finished_at:
-      )
-      persist_history(@result, finished_at)
-      report(@result)
-      @result
+      build_result(mutants, started_at, finished_at)
     end
 
     private
 
-    def resolve_subjects
+    def resolve_subjects(source_files = self.source_files)
       subjects = subject_resolver.resolve_from_files(source_files)
       return subjects if pattern_subjects.empty?
 
@@ -95,6 +90,17 @@ module Henitai
       )
     end
 
+    def build_result(mutants, started_at, finished_at)
+      @result = Result.new(
+        mutants:,
+        started_at:,
+        finished_at:
+      )
+      persist_history(@result, finished_at)
+      report(@result)
+      @result
+    end
+
     def subject_resolver
       @subject_resolver ||= SubjectResolver.new
     end
@@ -113,6 +119,18 @@ module Henitai
 
     def execution_engine
       @execution_engine ||= ExecutionEngine.new
+    end
+
+    def coverage_bootstrapper
+      @coverage_bootstrapper ||= CoverageBootstrapper.new
+    end
+
+    def bootstrap_coverage(source_files)
+      coverage_bootstrapper.ensure!(
+        source_files:,
+        config:,
+        integration:
+      )
     end
 
     def integration
@@ -136,17 +154,21 @@ module Henitai
     end
 
     def source_files
-      included_files = Array(config.includes).flat_map do |include_path|
-        Dir.glob(File.join(include_path, "**", "*.rb"))
-      end.uniq
+      @source_files ||= begin
+        included_files = Array(config.includes).flat_map do |include_path|
+          Dir.glob(File.join(include_path, "**", "*.rb"))
+        end.uniq
 
-      return included_files unless @since
+        if @since
+          changed_files = git_diff_analyzer.changed_files(from: @since, to: "HEAD")
+          changed_file_set = changed_files.map { |path| normalize_path(path) }
 
-      changed_files = git_diff_analyzer.changed_files(from: @since, to: "HEAD")
-      changed_file_set = changed_files.map { |path| normalize_path(path) }
-
-      included_files.select do |path|
-        changed_file_set.include?(normalize_path(path))
+          included_files.select do |path|
+            changed_file_set.include?(normalize_path(path))
+          end
+        else
+          included_files
+        end
       end
     end
 

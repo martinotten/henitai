@@ -17,7 +17,11 @@ module Henitai
   # Raised when a subject expression cannot be resolved
   class SubjectNotFound < StandardError; end
 
+  # Raised when coverage data cannot be bootstrapped or validated.
+  class CoverageError < StandardError; end
+
   autoload :Configuration, "henitai/configuration"
+  autoload :CoverageBootstrapper, "henitai/coverage_bootstrapper"
   autoload :Subject, "henitai/subject"
   autoload :Mutant, "henitai/mutant"
   autoload :Operator, "henitai/operator"
