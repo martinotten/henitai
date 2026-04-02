@@ -178,7 +178,7 @@ The system is organized into the following main parts:
 | Coverage validation | Ensure baseline coverage exists before mutation | `lib/henitai/coverage_bootstrapper.rb`, `lib/henitai/static_filter.rb` |
 | Execution engine | Run the relevant tests in isolated processes | pipeline execution engine, integration adapters |
 | Result analysis | Classify outcomes, compute scores, preserve statuses | `lib/henitai/result.rb`, result collector |
-| Reporters | Emit terminal, JSON, HTML, and dashboard outputs | `lib/henitai/reporter/*` |
+| Reporters | Emit terminal, JSON, HTML, and dashboard outputs; keep live progress separate from captured child logs | `lib/henitai/reporter/*` |
 | Persistence | Track history and latent-mutant data across runs | `lib/henitai/mutant_history_store.rb` (SQLite-backed) |
 
 ### 5.2 Important Interfaces
@@ -189,6 +189,7 @@ The most important interfaces are:
 - the CLI subject syntax, including longest-prefix selection for RSpec-style names
 - the Stryker-compatible JSON report schema
 - the reporter interface for terminal, HTML, JSON, and dashboard output
+- the output contract for child process logs, which are captured as artifacts
 - the worker isolation contract based on process-level execution
 
 Representative configuration contract:
@@ -265,7 +266,7 @@ The implementation maps onto the following module layout:
 2. The source analyzer resolves changed files and methods.
 3. If the current coverage artifacts do not cover the configured source files,
    Henitai runs the configured test suite once to bootstrap a usable baseline.
-4. If coverage is still missing or unusable, Henitai aborts with `Henitai::CoverageError` and asks the user to run the test suite first.
+4. If coverage is still missing or unusable after the bootstrap run, Henitai aborts with `Henitai::CoverageError`.
 5. Coverage data and test inventory are used to prioritize tests.
 6. The execution engine runs the filtered mutant set.
 7. The analysis stage classifies killed, survived, ignored, timeout, and equivalent outcomes.
@@ -461,7 +462,7 @@ The reporting stack is layered:
 - optional dashboard upload
 - optional review feedback in pull requests
 
-The JSON report is the primary contract. HTML and terminal output are derived from it, and dashboard upload is a transport concern rather than a separate result model.
+The JSON report is the primary contract. HTML and terminal output are derived from it, and dashboard upload is a transport concern rather than a separate result model. Live terminal progress is intentionally separate from child stdout/stderr, which is captured per scenario and surfaced only as a failure tail or explicit verbose output.
 
 By default, all report files are written to a `reports/` subdirectory; callers can override the base directory via `reports_dir` in `.henitai.yml`. The per-test coverage file (`henitai_per_test.json`) is written to the same directory and is propagated to forked child processes via the `HENITAI_REPORTS_DIR` environment variable.
 
@@ -474,20 +475,22 @@ The expected JSON shape follows the Stryker ecosystem conventions:
 - per-mutant locations, replacements, operators, and status values
 - explicit `coveredBy` and `killedBy` references when available
 
-### 8.9 Coverage Validation
+### 8.9 Coverage Bootstrap
 
 Henitai treats coverage as a required input for meaningful filtering. The
 runner checks coverage before subject resolution and mutant generation.
 
-The validation sequence is:
+The bootstrap sequence is:
 
 1. Inspect the configured coverage artifacts for lines that overlap the current source files.
 2. If usable coverage already exists, proceed with the normal mutation pipeline.
-3. If coverage is missing or stale, raise `Henitai::CoverageError`.
+3. If coverage is missing or stale, run the configured test suite once to bootstrap fresh coverage.
+4. Re-check the coverage artifacts.
+5. If coverage is still missing or unusable, raise `Henitai::CoverageError`.
 
-This keeps `henitai run` separate from the test command that generates
-coverage. The test suite remains an independent step, and Henitai only
-consumes the resulting artifacts.
+This keeps `henitai run` self-contained while still separating mutation
+testing from the mechanics of coverage generation. The test suite is run only
+when needed, and Henitai consumes the resulting artifacts automatically.
 
 ### 8.10 Mutation Switching
 
