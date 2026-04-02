@@ -3,7 +3,32 @@ module ::FileUtils
 end
 
 module ::JSON
+  def self.generate: (untyped) -> String
   def self.pretty_generate: (untyped) -> String
+end
+
+module ::Net
+  class HTTP
+    def self.start: (String, Integer, use_ssl: bool) { (HTTP) -> untyped } -> untyped
+    def request: (untyped) -> untyped
+
+    class Put
+      def initialize: (String, Hash[String, String]) -> void
+      attr_accessor body: String
+    end
+  end
+end
+
+module ::URI
+  class InvalidURIError < StandardError
+  end
+
+  def self.parse: (String) -> untyped
+  def self.encode_www_form_component: (String) -> String
+end
+
+module ::Open3
+  def self.capture2: (*String) -> [String, Process::Status]
 end
 
 module ::Coverage
@@ -374,7 +399,34 @@ module Henitai
     end
 
     class Dashboard < Base
+      DEFAULT_BASE_URL: String
+
       def report: (Result) -> void
+
+      private
+
+      def ready?: () -> bool
+      def build_request: (Result, untyped) -> untyped
+      def request_headers: () -> Hash[String, String]
+      def send_request: (untyped, untyped) -> untyped
+      def dashboard_uri: () -> untyped
+      def base_url: () -> String
+      def project: () -> String?
+      def version: () -> String?
+      def env_version: () -> String?
+      def ref_without_prefix: (String?) -> String?
+      def project_from_git_remote: () -> String?
+      def api_key: () -> String?
+      def project_path: () -> String
+      def encoded_version: () -> String
+      def blank?: (String?) -> bool
+      def git_remote_url: () -> String?
+      def git_branch_name: () -> String?
+
+      def self.project_from_git_url: (String?) -> String?
+      def self.normalize_git_url: (String?) -> String?
+      def self.project_from_uri_url: (String) -> String?
+      def self.project_from_ssh_url: (String) -> String?
     end
   end
 

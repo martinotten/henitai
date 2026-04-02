@@ -515,9 +515,9 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 - [x] **(P2)** `TASK: rep-html-03` - Output: `reports/mutation-report.html`
 
 #### Dashboard Reporter
-- [ ] **(P2)** `TASK: rep-dash-01` - REST API client: `PUT /api/reports/{project}/{version}` with bearer auth (`STRYKER_DASHBOARD_API_KEY`)
-- [ ] **(P2)** `TASK: rep-dash-02` - Derive project URL from config (`dashboard.project`) or auto-detect from the git remote URL
-- [ ] **(P2)** `TASK: rep-dash-03` - CI detection: use `GITHUB_REF` / `GITHUB_SHA` for automatic version resolution
+- [x] **(P2)** `TASK: rep-dash-01` - REST API client: `PUT /api/reports/{project}/{version}` with bearer auth (`STRYKER_DASHBOARD_API_KEY`)
+- [x] **(P2)** `TASK: rep-dash-02` - Derive project URL from config (`dashboard.project`) or auto-detect from the git remote URL
+- [x] **(P2)** `TASK: rep-dash-03` - CI detection: use `GITHUB_REF` / `GITHUB_SHA` for automatic version resolution
 
 ---
 
