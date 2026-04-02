@@ -391,6 +391,7 @@ module Henitai
     def method_body: (untyped) -> untyped
     def source_file_from_ast: (Subject) -> String?
     def node_location_signature: (untyped) -> Array[untyped]?
+    def compile_safe_unparse: (untyped) -> String
   end
 
   module Reporter

@@ -227,6 +227,36 @@ RSpec.describe Henitai::Mutant::Activator do
     end
   end
 
+  it "returns compile_error when Unparser cannot round-trip the replacement" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, <<~RUBY)
+        class ActivatorRegexpSample
+          def value
+            /foo/
+          end
+        end
+      RUBY
+
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      original_node = find_nodes(subject.ast_node, :regexp).first
+      mutant = build_mutant(
+        subject:,
+        original_node:,
+        mutated_node: Parser::CurrentRuby.parse("/bar/"),
+        location: location_for(original_node)
+      )
+
+      allow(Unparser).to receive(:unparse).and_wrap_original do |original, node|
+        raise RuntimeError, "Could not find a round tripping solution for regexp" \
+          if node.respond_to?(:type) && node.type == :regexp
+
+        original.call(node)
+      end
+
+      expect(described_class.activate!(mutant)).to eq(:compile_error)
+    end
+  end
+
   it "infers the source file from AST metadata when none is provided" do
     Dir.mktmpdir do |dir|
       path = write_source(dir, <<~RUBY)

@@ -55,7 +55,7 @@ module Henitai
 
       def body_source(mutant)
         subject_node = mutant.subject.ast_node
-        return Unparser.unparse(mutant.mutated_node) unless subject_node
+        return compile_safe_unparse(mutant.mutated_node) unless subject_node
 
         mutated_subject = replace_node(
           subject_node,
@@ -63,7 +63,7 @@ module Henitai
           mutant.mutated_node
         )
         body = method_body(mutated_subject) || Parser::AST::Node.new(:nil, [])
-        Unparser.unparse(body)
+        compile_safe_unparse(body)
       end
 
       def replace_node(node, original_node, mutated_node)
@@ -144,7 +144,7 @@ module Henitai
       end
 
       def optional_parameter_fragment(argument)
-        "#{argument.children[0]} = #{Unparser.unparse(argument.children[1])}"
+        "#{argument.children[0]} = #{compile_safe_unparse(argument.children[1])}"
       end
 
       def rest_parameter_fragment(argument)
@@ -156,7 +156,7 @@ module Henitai
       end
 
       def optional_keyword_parameter_fragment(argument)
-        "#{argument.children[0]}: #{Unparser.unparse(argument.children[1])}"
+        "#{argument.children[0]}: #{compile_safe_unparse(argument.children[1])}"
       end
 
       def keyword_rest_parameter_fragment(argument)
@@ -222,6 +222,12 @@ module Henitai
           expression.last_line,
           expression.last_column
         ]
+      end
+
+      def compile_safe_unparse(node)
+        Unparser.unparse(node)
+      rescue StandardError => e
+        raise Unparser::UnsupportedNodeError, e.message
       end
     end
   end
