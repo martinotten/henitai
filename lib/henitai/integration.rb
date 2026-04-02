@@ -19,6 +19,65 @@ module Henitai
   # Built-in integrations:
   #   rspec  — RSpec 3.x
   module Integration
+    # Shared helpers for capturing stdout/stderr from child test processes.
+    class ScenarioLogSupport
+      def capture_child_output(log_paths)
+        output_files = open_child_output(log_paths)
+        yield
+      ensure
+        close_child_output(output_files)
+      end
+
+      def open_child_output(log_paths)
+        FileUtils.mkdir_p(File.dirname(log_paths[:log_path]))
+        output_files = build_child_output_files(log_paths)
+        sync_child_output_files(output_files)
+        redirect_child_output(output_files)
+        output_files
+      end
+
+      def close_child_output(output_files)
+        return unless output_files
+
+        restore_child_output(output_files)
+        close_child_output_files(output_files)
+      end
+
+      def build_child_output_files(log_paths)
+        {
+          original_stdout: $stdout.dup,
+          original_stderr: $stderr.dup,
+          stdout_file: File.new(log_paths[:stdout_path], "w"),
+          stderr_file: File.new(log_paths[:stderr_path], "w")
+        }
+      end
+
+      def sync_child_output_files(output_files)
+        output_files[:stdout_file].sync = true
+        output_files[:stderr_file].sync = true
+      end
+
+      def redirect_child_output(output_files)
+        $stdout.reopen(output_files[:stdout_file])
+        $stderr.reopen(output_files[:stderr_file])
+      end
+
+      def restore_child_output(output_files)
+        reopen_child_output_stream($stdout, output_files[:original_stdout])
+        reopen_child_output_stream($stderr, output_files[:original_stderr])
+      end
+
+      def reopen_child_output_stream(stream, original_stream)
+        stream.reopen(original_stream) if original_stream
+      end
+
+      def close_child_output_files(output_files)
+        %i[stdout_file stderr_file original_stdout original_stderr].each do |key|
+          output_files[key]&.close
+        end
+      end
+    end
+
     # Integration adapter for RSpec.
     #
     # This class exists as the stable public entry point for the RSpec
@@ -106,14 +165,14 @@ module Henitai
       private
 
       def run_in_child(mutant:, test_files:, log_paths:)
-        capture_child_output(log_paths) do
+        scenario_log_support.capture_child_output(log_paths) do
           Mutant::Activator.activate!(mutant)
           run_tests(test_files)
         end
       end
 
       def run_suite_in_child(test_files, log_paths:)
-        capture_child_output(log_paths) do
+        scenario_log_support.capture_child_output(log_paths) do
           run_tests(test_files)
         end
       end
@@ -142,28 +201,6 @@ module Henitai
         :timeout
       end
 
-      def capture_child_output(log_paths)
-        FileUtils.mkdir_p(File.dirname(log_paths[:log_path]))
-        original_stdout = $stdout.dup
-        original_stderr = $stderr.dup
-        stdout_file = File.new(log_paths[:stdout_path], "w")
-        stderr_file = File.new(log_paths[:stderr_path], "w")
-        stdout_file.sync = true
-        stderr_file.sync = true
-        $stdout.reopen(stdout_file)
-        $stderr.reopen(stderr_file)
-        yield
-      ensure
-        $stdout.reopen(original_stdout) if original_stdout
-        $stderr.reopen(original_stderr) if original_stderr
-        stdout_file&.flush
-        stderr_file&.flush
-        stdout_file&.close
-        stderr_file&.close
-        original_stdout&.close
-        original_stderr&.close
-      end
-
       def run_tests(test_files)
         status = RSpec::Core::Runner.run(test_files + rspec_options)
         return status if status.is_a?(Integer)
@@ -177,6 +214,38 @@ module Henitai
 
       def pause(seconds)
         sleep(seconds)
+      end
+
+      def scenario_log_support
+        @scenario_log_support ||= ScenarioLogSupport.new
+      end
+
+      def read_log_file(path)
+        return "" unless File.exist?(path)
+
+        File.read(path)
+      end
+
+      def write_combined_log(path, stdout, stderr)
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, combined_log(stdout, stderr))
+      end
+
+      def combined_log(stdout, stderr)
+        [
+          (stdout.empty? ? nil : "stdout:\n#{stdout}"),
+          (stderr.empty? ? nil : "stderr:\n#{stderr}")
+        ].compact.join("\n")
+      end
+
+      def scenario_log_paths(name)
+        reports_dir = ENV.fetch("HENITAI_REPORTS_DIR", "reports")
+        log_dir = File.join(reports_dir, "mutation-logs")
+        {
+          stdout_path: File.join(log_dir, "#{name}.stdout.log"),
+          stderr_path: File.join(log_dir, "#{name}.stderr.log"),
+          log_path: File.join(log_dir, "#{name}.log")
+        }
       end
 
       def build_result(wait_result, log_paths)
@@ -206,34 +275,6 @@ module Henitai
         return nil unless wait_result.respond_to?(:exitstatus)
 
         wait_result.exitstatus
-      end
-
-      def read_log_file(path)
-        return "" unless File.exist?(path)
-
-        File.read(path)
-      end
-
-      def write_combined_log(path, stdout, stderr)
-        FileUtils.mkdir_p(File.dirname(path))
-        File.write(path, combined_log(stdout, stderr))
-      end
-
-      def combined_log(stdout, stderr)
-        [
-          (stdout.empty? ? nil : "stdout:\n#{stdout}"),
-          (stderr.empty? ? nil : "stderr:\n#{stderr}")
-        ].compact.join("\n")
-      end
-
-      def scenario_log_paths(name)
-        reports_dir = ENV.fetch("HENITAI_REPORTS_DIR", "reports")
-        log_dir = File.join(reports_dir, "mutation-logs")
-        {
-          stdout_path: File.join(log_dir, "#{name}.stdout.log"),
-          stderr_path: File.join(log_dir, "#{name}.stderr.log"),
-          log_path: File.join(log_dir, "#{name}.log")
-        }
       end
 
       def spec_files

@@ -225,6 +225,21 @@ module Henitai
       def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
     end
 
+    class ScenarioLogSupport
+      def capture_child_output: (Hash[Symbol, String]) { () -> untyped } -> untyped
+
+      private
+
+      def open_child_output: (Hash[Symbol, String]) -> Hash[Symbol, untyped]
+      def close_child_output: (Hash[Symbol, untyped]?) -> void
+      def build_child_output_files: (Hash[Symbol, String]) -> Hash[Symbol, untyped]
+      def sync_child_output_files: (Hash[Symbol, untyped]) -> void
+      def redirect_child_output: (Hash[Symbol, untyped]) -> void
+      def restore_child_output: (Hash[Symbol, untyped]) -> void
+      def reopen_child_output_stream: (untyped, untyped) -> void
+      def close_child_output_files: (Hash[Symbol, untyped]) -> void
+    end
+
     class Rspec < Base
       REQUIRE_DIRECTIVE_PATTERN: Regexp
       DEFAULT_SUITE_TIMEOUT: Float
@@ -240,7 +255,6 @@ module Henitai
       def run_suite_in_child: (Array[String], log_paths: Hash[Symbol, String]) -> Integer
       def wait_with_timeout: (Integer, Float) -> untyped
       def handle_timeout: (Integer) -> Symbol
-      def capture_child_output: (Hash[Symbol, String]) { () -> Integer } -> Integer
       def build_result: (untyped, Hash[Symbol, String]) -> ScenarioExecutionResult
       def scenario_status: (untyped) -> Symbol
       def exit_status_for: (untyped) -> Integer?
@@ -250,6 +264,7 @@ module Henitai
       def scenario_log_paths: (String) -> Hash[Symbol, String]
       def run_tests: (Array[String]) -> Integer
       def pause: (Float) -> void
+      def scenario_log_support: () -> ScenarioLogSupport
       def rspec_options: () -> Array[String]
       def spec_files: () -> Array[String]
       def fallback_spec_files: (Subject) -> Array[String]

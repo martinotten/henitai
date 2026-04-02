@@ -333,9 +333,14 @@ RSpec.describe Henitai::MutantGenerator do
     # L130 NoCoverage: sampling[:strategy] || :stratified
     # Der Fallback wird nie exercised weil Tests immer strategy: angeben.
     it "defaults strategy to :stratified when the sampling config has no :strategy key" do
-      mutants = [double("mutant")]
+      mutants = [
+        instance_double(
+          Henitai::Mutant,
+          subject: instance_double(Henitai::Subject, expression: "Sample#alpha")
+        )
+      ]
       strategy = instance_double(Henitai::SamplingStrategy)
-      config = double("config", sampling: { ratio: 1.0 }) # kein :strategy
+      config = instance_double(Henitai::Configuration, sampling: { ratio: 1.0 }) # kein :strategy
 
       allow(strategy).to receive(:sample).and_return(mutants)
 
@@ -350,7 +355,10 @@ RSpec.describe Henitai::MutantGenerator do
 
     # L135 NoCoverage: ReturnValue auf [file, start_line]-Array
     it "returns a two-element array of file and start_line" do
-      mutant = double("mutant", location: { file: "lib/foo.rb", start_line: 7 })
+      mutant = instance_double(
+        Henitai::Mutant,
+        location: { file: "lib/foo.rb", start_line: 7 }
+      )
       expect(generator.send(:line_key, mutant)).to eq(["lib/foo.rb", 7])
     end
   end
@@ -360,21 +368,20 @@ RSpec.describe Henitai::MutantGenerator do
 
     # L142 NoCoverage: ReturnValue auf Priority-Key-Array
     it "returns a three-element priority key" do
-      mutant = double(
-        "mutant",
+      mutant = instance_double(
+        Henitai::Mutant,
         operator: "ArithmeticOperator",
         location: { start_col: 4 },
         description: "replaced + with -"
       )
       key = generator.send(:mutant_priority_key, mutant)
-      expect(key.length).to eq(3)
-      expect(key[2]).to eq("replaced + with -")
+      expect(key).to eq([0, 4, "replaced + with -"])
     end
 
     # L144 NoCoverage: mutant.location[:start_col] || 0
     it "falls back to column 0 when start_col is absent" do
-      mutant = double(
-        "mutant",
+      mutant = instance_double(
+        Henitai::Mutant,
         operator: "ArithmeticOperator",
         location: { start_col: nil },
         description: "x"
@@ -388,13 +395,14 @@ RSpec.describe Henitai::MutantGenerator do
 
     # L150 Survived: ReturnValue — Methode gibt 0 zurück statt Hash
     it "returns a Hash keyed by operator name" do
-      map = generator.send(:operator_priority_map)
-      expect(map).to be_a(Hash)
-      expect(map.keys).to include("ArithmeticOperator")
+      expect(generator.send(:operator_priority_map)).to include("ArithmeticOperator" => 0)
     end
 
     it "is memoized across calls" do
-      expect(generator.send(:operator_priority_map)).to be(generator.send(:operator_priority_map))
+      first_map = generator.send(:operator_priority_map)
+      second_map = generator.send(:operator_priority_map)
+
+      expect(first_map).to be(second_map)
     end
   end
 
@@ -553,7 +561,7 @@ RSpec.describe Henitai::MutantGenerator do
     # L99: location && @subject.source_range → nur location
     # Divergiert wenn source_range nil ist aber location nicht:
     # Mutation fällt durch zu ranges_overlap?(range, nil) → NoMethodError.
-    it "treats all nodes as in-range when the subject has no source_range (L99 LogicalOperator)" do
+    it "does not raise when the subject has no source_range (L99 LogicalOperator)" do
       Dir.mktmpdir do |dir|
         path = write_source(dir, "lib/sample.rb", <<~RUBY)
           class Sample
@@ -572,6 +580,28 @@ RSpec.describe Henitai::MutantGenerator do
         visitor = new_visitor(subject_no_range, [make_int_operator])
 
         expect { visitor.process(Henitai::SourceParser.parse_file(path)) }.not_to raise_error
+      end
+    end
+
+    it "still generates mutants when the subject has no source_range (L99 LogicalOperator)" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "lib/sample.rb", <<~RUBY)
+          class Sample
+            def run
+              1
+            end
+          end
+        RUBY
+
+        subject_no_range = Henitai::Subject.new(
+          namespace: "Sample",
+          method_name: "run",
+          source_location: { file: path, range: nil }
+        )
+
+        visitor = new_visitor(subject_no_range, [make_int_operator])
+        visitor.process(Henitai::SourceParser.parse_file(path))
+
         expect(visitor.mutants).not_to be_empty
       end
     end

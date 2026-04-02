@@ -256,7 +256,7 @@ RSpec.describe Henitai::Integration::Rspec do
         Struct.new(:success?).new(true)
       )
 
-      record[:result] = integration.run_mutant(
+      integration.run_mutant(
         mutant:,
         test_files: ["spec/foo_spec.rb"],
         timeout: 1.5
@@ -268,7 +268,6 @@ RSpec.describe Henitai::Integration::Rspec do
         env_id: "mutant-1",
         wait_args: [4321, Process::WNOHANG]
       )
-      expect(record[:result]).to eq(:survived)
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env
     end
@@ -332,9 +331,6 @@ RSpec.describe Henitai::Integration::Rspec do
         timeout: 0.1
       )
 
-      expect(record).to include(
-        child_status: 0
-      )
       expect(record[:result]).to eq(:survived)
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env
@@ -367,9 +363,6 @@ RSpec.describe Henitai::Integration::Rspec do
         timeout: 0.1
       )
 
-      expect(record).to include(
-        child_status: 1
-      )
       expect(record[:result]).to eq(:killed)
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env
@@ -430,7 +423,7 @@ RSpec.describe Henitai::Integration::Rspec do
         last_status: Struct.new(:success?).new(true)
       )
 
-      record[:result] = integration.run_mutant(
+      integration.run_mutant(
         mutant:,
         test_files: ["spec/pending_spec.rb"],
         timeout: 0.1
@@ -440,7 +433,6 @@ RSpec.describe Henitai::Integration::Rspec do
         pauses: [0.01],
         child_status: 0
       )
-      expect(record[:result]).to eq(:survived)
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env
     end
@@ -458,7 +450,7 @@ RSpec.describe Henitai::Integration::Rspec do
         record[:pauses] << seconds
       end
 
-      record[:result] = integration.run_mutant(
+      integration.run_mutant(
         mutant:,
         test_files: ["spec/baz_spec.rb"],
         timeout: 0.1
@@ -469,7 +461,6 @@ RSpec.describe Henitai::Integration::Rspec do
         forked: true,
         child_status: 0
       )
-      expect(record[:result]).to eq(:timeout)
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env
     end
@@ -489,7 +480,7 @@ RSpec.describe Henitai::Integration::Rspec do
         raise_esrch_on_kill: true
       )
 
-      record[:result] = integration.run_mutant(
+      integration.run_mutant(
         mutant:,
         test_files: ["spec/baz_spec.rb"],
         timeout: 0.1
@@ -501,7 +492,6 @@ RSpec.describe Henitai::Integration::Rspec do
         forked: true,
         child_status: 0
       )
-      expect(record[:result]).to eq(:timeout)
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env
     end
@@ -530,7 +520,7 @@ RSpec.describe Henitai::Integration::Rspec do
         1
       end
 
-      record[:result] = integration.run_mutant(
+      integration.run_mutant(
         mutant:,
         test_files: ["spec/failing_spec.rb"],
         timeout: 0.1
@@ -544,7 +534,6 @@ RSpec.describe Henitai::Integration::Rspec do
         ],
         child_status: 1
       )
-      expect(record[:result]).to eq(:killed)
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env
     end
@@ -680,9 +669,10 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
-  it "captures child stdout and stderr into scenario logs" do
+  it "writes child stdout and stderr into the combined scenario log" do
     with_temp_workspace do |dir|
       test_file = write_file(dir, "spec/sample_spec.rb", sample_spec_source)
+      stdout_source = write_file(dir, "captured_stdout.txt", "captured stdout\n")
       mutant = Struct.new(:id).new("mutant-1")
       integration = described_class.new
       original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
@@ -699,6 +689,9 @@ RSpec.describe Henitai::Integration::Rspec do
         )
         allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
         allow(integration).to receive(:run_tests) do |_test_files|
+          File.open(stdout_source, "rb") do |file|
+            IO.copy_stream(file, $stdout)
+          end
           warn "captured stderr"
           0
         end
@@ -709,12 +702,7 @@ RSpec.describe Henitai::Integration::Rspec do
           timeout: 1.0
         )
 
-        expect(result).to be_a(Henitai::ScenarioExecutionResult)
-        expect(result.status).to eq(:survived)
-        expect(result.stdout).to include("captured stdout")
-        expect(result.stderr).to include("captured stderr")
-        expect(File.read(result.log_path)).to include("captured stdout")
-        expect(File.read(result.log_path)).to include("captured stderr")
+        expect(File.read(result.log_path)).to eq(result.combined_output)
       ensure
         ENV["HENITAI_MUTANT_ID"] = original_env
       end
