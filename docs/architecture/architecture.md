@@ -104,7 +104,7 @@ Henitai sits between a Ruby codebase and the developer feedback loop.
 | Git repository | local filesystem and git diff | identify changed subjects and changed methods |
 | Ruby source tree | Prism-translated parser-compatible AST input | discover mutation points |
 | Test framework | process execution of RSpec or Minitest | execute only the relevant tests |
-| Coverage data | SimpleCov JSON or equivalent, bootstrapped on demand by a full test-suite run | prioritize tests and mark uncovered code |
+| Coverage data | SimpleCov JSON or equivalent produced by a prior test-suite run | prioritize tests and mark uncovered code |
 | Stryker Dashboard | HTTP upload and project metadata | share results with the existing mutation-testing ecosystem |
 | mutation-testing-elements | embedded JSON in HTML | render a standalone browser report |
 
@@ -175,7 +175,7 @@ The system is organized into the following main parts:
 | CLI and configuration | Parse options, load YAML, resolve defaults | `lib/henitai/cli.rb`, `lib/henitai/configuration.rb` |
 | Subject resolution | Turn file changes and subject patterns into runnable subjects | `lib/henitai/subject.rb`, pipeline subject resolver |
 | Mutant generation | Walk the AST and create candidate mutants | `lib/henitai/operator.rb`, `lib/henitai/operators/*` |
-| Coverage bootstrap | Ensure baseline coverage exists before mutation | `lib/henitai/coverage_bootstrapper.rb`, `lib/henitai/static_filter.rb` |
+| Coverage validation | Ensure baseline coverage exists before mutation | `lib/henitai/coverage_bootstrapper.rb`, `lib/henitai/static_filter.rb` |
 | Execution engine | Run the relevant tests in isolated processes | pipeline execution engine, integration adapters |
 | Result analysis | Classify outcomes, compute scores, preserve statuses | `lib/henitai/result.rb`, result collector |
 | Reporters | Emit terminal, JSON, HTML, and dashboard outputs | `lib/henitai/reporter/*` |
@@ -252,8 +252,8 @@ The implementation maps onto the following module layout:
 ### 6.1 Developer Fast Loop
 
 1. The developer changes a Ruby file.
-2. Henitai resolves the changed subject from the git diff.
-3. If the current coverage artifacts do not cover the configured source files, Henitai runs the configured test suite once to bootstrap a baseline.
+2. The developer runs the configured test suite first so coverage artifacts are available.
+3. Henitai resolves the changed subject from the git diff.
 4. Only the relevant AST nodes are traversed.
 5. Arid nodes, stillborn mutants, and irrelevant subjects are filtered early.
 6. A small mutant subset is executed in isolated worker processes.
@@ -264,7 +264,7 @@ The implementation maps onto the following module layout:
 1. CI starts Henitai with PR metadata and branch information.
 2. The source analyzer resolves changed files and methods.
 3. Henitai validates that coverage exists for the configured source files.
-4. If coverage is missing or unusable, Henitai runs the configured test suite once to generate a baseline coverage report.
+4. If coverage is missing or unusable, Henitai aborts with `Henitai::CoverageError` and asks the user to run the test suite first.
 5. Coverage data and test inventory are used to prioritize tests.
 6. The execution engine runs the filtered mutant set.
 7. The analysis stage classifies killed, survived, ignored, timeout, and equivalent outcomes.
@@ -473,23 +473,20 @@ The expected JSON shape follows the Stryker ecosystem conventions:
 - per-mutant locations, replacements, operators, and status values
 - explicit `coveredBy` and `killedBy` references when available
 
-### 8.9 Coverage Bootstrap
+### 8.9 Coverage Validation
 
 Henitai treats coverage as a required input for meaningful filtering. The
 runner checks coverage before subject resolution and mutant generation.
 
-The bootstrap sequence is:
+The validation sequence is:
 
 1. Inspect the configured coverage artifacts for lines that overlap the current source files.
 2. If usable coverage already exists, proceed with the normal mutation pipeline.
-3. If coverage is missing or stale, run the configured test suite once without mutants to generate a baseline.
-4. Re-check coverage after the baseline run.
-5. Raise `Henitai::CoverageError` if coverage still cannot be produced for the configured source files.
+3. If coverage is missing or stale, raise `Henitai::CoverageError`.
 
-This keeps `henitai run` self-contained for local development and CI, while
-preserving a hard failure when the test environment cannot produce coverage at
-all. The bootstrap step is intentionally outside the mutation loop so that it
-does not distort mutation timing or mutant status classification.
+This keeps `henitai run` separate from the test command that generates
+coverage. The test suite remains an independent step, and Henitai only
+consumes the resulting artifacts.
 
 ### 8.10 Mutation Switching
 

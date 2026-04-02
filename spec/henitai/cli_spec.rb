@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "tmpdir"
+require "stringio"
 
 RSpec.describe Henitai::CLI do
   def write_configuration(dir)
@@ -31,6 +32,42 @@ RSpec.describe Henitai::CLI do
     runner = instance_double(Henitai::Runner)
     allow(runner).to receive(:run).and_return(result)
     runner
+  end
+
+  # L125 — OptionParser-Banner ("Usage: henitai run …")
+  # L137, L167, L174 — Optionsbeschreibungen werden nie auf Inhalt geprüft
+  describe "run --help output" do
+    subject(:help_output) do
+      cli = described_class.new(["run", "--help"])
+      cli.define_singleton_method(:exit) { |_status = nil| nil }
+      capture_stdout { cli.run }
+    end
+
+    it "prints the run usage banner" do
+      expect(help_output).to match(/Usage: henitai run/)
+    end
+
+    it "documents the --since option" do
+      expect(help_output).to match(/--since/)
+    end
+
+    it "documents the -h / --help flag" do
+      expect(help_output).to match(/-h, --help/)
+    end
+
+    it "documents the -v / --version flag" do
+      expect(help_output).to match(/-v, --version/)
+    end
+  end
+
+  def capture_stdout
+    original_stdout = $stdout
+    stdout = StringIO.new
+    $stdout = stdout
+    yield
+    stdout.string
+  ensure
+    $stdout = original_stdout
   end
 
   it "applies CLI overrides after loading the YAML config" do
@@ -94,6 +131,13 @@ RSpec.describe Henitai::CLI do
     expect { described_class.new([]).run }.to output(/Hen'i-tai 変異体/).to_stdout
   end
 
+  # L181 — VERSION-Interpolation in help_text muss tatsächlich geprüft werden
+  it "includes the version number in the help text" do
+    expect { described_class.new([]).run }.to output(
+      /Hen'i-tai 変異体 #{Regexp.escape(Henitai::VERSION)}/
+    ).to_stdout
+  end
+
   it "warns and exits for unknown commands" do
     cli = described_class.new(["bogus"])
     exit_status = nil
@@ -102,6 +146,14 @@ RSpec.describe Henitai::CLI do
     cli.run
 
     expect(exit_status).to eq(1)
+  end
+
+  # L73 — Warntext muss den Command-Namen enthalten (StringLiteral-Interpolation)
+  it "includes the unknown command name in the warning" do
+    cli = described_class.new(["bogus"])
+    cli.define_singleton_method(:exit) { |_status = nil| nil }
+
+    expect { cli.run }.to output(/Unknown command: bogus/).to_stderr
   end
 
   it "passes subject patterns through" do
@@ -273,6 +325,62 @@ RSpec.describe Henitai::CLI do
     end
   end
 
+  # L269 — Prompt-String muss tatsächlich ausgegeben werden (StringLiteral)
+  it "prints the RSpec prompt text when stdin is a tty" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        cli = described_class.new(["init"])
+        allow($stdin).to receive_messages(tty?: true, gets: "y\n")
+
+        expect { cli.run }.to output(%r{Use the default RSpec integration\? \[Y/n\]}).to_stdout
+      end
+    end
+  end
+
+  # L271 — LogicalOperator: || → and (Präzedenz-Bug)
+  # Bei response = "yes": Original gibt true zurück (Integration einbinden),
+  # Mutation gibt false (weil `(false || false) and true` = false).
+  it "includes the integration block when the user types 'yes'" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        cli = described_class.new(["init"])
+        allow($stdin).to receive_messages(tty?: true, gets: "yes\n")
+
+        cli.run
+
+        expect(File.read(".henitai.yml")).to include("integration:\n  name: rspec")
+      end
+    end
+  end
+
+  # L271 — Sicherstellen dass ein leerer Enter (response.empty?) auch einbindet
+  it "includes the integration block when the user presses enter without input" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        cli = described_class.new(["init"])
+        allow($stdin).to receive_messages(tty?: true, gets: "\n")
+
+        cli.run
+
+        expect(File.read(".henitai.yml")).to include("integration:\n  name: rspec")
+      end
+    end
+  end
+
+  # L275 — integration_block ohne trailing Double-Newline (.chomp)
+  it "does not produce a trailing blank line in the generated config" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        cli = described_class.new(["init"])
+        allow($stdin).to receive_messages(tty?: false, gets: nil)
+
+        cli.run
+
+        expect(File.read(".henitai.yml")).not_to end_with("\n\n")
+      end
+    end
+  end
+
   it "creates the requested configuration file during init" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
@@ -320,6 +428,20 @@ RSpec.describe Henitai::CLI do
     ).to_stdout
   end
 
+  # L295 — "Available operators"-Header muss in der Ausgabe erscheinen (StringLiteral)
+  it "prints the 'Available operators' header" do
+    expect { described_class.new(%w[operator list]).run }.to output(
+      /Available operators/
+    ).to_stdout
+  end
+
+  # L299 — "\n"-Separator zwischen Sektionen (join("\n") → join(""))
+  it "separates the Light and Full operator sections with a newline" do
+    expect { described_class.new(%w[operator list]).run }.to output(
+      /Light set\n.*Full set/m
+    ).to_stdout
+  end
+
   it "warns and exits when operator metadata is missing" do
     stub_const(
       "Henitai::Operator::FULL_SET",
@@ -351,5 +473,34 @@ RSpec.describe Henitai::CLI do
     cli.run
 
     expect(exit_status).to eq(1)
+  end
+
+  # L282 — operator_help_text-Inhalt: kein Test für operator ohne Subcommand / mit -h
+  it "prints operator usage when 'operator' is called without a subcommand" do
+    expect { described_class.new(["operator"]).run }.to output(
+      /henitai operator list/
+    ).to_stdout
+  end
+
+  it "prints operator usage for 'operator -h'" do
+    cli = described_class.new(["operator", "-h"])
+    cli.define_singleton_method(:exit) { |_status = nil| nil }
+
+    expect { cli.run }.to output(/henitai operator list/).to_stdout
+  end
+
+  # L57 NoCoverage — CLI.start() wird nie direkt aufgerufen
+  it "delegates to run via the class-level start method" do
+    expect { described_class.start(["version"]) }.to output(
+      "#{Henitai::VERSION}\n"
+    ).to_stdout
+  end
+
+  # L318 NoCoverage — fallback_operator_metadata für unbekannte Operatoren
+  it "uses fallback metadata text for operators missing from OPERATOR_METADATA" do
+    cli = described_class.new(%w[operator list])
+    allow(cli).to receive_messages(operator_metadata: {}, validate_operator_metadata!: nil)
+
+    expect { cli.run }.to output(/No metadata available/).to_stdout
   end
 end

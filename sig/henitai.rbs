@@ -511,13 +511,12 @@ module Henitai
 
   class CoverageBootstrapper
     def initialize: (?static_filter: StaticFilter) -> void
-    def ensure!: (source_files: Array[String], config: Configuration, integration: Integration::Base) -> void
+    def ensure!: (source_files: Array[String], config: Configuration) -> void
 
     private
 
     def static_filter: () -> StaticFilter
     def coverage_available?: (Array[String], Configuration) -> bool
-    def bootstrap_coverage: (Integration::Base) -> void
     def source_file_paths: (Array[String]) -> Array[String]
   end
 

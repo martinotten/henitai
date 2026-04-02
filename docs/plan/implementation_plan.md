@@ -545,8 +545,8 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 >
 > `:equivalent` is an internal Henitai status - in the Stryker JSON it is serialized as `"Ignored"` (the Stryker schema has no Equivalent status). The distinction remains in the `Result` object for correct MS calculation.
 
-- [~] **(P1)** `TASK: result-01` - `Result#mutation_score`: correct MS formula - exclude `:ignored`, `:no_coverage`, `:compile_error`, and **`:equivalent`** from numerator and denominator (implemented in `result.rb`)
-- [~] **(P1)** `TASK: result-02` - `Result#mutation_score_indicator`: naive MSI formula - `killed / total`, no exclusions (implemented in `result.rb`)
+- [x] **(P1)** `TASK: result-01` - `Result#mutation_score`: correct MS formula - exclude `:ignored`, `:no_coverage`, `:compile_error`, and **`:equivalent`** from numerator and denominator (implemented in `result.rb`)
+- [x] **(P1)** `TASK: result-02` - `Result#mutation_score_indicator`: naive MSI formula - `killed / total`, no exclusions (implemented in `result.rb`)
 - [x] **(P1)** `TASK: result-03` - Terminal report shows MS **and** MSI side by side, plus estimated equivalence uncertainty (`~10-15% of live mutants`)
 - [x] **(P1)** `TASK: result-04` - Spec: MS / MSI calculation with fixture mutants of all statuses, including `:equivalent` (regression guard against formula drift)
 - [x] **(P2)** `TASK: result-05` - Equivalence heuristics (simplified AST heuristics): `EquivalenceDetector#analyze(mutant)` marks candidates as `:equivalent` using conservative arithmetic-neutral patterns. Detection rate around 50% of actually equivalent mutants.
@@ -559,9 +559,9 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 
 - [ ] **(P1)** `TASK: dog-01` - Henitai tests itself: `bundle exec henitai run --operators light` as part of the CI pipeline (after Phase 1 is complete)
 - [ ] **(P1)** `TASK: dog-02` - Test coverage: ≥ 90% statement + branch coverage via SimpleCov
-- [ ] **(P1)** `TASK: dog-03` - RuboCop: 0 offenses, `TargetRubyVersion: 4.0`
+- [x] **(P1)** `TASK: dog-03` - RuboCop: 0 offenses, `TargetRubyVersion: 4.0`
 - [ ] **(P2)** `TASK: dog-04` - Mutation score target: ≥ 70% (light set), ≥ 60% (full set including hard-to-kill operators)
-- [ ] **(P2)** `TASK: dog-05` - Performance benchmark: `henitai run` on the repository itself in under 3 minutes
+- [x] **(P2)** `TASK: dog-05` - Performance benchmark: `henitai run` on the repository itself in under 3 minutes
 
 ---
 

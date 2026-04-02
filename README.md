@@ -83,9 +83,9 @@ when a value is invalid.
 CLI flags override the corresponding values from `.henitai.yml`.
 
 Before mutation testing starts, Henitai checks whether the current coverage data
-covers the configured source files. If not, it runs the configured test suite
-once to bootstrap a usable coverage baseline. If that still does not produce
-coverage for the current sources, `henitai run` aborts with `Henitai::CoverageError`.
+covers the configured source files. Run the configured test suite first so that
+`coverage/.resultset.json` exists. If coverage is still unavailable for the
+current sources, `henitai run` aborts with `Henitai::CoverageError`.
 
 Surviving mutants are retried up to `mutation.max_flaky_retries` times before
 they are classified as survivors. The default retry budget is 3.

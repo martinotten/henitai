@@ -112,7 +112,7 @@ RSpec.describe Henitai::Runner do
       subjects
     end
     allow(coverage_bootstrapper).to receive(:ensure!) do |kwargs|
-      calls << [:bootstrap, kwargs[:source_files], kwargs[:config], kwargs[:integration]]
+      calls << [:bootstrap, kwargs[:source_files], kwargs[:config]]
     end
     allow(mutant_generator).to receive(:generate) do |resolved_subjects, operators, kwargs|
       calls << [:generate, resolved_subjects, operators.map(&:class), kwargs[:config]]
@@ -155,8 +155,7 @@ RSpec.describe Henitai::Runner do
         [
           :bootstrap,
           ["lib/sample.rb"],
-          config,
-          integration
+          config
         ],
         [:resolve_from_files, ["lib/sample.rb"]],
         [

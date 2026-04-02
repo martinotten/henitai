@@ -126,11 +126,7 @@ module Henitai
     end
 
     def bootstrap_coverage(source_files)
-      coverage_bootstrapper.ensure!(
-        source_files:,
-        config:,
-        integration:
-      )
+      coverage_bootstrapper.ensure!(source_files:, config:)
     end
 
     def integration

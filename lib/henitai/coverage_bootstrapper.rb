@@ -7,14 +7,14 @@ module Henitai
       @static_filter = static_filter
     end
 
-    def ensure!(source_files:, config:, integration:)
+    def ensure!(source_files:, config:)
+      return if skip_validation?
       return if source_files.empty?
       return if coverage_available?(source_files, config)
 
-      bootstrap_coverage(integration)
-      return if coverage_available?(source_files, config)
-
-      raise CoverageError, "Coverage data is unavailable for the configured source files"
+      raise CoverageError,
+            "Coverage data is unavailable for the configured source files. " \
+            "Run the configured test suite first, then run henitai."
     end
 
     private
@@ -29,15 +29,12 @@ module Henitai
       end
     end
 
-    def bootstrap_coverage(integration)
-      # :survived means the full suite exited cleanly with no active mutant.
-      return if integration.run_suite(integration.test_files) == :survived
-
-      raise CoverageError, "Configured test suite failed while generating coverage"
-    end
-
     def source_file_paths(source_files)
       Array(source_files).map { |path| File.expand_path(path) }
+    end
+
+    def skip_validation?
+      ENV["HENITAI_SKIP_COVERAGE_VALIDATION"] == "1"
     end
   end
 end

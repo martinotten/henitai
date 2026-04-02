@@ -121,7 +121,7 @@ RSpec.describe Henitai::ConfigurationValidator do
     end
 
     it "accepts a string-array reporters value" do
-      expect { described_class.validate!({ reporters: ["json", "html"] }) }.not_to raise_error
+      expect { described_class.validate!({ reporters: %w[json html] }) }.not_to raise_error
     end
 
     # Muster A: Pfad "reporters"

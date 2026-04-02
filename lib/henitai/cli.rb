@@ -79,7 +79,10 @@ module Henitai
     private
 
     def run_command
+      @command_halted = false
       options = parse_run_options
+      return if @command_halted
+
       config = load_config(options)
       result = run_pipeline(options, config)
       exit(exit_status_for(result, config))
@@ -166,14 +169,14 @@ module Henitai
     def add_help_option(opts)
       opts.on("-h", "--help", "Show this help") do
         puts opts
-        exit
+        @command_halted = true
       end
     end
 
     def add_version_option(opts)
       opts.on("-v", "--version", "Show version") do
         puts Henitai::VERSION
-        exit
+        @command_halted = true
       end
     end
 

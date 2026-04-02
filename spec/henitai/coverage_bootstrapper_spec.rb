@@ -3,85 +3,54 @@
 require "spec_helper"
 
 RSpec.describe Henitai::CoverageBootstrapper do
+  around do |example|
+    original = ENV.fetch("HENITAI_SKIP_COVERAGE_VALIDATION", nil)
+    ENV.delete("HENITAI_SKIP_COVERAGE_VALIDATION")
+    example.run
+  ensure
+    if original.nil?
+      ENV.delete("HENITAI_SKIP_COVERAGE_VALIDATION")
+    else
+      ENV["HENITAI_SKIP_COVERAGE_VALIDATION"] = original
+    end
+  end
+
   def build_config
     Struct.new(:reports_dir).new("reports")
   end
 
-  def build_integration(test_files:, run_suite_result:)
-    instance_double(
-      Henitai::Integration::Rspec,
-      test_files: test_files,
-      run_suite: run_suite_result
-    )
-  end
-
-  it "runs the configured test suite when coverage is missing" do
+  it "raises when coverage is missing" do
     static_filter = instance_double(Henitai::StaticFilter)
-    integration = build_integration(
-      test_files: ["spec/sample_spec.rb"],
-      run_suite_result: :survived
-    )
 
     bootstrapper = described_class.new(static_filter:)
 
-    allow(static_filter).to receive(:coverage_lines_for).and_return(
-      {},
-      { File.expand_path("lib/sample.rb") => [2] }
-    )
-    allow(integration).to receive(:run_suite).and_return(:survived)
-
-    bootstrapper.ensure!(
-      source_files: [File.expand_path("lib/sample.rb")],
-      config: build_config,
-      integration:
-    )
-
-    expect(integration).to have_received(:run_suite).with(["spec/sample_spec.rb"])
-  end
-
-  it "skips the bootstrap when coverage is already available" do
-    static_filter = instance_double(Henitai::StaticFilter)
-    integration = build_integration(
-      test_files: ["spec/sample_spec.rb"],
-      run_suite_result: :survived
-    )
-
-    bootstrapper = described_class.new(static_filter:)
-
-    allow(static_filter).to receive(:coverage_lines_for).and_return(
-      { File.expand_path("lib/sample.rb") => [2] }
-    )
-
-    bootstrapper.ensure!(
-      source_files: [File.expand_path("lib/sample.rb")],
-      config: build_config,
-      integration:
-    )
-
-    expect(integration).not_to have_received(:run_suite)
-  end
-
-  it "raises when the coverage bootstrap still produces no usable coverage" do
-    static_filter = instance_double(Henitai::StaticFilter)
-    integration = build_integration(
-      test_files: ["spec/sample_spec.rb"],
-      run_suite_result: :survived
-    )
-
-    bootstrapper = described_class.new(static_filter:)
-
-    allow(static_filter).to receive(:coverage_lines_for).and_return({}, {})
-    allow(integration).to receive(:run_suite).and_return(:survived)
+    allow(static_filter).to receive(:coverage_lines_for).and_return({})
 
     expect do
       bootstrapper.ensure!(
         source_files: [File.expand_path("lib/sample.rb")],
-        config: build_config,
-        integration:
+        config: build_config
       )
     end.to raise_error(
       Henitai::CoverageError,
-      /coverage/i
+      /run the configured test suite/i
     )
+  end
+
+  it "accepts coverage when the configured source files are covered" do
+    static_filter = instance_double(Henitai::StaticFilter)
+
+    bootstrapper = described_class.new(static_filter:)
+
+    allow(static_filter).to receive(:coverage_lines_for).and_return(
+      { File.expand_path("lib/sample.rb") => [2] }
+    )
+
+    expect do
+      bootstrapper.ensure!(
+        source_files: [File.expand_path("lib/sample.rb")],
+        config: build_config
+      )
+    end.not_to raise_error
   end
 end
