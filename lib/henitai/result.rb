@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "unparser"
+require_relative "unparse_helper"
 
 module Henitai
   # Aggregates the outcome of a complete mutation testing run.
@@ -8,6 +8,8 @@ module Henitai
   # Provides metrics and the serialised Stryker mutation-testing-report-schema
   # JSON payload. The schema version follows stryker-mutator/mutation-testing-elements.
   class Result
+    include UnparseHelper
+
     SCHEMA_VERSION = "1.0"
 
     attr_reader :mutants, :started_at, :finished_at
@@ -163,19 +165,6 @@ module Henitai
         runtime_error: "RuntimeError",
         pending: "Pending"
       }.fetch(status, "Pending")
-    end
-
-    def safe_unparse(node)
-      Unparser.unparse(node)
-    rescue StandardError
-      fallback_source(node)
-    end
-
-    def fallback_source(node)
-      return "" if node.nil?
-      return node.type.to_s if node.respond_to?(:type)
-
-      node.class.name
     end
   end
 end

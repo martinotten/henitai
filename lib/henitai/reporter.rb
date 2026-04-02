@@ -2,7 +2,7 @@
 
 require "fileutils"
 require "json"
-require "unparser"
+require_relative "unparse_helper"
 
 module Henitai
   # Namespace for result reporters.
@@ -49,6 +49,8 @@ module Henitai
 
     # Terminal reporter.
     class Terminal < Base
+      include UnparseHelper
+
       PROGRESS_GLYPHS = {
         killed: "·",
         survived: "S",
@@ -169,19 +171,6 @@ module Henitai
         return text if ENV.key?("NO_COLOR")
 
         "\e[#{color}m#{text}\e[0m"
-      end
-
-      def safe_unparse(node)
-        Unparser.unparse(node)
-      rescue StandardError
-        fallback_source(node)
-      end
-
-      def fallback_source(node)
-        return "" if node.nil?
-        return node.type.to_s if node.respond_to?(:type)
-
-        node.class.name
       end
     end
 

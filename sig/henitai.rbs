@@ -248,6 +248,13 @@ module Henitai
     def same_node?: (untyped, untyped) -> bool
   end
 
+  module UnparseHelper
+    private
+
+    def safe_unparse: (untyped) -> String
+    def fallback_source: (untyped) -> String
+  end
+
   class StaticFilter
     def apply: (Array[Mutant], untyped) -> Array[Mutant]
     def coverage_lines_by_file: (?String) -> Hash[String, Array[Integer]]
@@ -320,6 +327,8 @@ module Henitai
     end
 
     class Terminal < Base
+      include UnparseHelper
+
       PROGRESS_GLYPHS: Hash[Symbol, String]
 
       def report: (Result) -> void
@@ -341,8 +350,6 @@ module Henitai
       def format_percent: (Float?) -> String
       def score_color: (Float?) -> String?
       def colorize: (String, String) -> String
-      def safe_unparse: (untyped) -> String
-      def fallback_source: (untyped) -> String
     end
 
     class Json < Base
@@ -372,6 +379,8 @@ module Henitai
   end
 
   class Result
+    include UnparseHelper
+
     SCHEMA_VERSION: String
 
     attr_reader mutants: Array[Mutant]
@@ -399,8 +408,6 @@ module Henitai
     def duration_for: (Mutant) -> Integer?
     def equivalence_uncertainty: () -> String?
     def stryker_status: (Symbol) -> String
-    def safe_unparse: (untyped) -> String
-    def fallback_source: (untyped) -> String
   end
 
   class Runner
