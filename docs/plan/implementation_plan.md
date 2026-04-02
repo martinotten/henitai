@@ -572,6 +572,19 @@ Each operator needs: implementation + spec + at least 3 documented example mutat
 - [x] **(P2)** `TASK: review-03` - Coverage formatter visibility: decide whether the formatter should warn when coverage is unavailable and whether formatter injection should be configurable
 - [x] **(P3)** `TASK: review-04` - Test cleanup: remove one redundant RSpec integration example if it stops adding unique branch coverage
 
+### 5.16 Output, Progress, and Logs
+
+This workstream captures the terminal-output policy that keeps progress visible
+while moving raw test output into scenario artifacts.
+
+- [ ] **(P1)** `TASK: output-01` - Characterize the current behavior with specs: prove that child stdout/stderr reaches the terminal today, then pin the desired default of quiet terminal output for successful scenarios
+- [ ] **(P1)** `TASK: output-02` - Introduce a structured scenario output result: carry captured stdout, stderr, exit status, and log path through the execution pipeline
+- [ ] **(P1)** `TASK: output-03` - Capture child streams to files under `reports_dir` for baseline and mutant scenarios instead of forwarding them directly to the parent terminal
+- [ ] **(P1)** `TASK: output-04` - Update the terminal reporter to print progress plus a short failure tail and artifact path when a scenario fails
+- [ ] **(P1)** `TASK: output-05` - Add a non-TTY fallback that uses append-only progress and avoids cursor-control rendering
+- [ ] **(P2)** `TASK: output-06` - Add an explicit full-log opt-in (`--all-logs` or `--verbose`) and document when raw child output is shown
+- [ ] **(P2)** `TASK: output-07` - Update README and architecture docs so the output policy is visible in the public contract
+
 ---
 
 ## 6. Technical Decisions (ADRs)
@@ -585,6 +598,7 @@ Current ADRs:
 - [ADR-03: Stryker JSON schema as the native output format](../architecture/adr/ADR-03-stryker-json-native-output.md)
 - [ADR-04: `define_method` for mutant injection](../architecture/adr/ADR-04-define_method-for-mutant-injection.md)
 - [ADR-05: Stryker-compatible operator names](../architecture/adr/ADR-05-stryker-compatible-operator-names.md)
+- [ADR-06: Terminal progress separate from child logs](../architecture/adr/ADR-06-terminal-progress-separate-from-child-logs.md)
 
 When a decision changes, update the corresponding ADR file first, then reflect the impact here or in `../architecture/architecture.md`.
 

@@ -9,6 +9,7 @@ This directory contains one ADR per accepted architecture decision.
 - [ADR-03: Stryker JSON schema as the native output format](ADR-03-stryker-json-native-output.md)
 - [ADR-04: `define_method` for mutant injection](ADR-04-define_method-for-mutant-injection.md)
 - [ADR-05: Stryker-compatible operator names](ADR-05-stryker-compatible-operator-names.md)
+- [ADR-06: Terminal progress separate from child logs](ADR-06-terminal-progress-separate-from-child-logs.md)
 
 ## Maintenance Rule
 
