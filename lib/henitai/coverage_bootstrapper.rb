@@ -30,6 +30,7 @@ module Henitai
     end
 
     def bootstrap_coverage(integration)
+      # :survived means the full suite exited cleanly with no active mutant.
       return if integration.run_suite(integration.test_files) == :survived
 
       raise CoverageError, "Configured test suite failed while generating coverage"

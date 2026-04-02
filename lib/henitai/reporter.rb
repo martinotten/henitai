@@ -253,6 +253,7 @@ module Henitai
     # Dashboard reporter.
     class Dashboard < Base
       DEFAULT_BASE_URL = "https://dashboard.stryker-mutator.io"
+      HTTP_TIMEOUT_SECONDS = 30
 
       def report(result)
         return unless ready?
@@ -283,6 +284,8 @@ module Henitai
 
       def send_request(uri, request)
         Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https") do |http|
+          http.open_timeout = HTTP_TIMEOUT_SECONDS
+          http.read_timeout = HTTP_TIMEOUT_SECONDS
           http.request(request)
         end
       rescue StandardError => e
@@ -391,7 +394,7 @@ module Henitai
         def project_from_uri_url(normalized)
           uri = URI.parse(normalized)
           path = uri.path.to_s.sub(%r{^/}, "")
-          [uri.host, path].reject(&:empty?).join("/")
+          [uri.host, path].compact.reject(&:empty?).join("/")
         end
 
         def project_from_ssh_url(normalized)

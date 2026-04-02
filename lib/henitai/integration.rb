@@ -57,6 +57,7 @@ module Henitai
 
     # RSpec integration adapter.
     class Rspec < Base
+      DEFAULT_SUITE_TIMEOUT = 300.0
       REQUIRE_DIRECTIVE_PATTERN = /
         \A\s*
         (require|require_relative)
@@ -92,13 +93,12 @@ module Henitai
         wait_with_timeout(pid, timeout)
       end
 
-      def run_suite(test_files)
+      def run_suite(test_files, timeout: DEFAULT_SUITE_TIMEOUT)
         pid = Process.fork do
           Process.exit(run_tests(test_files))
         end
 
-        Process.wait(pid)
-        classify_exit_status(Process.last_status)
+        wait_with_timeout(pid, timeout)
       end
 
       private

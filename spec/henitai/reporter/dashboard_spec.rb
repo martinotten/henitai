@@ -46,21 +46,27 @@ RSpec.describe Henitai::Reporter::Dashboard do
 
   def capture_request(env: {}, **settings)
     http = instance_double(Net::HTTP)
-    allow(Net::HTTP).to receive(:start).and_yield(http)
-    allow(http).to receive(:request) do |request|
-      request
-    end
+    stub_dashboard_http(http)
 
-    environment = {
+    with_env(dashboard_environment(env)) do
+      dashboard(settings).report(result)
+    end
+  end
+
+  def dashboard_environment(overrides)
+    {
       "STRYKER_DASHBOARD_API_KEY" => "secret-token",
       "GITHUB_REF_NAME" => "main",
       "GITHUB_REF" => nil,
       "GITHUB_SHA" => nil
-    }.merge(env)
+    }.merge(overrides)
+  end
 
-    with_env(environment) do
-      dashboard(settings).report(result)
-    end
+  def stub_dashboard_http(http)
+    allow(Net::HTTP).to receive(:start).and_yield(http)
+    allow(http).to receive(:open_timeout=)
+    allow(http).to receive(:read_timeout=)
+    allow(http).to receive(:request) { |request| request }
   end
 
   it "uploads the schema for the configured project with api key auth and env version" do
@@ -76,14 +82,38 @@ RSpec.describe Henitai::Reporter::Dashboard do
     expect(request.body).to eq(JSON.generate(schema))
   end
 
+  it "sets HTTP timeouts on dashboard uploads" do
+    http = instance_double(Net::HTTP)
+    reporter = dashboard(
+      project: "github.com/example/project",
+      base_url: "https://dashboard.example.test"
+    )
+    request = instance_double(Net::HTTP::Put)
+
+    allow(Net::HTTP).to receive(:start).and_yield(http)
+    allow(http).to receive(:open_timeout=)
+    allow(http).to receive(:read_timeout=)
+    allow(http).to receive(:request).and_return(request)
+    allow(request).to receive(:body=)
+
+    with_env(
+      "STRYKER_DASHBOARD_API_KEY" => "secret-token",
+      "GITHUB_REF_NAME" => "main",
+      "GITHUB_REF" => nil,
+      "GITHUB_SHA" => nil
+    ) do
+      reporter.report(result)
+    end
+
+    expect(http).to have_received(:open_timeout=).with(30)
+    expect(http).to have_received(:read_timeout=).with(30)
+  end
+
   it "falls back to the git remote when dashboard.project is absent" do
     reporter = dashboard(base_url: "https://dashboard.example.test")
     allow(reporter).to receive(:git_remote_url).and_return("git@github.com:acme/app.git")
     http = instance_double(Net::HTTP)
-    allow(Net::HTTP).to receive(:start).and_yield(http)
-    allow(http).to receive(:request) do |request|
-      request
-    end
+    stub_dashboard_http(http)
 
     with_env(
       "STRYKER_DASHBOARD_API_KEY" => "secret-token",
@@ -122,10 +152,7 @@ RSpec.describe Henitai::Reporter::Dashboard do
 
   it "uses GITHUB_SHA when no ref variables are present" do
     http = instance_double(Net::HTTP)
-    allow(Net::HTTP).to receive(:start).and_yield(http)
-    allow(http).to receive(:request) do |request|
-      request
-    end
+    stub_dashboard_http(http)
 
     with_env(
       "STRYKER_DASHBOARD_API_KEY" => "secret-token",
@@ -148,10 +175,7 @@ RSpec.describe Henitai::Reporter::Dashboard do
       base_url: "https://dashboard.example.test"
     )
     http = instance_double(Net::HTTP)
-    allow(Net::HTTP).to receive(:start).and_yield(http)
-    allow(http).to receive(:request) do |request|
-      request
-    end
+    stub_dashboard_http(http)
     allow(reporter).to receive(:git_branch_name).and_return("local-branch")
 
     with_env(
@@ -190,6 +214,18 @@ RSpec.describe Henitai::Reporter::Dashboard do
     expect(
       described_class.project_from_git_url("https://github.com/acme/app.git")
     ).to eq("github.com/acme/app")
+  end
+
+  it "parses ssh git urls into dashboard project paths" do
+    expect(
+      described_class.project_from_git_url("git@github.com:acme/app.git")
+    ).to eq("github.com/acme/app")
+  end
+
+  it "handles uri urls without a host" do
+    expect(
+      described_class.project_from_git_url("https:///acme/app.git")
+    ).to eq("acme/app")
   end
 
   it "returns nil for blank git urls" do

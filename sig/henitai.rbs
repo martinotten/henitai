@@ -11,6 +11,8 @@ module ::Net
   class HTTP
     def self.start: (String, Integer, use_ssl: bool) { (HTTP) -> untyped } -> untyped
     def request: (untyped) -> untyped
+    def open_timeout=: (Integer) -> Integer
+    def read_timeout=: (Integer) -> Integer
 
     class Put
       def initialize: (String, Hash[String, String]) -> void
@@ -201,16 +203,17 @@ module Henitai
       def select_tests: (Subject) -> Array[String]
       def test_files: () -> Array[String]
       def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> Symbol
-      def run_suite: (Array[String]) -> Symbol
+      def run_suite: (Array[String], ?timeout: Float) -> Symbol
     end
 
     class Rspec < Base
       REQUIRE_DIRECTIVE_PATTERN: Regexp
+      DEFAULT_SUITE_TIMEOUT: Float
 
       def select_tests: (Subject) -> Array[String]
       def test_files: () -> Array[String]
       def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> Symbol
-      def run_suite: (Array[String]) -> Symbol
+      def run_suite: (Array[String], ?timeout: Float) -> Symbol
 
       private
 
@@ -406,8 +409,9 @@ module Henitai
       def escaped_report_json: (Result) -> String
     end
 
-    class Dashboard < Base
+  class Dashboard < Base
       DEFAULT_BASE_URL: String
+      HTTP_TIMEOUT_SECONDS: Integer
 
       def report: (Result) -> void
 
@@ -486,7 +490,7 @@ module Henitai
     def mutant_generator: () -> untyped
     def static_filter: () -> untyped
     def execution_engine: () -> untyped
-    def coverage_bootstrapper: () -> untyped
+    def coverage_bootstrapper: () -> CoverageBootstrapper
     def integration: () -> untyped
     def operators: () -> untyped
     def progress_reporter: () -> untyped?
