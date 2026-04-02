@@ -89,7 +89,7 @@ RSpec.describe Henitai::ExecutionEngine do
     skipped = build_mutant(:ignored, "Foo#baz")
     integration = build_integration
     progress = Struct.new(:calls) do
-      def progress(mutant)
+      def progress(mutant, scenario_result: nil)
         calls << mutant.status
       end
     end.new([])

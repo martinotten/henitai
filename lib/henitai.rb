@@ -36,6 +36,7 @@ module Henitai
   autoload :EquivalenceDetector, "henitai/equivalence_detector"
   autoload :StaticFilter, "henitai/static_filter"
   autoload :StillbornFilter, "henitai/stillborn_filter"
+  autoload :ScenarioExecutionResult, "henitai/scenario_execution_result"
   autoload :CoverageFormatter, "henitai/coverage_formatter"
   autoload :SyntaxValidator, "henitai/syntax_validator"
   autoload :SamplingStrategy, "henitai/sampling_strategy"

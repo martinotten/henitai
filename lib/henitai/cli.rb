@@ -8,13 +8,14 @@ module Henitai
   #   henitai run [options] [SUBJECT_PATTERN...]
   #
   # Options:
-  #   --since GIT_REF   Only mutate subjects changed since GIT_REF
-  #   --use INTEGRATION Override integration from config (e.g. rspec)
-  #   --config PATH     Path to .henitai.yml (default: .henitai.yml)
-  #   --operators SET   Operator set: light (default) | full
-  #   --jobs N          Number of parallel workers (default: CPU count)
-  #   -h, --help        Show this help message
-  #   -v, --version     Show version
+    #   --since GIT_REF   Only mutate subjects changed since GIT_REF
+    #   --use INTEGRATION Override integration from config (e.g. rspec)
+    #   --config PATH     Path to .henitai.yml (default: .henitai.yml)
+    #   --operators SET   Operator set: light (default) | full
+    #   --jobs N          Number of parallel workers (default: CPU count)
+    #   --all-logs        Print all captured child logs
+    #   -h, --help        Show this help message
+      #   -v, --version     Show version
   # rubocop:disable Metrics/ClassLength
   class CLI
     INIT_TEMPLATE_LINES = [
@@ -100,6 +101,7 @@ module Henitai
       deep_compact(
         {
           integration: options[:integration],
+          all_logs: options[:all_logs],
           mutation: {
             operators: options[:operators],
             timeout: options[:timeout]
@@ -131,6 +133,7 @@ module Henitai
         add_config_option(opts, options)
         add_operator_option(opts, options)
         add_jobs_option(opts, options)
+        add_output_option(opts, options)
         add_help_option(opts)
         add_version_option(opts)
       end
@@ -163,6 +166,12 @@ module Henitai
     def add_jobs_option(opts, options)
       opts.on("--jobs N", Integer, "Number of parallel workers") do |n|
         options[:jobs] = n
+      end
+    end
+
+    def add_output_option(opts, options)
+      opts.on("--all-logs", "--verbose", "Print all captured child logs") do
+        options[:all_logs] = true
       end
     end
 

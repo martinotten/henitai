@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "minitest"
 require "rspec/core"
 
@@ -44,12 +45,11 @@ module Henitai
       end
 
       # Run test files in a child process with the mutant active.
-      # Returns :killed, :survived, or :timeout.
       #
-      # @param mutant    [Mutant]
+      # @param mutant [Mutant]
       # @param test_files [Array<String>]
-      # @param timeout   [Float] seconds
-      # @return [Symbol]
+      # @param timeout [Float] seconds
+      # @return [ScenarioExecutionResult]
       def run_mutant(mutant:, test_files:, timeout:)
         raise NotImplementedError
       end
@@ -85,34 +85,44 @@ module Henitai
       end
 
       def run_mutant(mutant:, test_files:, timeout:)
+        log_paths = scenario_log_paths("mutant-#{mutant.id}")
         pid = Process.fork do
           ENV["HENITAI_MUTANT_ID"] = mutant.id
-          Process.exit(run_in_child(mutant:, test_files:))
+          Process.exit(run_in_child(mutant:, test_files:, log_paths:))
         end
 
-        wait_with_timeout(pid, timeout)
+        build_result(wait_with_timeout(pid, timeout), log_paths)
       end
 
       def run_suite(test_files, timeout: DEFAULT_SUITE_TIMEOUT)
+        log_paths = scenario_log_paths("baseline")
         pid = Process.fork do
-          Process.exit(run_tests(test_files))
+          Process.exit(run_suite_in_child(test_files, log_paths:))
         end
 
-        wait_with_timeout(pid, timeout)
+        build_result(wait_with_timeout(pid, timeout), log_paths)
       end
 
       private
 
-      def run_in_child(mutant:, test_files:)
-        Mutant::Activator.activate!(mutant)
-        run_tests(test_files)
+      def run_in_child(mutant:, test_files:, log_paths:)
+        capture_child_output(log_paths) do
+          Mutant::Activator.activate!(mutant)
+          run_tests(test_files)
+        end
+      end
+
+      def run_suite_in_child(test_files, log_paths:)
+        capture_child_output(log_paths) do
+          run_tests(test_files)
+        end
       end
 
       def wait_with_timeout(pid, timeout)
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
 
         loop do
-          return classify_exit_status(Process.last_status) if Process.wait(pid, Process::WNOHANG)
+          return Process.last_status if Process.wait(pid, Process::WNOHANG)
           return handle_timeout(pid) if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
 
           pause(0.01)
@@ -132,6 +142,28 @@ module Henitai
         :timeout
       end
 
+      def capture_child_output(log_paths)
+        FileUtils.mkdir_p(File.dirname(log_paths[:log_path]))
+        original_stdout = $stdout.dup
+        original_stderr = $stderr.dup
+        stdout_file = File.new(log_paths[:stdout_path], "w")
+        stderr_file = File.new(log_paths[:stderr_path], "w")
+        stdout_file.sync = true
+        stderr_file.sync = true
+        $stdout.reopen(stdout_file)
+        $stderr.reopen(stderr_file)
+        yield
+      ensure
+        $stdout.reopen(original_stdout) if original_stdout
+        $stderr.reopen(original_stderr) if original_stderr
+        stdout_file&.flush
+        stderr_file&.flush
+        stdout_file&.close
+        stderr_file&.close
+        original_stdout&.close
+        original_stderr&.close
+      end
+
       def run_tests(test_files)
         status = RSpec::Core::Runner.run(test_files + rspec_options)
         return status if status.is_a?(Integer)
@@ -139,16 +171,69 @@ module Henitai
         status == true ? 0 : 1
       end
 
+      def rspec_options
+        ["--require", "henitai/coverage_formatter"]
+      end
+
       def pause(seconds)
         sleep(seconds)
       end
 
-      def classify_exit_status(status)
-        status.success? ? :survived : :killed
+      def build_result(wait_result, log_paths)
+        status = scenario_status(wait_result)
+        stdout = read_log_file(log_paths[:stdout_path])
+        stderr = read_log_file(log_paths[:stderr_path])
+        write_combined_log(log_paths[:log_path], stdout, stderr)
+
+        ScenarioExecutionResult.new(
+          status:,
+          stdout:,
+          stderr:,
+          log_path: log_paths[:log_path],
+          exit_status: exit_status_for(wait_result)
+        )
       end
 
-      def rspec_options
-        ["--require", "henitai/coverage_formatter"]
+      def scenario_status(wait_result)
+        return :timeout if wait_result == :timeout
+        return :survived if wait_result.respond_to?(:success?) && wait_result.success?
+
+        :killed
+      end
+
+      def exit_status_for(wait_result)
+        return nil if wait_result == :timeout
+        return nil unless wait_result.respond_to?(:exitstatus)
+
+        wait_result.exitstatus
+      end
+
+      def read_log_file(path)
+        return "" unless File.exist?(path)
+
+        File.read(path)
+      end
+
+      def write_combined_log(path, stdout, stderr)
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, combined_log(stdout, stderr))
+      end
+
+      def combined_log(stdout, stderr)
+        [
+          (stdout.empty? ? nil : "stdout:\n#{stdout}"),
+          (stderr.empty? ? nil : "stderr:\n#{stderr}")
+        ].compact.join("\n")
+      end
+
+      def scenario_log_paths(name)
+        reports_dir = ENV.fetch("HENITAI_REPORTS_DIR", "reports")
+        log_dir = File.join(reports_dir, "mutation-logs")
+        {
+          stdout_path: File.join(log_dir, "#{name}.stdout.log"),
+          stderr_path: File.join(log_dir, "#{name}.stderr.log"),
+          log_path: File.join(log_dir, "#{name}.log")
+        }
       end
 
       def spec_files

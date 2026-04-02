@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "spec_helper"
 require "parser/current"
+require "tmpdir"
 
 RSpec.describe Henitai::Reporter::Terminal do
   def build_mutant(status:, survived: false, attributes: {})
@@ -20,7 +22,11 @@ RSpec.describe Henitai::Reporter::Terminal do
   end
 
   def build_config(thresholds: { high: 80, low: 60 })
-    Struct.new(:thresholds).new(thresholds)
+    Struct.new(:thresholds, :all_logs).new(thresholds, false)
+  end
+
+  def build_config_with_logs(thresholds: { high: 80, low: 60 })
+    Struct.new(:thresholds, :all_logs).new(thresholds, true)
   end
 
   def build_result(mutants:, scoring_summary:, duration:)
@@ -28,6 +34,24 @@ RSpec.describe Henitai::Reporter::Terminal do
       mutants,
       scoring_summary,
       duration
+    )
+  end
+
+  def build_scenario_result(status:, stdout:, stderr:, log_path:)
+    FileUtils.mkdir_p(File.dirname(log_path))
+    File.write(
+      log_path,
+      [
+        stdout.empty? ? nil : "stdout:\n#{stdout}",
+        stderr.empty? ? nil : "stderr:\n#{stderr}"
+      ].compact.join("\n")
+    )
+
+    Henitai::ScenarioExecutionResult.new(
+      status:,
+      stdout:,
+      stderr:,
+      log_path:
     )
   end
 
@@ -154,6 +178,63 @@ RSpec.describe Henitai::Reporter::Terminal do
 
     expect { mutants.each { |mutant| reporter.progress(mutant) } }
       .to output("·STI").to_stdout
+  end
+
+  it "keeps killed mutant output quiet by default" do
+    Dir.mktmpdir do |dir|
+      reporter = described_class.new(config: build_config)
+      scenario_result = build_scenario_result(
+        status: :killed,
+        stdout: "stdout noise\n",
+        stderr: "stderr noise\n",
+        log_path: File.join(dir, "mutant.log")
+      )
+
+      expect do
+        reporter.progress(build_mutant(status: :killed), scenario_result:)
+      end.to output("·").to_stdout
+    end
+  end
+
+  it "prints a timeout tail and log path" do
+    Dir.mktmpdir do |dir|
+      reporter = described_class.new(config: build_config)
+      stdout = (1..15).map { |index| format("stdout-%02d", index) }.join("\n")
+      scenario_result = build_scenario_result(
+        status: :timeout,
+        stdout:,
+        stderr: "",
+        log_path: File.join(dir, "timeout.log")
+      )
+
+      expect do
+        reporter.progress(build_mutant(status: :timeout), scenario_result:)
+      end.to output(
+        a_string_matching(
+          /log: #{Regexp.escape(File.join(dir, "timeout.log"))}.*stdout-15/m
+        )
+      ).to_stdout
+    end
+  end
+
+  it "prints all captured logs when all_logs is enabled" do
+    Dir.mktmpdir do |dir|
+      reporter = described_class.new(config: build_config_with_logs)
+      scenario_result = build_scenario_result(
+        status: :killed,
+        stdout: "stdout noise\n",
+        stderr: "stderr noise\n",
+        log_path: File.join(dir, "mutant.log")
+      )
+
+      expect do
+        reporter.progress(build_mutant(status: :killed), scenario_result:)
+      end.to output(
+        a_string_matching(/log: .*mutant\.log/m)
+          .and(a_string_including("stdout noise"))
+          .and(a_string_including("stderr noise"))
+      ).to_stdout
+    end
   end
 
   it "does not print a glyph for unknown statuses" do

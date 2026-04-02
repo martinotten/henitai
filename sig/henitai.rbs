@@ -89,6 +89,7 @@ module Henitai
     attr_reader reporters: Array[String]
     attr_reader reports_dir: String
     attr_reader dashboard: Hash[Symbol, untyped]
+    attr_reader all_logs: bool
 
     def self.load: (?path: String, ?overrides: Hash[Symbol, untyped]) -> Configuration
     def initialize: (?path: String, ?overrides: Hash[Symbol, untyped]) -> void
@@ -102,6 +103,24 @@ module Henitai
     def apply_analysis_defaults: (Hash[Symbol, untyped]) -> void
     def merge_defaults: (Hash[Symbol, untyped], Hash[Symbol, untyped]?) -> Hash[Symbol, untyped]
     def symbolize_keys: (untyped) -> untyped
+  end
+
+  class ScenarioExecutionResult
+    attr_reader status: Symbol
+    attr_reader stdout: String
+    attr_reader stderr: String
+    attr_reader exit_status: Integer?
+    attr_reader log_path: String
+
+    def initialize: (status: Symbol, stdout: String?, stderr: String?, log_path: String, ?exit_status: Integer?) -> void
+    def survived?: () -> bool
+    def killed?: () -> bool
+    def timeout?: () -> bool
+    def log_text: () -> String
+    def combined_output: () -> String
+    def tail: (?Integer) -> String
+    def should_show_logs?: (?all_logs: bool) -> bool
+    def failure_tail: (?all_logs: bool, ?lines: Integer) -> String
   end
 
   class Subject
@@ -202,8 +221,8 @@ module Henitai
     class Base
       def select_tests: (Subject) -> Array[String]
       def test_files: () -> Array[String]
-      def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> Symbol
-      def run_suite: (Array[String], ?timeout: Float) -> Symbol
+      def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
+      def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
     end
 
     class Rspec < Base
@@ -212,17 +231,25 @@ module Henitai
 
       def select_tests: (Subject) -> Array[String]
       def test_files: () -> Array[String]
-      def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> Symbol
-      def run_suite: (Array[String], ?timeout: Float) -> Symbol
+      def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
+      def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
 
       private
 
-      def run_in_child: (mutant: Mutant, test_files: Array[String]) -> Integer
-      def wait_with_timeout: (Integer, Float) -> Symbol
+      def run_in_child: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
+      def run_suite_in_child: (Array[String], log_paths: Hash[Symbol, String]) -> Integer
+      def wait_with_timeout: (Integer, Float) -> untyped
       def handle_timeout: (Integer) -> Symbol
+      def capture_child_output: (Hash[Symbol, String]) { () -> Integer } -> Integer
+      def build_result: (untyped, Hash[Symbol, String]) -> ScenarioExecutionResult
+      def scenario_status: (untyped) -> Symbol
+      def exit_status_for: (untyped) -> Integer?
+      def read_log_file: (String) -> String
+      def write_combined_log: (String, String, String) -> void
+      def combined_log: (String, String) -> String
+      def scenario_log_paths: (String) -> Hash[Symbol, String]
       def run_tests: (Array[String]) -> Integer
       def pause: (Float) -> void
-      def classify_exit_status: (untyped) -> Symbol
       def rspec_options: () -> Array[String]
       def spec_files: () -> Array[String]
       def fallback_spec_files: (Subject) -> Array[String]
@@ -310,7 +337,7 @@ module Henitai
     def prioritized_tests_for: (Mutant, untyped, untyped) -> Array[String]
     def test_prioritizer: () -> TestPrioritizer
     def test_history: (untyped) -> Hash[untyped, untyped]
-    def run_with_flaky_retry: (Mutant, untyped, untyped, Array[String], ?untyped) -> Symbol
+    def run_with_flaky_retry: (Mutant, untyped, untyped, Array[String], ?untyped) -> ScenarioExecutionResult
     def warn_flaky_mutants: (Integer) -> void
     def with_reports_dir: (untyped) { () -> untyped } -> untyped
   end
@@ -368,7 +395,7 @@ module Henitai
       PROGRESS_GLYPHS: Hash[Symbol, String]
 
       def report: (Result) -> void
-      def progress: (untyped) -> void
+      def progress: (untyped, ?scenario_result: ScenarioExecutionResult) -> void
 
       private
 
@@ -386,6 +413,9 @@ module Henitai
       def format_percent: (Float?) -> String
       def score_color: (Float?) -> String?
       def colorize: (String, String) -> String
+      def should_show_logs?: (ScenarioExecutionResult) -> bool
+      def scenario_output: (ScenarioExecutionResult) -> String
+      def flush: () -> void
     end
 
     class Json < Base
@@ -517,7 +547,7 @@ module Henitai
 
     def static_filter: () -> StaticFilter
     def coverage_available?: (Array[String], Configuration) -> bool
-    def bootstrap_coverage: (Integration::Base) -> void
+    def bootstrap_coverage: (Integration::Base, Configuration) -> void
     def source_file_paths: (Array[String]) -> Array[String]
   end
 

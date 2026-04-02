@@ -12,6 +12,7 @@ module Henitai
       thresholds
       reporters
       reports_dir
+      all_logs
       dashboard
       jobs
     ].freeze
@@ -29,6 +30,7 @@ module Henitai
       validate_jobs
       validate_reporters
       validate_reports_dir
+      validate_all_logs
       validate_dashboard
       validate_mutation
       validate_coverage_criteria
@@ -75,6 +77,13 @@ module Henitai
 
       def validate_reports_dir(raw)
         validate_optional_string(raw[:reports_dir], "reports_dir")
+      end
+
+      def validate_all_logs(raw)
+        value = raw[:all_logs]
+        return if value.nil?
+
+        validate_boolean(value, "all_logs")
       end
 
       def validate_dashboard(raw)

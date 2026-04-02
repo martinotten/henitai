@@ -9,6 +9,7 @@ module Henitai
     def self.validate_includes: (Hash[Symbol, untyped]) -> void
     def self.validate_jobs: (Hash[Symbol, untyped]) -> void
     def self.validate_reporters: (Hash[Symbol, untyped]) -> void
+    def self.validate_all_logs: (Hash[Symbol, untyped]) -> void
     def self.validate_dashboard: (Hash[Symbol, untyped]) -> void
     def self.validate_mutation: (Hash[Symbol, untyped]) -> void
     def self.validate_coverage_criteria: (Hash[Symbol, untyped]) -> void

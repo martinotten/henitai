@@ -11,7 +11,7 @@ module Henitai
       return if source_files.empty?
       return if coverage_available?(source_files, config)
 
-      bootstrap_coverage(integration)
+      bootstrap_coverage(integration, config)
       return if coverage_available?(source_files, config)
 
       raise CoverageError,
@@ -34,11 +34,35 @@ module Henitai
       Array(source_files).map { |path| File.expand_path(path) }
     end
 
-    def bootstrap_coverage(integration)
-      # :survived means the full suite exited cleanly with no active mutant.
-      return if integration.run_suite(integration.test_files) == :survived
+    def bootstrap_coverage(integration, config)
+      with_reports_dir(config) do
+        result = integration.run_suite(integration.test_files)
+        return if result == :survived
 
-      raise CoverageError, "Configured test suite failed while generating coverage"
+        raise CoverageError, build_bootstrap_error(result)
+      end
+    end
+
+    def build_bootstrap_error(result)
+      return "Configured test suite failed while generating coverage" unless result.respond_to?(:log_path)
+
+      tail = result.tail(12).strip
+      message = +"Configured test suite failed while generating coverage"
+      message << " (see #{result.log_path})"
+      message << "\n#{tail}" unless tail.empty?
+      message
+    end
+
+    def with_reports_dir(config)
+      original_reports_dir = ENV.fetch("HENITAI_REPORTS_DIR", nil)
+      ENV["HENITAI_REPORTS_DIR"] = config.reports_dir
+      yield
+    ensure
+      if original_reports_dir.nil?
+        ENV.delete("HENITAI_REPORTS_DIR")
+      else
+        ENV["HENITAI_REPORTS_DIR"] = original_reports_dir
+      end
     end
   end
 end

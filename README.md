@@ -95,6 +95,11 @@ Per-test coverage reporting is currently wired through the RSpec child runner.
 Minitest integration reuses the same selection and execution flow, but does not
 yet enable the per-test coverage formatter.
 
+By default, Henitai keeps child test output out of the live terminal. Each
+baseline or mutant run writes captured stdout/stderr to `reports/mutation-logs/`
+and the terminal only shows progress plus a concise summary. Pass
+`--all-logs` (or `--verbose`) to print every captured child log.
+
 `henitai version` prints the installed version. `henitai run` exits with `0`
 when the mutation score meets the low threshold, `1` when it does not, and `2`
 for framework errors.

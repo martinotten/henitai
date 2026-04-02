@@ -28,7 +28,7 @@ module Henitai
                 :ignore_patterns, :max_mutants_per_line, :sampling, :jobs,
                 :max_flaky_retries, :coverage_criteria, :thresholds,
                 :reporters, :reports_dir,
-                :dashboard
+                :dashboard, :all_logs
 
     # @param path [String] path to .henitai.yml (default: project root)
     def self.load(path: CONFIG_FILE, overrides: {})
@@ -74,6 +74,7 @@ module Henitai
       @jobs = raw[:jobs]
       @reporters = raw[:reporters] || ["terminal"]
       @reports_dir = raw[:reports_dir] || DEFAULT_REPORTS_DIR
+      @all_logs = raw[:all_logs] == true
       # @type var empty_dashboard: Hash[Symbol, untyped]
       empty_dashboard = {}
       @dashboard = merge_defaults(empty_dashboard, raw[:dashboard])

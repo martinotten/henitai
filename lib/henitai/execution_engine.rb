@@ -56,12 +56,13 @@ module Henitai
 
     def process_mutant(mutant, integration, config, progress_reporter, mutex)
       test_files = prioritized_tests_for(mutant, integration, config)
-      mutant.status = run_with_flaky_retry(mutant, integration, config, test_files, mutex)
+      scenario_result = run_with_flaky_retry(mutant, integration, config, test_files, mutex)
+      mutant.status = scenario_status(scenario_result)
 
       if mutex
-        mutex.synchronize { progress_reporter&.progress(mutant) }
+        mutex.synchronize { progress_reporter&.progress(mutant, scenario_result:) }
       else
-        progress_reporter&.progress(mutant)
+        progress_reporter&.progress(mutant, scenario_result:)
       end
     end
 
@@ -88,28 +89,34 @@ module Henitai
     # runtime on real CI workloads.
     # rubocop:disable Metrics/MethodLength
     def run_with_flaky_retry(mutant, integration, config, test_files, mutex)
-      status = integration.run_mutant(
+      scenario_result = integration.run_mutant(
         mutant:,
         test_files:,
         timeout: config.timeout
       )
-      return status unless status == :survived
+      return scenario_result unless scenario_status(scenario_result) == :survived
 
       retries = 0
       max_flaky_retries(config).times do
         retries += 1
-        status = integration.run_mutant(
+        scenario_result = integration.run_mutant(
           mutant:,
           test_files:,
           timeout: config.timeout
         )
-        break unless status == :survived
+        break unless scenario_status(scenario_result) == :survived
       end
 
       mutex.synchronize { @flaky_retry_count += 1 } if retries.positive?
-      status
+      scenario_result
     end
     # rubocop:enable Metrics/MethodLength
+
+    def scenario_status(result)
+      return result if result.is_a?(Symbol)
+
+      result.status
+    end
 
     def warn_flaky_mutants(total_mutants)
       return if total_mutants.zero?

@@ -33,6 +33,7 @@ RSpec.describe Henitai::Configuration do
       operators: config.operators,
       jobs: config.jobs,
       reports_dir: config.reports_dir,
+      all_logs: config.all_logs,
       timeout: config.timeout,
       max_mutants_per_line: config.max_mutants_per_line,
       max_flaky_retries: config.max_flaky_retries,
@@ -81,6 +82,7 @@ RSpec.describe Henitai::Configuration do
       operators: :light,
       jobs: nil,
       reports_dir: "reports",
+      all_logs: false,
       max_mutants_per_line: 1,
       max_flaky_retries: 3,
       sampling: nil
@@ -149,6 +151,7 @@ RSpec.describe Henitai::Configuration do
       operators: :light,
       jobs: nil,
       reports_dir: "reports",
+      all_logs: false,
       timeout: 10.0,
       max_mutants_per_line: 1,
       max_flaky_retries: 3,
@@ -171,6 +174,7 @@ RSpec.describe Henitai::Configuration do
       operators: :light,
       jobs: nil,
       reports_dir: "reports",
+      all_logs: false,
       timeout: 10.0,
       max_mutants_per_line: 1,
       max_flaky_retries: 3,
@@ -209,6 +213,14 @@ RSpec.describe Henitai::Configuration do
     YAML
 
     expect(config.reports_dir).to eq("custom-reports")
+  end
+
+  it "loads the all_logs flag" do
+    config = load_configuration(<<~YAML)
+      all_logs: true
+    YAML
+
+    expect(config.all_logs).to be(true)
   end
 
   it "aborts on invalid mutation operators" do

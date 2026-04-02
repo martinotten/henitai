@@ -65,11 +65,17 @@ module Henitai
         puts report_lines(result)
       end
 
-      def progress(mutant)
+      def progress(mutant, scenario_result: nil)
         glyph = PROGRESS_GLYPHS[mutant.status]
         return unless glyph
 
         print(glyph)
+        return flush unless should_show_logs?(scenario_result)
+
+        output = scenario_output(scenario_result)
+        print("\n")
+        print("log: #{scenario_result.log_path}\n")
+        print(output) unless output.empty?
         $stdout.flush
       end
 
@@ -174,6 +180,20 @@ module Henitai
         return text if ENV.key?("NO_COLOR")
 
         "\e[#{color}m#{text}\e[0m"
+      end
+
+      def should_show_logs?(scenario_result)
+        return false unless scenario_result.respond_to?(:failure_tail)
+
+        scenario_result.should_show_logs?(all_logs: config.all_logs)
+      end
+
+      def scenario_output(scenario_result)
+        scenario_result.failure_tail(all_logs: config.all_logs)
+      end
+
+      def flush
+        $stdout.flush
       end
     end
 

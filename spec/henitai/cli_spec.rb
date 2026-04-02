@@ -24,7 +24,8 @@ RSpec.describe Henitai::CLI do
     {
       integration: config.integration,
       operators: config.operators,
-      jobs: config.jobs
+      jobs: config.jobs,
+      all_logs: config.all_logs
     }
   end
 
@@ -56,6 +57,10 @@ RSpec.describe Henitai::CLI do
 
     it "documents the -v / --version flag" do
       expect(help_output).to match(/-v, --version/)
+    end
+
+    it "documents the --all-logs flag" do
+      expect(help_output).to match(/--all-logs/)
     end
   end
 
@@ -92,7 +97,8 @@ RSpec.describe Henitai::CLI do
           "--operators",
           "full",
           "--jobs",
-          "4"
+          "4",
+          "--all-logs"
         ]
       )
       cli.define_singleton_method(:exit) { |_status = nil| nil }
@@ -101,7 +107,8 @@ RSpec.describe Henitai::CLI do
       expect(configuration_snapshot(captured_config)).to eq(
         integration: "minitest",
         operators: :full,
-        jobs: 4
+        jobs: 4,
+        all_logs: true
       )
     end
   end
