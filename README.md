@@ -1,7 +1,9 @@
-# Hen'i-tai 変異体
+# hen’itai
 
-**Pronunciation:** *hen-i-tai* (へんいたい) — three syllables, stress on first: **HEN**-i-tai.
-Not *heh-ni-tai*. The kanji 変異体 means "mutant" (lit. "changed-form body").
+変異体 (へんいたい, hen’itai)
+Pronunciation: he-n-i-ta-i (4 morae; no stress accent)
+Meaning: mutant, mutated organism, or variant entity
+
 
 A Ruby mutation testing framework
 
