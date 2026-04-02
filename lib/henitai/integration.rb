@@ -174,10 +174,12 @@ module Henitai
 
       def run_suite(test_files, timeout: DEFAULT_SUITE_TIMEOUT)
         log_paths = scenario_log_paths("baseline")
-        pid = Process.fork do
-          Process.exit(run_suite_in_child(test_files, log_paths:))
-        end
-
+        FileUtils.mkdir_p(File.dirname(log_paths[:stdout_path]))
+        stdout_file = File.open(log_paths[:stdout_path], "w")
+        stderr_file = File.open(log_paths[:stderr_path], "w")
+        pid = Process.spawn(*suite_command(test_files), out: stdout_file, err: stderr_file)
+        stdout_file.close
+        stderr_file.close
         build_result(wait_with_timeout(pid, timeout), log_paths)
       end
 
@@ -193,10 +195,8 @@ module Henitai
         end
       end
 
-      def run_suite_in_child(test_files, log_paths:)
-        scenario_log_support.capture_child_output(log_paths) do
-          run_tests(test_files)
-        end
+      def suite_command(test_files)
+        ["bundle", "exec", "rspec", *test_files]
       end
 
       def wait_with_timeout(pid, timeout)
@@ -392,6 +392,12 @@ module Henitai
     # coverage collection is not yet wired into this path.
     class Minitest < Rspec
       private
+
+      def suite_command(test_files)
+        ["bundle", "exec", "ruby", "-I", "test",
+         "-e", "ARGV.each { |f| require File.expand_path(f) }",
+         *test_files]
+      end
 
       def run_tests(test_files)
         test_files.each { |file| require File.expand_path(file) }

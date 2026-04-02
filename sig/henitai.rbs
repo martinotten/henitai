@@ -254,7 +254,7 @@ module Henitai
       private
 
       def run_in_child: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
-      def run_suite_in_child: (Array[String], log_paths: Hash[Symbol, String]) -> Integer
+      def suite_command: (Array[String]) -> Array[String]
       def wait_with_timeout: (Integer, Float) -> untyped
       def handle_timeout: (Integer) -> Symbol
       def build_result: (untyped, Hash[Symbol, String]) -> ScenarioExecutionResult

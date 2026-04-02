@@ -183,53 +183,43 @@ RSpec.describe Henitai::Integration::Rspec do
   it "runs the full suite" do
     integration = described_class.new
 
-    allow(Process).to receive(:exit)
-    allow(Process).to receive(:fork) do |&block|
-      block.call
-      4321
-    end
-    allow(Process).to receive(:wait).with(4321, Process::WNOHANG).and_return(4321)
-    allow(Process).to receive(:last_status).and_return(
-      Struct.new(:success?).new(true)
-    )
-    allow(integration).to receive(:run_tests).and_return(0)
+    with_temp_workspace do
+      allow(Process).to receive(:spawn).and_return(4321)
+      allow(integration).to receive(:wait_with_timeout).and_return(
+        Struct.new(:success?, :exitstatus).new(true, 0)
+      )
 
-    expect(integration.run_suite(["spec/foo_spec.rb"])).to eq(:survived)
+      expect(integration.run_suite(["spec/foo_spec.rb"])).to eq(:survived)
+    end
   end
 
   it "passes the configured timeout through the suite wait path" do
     integration = described_class.new
 
-    allow(Process).to receive(:exit)
-    allow(Process).to receive(:fork) do |&block|
-      block.call
-      4321
+    with_temp_workspace do
+      allow(Process).to receive(:spawn).and_return(4321)
+      allow(integration).to receive(:wait_with_timeout).and_return(:timeout)
+
+      integration.run_suite(["spec/foo_spec.rb"], timeout: 12.5)
+
+      expect(integration).to have_received(:wait_with_timeout).with(4321, 12.5)
     end
-    allow(integration).to receive_messages(run_tests: 0, wait_with_timeout: :timeout)
-
-    integration.run_suite(["spec/foo_spec.rb"], timeout: 12.5)
-
-    expect(integration).to have_received(:wait_with_timeout).with(4321, 12.5)
   end
 
   it "does not activate a mutant when running the full suite" do
     integration = described_class.new
 
-    allow(Process).to receive(:exit)
-    allow(Process).to receive(:fork) do |&block|
-      block.call
-      4321
+    with_temp_workspace do
+      allow(Process).to receive(:spawn).and_return(4321)
+      allow(integration).to receive(:wait_with_timeout).and_return(
+        Struct.new(:success?, :exitstatus).new(true, 0)
+      )
+      allow(Henitai::Mutant::Activator).to receive(:activate!)
+
+      integration.run_suite(["spec/foo_spec.rb"])
+
+      expect(Henitai::Mutant::Activator).not_to have_received(:activate!)
     end
-    allow(Process).to receive(:wait).with(4321, Process::WNOHANG).and_return(4321)
-    allow(Process).to receive(:last_status).and_return(
-      Struct.new(:success?).new(true)
-    )
-    allow(integration).to receive(:run_tests).and_return(0)
-    allow(Henitai::Mutant::Activator).to receive(:activate!)
-
-    integration.run_suite(["spec/foo_spec.rb"])
-
-    expect(Henitai::Mutant::Activator).not_to have_received(:activate!)
   end
 
   it "forks a child, sets the mutant id, and waits with timeout" do
