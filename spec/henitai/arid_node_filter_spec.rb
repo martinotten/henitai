@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-require "parser/current"
 require "spec_helper"
+require "parser/current"
 
 RSpec.describe Henitai::AridNodeFilter do
   def parse(source)

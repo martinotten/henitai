@@ -6,8 +6,12 @@ SimpleCov.start do
   enable_coverage :branch
 end
 
+require_relative "support/warning_silencer"
 require "henitai"
 Dir[File.join(__dir__, "support/**/*.rb")].each { |path| require path }
+
+SimpleCov.print_error_status = false
+SimpleCov.formatters = [SimpleCov::Formatter::QuietHTMLFormatter]
 
 RSpec.configure do |config|
   config.expect_with :rspec do |expectations|

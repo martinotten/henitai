@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "parser/current"
+require_relative "../parser_current"
 
 module Henitai
   module Operators

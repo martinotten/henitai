@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "parser/current"
+require_relative "../parser_current"
 require "unparser"
 
 module Henitai
@@ -26,7 +26,9 @@ module Henitai
         subject = mutant.subject
         raise ArgumentError, "Cannot activate wildcard subjects" if subject.method_name.nil?
 
-        target_for(subject).class_eval(method_source(mutant), __FILE__, __LINE__ + 1)
+        Henitai::WarningSilencer.silence do
+          target_for(subject).class_eval(method_source(mutant), __FILE__, __LINE__ + 1)
+        end
       end
 
       private
