@@ -38,6 +38,7 @@ module Henitai
     DEFAULT_OPERATORS: Symbol
     DEFAULT_JOBS: untyped
     DEFAULT_MAX_MUTANTS_PER_LINE: Integer
+    DEFAULT_MAX_FLAKY_RETRIES: Integer
     DEFAULT_REPORTS_DIR: String
     DEFAULT_COVERAGE_CRITERIA: Hash[Symbol, bool]
     DEFAULT_THRESHOLDS: Hash[Symbol, Integer]
@@ -49,6 +50,7 @@ module Henitai
     attr_reader timeout: Float
     attr_reader ignore_patterns: Array[untyped]
     attr_reader max_mutants_per_line: Integer
+    attr_reader max_flaky_retries: Integer
     attr_reader sampling: untyped
     attr_reader jobs: untyped
     attr_reader coverage_criteria: Hash[Symbol, untyped]
