@@ -404,6 +404,11 @@ RSpec.describe Henitai::MutantGenerator do
 
       expect(first_map).to be(second_map)
     end
+
+    it "returns the map size as the fallback priority for unknown operators" do
+      map = generator.send(:operator_priority_map)
+      expect(generator.send(:operator_priority, "UnknownOperator")).to eq(map.length)
+    end
   end
 
   # ---------------------------------------------------------------------------

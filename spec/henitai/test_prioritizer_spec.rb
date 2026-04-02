@@ -21,6 +21,30 @@ RSpec.describe Henitai::TestPrioritizer do
     )
   end
 
+  it "reads kill counts from hash-style history values with symbol keys" do
+    tests = %w[spec/a_spec.rb spec/b_spec.rb spec/c_spec.rb]
+    history = {
+      "spec/b_spec.rb" => { kills: 10 },
+      "spec/a_spec.rb" => { kills: 2 }
+    }
+
+    expect(described_class.new.sort(tests, nil, history)).to eq(
+      %w[spec/b_spec.rb spec/a_spec.rb spec/c_spec.rb]
+    )
+  end
+
+  it "reads kill counts from hash-style history values with string keys" do
+    tests = %w[spec/a_spec.rb spec/b_spec.rb]
+    history = {
+      "spec/b_spec.rb" => { "kills" => 7 },
+      "spec/a_spec.rb" => { "kills" => 1 }
+    }
+
+    expect(described_class.new.sort(tests, nil, history)).to eq(
+      %w[spec/b_spec.rb spec/a_spec.rb]
+    )
+  end
+
   it "matches absolute test paths against relative history keys" do
     tests = %w[spec/a_spec.rb spec/b_spec.rb spec/c_spec.rb].map do |path|
       File.expand_path(path)

@@ -478,4 +478,18 @@ RSpec.describe Henitai::Reporter::Terminal do
       expect { reporter.report(result) }.to output(expected_output).to_stdout
     end
   end
+
+  it "uses default thresholds when config.thresholds is nil" do
+    config = Struct.new(:thresholds, :all_logs).new(nil, false)
+    reporter = described_class.new(config:)
+    # 75 falls between default low=60 and high=80 → yellow "33"
+    expect(reporter.send(:score_color, 75)).to eq("33")
+  end
+
+  it "delegates flush to stdout" do
+    reporter = described_class.new(config: build_config)
+    allow($stdout).to receive(:flush)
+    reporter.send(:flush)
+    expect($stdout).to have_received(:flush)
+  end
 end

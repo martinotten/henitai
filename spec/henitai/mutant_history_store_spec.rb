@@ -100,6 +100,40 @@ RSpec.describe Henitai::MutantHistoryStore do
     end
   end
 
+  it "generates a 64-character hexadecimal mutant ID" do
+    Dir.mktmpdir do |dir|
+      store = described_class.new(path: File.join(dir, "mutation-history.sqlite3"))
+      store.record(
+        build_result(
+          [build_mutant(status: :survived)],
+          { mutation_score: 80.0, mutation_score_indicator: 40.0, equivalence_uncertainty: nil }
+        ),
+        version: "1.0.0",
+        recorded_at: Time.utc(2026, 1, 1)
+      )
+
+      expect(store.trend_report[:mutants].first[:mutantId]).to match(/\A[0-9a-f]{64}\z/)
+    end
+  end
+
+  it "returns status history entries with symbol keys" do
+    Dir.mktmpdir do |dir|
+      store = described_class.new(path: File.join(dir, "mutation-history.sqlite3"))
+      store.record(
+        build_result(
+          [build_mutant(status: :survived)],
+          { mutation_score: 80.0, mutation_score_indicator: 40.0, equivalence_uncertainty: nil }
+        ),
+        version: "1.0.0",
+        recorded_at: Time.utc(2026, 1, 1)
+      )
+
+      entry = store.trend_report[:mutants].first[:statusHistory].first
+      expect(entry).to have_key(:status)
+      expect(entry).not_to have_key("status")
+    end
+  end
+
   it "appends mutant history across repeated runs" do
     Dir.mktmpdir do |dir|
       store = described_class.new(path: File.join(dir, "mutation-history.sqlite3"))

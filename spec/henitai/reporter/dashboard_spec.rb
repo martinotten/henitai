@@ -231,6 +231,105 @@ RSpec.describe Henitai::Reporter::Dashboard do
   it "returns nil for blank git urls" do
     expect(described_class.project_from_git_url("")).to be_nil
   end
+
+  it "does not upload when the version cannot be determined" do
+    allow(Net::HTTP).to receive(:start)
+    reporter = dashboard(project: "github.com/example/project", base_url: "https://dashboard.example.test")
+    allow(reporter).to receive(:git_branch_name).and_return(nil)
+
+    with_env(
+      "STRYKER_DASHBOARD_API_KEY" => "secret-token",
+      "GITHUB_REF_NAME" => nil,
+      "GITHUB_REF" => nil,
+      "GITHUB_SHA" => nil
+    ) do
+      expect(reporter.report(result)).to be_nil
+    end
+
+    expect(Net::HTTP).not_to have_received(:start)
+  end
+
+  it "enables SSL when the base URL scheme is https" do
+    http = instance_double(Net::HTTP)
+    allow(http).to receive(:open_timeout=)
+    allow(http).to receive(:read_timeout=)
+    allow(http).to receive(:request) { |req| req }
+    allow(Net::HTTP).to receive(:start).with(
+      "dashboard.example.test", anything, use_ssl: true
+    ).and_yield(http)
+
+    with_env(
+      "STRYKER_DASHBOARD_API_KEY" => "secret-token",
+      "GITHUB_REF_NAME" => "main",
+      "GITHUB_REF" => nil,
+      "GITHUB_SHA" => nil
+    ) do
+      dashboard(project: "github.com/example/project", base_url: "https://dashboard.example.test").report(result)
+    end
+
+    expect(Net::HTTP).to have_received(:start)
+  end
+
+  it "handles a trailing slash in the base URL without doubling path separators" do
+    request = capture_request(
+      project: "github.com/example/project",
+      base_url: "https://dashboard.example.test/"
+    )
+    expect(request.path).to eq("/api/reports/github.com/example/project/main")
+  end
+
+  it "falls back to the default base URL when base_url is not configured" do
+    http = instance_double(Net::HTTP)
+    stub_dashboard_http(http)
+
+    with_env(
+      "STRYKER_DASHBOARD_API_KEY" => "secret-token",
+      "GITHUB_REF_NAME" => "main",
+      "GITHUB_REF" => nil,
+      "GITHUB_SHA" => nil
+    ) do
+      request = dashboard(project: "github.com/example/project").report(result)
+      expect(request.path).to start_with("/api/reports/github.com/example/project/")
+    end
+  end
+
+  it "uses GITHUB_REF_NAME for the version when present" do
+    reporter = dashboard(project: "github.com/example/project", base_url: "https://dashboard.example.test")
+    allow(reporter).to receive(:git_branch_name).and_return("totally-different-branch")
+    http = instance_double(Net::HTTP)
+    stub_dashboard_http(http)
+
+    with_env(
+      "STRYKER_DASHBOARD_API_KEY" => "secret-token",
+      "GITHUB_REF_NAME" => "release/v2.0",
+      "GITHUB_REF" => nil,
+      "GITHUB_SHA" => nil
+    ) do
+      request = reporter.report(result)
+      expect(request.path).to include("release%2Fv2.0")
+    end
+  end
+
+  it "skips a blank GITHUB_REF and uses GITHUB_SHA instead" do
+    reporter = dashboard(project: "github.com/example/project", base_url: "https://dashboard.example.test")
+    allow(reporter).to receive(:git_branch_name).and_return("irrelevant-branch")
+    http = instance_double(Net::HTTP)
+    stub_dashboard_http(http)
+
+    with_env(
+      "STRYKER_DASHBOARD_API_KEY" => "secret-token",
+      "GITHUB_REF_NAME" => nil,
+      "GITHUB_REF" => "   ",
+      "GITHUB_SHA" => "abc123sha"
+    ) do
+      request = reporter.report(result)
+      expect(request.path).to include("abc123sha")
+    end
+  end
+
+  it "returns nil for SSH git URLs without a path component" do
+    expect(described_class.project_from_git_url("git@github.com")).to be_nil
+  end
 end
 
 # rubocop:enable Metrics/MethodLength, RSpec/MultipleExpectations

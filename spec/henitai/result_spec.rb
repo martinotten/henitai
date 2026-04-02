@@ -122,6 +122,16 @@ RSpec.describe Henitai::Result do
       .map { |status| status_mutant(status) }
   end
 
+  it "counts survived mutants" do
+    mutants = [status_mutant(:survived), status_mutant(:survived), status_mutant(:killed)]
+    expect(result(mutants).survived).to eq(2)
+  end
+
+  it "counts equivalent mutants" do
+    mutants = [status_mutant(:equivalent), status_mutant(:survived)]
+    expect(result(mutants).equivalent).to eq(1)
+  end
+
   it "calculates mutation score with excluded statuses removed" do
     expect(result(scoring_mutants).mutation_score).to eq(75.0)
   end

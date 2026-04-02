@@ -32,6 +32,11 @@ RSpec.describe Henitai::Operator do
     )
   end
 
+  it "returns the short class name as the operator name" do
+    operator_class = stub_const("Henitai::Operators::FakeLongName", Class.new(described_class))
+    expect(operator_class.new.name).to eq("FakeLongName")
+  end
+
   it "builds a mutant without location metadata when the node has no source location" do
     operator_class = stub_const(
       "Henitai::NoLocationOperator",

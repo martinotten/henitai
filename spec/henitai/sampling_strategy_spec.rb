@@ -47,6 +47,17 @@ RSpec.describe Henitai::SamplingStrategy do
     expect(described_class.new.sample(mutants, ratio: 0.0)).to eq([])
   end
 
+  it "returns multiple samples per subject when the ratio warrants it" do
+    mutants = [
+      mutant("Sample#alpha", "a-1", 1),
+      mutant("Sample#alpha", "a-2", 2),
+      mutant("Sample#alpha", "a-3", 3),
+      mutant("Sample#alpha", "a-4", 4)
+    ]
+
+    expect(described_class.new.sample(mutants, ratio: 0.5).size).to eq(2)
+  end
+
   it "rejects unsupported sampling strategies" do
     mutants = [mutant("Sample#alpha", "alpha-1", 1)]
 

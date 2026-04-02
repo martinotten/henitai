@@ -71,4 +71,19 @@ RSpec.describe Henitai::Operators::EqualityOperator do
     expect(described_class.new.mutate(parse("foo.bar"), subject: mutation_subject))
       .to eq([])
   end
+
+  it "preserves the right operand in each mutated send node" do
+    mutant = mutate("left == right").first
+    expect(mutant.mutated_node.children[2]).not_to be_nil
+  end
+
+  it "produces a :send AST node for each replacement" do
+    mutants = mutate("left == right")
+    aggregate_failures do
+      mutants.each do |mutant|
+        expect(mutant.mutated_node).to be_a(Parser::AST::Node)
+        expect(mutant.mutated_node.type).to eq(:send)
+      end
+    end
+  end
 end

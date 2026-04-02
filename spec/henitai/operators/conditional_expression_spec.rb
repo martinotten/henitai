@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "unparser"
 
 RSpec.describe Henitai::Operators::ConditionalExpression do
   def parse(source)
@@ -167,5 +168,22 @@ RSpec.describe Henitai::Operators::ConditionalExpression do
   it "ignores non-conditional nodes" do
     expect(described_class.new.mutate(parse("foo.bar"), subject: mutation_subject))
       .to eq([])
+  end
+
+  it "produces parseable mutated nodes for all if-expression variants" do
+    # Use an if without else so that "removed then branch" exercises nil_node
+    # (else_branch is nil, so the replacement falls to nil_node).
+    mutants = mutate(<<~RUBY)
+      if ready
+        :yes
+      end
+    RUBY
+
+    aggregate_failures do
+      mutants.each do |mutant|
+        expect { Unparser.unparse(mutant.mutated_node) }.not_to raise_error,
+          "#{mutant.description} produced an unparseable node: #{mutant.mutated_node.inspect}"
+      end
+    end
   end
 end

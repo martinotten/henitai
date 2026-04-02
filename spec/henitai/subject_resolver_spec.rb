@@ -298,4 +298,53 @@ RSpec.describe Henitai::SubjectResolver do
 
     expect(filtered).to be_empty
   end
+
+  it "does not suppress methods in blocks attached to non-constructor Class calls" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", <<~RUBY)
+        class Foo
+          Class.configure do
+            def bar = 1
+          end
+        end
+      RUBY
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects.map(&:expression)).to include("Foo#bar")
+    end
+  end
+
+  it "resolves self.define_method as a subject" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", <<~RUBY)
+        class Foo
+          self.define_method(:bar) do
+            1
+          end
+        end
+      RUBY
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects.map(&:expression)).to include("Foo#bar")
+    end
+  end
+
+  it "ignores define_method with a dynamic method name" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", <<~RUBY)
+        class Foo
+          name = :generated
+          define_method(name) do
+            1
+          end
+        end
+      RUBY
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects).to be_empty
+    end
+  end
 end
