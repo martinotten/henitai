@@ -46,5 +46,6 @@ module Henitai
   autoload :Reporter, "henitai/reporter"
   autoload :Integration, "henitai/integration"
   autoload :Result, "henitai/result"
+  autoload :WarningSilencer, "henitai/warning_silencer"
   autoload :CLI, "henitai/cli"
 end
