@@ -98,6 +98,14 @@ RSpec.describe Henitai::Configuration do
     YAML
   end
 
+  it "defaults the integration name when the integration hash omits it" do
+    config = load_configuration(<<~YAML)
+      integration: {}
+    YAML
+
+    expect(config.integration).to eq("rspec")
+  end
+
   it "applies CLI overrides after YAML values" do
     expect(
       configuration_snapshot(
@@ -296,6 +304,19 @@ RSpec.describe Henitai::Configuration do
         mutation:
           sampling:
             strategy: stratified
+      YAML
+    end.to raise_error(
+      Henitai::ConfigurationError,
+      /mutation\.sampling/
+    )
+  end
+
+  it "aborts on incomplete sampling settings without a strategy" do
+    expect do
+      load_configuration(<<~YAML)
+        mutation:
+          sampling:
+            ratio: 0.5
       YAML
     end.to raise_error(
       Henitai::ConfigurationError,

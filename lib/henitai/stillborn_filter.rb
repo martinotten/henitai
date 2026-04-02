@@ -9,7 +9,7 @@ module Henitai
       source = render(mutant)
       return true unless source
 
-      RubyVM::InstructionSequence.compile(source)
+      RubyVM::InstructionSequence.compile(wrapped_source(source))
       false
     rescue SyntaxError
       true
@@ -21,6 +21,14 @@ module Henitai
       Unparser.unparse(mutant.mutated_node)
     rescue StandardError
       nil
+    end
+
+    def wrapped_source(source)
+      <<~RUBY
+        def __henitai_stillborn__
+          #{source}
+        end
+      RUBY
     end
   end
 end

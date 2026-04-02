@@ -24,25 +24,40 @@ module Henitai
       original = mutant.original_node
       mutated = mutant.mutated_node
       return false unless binary_send?(original) && binary_send?(mutated)
-      return false unless same_receiver_and_operand?(original, mutated)
+      return false unless same_receiver?(original, mutated)
 
-      (zero_operand?(original) && zero_operand?(mutated)) ||
-        (one_operand?(original) && one_operand?(mutated))
+      additive_equivalent?(original, mutated) ||
+        multiplicative_equivalent?(original, mutated)
     end
 
     def binary_send?(node)
       node.is_a?(Parser::AST::Node) && node.type == :send && node.children.size >= 3
     end
 
-    def same_receiver_and_operand?(original, mutated)
-      same_node?(original.children[0], mutated.children[0]) &&
-        same_node?(original.children[2], mutated.children[2]) &&
-        equivalent_arithmetic_operator?(original.children[1]) &&
-        equivalent_arithmetic_operator?(mutated.children[1])
+    def same_receiver?(original, mutated)
+      same_node?(original.children[0], mutated.children[0])
     end
 
-    def equivalent_arithmetic_operator?(operator)
-      EQUIVALENT_ARITHMETIC_OPERATORS.include?(operator)
+    def additive_equivalent?(original, mutated)
+      additive_operator?(original.children[1]) &&
+        additive_operator?(mutated.children[1]) &&
+        zero_operand?(original) &&
+        zero_operand?(mutated)
+    end
+
+    def multiplicative_equivalent?(original, mutated)
+      multiplicative_operator?(original.children[1]) &&
+        multiplicative_operator?(mutated.children[1]) &&
+        one_operand?(original) &&
+        one_operand?(mutated)
+    end
+
+    def additive_operator?(operator)
+      %i[+ -].include?(operator)
+    end
+
+    def multiplicative_operator?(operator)
+      %i[* /].include?(operator)
     end
 
     def zero_operand?(node)

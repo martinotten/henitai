@@ -59,4 +59,26 @@ RSpec.describe Henitai::EquivalenceDetector do
 
     expect(mutant.status).to eq(:pending)
   end
+
+  it "keeps non-binary mutated arithmetic nodes pending" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:value), :+, int(0)),
+      mutated_node: int(0)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps mismatched neutral arithmetic operators pending" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:value), :*, int(0)),
+      mutated_node: binary_send(lvar(:value), :+, int(0))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
 end

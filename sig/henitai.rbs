@@ -232,6 +232,20 @@ module Henitai
   class EquivalenceDetector
     def initialize: () -> void
     def analyze: (Mutant) -> Mutant
+
+    private
+
+    def equivalent_arithmetic_mutation?: (Mutant) -> bool
+    def binary_send?: (untyped) -> bool
+    def same_receiver?: (untyped, untyped) -> bool
+    def additive_equivalent?: (untyped, untyped) -> bool
+    def multiplicative_equivalent?: (untyped, untyped) -> bool
+    def additive_operator?: (untyped) -> bool
+    def multiplicative_operator?: (untyped) -> bool
+    def zero_operand?: (untyped) -> bool
+    def one_operand?: (untyped) -> bool
+    def numeric_operand?: (untyped, untyped) -> bool
+    def same_node?: (untyped, untyped) -> bool
   end
 
   class StaticFilter

@@ -178,7 +178,7 @@ The system is organized into the following main parts:
 | Execution engine | Run the relevant tests in isolated processes | pipeline execution engine, integration adapters |
 | Result analysis | Classify outcomes, compute scores, preserve statuses | `lib/henitai/result.rb`, result collector |
 | Reporters | Emit terminal, JSON, HTML, and dashboard outputs | `lib/henitai/reporter/*` |
-| Optional persistence | Track history and latent-mutant data | mutant database layer in later phases |
+| Persistence | Track history and latent-mutant data across runs | `lib/henitai/mutant_history_store.rb` (SQLite-backed) |
 
 ### 5.2 Important Interfaces
 
@@ -197,6 +197,7 @@ mutation:
   operators: light
   timeout: 10
   max_mutants_per_line: 1
+  max_flaky_retries: 3
   sampling:
     ratio: 0.05
     strategy: stratified
@@ -210,6 +211,7 @@ reporters:
   - terminal
   - json
   - html
+reports_dir: reports
 dashboard:
   base_url: https://dashboard.stryker-mutator.io
 ```
@@ -224,17 +226,23 @@ Representative report contract:
 
 ### 5.3 Level 2 Decomposition
 
-The implementation plan maps naturally onto the following module layout:
+The implementation maps onto the following module layout:
 
 - `lib/henitai/cli.rb`
 - `lib/henitai/configuration.rb`
 - `lib/henitai/subject.rb`
 - `lib/henitai/mutant.rb`
+- `lib/henitai/mutant/activator.rb`
 - `lib/henitai/operator.rb`
 - `lib/henitai/operators/`
 - `lib/henitai/runner.rb`
-- `lib/henitai/pipeline/`
-- `lib/henitai/integration/`
+- `lib/henitai/execution_engine.rb`
+- `lib/henitai/static_filter.rb`
+- `lib/henitai/equivalence_detector.rb`
+- `lib/henitai/test_prioritizer.rb`
+- `lib/henitai/mutant_history_store.rb`
+- `lib/henitai/coverage_formatter.rb`
+- `lib/henitai/integration.rb`
 - `lib/henitai/reporter/`
 - `lib/henitai/result.rb`
 
@@ -277,7 +285,7 @@ Henitai does not require a dedicated service runtime. The deployment is usually 
 | CI runner | repository checkout, environment variables, test artifacts, JSON/HTML reports |
 | Optional dashboard | external Stryker Dashboard instance or hosted service |
 
-The architecture intentionally avoids a permanent backend unless the project later adopts one for latent-mutant persistence or team-wide analytics.
+Latent-mutant persistence uses a local SQLite file (`mutation-history.sqlite3`) in the reports directory. No external service is required. Team-wide analytics or dashboard integration would require an additional transport layer, which remains out of scope.
 
 ## 8. Crosscutting Concepts
 
@@ -350,8 +358,10 @@ Equivalent mutants are treated as an unavoidable uncertainty, not a solved probl
 The strategy is:
 
 - prevent common equivalent mutants with arid-node filtering and operator constraints
-- detect some cases heuristically after generation
+- detect some cases heuristically after generation via `EquivalenceDetector`
 - preserve the remaining uncertainty in the report
+
+The implemented heuristics in `EquivalenceDetector` are deliberately conservative: only cases where the AST shape and literal values make equivalence provable are marked. The current set covers arithmetic neutral-element patterns — specifically `x + 0`, `x - 0`, `x * 1`, and `x / 1` — where the mutated form is semantically identical to the original. More aggressive heuristics are intentionally avoided to prevent false positives.
 
 If an optional LLM-based detector is introduced later, it must remain a plugin and not a hard dependency.
 
@@ -413,36 +423,44 @@ end
 
 Namespace-wide ignore rules belong in `.henitai.yml`, not in source comments.
 
-### 8.6 Flaky Test Mitigation
+### 8.6 Parallel Execution and Flaky Test Mitigation
+
+The execution engine runs mutants in parallel using a Thread+Queue worker pool. The number of workers defaults to `Etc.nprocessors` and can be overridden via `config.jobs`. Each worker forks a child process per mutant, so thread-level concurrency and process-level isolation are combined: threads coordinate the queue, forked processes provide the actual test isolation.
 
 Test instability is handled conservatively:
 
 - process isolation is the default execution model
-- retries are limited and explicit
+- survived mutants are retried up to `config.max_flaky_retries` times (default: 3) before being classified as survived
+- if more than 5% of executed mutants required at least one retry, a warning is emitted at the end of the run
 - unknown or flaky outcomes must be surfaced, not hidden
 
 Worker isolation follows the Stryker convention of setting `STRYKER_MUTATOR_WORKER` in each child process so hooks and test infrastructure can isolate state per worker.
 
 ### 8.7 Latent Mutant Tracking
 
-Later phases add persistent mutant history so that a mutant that survives now but disappears later can be classified as latent. This is useful for trend analysis, but it must remain separate from the core pass/fail result model.
+Persistent mutant history allows a mutant that survives now but disappears in a later run to be classified as latent. This is useful for trend analysis but is kept strictly separate from the core pass/fail result model.
 
-The persistent store is a later-phase addition and should stay lightweight, versionable, and easy to inspect. A SQLite-backed store is a practical default.
+`MutantHistoryStore` provides this persistence using a local SQLite database (`mutation-history.sqlite3`). Each mutant is identified by a stable SHA256 hash of its expression, operator, description, location, and mutation signature so that identity survives across runs even when line numbers shift. The store records status transitions per run in a `status_history` column and tracks `days_alive` for survived mutants. All writes use SQLite transactions for consistency.
+
+The store is intentionally lightweight and file-based: no external service, no migration tool, inspectable with standard SQLite clients.
 
 ### 8.8 Report Formats
 
 The reporting stack is layered:
 
-- canonical machine-readable JSON
+- canonical machine-readable JSON (`mutation-report.json`)
 - terminal summary
-- standalone HTML via mutation-testing-elements
+- standalone HTML via mutation-testing-elements (`mutation-report.html`)
+- persistent SQLite history (`mutation-history.sqlite3`)
+- JSON trend export from the history store (`mutation-history.json`)
 - optional dashboard upload
 - optional review feedback in pull requests
 
 The JSON report is the primary contract. HTML and terminal output are derived from it, and dashboard upload is a transport concern rather than a separate result model.
 
-By default, the JSON reporter writes `reports/mutation-report.json`; callers
-can override the base directory via `reports_dir` in `.henitai.yml`.
+By default, all report files are written to a `reports/` subdirectory; callers can override the base directory via `reports_dir` in `.henitai.yml`. The per-test coverage file (`henitai_per_test.json`) is written to the same directory and is propagated to forked child processes via the `HENITAI_REPORTS_DIR` environment variable.
+
+The `mutation-history.json` export is generated from the SQLite store at the end of each run and contains the accumulated status history per mutant, suitable for trend dashboards or external analysis without requiring direct SQLite access.
 
 The expected JSON shape follows the Stryker ecosystem conventions:
 
@@ -534,9 +552,9 @@ Known technical debt should be tracked explicitly rather than smoothed over in t
 
 The architecture roadmap follows three phases:
 
-### Phase 1 - MVP
+### Phase 1 - MVP (completed)
 
-Deliver a working mutation pipeline for medium Ruby projects with:
+A working mutation pipeline for medium Ruby projects:
 
 - AST parsing
 - the light operator set
@@ -545,20 +563,25 @@ Deliver a working mutation pipeline for medium Ruby projects with:
 - RSpec and Minitest support
 - JSON and terminal reporting
 
-### Phase 2 - Production Ready
+### Phase 2 - Production Ready (completed)
 
-Add the CI and developer-feedback features:
+CI and developer-feedback features:
 
+- per-test coverage analysis via `CoverageFormatter` and `henitai_per_test.json`
+- sampling and test prioritization via `TestPrioritizer` with path normalization and historical kill counts
+- parallel execution via Thread+Queue worker pool with configurable `jobs`
+- flaky-test mitigation with configurable `max_flaky_retries` and 5% retry-rate warning
+- latent-mutant tracking via `MutantHistoryStore` (SQLite) and `mutation-history.json` trend export
+- conservative equivalence detection via `EquivalenceDetector` (arithmetic neutral-element heuristics)
+- HTML reporter implemented (was stub)
+- `define_method`-based subject detection
 - dashboard integration
-- per-test coverage analysis
-- sampling and test prioritization
-- flaky-test mitigation
-- latent-mutant tracking
-- Ruby-specific operators beyond the light set
+
+The full Phase 2 operator set (`SafeNavigation`, `RangeLiteral`, etc.) is defined in the architecture but has not yet been fully implemented.
 
 ### Phase 3 - Extensions
 
-Add optional advanced capabilities:
+Optional advanced capabilities:
 
 - mutation switching
 - adaptive operator selection

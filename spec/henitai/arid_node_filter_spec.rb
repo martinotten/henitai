@@ -88,8 +88,26 @@ RSpec.describe Henitai::AridNodeFilter do
     expect(described_class.new.suppressed?(node, config)).to be(true)
   end
 
+  it "does not suppress ordinary blocks outside the DSL list" do
+    node = parse("foo { 1 }")
+
+    expect(described_class.new.suppressed?(node, config)).to be(false)
+  end
+
   it "does not suppress malformed send nodes" do
     node = Parser::AST::Node.new(:send, [nil, nil])
+
+    expect(described_class.new.suppressed?(node, config)).to be(false)
+  end
+
+  it "does not suppress arbitrary binding calls" do
+    node = parse("binding.foo")
+
+    expect(described_class.new.suppressed?(node, config)).to be(false)
+  end
+
+  it "does not suppress Rails logger methods outside the allowlist" do
+    node = parse('Rails.logger.trace("x")')
 
     expect(described_class.new.suppressed?(node, config)).to be(false)
   end

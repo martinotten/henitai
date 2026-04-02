@@ -42,4 +42,11 @@ RSpec.describe Henitai::StillbornFilter do
 
     expect(described_class.new.suppressed?(mutant)).to be(true)
   end
+
+  it "does not emit a top-level return warning for return mutants" do
+    mutant = build_mutant("return 1")
+
+    expect { described_class.new.suppressed?(mutant) }
+      .not_to output(/top-level return/i).to_stderr
+  end
 end

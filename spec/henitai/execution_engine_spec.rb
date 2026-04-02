@@ -178,6 +178,30 @@ RSpec.describe Henitai::ExecutionEngine do
     end.to output(/Flaky-test mitigation:/).to_stderr
   end
 
+  it "does not warn about flaky mitigation below the retry threshold" do
+    mutants = 25.times.map do |index|
+      build_mutant(:pending, "Foo#bar#{index}")
+    end
+    integration = build_integration
+    call_counts = Hash.new(0)
+
+    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
+    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
+      expression = mutant.subject.expression
+      call_counts[expression] += 1
+
+      if expression == "Foo#bar0" && call_counts[expression] == 1
+        :survived
+      else
+        mutant.status = :killed
+      end
+    end
+
+    expect do
+      described_class.new.run(mutants, integration, build_config)
+    end.not_to output(/Flaky-test mitigation:/).to_stderr
+  end
+
   it "uses configured jobs when running mutants in parallel" do
     first = build_mutant(:pending, "Foo#bar")
     second = build_mutant(:pending, "Foo#baz")
@@ -194,6 +218,24 @@ RSpec.describe Henitai::ExecutionEngine do
     described_class.new.run([first, second], integration, config)
 
     expect(thread_ids.uniq.size).to be > 1
+  end
+
+  it "keeps jobs=1 on the linear execution path" do
+    first = build_mutant(:pending, "Foo#bar")
+    second = build_mutant(:pending, "Foo#baz")
+    integration = build_integration
+    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", 1)
+    thread_ids = []
+
+    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
+      thread_ids << Thread.current.object_id
+      sleep 0.01
+      mutant.status = :killed
+    end
+
+    described_class.new.run([first, second], integration, config)
+
+    expect(thread_ids.uniq.size).to eq(1)
   end
 
   it "falls back to the CPU count when jobs are not configured" do
