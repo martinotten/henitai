@@ -539,6 +539,38 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  it "marks unsupported activations as compile errors" do
+    mutant = Struct.new(:id).new("mutant-compile-error")
+    integration = described_class.new
+    record = {}
+    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+    begin
+      allow(Process).to receive(:exit) { |status| record[:child_status] = status }
+      allow(Process).to receive(:fork) do |&block|
+        block.call
+        24_605
+      end
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(:compile_error)
+      allow(integration).to receive(:pause).and_return(nil)
+      allow(Process).to receive(:wait).and_return(24_605)
+      allow(Process).to receive_messages(
+        last_status: Struct.new(:success?, :exitstatus).new(false, 2)
+      )
+
+      result = integration.run_mutant(
+        mutant:,
+        test_files: ["spec/compile_error_spec.rb"],
+        timeout: 0.1
+      )
+
+      expect(record[:child_status]).to eq(2)
+      expect(result.status).to eq(:compile_error)
+    ensure
+      ENV["HENITAI_MUTANT_ID"] = original_env
+    end
+  end
+
   it "selects matching spec files by subject expression" do
     with_temp_workspace do |dir|
       source_path = write_file(dir, "lib/sample.rb", sample_source)

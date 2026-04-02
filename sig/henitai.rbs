@@ -360,9 +360,9 @@ module Henitai
   class Mutant::Activator
     SERIALIZER_METHODS: Hash[Symbol, Symbol]
 
-    def self.activate!: (untyped) -> void
+    def self.activate!: (untyped) -> Symbol?
     def initialize: () -> void
-    def activate!: (untyped) -> void
+    def activate!: (untyped) -> Symbol?
 
     private
 

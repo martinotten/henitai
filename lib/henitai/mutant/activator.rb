@@ -28,7 +28,10 @@ module Henitai
 
         Henitai::WarningSilencer.silence do
           target_for(subject).class_eval(method_source(mutant), __FILE__, __LINE__ + 1)
+          nil
         end
+      rescue Unparser::UnsupportedNodeError
+        :compile_error
       end
 
       private

@@ -166,7 +166,8 @@ module Henitai
 
       def run_in_child(mutant:, test_files:, log_paths:)
         scenario_log_support.capture_child_output(log_paths) do
-          Mutant::Activator.activate!(mutant)
+          return 2 if Mutant::Activator.activate!(mutant) == :compile_error
+
           run_tests(test_files)
         end
       end
@@ -265,6 +266,7 @@ module Henitai
 
       def scenario_status(wait_result)
         return :timeout if wait_result == :timeout
+        return :compile_error if exit_status_for(wait_result) == 2
         return :survived if wait_result.respond_to?(:success?) && wait_result.success?
 
         :killed
