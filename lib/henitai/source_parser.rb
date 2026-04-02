@@ -10,7 +10,9 @@ module Henitai
   # mutation pipeline and Unparser already expect, while delegating syntax
   # support to Prism.
   class SourceParser
-    def self.parse(source, path: "(string)")
+    DEFAULT_PATH = "(string)"
+
+    def self.parse(source, path: DEFAULT_PATH)
       new.parse(source, path:)
     end
 
@@ -18,7 +20,7 @@ module Henitai
       new.parse_file(path)
     end
 
-    def parse(source, path: "(string)")
+    def parse(source, path: DEFAULT_PATH)
       Prism::Translation::ParserCurrent.new.parse(source_buffer(source, path))
     end
 

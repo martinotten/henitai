@@ -18,7 +18,7 @@ mutation:
     - "(or-asgn (ivasgn _) _)"                       # @var ||= memoization
 
 # Parallelisation
-jobs: ~                     # null = auto-detect CPU count
+jobs: 4                     # null = auto-detect CPU count
 
 # Coverage criteria
 coverage_criteria:
@@ -32,10 +32,10 @@ thresholds:
   low: 60
 
 # Dashboard reporter (opt-in)
-# reporters:
-#   - terminal
-#   - html
-#   - json
+reporters:
+  - terminal
+  - html
+  - json
 #   - dashboard
 #
 # dashboard:

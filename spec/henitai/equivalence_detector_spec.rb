@@ -27,6 +27,10 @@ RSpec.describe Henitai::EquivalenceDetector do
     Parser::AST::Node.new(:float, [value])
   end
 
+  def csend(receiver, operator, operand)
+    Parser::AST::Node.new(:csend, [receiver, operator, operand])
+  end
+
   it "marks addition and subtraction by zero as equivalent" do
     mutant = build_mutant(
       original_node: binary_send(lvar(:value), :+, int(0)),
@@ -91,5 +95,82 @@ RSpec.describe Henitai::EquivalenceDetector do
     described_class.new.analyze(mutant)
 
     expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps arithmetic mutants pending when the mutated node is not a plain send" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:value), :+, int(0)),
+      mutated_node: csend(lvar(:value), :+, int(0))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps arithmetic mutants pending when receivers differ" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:value), :+, int(0)),
+      mutated_node: binary_send(lvar(:other), :-, int(0))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps additive mutants pending unless the original operand is zero" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:value), :+, int(1)),
+      mutated_node: binary_send(lvar(:value), :-, int(0))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps multiplicative mutants pending unless the original operand is one" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:value), :*, int(2)),
+      mutated_node: binary_send(lvar(:value), :/, int(1))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "recognizes multiplicative arithmetic operators" do
+    detector = described_class.new
+
+    expect(detector.send(:multiplicative_operator?, :**)).to be(true)
+  end
+
+  it "recognizes one as the multiplicative neutral operand" do
+    detector = described_class.new
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:value), :*, int(1)),
+      mutated_node: binary_send(lvar(:value), :*, int(1))
+    )
+
+    expect(detector.send(:one_operand?, mutant.original_node)).to be(true)
+  end
+
+  it "rejects non-numeric operands for additive equivalence" do
+    detector = described_class.new
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:value), :+, lvar(:other)),
+      mutated_node: binary_send(lvar(:value), :-, lvar(:other))
+    )
+
+    expect(detector.send(:zero_operand?, mutant.original_node)).to be(false)
+  end
+
+  it "rejects malformed operands for neutral arithmetic checks" do
+    detector = described_class.new
+    malformed = Parser::AST::Node.new(:send, [lvar(:value), :+, 0])
+
+    expect(detector.send(:zero_operand?, malformed)).to be(false)
   end
 end

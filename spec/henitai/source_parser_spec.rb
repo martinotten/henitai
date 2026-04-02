@@ -59,6 +59,18 @@ RSpec.describe Henitai::SourceParser do
     expect(ast.location.expression.source_buffer.name).to eq("sample.rb")
   end
 
+  it "uses (string) as the default source path" do
+    ast = described_class.parse("1 + 2")
+
+    expect(ast.location.expression.source_buffer.name).to eq("(string)")
+  end
+
+  it "uses (string) as the default source path on the instance API" do
+    ast = described_class.new.parse("1 + 2")
+
+    expect(ast.location.expression.source_buffer.name).to eq("(string)")
+  end
+
   it "exposes the node types needed for mutation operators" do
     ast = described_class.parse(mutation_surface_source, path: "sample.rb")
 
