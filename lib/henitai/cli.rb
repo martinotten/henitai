@@ -8,14 +8,14 @@ module Henitai
   #   henitai run [options] [SUBJECT_PATTERN...]
   #
   # Options:
-    #   --since GIT_REF   Only mutate subjects changed since GIT_REF
-    #   --use INTEGRATION Override integration from config (e.g. rspec)
-    #   --config PATH     Path to .henitai.yml (default: .henitai.yml)
-    #   --operators SET   Operator set: light (default) | full
-    #   --jobs N          Number of parallel workers (default: CPU count)
-    #   --all-logs        Print all captured child logs
-    #   -h, --help        Show this help message
-      #   -v, --version     Show version
+  #   --since GIT_REF   Only mutate subjects changed since GIT_REF
+  #   --use INTEGRATION Override integration from config (e.g. rspec)
+  #   --config PATH     Path to .henitai.yml (default: .henitai.yml)
+  #   --operators SET   Operator set: light (default) | full
+  #   --jobs N          Number of parallel workers (default: CPU count)
+  #   --all-logs        Print all captured child logs
+  #   -h, --help        Show this help message
+  #   -v, --version     Show version
   # rubocop:disable Metrics/ClassLength
   class CLI
     INIT_TEMPLATE_LINES = [

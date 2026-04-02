@@ -211,7 +211,7 @@ RSpec.describe Henitai::Reporter::Terminal do
         reporter.progress(build_mutant(status: :timeout), scenario_result:)
       end.to output(
         a_string_matching(
-          /log: #{Regexp.escape(File.join(dir, "timeout.log"))}.*stdout-15/m
+          /log: #{Regexp.escape(File.join(dir, 'timeout.log'))}.*stdout-15/m
         )
       ).to_stdout
     end

@@ -694,15 +694,14 @@ RSpec.describe Henitai::Integration::Rspec do
           4321
         end
         allow(Process).to receive(:wait).with(4321, Process::WNOHANG).and_return(4321)
-      allow(Process).to receive(:last_status).and_return(
-        Struct.new(:success?, :exitstatus).new(true, 0)
-      )
-      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive(:run_tests) do |_test_files|
-        puts "captured stdout"
-        warn "captured stderr"
-        0
-      end
+        allow(Process).to receive(:last_status).and_return(
+          Struct.new(:success?, :exitstatus).new(true, 0)
+        )
+        allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+        allow(integration).to receive(:run_tests) do |_test_files|
+          warn "captured stderr"
+          0
+        end
 
         result = integration.run_mutant(
           mutant:,
