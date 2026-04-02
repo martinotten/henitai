@@ -181,8 +181,9 @@ RSpec.describe Henitai::Operators::ConditionalExpression do
 
     aggregate_failures do
       mutants.each do |mutant|
-        expect { Unparser.unparse(mutant.mutated_node) }.not_to raise_error,
-          "#{mutant.description} produced an unparseable node: #{mutant.mutated_node.inspect}"
+        msg = "#{mutant.description} produced an unparseable node: " \
+              "#{mutant.mutated_node.inspect}"
+        expect { Unparser.unparse(mutant.mutated_node) }.not_to raise_error, msg
       end
     end
   end

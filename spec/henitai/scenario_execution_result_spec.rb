@@ -9,7 +9,9 @@ RSpec.describe Henitai::ScenarioExecutionResult do
   end
 
   it "equals another result with the same status" do
-    expect(build_result(:survived)).to eq(build_result(:survived))
+    a = build_result(:survived)
+    b = build_result(:survived)
+    expect(a).to eq(b)
   end
 
   it "does not equal another result with a different status" do

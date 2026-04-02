@@ -175,11 +175,11 @@ module Henitai
       def run_suite(test_files, timeout: DEFAULT_SUITE_TIMEOUT)
         log_paths = scenario_log_paths("baseline")
         FileUtils.mkdir_p(File.dirname(log_paths[:stdout_path]))
-        stdout_file = File.open(log_paths[:stdout_path], "w")
-        stderr_file = File.open(log_paths[:stderr_path], "w")
-        pid = Process.spawn(*suite_command(test_files), out: stdout_file, err: stderr_file)
-        stdout_file.close
-        stderr_file.close
+        pid = File.open(log_paths[:stdout_path], "w") do |stdout_file|
+          File.open(log_paths[:stderr_path], "w") do |stderr_file|
+            Process.spawn(*suite_command(test_files), out: stdout_file, err: stderr_file)
+          end
+        end
         build_result(wait_with_timeout(pid, timeout), log_paths)
       end
 

@@ -3,7 +3,7 @@
 module SpecSupport
   module WarningSilencer
     SILENCED_PATTERNS = [
-      /parser\/current is loading parser\/ruby33/,
+      %r{parser/current is loading parser/ruby33},
       /method redefined; discarding old value/,
       /previous definition of value was here/,
       /character class has duplicated range:/,

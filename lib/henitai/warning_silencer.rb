@@ -5,12 +5,12 @@ module Henitai
   module WarningSilencer
     def self.silence
       original_stderr = $stderr
-      sink = File.open(File::NULL, "w")
-      $stderr = sink
-      yield
+      File.open(File::NULL, "w") do |sink|
+        $stderr = sink
+        yield
+      end
     ensure
-      $stderr = original_stderr if original_stderr
-      sink&.close
+      $stderr = original_stderr
     end
   end
 end

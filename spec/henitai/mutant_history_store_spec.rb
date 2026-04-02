@@ -129,8 +129,10 @@ RSpec.describe Henitai::MutantHistoryStore do
       )
 
       entry = store.trend_report[:mutants].first[:statusHistory].first
-      expect(entry).to have_key(:status)
-      expect(entry).not_to have_key("status")
+      aggregate_failures do
+        expect(entry).to have_key(:status)
+        expect(entry).not_to have_key("status")
+      end
     end
   end
 

@@ -247,7 +247,7 @@ RSpec.describe Henitai::Mutant::Activator do
       )
 
       allow(Unparser).to receive(:unparse).and_wrap_original do |original, node|
-        raise RuntimeError, "Could not find a round tripping solution for regexp" \
+        raise "Could not find a round tripping solution for regexp" \
           if node.respond_to?(:type) && node.type == :regexp
 
         original.call(node)

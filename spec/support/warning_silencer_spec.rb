@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+# rubocop:disable RSpec/SpecFilePathFormat
+
 require "spec_helper"
 
 RSpec.describe SpecSupport::WarningSilencer do
@@ -10,3 +12,4 @@ RSpec.describe SpecSupport::WarningSilencer do
     end.not_to output.to_stderr
   end
 end
+# rubocop:enable RSpec/SpecFilePathFormat
