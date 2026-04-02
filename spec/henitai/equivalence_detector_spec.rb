@@ -49,6 +49,17 @@ RSpec.describe Henitai::EquivalenceDetector do
     expect(mutant.status).to eq(:equivalent)
   end
 
+  it "marks exponentiation by one as equivalent" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:value), :**, int(1)),
+      mutated_node: binary_send(lvar(:value), :*, int(1))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:equivalent)
+  end
+
   it "keeps non-neutral arithmetic mutants pending" do
     mutant = build_mutant(
       original_node: binary_send(lvar(:value), :+, int(2)),

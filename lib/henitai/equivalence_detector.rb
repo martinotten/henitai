@@ -9,8 +9,6 @@ module Henitai
   # equivalent when the AST shape and the operand literals make the equivalence
   # obvious enough to be useful.
   class EquivalenceDetector
-    EQUIVALENT_ARITHMETIC_OPERATORS = %i[+ - * / **].freeze
-
     def analyze(mutant)
       return mutant unless equivalent_arithmetic_mutation?(mutant)
 
@@ -57,7 +55,7 @@ module Henitai
     end
 
     def multiplicative_operator?(operator)
-      %i[* /].include?(operator)
+      %i[* / **].include?(operator)
     end
 
     def zero_operand?(node)
