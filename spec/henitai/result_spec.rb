@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "securerandom"
+require "parser/current"
 require "tmpdir"
 require "unparser"
 
@@ -38,6 +39,33 @@ RSpec.describe Henitai::Result do
       mutated: ast
     }
   end
+
+  # rubocop:disable Metrics/MethodLength
+  def unsupported_mutant(status:)
+    node = Parser::AST::Node.new(:dstr, [])
+    mutant = Henitai::Mutant.new(
+      subject: Henitai::Subject.new(
+        namespace: "Sample",
+        method_name: "message"
+      ),
+      operator: "StringLiteral",
+      nodes: {
+        original: node,
+        mutated: node
+      },
+      description: "removed interpolation from string",
+      location: {
+        file: "(string)",
+        start_line: 1,
+        end_line: 1,
+        start_col: 0,
+        end_col: 30
+      }
+    )
+    mutant.status = status
+    mutant
+  end
+  # rubocop:enable Metrics/MethodLength
 
   def sample_location(path)
     {
@@ -158,5 +186,14 @@ RSpec.describe Henitai::Result do
       start: { line: 2, column: 1 },
       end: { line: 2, column: 21 }
     )
+  end
+
+  it "falls back to the node type when a replacement cannot be unparsed" do
+    mutant = unsupported_mutant(status: :pending)
+    allow(Unparser).to receive(:unparse).with(mutant.mutated_node).and_raise(StandardError, "boom")
+    schema = result([mutant]).to_stryker_schema
+    file = schema[:files].keys.first
+
+    expect(schema[:files][file][:mutants].first[:replacement]).to eq("dstr")
   end
 end

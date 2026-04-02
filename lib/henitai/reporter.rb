@@ -115,11 +115,11 @@ module Henitai
       end
 
       def original_line(mutant)
-        format("- %s", Unparser.unparse(mutant.original_node))
+        format("- %s", safe_unparse(mutant.original_node))
       end
 
       def mutated_line(mutant)
-        format("+ %s", Unparser.unparse(mutant.mutated_node))
+        format("+ %s", safe_unparse(mutant.mutated_node))
       end
 
       def score_line(result)
@@ -169,6 +169,19 @@ module Henitai
         return text if ENV.key?("NO_COLOR")
 
         "\e[#{color}m#{text}\e[0m"
+      end
+
+      def safe_unparse(node)
+        Unparser.unparse(node)
+      rescue StandardError
+        fallback_source(node)
+      end
+
+      def fallback_source(node)
+        return "" if node.nil?
+        return node.type.to_s if node.respond_to?(:type)
+
+        node.class.name
       end
     end
 

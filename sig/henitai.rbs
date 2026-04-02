@@ -327,6 +327,8 @@ module Henitai
       def format_percent: (Float?) -> String
       def score_color: (Float?) -> String?
       def colorize: (String, String) -> String
+      def safe_unparse: (untyped) -> String
+      def fallback_source: (untyped) -> String
     end
 
     class Json < Base
@@ -383,6 +385,8 @@ module Henitai
     def duration_for: (Mutant) -> Integer?
     def equivalence_uncertainty: () -> String?
     def stryker_status: (Symbol) -> String
+    def safe_unparse: (untyped) -> String
+    def fallback_source: (untyped) -> String
   end
 
   class Runner

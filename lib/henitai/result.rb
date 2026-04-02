@@ -121,7 +121,7 @@ module Henitai
     end
 
     def replacement_for(mutant)
-      Unparser.unparse(mutant.mutated_node)
+      safe_unparse(mutant.mutated_node)
     end
 
     def location_for(mutant)
@@ -163,6 +163,19 @@ module Henitai
         runtime_error: "RuntimeError",
         pending: "Pending"
       }.fetch(status, "Pending")
+    end
+
+    def safe_unparse(node)
+      Unparser.unparse(node)
+    rescue StandardError
+      fallback_source(node)
+    end
+
+    def fallback_source(node)
+      return "" if node.nil?
+      return node.type.to_s if node.respond_to?(:type)
+
+      node.class.name
     end
   end
 end

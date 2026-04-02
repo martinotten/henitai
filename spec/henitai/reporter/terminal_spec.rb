@@ -93,6 +93,21 @@ RSpec.describe Henitai::Reporter::Terminal do
     )
   end
 
+  def unsupported_string_mutant
+    node = Parser::AST::Node.new(:dstr, [])
+
+    build_mutant(
+      status: :survived,
+      survived: true,
+      attributes: {
+        operator: "StringLiteral",
+        location: { file: "lib/cli.rb", start_line: 12 },
+        original_node: node,
+        mutated_node: node
+      }
+    )
+  end
+
   def first_survived_detail_mutant
     survived_detail_mutant(
       file: "lib/foo.rb",
@@ -145,6 +160,20 @@ RSpec.describe Henitai::Reporter::Terminal do
     reporter = described_class.new(config: build_config)
 
     expect { reporter.progress(build_mutant(status: :pending)) }.not_to output.to_stdout
+  end
+
+  it "falls back to the node type when unparsing unsupported strings" do
+    reporter = described_class.new(config: build_config)
+    mutant = unsupported_string_mutant
+    allow(Unparser).to receive(:unparse).with(mutant.original_node).and_raise(StandardError, "boom")
+    allow(Unparser).to receive(:unparse).with(mutant.mutated_node).and_raise(StandardError, "boom")
+    result = build_result(
+      mutants: [mutant],
+      scoring_summary: survived_detail_scoring_summary,
+      duration: 12.34
+    )
+
+    expect { reporter.report(result) }.to output(/dstr/).to_stdout
   end
 
   it "prints a summary table with score, counts, and duration" do
