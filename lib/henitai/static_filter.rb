@@ -154,9 +154,8 @@ module Henitai
       @equivalence_detector ||= EquivalenceDetector.new
     end
 
-    def coverage_report_path(config)
-      reports_dir = reports_dir_for(config)
-      File.join(reports_dir, File.basename(DEFAULT_COVERAGE_REPORT_PATH))
+    def coverage_report_path(_config)
+      DEFAULT_COVERAGE_REPORT_PATH
     end
 
     def per_test_coverage_report_path(config)

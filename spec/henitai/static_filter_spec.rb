@@ -224,20 +224,45 @@ RSpec.describe Henitai::StaticFilter do
     end
   end
 
-  it "uses the configured reports dir when looking up coverage reports" do
+  it "uses the default SimpleCov report path even when reports_dir is configured" do
+    Dir.mktmpdir do |dir|
+      mutant = build_mutant("foo.bar")
+      coverage_dir = File.join(dir, "artifacts")
+      FileUtils.mkdir_p(coverage_dir)
+      write_coverage_report(
+        dir,
+        {
+          "RSpec" => {
+            "coverage" => {
+              File.join(dir, "lib", "sample.rb") => {
+                "lines" => [nil, 1, nil]
+              }
+            }
+          }
+        }
+      )
+
+      mutant.location[:file] = File.join(dir, "lib", "sample.rb")
+      mutant.location[:start_line] = 3
+
+      Dir.chdir(dir) do
+        described_class.new.apply([mutant], config(reports_dir: coverage_dir))
+      end
+
+      expect(mutant.status).to eq(:no_coverage)
+    end
+  end
+
+  it "uses the configured reports dir for per-test coverage reports" do
     Dir.mktmpdir do |dir|
       mutant = build_mutant("foo.bar")
       coverage_dir = File.join(dir, "artifacts")
       FileUtils.mkdir_p(coverage_dir)
       File.write(
-        File.join(coverage_dir, ".resultset.json"),
+        File.join(coverage_dir, "henitai_per_test.json"),
         {
-          "RSpec" => {
-            "coverage" => {
-              File.join(dir, "lib", "sample.rb") => {
-                "lines" => [nil, 1, 1]
-              }
-            }
+          "spec/models/sample_spec.rb" => {
+            File.join(dir, "lib", "sample.rb") => [1]
           }
         }.to_json
       )
@@ -249,7 +274,7 @@ RSpec.describe Henitai::StaticFilter do
         described_class.new.apply([mutant], config(reports_dir: coverage_dir))
       end
 
-      expect(mutant.status).to eq(:pending)
+      expect(mutant.status).to eq(:no_coverage)
     end
   end
 

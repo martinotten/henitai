@@ -247,6 +247,9 @@ module Henitai
         warn operator_help_text
         exit 1
       end
+    rescue ArgumentError => e
+      warn e.message
+      exit 1
     end
 
     def init_template

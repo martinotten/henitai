@@ -320,15 +320,20 @@ RSpec.describe Henitai::CLI do
     ).to_stdout
   end
 
-  it "raises when operator metadata is missing" do
+  it "warns and exits when operator metadata is missing" do
     stub_const(
       "Henitai::Operator::FULL_SET",
       Henitai::Operator::FULL_SET + ["MissingOperator"]
     )
 
-    expect do
-      described_class.new(%w[operator list]).run
-    end.to raise_error(ArgumentError, /Missing operator metadata for: MissingOperator/)
+    cli = described_class.new(%w[operator list])
+    exit_status = nil
+    cli.define_singleton_method(:exit) { |status = nil| exit_status = status }
+
+    aggregate_failures do
+      expect { cli.run }.to output(/Missing operator metadata for: MissingOperator/).to_stderr
+      expect(exit_status).to eq(1)
+    end
   end
 
   it "prints a warning for unknown operator subcommands" do
