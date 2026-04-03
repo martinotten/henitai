@@ -147,7 +147,10 @@ module Henitai
     end
 
     def normalize_path(path)
-      File.expand_path(path)
+      expanded = File.expand_path(path)
+      File.realpath(expanded)
+    rescue Errno::ENOENT, Errno::ENOTDIR
+      expanded
     end
 
     def equivalence_detector

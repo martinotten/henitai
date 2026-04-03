@@ -282,9 +282,17 @@ module Henitai
     end
 
     class Minitest < Rspec
+      def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
+      def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
+
       private
 
+      def run_in_child: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
+      def suite_command: (Array[String]) -> Array[String]
       def run_tests: (Array[String]) -> Integer
+      def preload_environment: () -> void
+      def setup_load_path: () -> void
+      def subprocess_env: () -> Hash[String, String]
       def spec_files: () -> Array[String]
     end
   end
