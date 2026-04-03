@@ -391,10 +391,33 @@ module Henitai
     # runner. Minitest shares selection and execution semantics, but per-test
     # coverage collection is not yet wired into this path.
     class Minitest < Rspec
+      def run_mutant(mutant:, test_files:, timeout:)
+        setup_load_path
+        super
+      end
+
+      def run_in_child(mutant:, test_files:, log_paths:)
+        ENV["RAILS_ENV"] = "test" unless ENV["RAILS_ENV"] == "test"
+        preload_environment
+        super
+      end
+
+      def run_suite(test_files, timeout: DEFAULT_SUITE_TIMEOUT)
+        log_paths = scenario_log_paths("baseline")
+        FileUtils.mkdir_p(File.dirname(log_paths[:stdout_path]))
+        pid = File.open(log_paths[:stdout_path], "w") do |stdout_file|
+          File.open(log_paths[:stderr_path], "w") do |stderr_file|
+            Process.spawn(subprocess_env, *suite_command(test_files), out: stdout_file, err: stderr_file)
+          end
+        end
+        build_result(wait_with_timeout(pid, timeout), log_paths)
+      end
+
       private
 
       def suite_command(test_files)
         ["bundle", "exec", "ruby", "-I", "test",
+         "-r", "henitai/minitest_simplecov",
          "-e", "ARGV.each { |f| require File.expand_path(f) }",
          *test_files]
       end
@@ -409,8 +432,26 @@ module Henitai
         status == true ? 0 : 1
       end
 
+      def preload_environment
+        env_file = File.expand_path("config/environment.rb")
+        require env_file if File.exist?(env_file)
+      end
+
+      def setup_load_path
+        test_dir = File.expand_path("test")
+        $LOAD_PATH.unshift(test_dir) unless $LOAD_PATH.include?(test_dir)
+      end
+
+      def subprocess_env
+        env = {}
+        env["RAILS_ENV"] = "test" unless ENV["RAILS_ENV"] == "test"
+        env["PARALLEL_WORKERS"] = "1"
+        env
+      end
+
       def spec_files
-        Dir.glob("test/**/*_test.rb") + Dir.glob("test/**/*_spec.rb")
+        (Dir.glob("test/**/*_test.rb") + Dir.glob("test/**/*_spec.rb"))
+          .reject { |f| f.start_with?("test/system/") }
       end
     end
   end
