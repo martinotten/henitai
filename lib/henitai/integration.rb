@@ -2,7 +2,6 @@
 
 require "fileutils"
 require "minitest"
-require "rspec/core"
 
 module Henitai
   # Namespace for test-framework integrations.
@@ -224,6 +223,7 @@ module Henitai
       end
 
       def run_tests(test_files)
+        require "rspec/core"
         status = RSpec::Core::Runner.run(test_files + rspec_options)
         return status if status.is_a?(Integer)
 
