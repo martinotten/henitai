@@ -48,10 +48,10 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   # Runtime dependencies
-  spec.add_dependency "prism", "~> 1.5"     # Ruby 4 parser
+  spec.add_dependency "prism", "~> 1.5" # Ruby 4 parser
   spec.add_dependency "simplecov", "~> 0.22" # Coverage collection for Minitest integration
-  spec.add_dependency "sqlite3", "~> 1.7"   # Lightweight persistent history store
-  spec.add_dependency "unparser", "~> 0.6"  # AST → source code reconstruction
+  spec.add_dependency "sqlite3", "~> 1.7" # Lightweight persistent history store
+  spec.add_dependency "unparser", "~> 0.6" # AST → source code reconstruction
 
   # Development dependencies (via Gemfile)
 end

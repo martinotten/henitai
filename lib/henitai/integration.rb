@@ -443,7 +443,7 @@ module Henitai
       end
 
       def subprocess_env
-        env = {} #: Hash[String, String]
+        env = {} # : Hash[String, String]
         env["RAILS_ENV"] = "test" unless ENV["RAILS_ENV"] == "test"
         env["PARALLEL_WORKERS"] = "1"
         env
