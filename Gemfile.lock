@@ -3,6 +3,7 @@ PATH
   specs:
     henitai (0.1.0)
       prism (~> 1.5)
+      simplecov (~> 0.22)
       sqlite3 (~> 1.7)
       unparser (~> 0.6)
 
