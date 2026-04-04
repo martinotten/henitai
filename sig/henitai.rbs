@@ -244,6 +244,8 @@ module Henitai
       def reopen_child_output_stream: (untyped, untyped) -> void
       def close_child_output_files: (Hash[Symbol, untyped]) -> void
       def mutation_coverage_dir: (String) -> String
+      def stdout_stream: () -> IO
+      def stderr_stream: () -> IO
     end
 
     class Rspec < Base

@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
+require "open3"
 require "spec_helper"
+require "tmpdir"
 
 RSpec.describe Henitai::Integration::ScenarioLogSupport do
   def with_env(key, value)
@@ -71,55 +73,41 @@ RSpec.describe Henitai::Integration::ScenarioLogSupport do
     end
   end
 
-  it "redirects stdout and stderr to the child output files" do
-    support = described_class.new
-    stdout_file = instance_double(File)
-    stderr_file = instance_double(File)
-    calls = []
+  it "uses the real stdio objects even when the parent captures stdout" do
+    script = <<~RUBY
+      require "stringio"
+      require "tmpdir"
 
-    allow($stdout).to receive(:reopen) { |file| calls << [:stdout, file] }
-    allow($stderr).to receive(:reopen) { |file| calls << [:stderr, file] }
+      $stdout = StringIO.new
+      $stderr = StringIO.new
 
-    support.redirect_child_output(
-      stdout_file:,
-      stderr_file:
+      require "henitai"
+      require "henitai/integration"
+
+      support = Henitai::Integration::ScenarioLogSupport.new
+
+      Dir.mktmpdir do |dir|
+        support.send(
+          :redirect_child_output,
+          original_stdout: IO.for_fd(1).dup,
+          original_stderr: IO.for_fd(2).dup,
+          stdout_file: File.open(File.join(dir, "stdout.log"), "w"),
+          stderr_file: File.open(File.join(dir, "stderr.log"), "w")
+        )
+      end
+    RUBY
+
+    stdout, stderr, status = Open3.capture3(
+      "bundle",
+      "exec",
+      "ruby",
+      "-I",
+      "lib",
+      "-e",
+      script
     )
 
-    expect(calls).to eq([[:stdout, stdout_file], [:stderr, stderr_file]])
-  end
-
-  it "restores stdout and stderr from the original streams" do
-    support = described_class.new
-    original_stdout = instance_double(IO)
-    original_stderr = instance_double(IO)
-    stdout_file = instance_double(File)
-    stderr_file = instance_double(File)
-    calls = []
-
-    allow($stdout).to receive(:reopen) { |stream| calls << [:stdout, :reopen, stream] }
-    allow($stderr).to receive(:reopen) { |stream| calls << [:stderr, :reopen, stream] }
-    allow(stdout_file).to receive(:close) { calls << %i[stdout_file close] }
-    allow(stderr_file).to receive(:close) { calls << %i[stderr_file close] }
-    allow(original_stdout).to receive(:close) { calls << %i[original_stdout close] }
-    allow(original_stderr).to receive(:close) { calls << %i[original_stderr close] }
-
-    support.close_child_output(
-      original_stdout:,
-      original_stderr:,
-      stdout_file:,
-      stderr_file:
-    )
-
-    expect(calls).to eq(
-      [
-        [:stdout, :reopen, original_stdout],
-        [:stderr, :reopen, original_stderr],
-        %i[stdout_file close],
-        %i[stderr_file close],
-        %i[original_stdout close],
-        %i[original_stderr close]
-      ]
-    )
+    expect(status.success?).to be(true), [stdout, stderr].reject(&:empty?).join("\n")
   end
 
   it "does not reopen a stream when no original stream is available" do

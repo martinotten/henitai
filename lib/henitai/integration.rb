@@ -56,8 +56,8 @@ module Henitai
 
       def build_child_output_files(log_paths)
         {
-          original_stdout: $stdout.dup,
-          original_stderr: $stderr.dup,
+          original_stdout: stdout_stream.dup,
+          original_stderr: stderr_stream.dup,
           stdout_file: File.new(log_paths[:stdout_path], "w"),
           stderr_file: File.new(log_paths[:stderr_path], "w")
         }
@@ -69,13 +69,17 @@ module Henitai
       end
 
       def redirect_child_output(output_files)
-        $stdout.reopen(output_files[:stdout_file])
-        $stderr.reopen(output_files[:stderr_file])
+        reopen_child_output_stream(stdout_stream, output_files[:stdout_file])
+        reopen_child_output_stream(stderr_stream, output_files[:stderr_file])
+        $stdout = stdout_stream
+        $stderr = stderr_stream
       end
 
       def restore_child_output(output_files)
-        reopen_child_output_stream($stdout, output_files[:original_stdout])
-        reopen_child_output_stream($stderr, output_files[:original_stderr])
+        reopen_child_output_stream(stdout_stream, output_files[:original_stdout])
+        reopen_child_output_stream(stderr_stream, output_files[:original_stderr])
+        $stdout = output_files[:original_stdout]
+        $stderr = output_files[:original_stderr]
       end
 
       def reopen_child_output_stream(stream, original_stream)
@@ -93,6 +97,14 @@ module Henitai
       def mutation_coverage_dir(mutant_id)
         reports_dir = ENV.fetch("HENITAI_REPORTS_DIR", "reports")
         File.join(reports_dir, "mutation-coverage", mutant_id.to_s)
+      end
+
+      def stdout_stream
+        @stdout_stream ||= IO.for_fd(1)
+      end
+
+      def stderr_stream
+        @stderr_stream ||= IO.for_fd(2)
       end
     end
 

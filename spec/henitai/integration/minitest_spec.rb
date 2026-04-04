@@ -279,29 +279,41 @@ RSpec.describe Henitai::Integration::Minitest do
       mutant = Struct.new(:id).new("mutant-1")
       integration = described_class.new
       order = []
-      original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+      log_paths = {
+        stdout_path: "reports/mutation-logs/mutant-1.stdout.log",
+        stderr_path: "reports/mutation-logs/mutant-1.stderr.log",
+        log_path: "reports/mutation-logs/mutant-1.log"
+      }
+      log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
 
-      begin
-        stub_minitest_process_flow(order, test_file)
-
-        integration.run_mutant(
-          mutant:,
-          test_files: [test_file],
-          timeout: 1.0
-        )
-
-        expect(order).to eq(
-          [
-            :fork,
-            :activate,
-            [:minitest, []],
-            [:exit, 0],
-            [:wait, 12_345, Process::WNOHANG]
-          ]
-        )
-      ensure
-        ENV["HENITAI_MUTANT_ID"] = original_env
+      allow(integration).to receive(:scenario_log_support).and_return(log_support)
+      allow(log_support).to receive(:with_coverage_dir).with(mutant.id).and_yield
+      allow(log_support).to receive(:capture_child_output).with(log_paths).and_yield
+      allow(Henitai::Mutant::Activator).to receive(:activate!) do |_mutant|
+        order << :activate
+        0
       end
+      allow(integration).to receive(:run_tests) do |files|
+        order << [:minitest, files]
+        0
+      end
+
+      result = integration.send(
+        :run_in_child,
+        mutant:,
+        test_files: [test_file],
+        log_paths:
+      )
+
+      expect([result, order]).to eq(
+        [
+          0,
+          [
+            :activate,
+            [:minitest, [test_file]]
+          ]
+        ]
+      )
     end
   end
 end

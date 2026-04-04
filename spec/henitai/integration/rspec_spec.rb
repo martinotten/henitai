@@ -92,12 +92,21 @@ RSpec.describe Henitai::Integration::Rspec do
   end
 
   def stub_timeout_child(integration, record, child_pid:, raise_esrch_on_kill: false)
+    stub_child_logging(integration)
     stub_process_exit(record)
     stub_process_fork(record, child_pid)
     stub_process_wait(record)
     stub_process_clock
     stub_process_kill(record, raise_esrch_on_kill)
     stub_mutant_runtime(integration)
+  end
+
+  def stub_child_logging(integration)
+    log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
+
+    allow(integration).to receive(:scenario_log_support).and_return(log_support)
+    allow(log_support).to receive(:with_coverage_dir).and_yield
+    allow(log_support).to receive(:capture_child_output).and_yield
   end
 
   def stub_process_exit(record)
@@ -140,6 +149,7 @@ RSpec.describe Henitai::Integration::Rspec do
   end
 
   def stub_ordered_mutant_run(order, integration, child_pid:)
+    stub_child_logging(integration)
     stub_ordered_exit(order)
     stub_ordered_fork(order, child_pid)
     stub_ordered_activation(order)
@@ -295,6 +305,7 @@ RSpec.describe Henitai::Integration::Rspec do
     original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
 
     begin
+      stub_child_logging(integration)
       allow(Process).to receive(:exit) { |status| record[:child_status] = status }
       allow(Process).to receive(:fork) do |&block|
         record[:forked] = true
@@ -368,6 +379,7 @@ RSpec.describe Henitai::Integration::Rspec do
     original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
 
     begin
+      stub_child_logging(integration)
       allow(Process).to receive(:exit) { |status| record[:child_status] = status }
       allow(Process).to receive(:fork) do |&block|
         block.call
@@ -400,6 +412,7 @@ RSpec.describe Henitai::Integration::Rspec do
     original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
 
     begin
+      stub_child_logging(integration)
       allow(Process).to receive(:exit) { |status| record[:child_status] = status }
       allow(Process).to receive(:fork) do |&block|
         block.call
@@ -432,6 +445,7 @@ RSpec.describe Henitai::Integration::Rspec do
     original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
 
     begin
+      stub_child_logging(integration)
       allow(Process).to receive(:exit)
       allow(Process).to receive(:fork) do |&block|
         block.call
@@ -463,6 +477,12 @@ RSpec.describe Henitai::Integration::Rspec do
     original_env = ENV.fetch("HENITAI_COVERAGE_DIR", nil)
 
     begin
+      log_support = Henitai::Integration::ScenarioLogSupport.new
+      allow(log_support).to receive(:capture_child_output).and_yield
+      allow(integration).to receive_messages(
+        scenario_log_support: log_support,
+        wait_with_timeout: :survived
+      )
       allow(Process).to receive(:exit)
       allow(Process).to receive(:fork) do |&block|
         block.call
@@ -473,7 +493,6 @@ RSpec.describe Henitai::Integration::Rspec do
         record[:coverage_dir] = ENV.fetch("HENITAI_COVERAGE_DIR", nil)
         0
       end
-      allow(integration).to receive(:wait_with_timeout).and_return(:survived)
 
       integration.run_mutant(
         mutant:,
@@ -496,6 +515,7 @@ RSpec.describe Henitai::Integration::Rspec do
     original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
 
     begin
+      stub_child_logging(integration)
       allow(Process).to receive(:exit) { |status| record[:child_status] = status }
       allow(Process).to receive(:fork) do |&block|
         block.call
@@ -593,6 +613,7 @@ RSpec.describe Henitai::Integration::Rspec do
     original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
 
     begin
+      stub_child_logging(integration)
       allow(Process).to receive(:exit) { |status| record[:child_status] = status }
       allow(Process).to receive(:fork) do |&block|
         block.call
@@ -635,6 +656,7 @@ RSpec.describe Henitai::Integration::Rspec do
     original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
 
     begin
+      stub_child_logging(integration)
       allow(Process).to receive(:exit) { |status| record[:child_status] = status }
       allow(Process).to receive(:fork) do |&block|
         block.call
