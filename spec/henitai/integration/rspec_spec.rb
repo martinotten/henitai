@@ -194,8 +194,17 @@ RSpec.describe Henitai::Integration::Rspec do
   end
 
   it "resolves the rspec and minitest integrations" do
-    expect(Henitai::Integration.for("rspec")).to eq(Henitai::Integration::Rspec)
-    expect(Henitai::Integration.for("minitest")).to eq(Henitai::Integration::Minitest)
+    expect(
+      [
+        Henitai::Integration.for("rspec"),
+        Henitai::Integration.for("minitest")
+      ]
+    ).to eq(
+      [
+        described_class,
+        Henitai::Integration::Minitest
+      ]
+    )
   end
 
   it "raises a helpful error for an unknown integration" do
@@ -210,7 +219,17 @@ RSpec.describe Henitai::Integration::Rspec do
     integration = Henitai::Integration::Base.new
 
     expect { integration.select_tests(nil) }.to raise_error(NotImplementedError)
+  end
+
+  it "keeps the base integration test files abstract" do
+    integration = Henitai::Integration::Base.new
+
     expect { integration.test_files }.to raise_error(NotImplementedError)
+  end
+
+  it "keeps the base integration mutant runner abstract" do
+    integration = Henitai::Integration::Base.new
+
     expect do
       integration.run_mutant(mutant: nil, test_files: [], timeout: 1.0)
     end.to raise_error(NotImplementedError)
@@ -819,7 +838,7 @@ RSpec.describe Henitai::Integration::Rspec do
 
     expect(
       integration.send(:requires_source_file?, "spec/sample_spec.rb", source_file)
-    ).to eq(true)
+    ).to be(true)
   end
 
   it "matches a source file when a spec mentions the full source path" do
@@ -831,7 +850,7 @@ RSpec.describe Henitai::Integration::Rspec do
 
     expect(
       integration.send(:requires_source_file?, "spec/sample_spec.rb", source_file)
-    ).to eq(true)
+    ).to be(true)
   end
 
   it "stops transitive traversal when the spec file was already visited" do
@@ -845,15 +864,17 @@ RSpec.describe Henitai::Integration::Rspec do
         "lib/sample.rb",
         [spec_file]
       )
-    ).to eq(false)
+    ).to be(false)
   end
 
   it "records the visited spec before traversing its requires" do
     integration = described_class.new
     visited = []
 
-    allow(integration).to receive(:requires_source_file?).and_return(false)
-    allow(integration).to receive(:required_files).and_return([])
+    allow(integration).to receive_messages(
+      requires_source_file?: false,
+      required_files: []
+    )
 
     integration.send(
       :requires_source_file_transitively?,
@@ -913,7 +934,7 @@ RSpec.describe Henitai::Integration::Rspec do
   end
 
   it "writes child stdout and stderr into the combined scenario log" do
-    with_temp_workspace do |dir|
+    with_temp_workspace do |_dir|
       integration = described_class.new
       log_paths = integration.send(:scenario_log_paths, "mutant-1")
       FileUtils.mkdir_p(File.dirname(log_paths[:stdout_path]))
@@ -945,8 +966,9 @@ RSpec.describe Henitai::Integration::Rspec do
     allow(log_support).to receive(:capture_child_output).with(log_paths).and_yield
     allow(Henitai::Mutant::Activator).to receive(:activate!).with(mutant).and_return(0)
     allow(integration).to receive(:run_tests).with(["spec/foo_spec.rb"]).and_return(0)
+    calls = []
 
-    expect(Thread).to receive(:report_on_exception=).with(false)
+    allow(Thread).to receive(:report_on_exception=) { |value| calls << value }
 
     result = integration.send(
       :run_in_child,
@@ -955,7 +977,7 @@ RSpec.describe Henitai::Integration::Rspec do
       log_paths:
     )
 
-    expect(result).to eq(0)
+    expect([calls, result]).to eq([[false], 0])
   end
 
   it "returns an empty string when reading a missing log file" do
@@ -976,16 +998,27 @@ RSpec.describe Henitai::Integration::Rspec do
 
   it "formats combined logs without empty sections" do
     integration = described_class.new
-
-    expect(integration.send(:combined_log, "out\n", "")).to eq("stdout:\nout\n")
-    expect(integration.send(:combined_log, "", "err\n")).to eq("stderr:\nerr\n")
+    expect(
+      [
+        integration.send(:combined_log, "out\n", ""),
+        integration.send(:combined_log, "", "err\n")
+      ]
+    ).to eq(
+      [
+        "stdout:\nout\n",
+        "stderr:\nerr\n"
+      ]
+    )
   end
 
   it "delegates pause to sleep" do
     integration = described_class.new
+    calls = []
 
-    expect(integration).to receive(:sleep).with(0.25)
+    allow(integration).to receive(:sleep) { |seconds| calls << seconds }
 
     integration.send(:pause, 0.25)
+
+    expect(calls).to eq([0.25])
   end
 end

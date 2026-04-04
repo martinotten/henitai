@@ -23,35 +23,51 @@ RSpec.describe Henitai::Integration::ScenarioLogSupport do
 
   it "restores the original coverage dir after yielding" do
     with_env("HENITAI_COVERAGE_DIR", "existing-dir") do
+      events = []
+
       described_class.new.with_coverage_dir("mutant-1") do
-        expect(ENV.fetch("HENITAI_COVERAGE_DIR")).to eq(
-          File.join("reports", "mutation-coverage", "mutant-1")
-        )
+        events << ENV.fetch("HENITAI_COVERAGE_DIR")
       end
 
-      expect(ENV.fetch("HENITAI_COVERAGE_DIR")).to eq("existing-dir")
+      events << ENV.fetch("HENITAI_COVERAGE_DIR")
+
+      expect(events).to eq(
+        [
+          File.join("reports", "mutation-coverage", "mutant-1"),
+          "existing-dir"
+        ]
+      )
     end
   end
 
   it "removes the coverage dir when none existed before" do
     with_env("HENITAI_COVERAGE_DIR", nil) do
+      events = []
+
       described_class.new.with_coverage_dir("mutant-2") do
-        expect(ENV.fetch("HENITAI_COVERAGE_DIR")).to eq(
-          File.join("reports", "mutation-coverage", "mutant-2")
-        )
+        events << ENV.fetch("HENITAI_COVERAGE_DIR")
       end
 
-      expect(ENV).not_to have_key("HENITAI_COVERAGE_DIR")
+      events << ENV.key?("HENITAI_COVERAGE_DIR")
+
+      expect(events).to eq(
+        [
+          File.join("reports", "mutation-coverage", "mutant-2"),
+          false
+        ]
+      )
     end
   end
 
   it "uses the configured reports dir for mutation coverage" do
     with_env("HENITAI_REPORTS_DIR", "tmp/reports") do
+      events = []
+
       described_class.new.with_coverage_dir("mutant-3") do
-        expect(ENV.fetch("HENITAI_COVERAGE_DIR")).to eq(
-          File.join("tmp/reports", "mutation-coverage", "mutant-3")
-        )
+        events << ENV.fetch("HENITAI_COVERAGE_DIR")
       end
+
+      expect(events).to eq([File.join("tmp/reports", "mutation-coverage", "mutant-3")])
     end
   end
 
@@ -59,14 +75,17 @@ RSpec.describe Henitai::Integration::ScenarioLogSupport do
     support = described_class.new
     stdout_file = instance_double(File)
     stderr_file = instance_double(File)
+    calls = []
 
-    expect($stdout).to receive(:reopen).with(stdout_file)
-    expect($stderr).to receive(:reopen).with(stderr_file)
+    allow($stdout).to receive(:reopen) { |file| calls << [:stdout, file] }
+    allow($stderr).to receive(:reopen) { |file| calls << [:stderr, file] }
 
     support.redirect_child_output(
       stdout_file:,
       stderr_file:
     )
+
+    expect(calls).to eq([[:stdout, stdout_file], [:stderr, stderr_file]])
   end
 
   it "restores stdout and stderr from the original streams" do
@@ -75,13 +94,14 @@ RSpec.describe Henitai::Integration::ScenarioLogSupport do
     original_stderr = instance_double(IO)
     stdout_file = instance_double(File)
     stderr_file = instance_double(File)
+    calls = []
 
-    expect($stdout).to receive(:reopen).with(original_stdout)
-    expect($stderr).to receive(:reopen).with(original_stderr)
-    expect(stdout_file).to receive(:close)
-    expect(stderr_file).to receive(:close)
-    expect(original_stdout).to receive(:close)
-    expect(original_stderr).to receive(:close)
+    allow($stdout).to receive(:reopen) { |stream| calls << [:stdout, :reopen, stream] }
+    allow($stderr).to receive(:reopen) { |stream| calls << [:stderr, :reopen, stream] }
+    allow(stdout_file).to receive(:close) { calls << %i[stdout_file close] }
+    allow(stderr_file).to receive(:close) { calls << %i[stderr_file close] }
+    allow(original_stdout).to receive(:close) { calls << %i[original_stdout close] }
+    allow(original_stderr).to receive(:close) { calls << %i[original_stderr close] }
 
     support.close_child_output(
       original_stdout:,
@@ -89,28 +109,45 @@ RSpec.describe Henitai::Integration::ScenarioLogSupport do
       stdout_file:,
       stderr_file:
     )
+
+    expect(calls).to eq(
+      [
+        [:stdout, :reopen, original_stdout],
+        [:stderr, :reopen, original_stderr],
+        %i[stdout_file close],
+        %i[stderr_file close],
+        %i[original_stdout close],
+        %i[original_stderr close]
+      ]
+    )
   end
 
   it "does not reopen a stream when no original stream is available" do
     support = described_class.new
     stream = instance_double(IO)
+    calls = []
 
-    expect(stream).not_to receive(:reopen)
+    allow(stream).to receive(:reopen) { |value| calls << value }
 
     support.reopen_child_output_stream(stream, nil)
+
+    expect(calls).to be_empty
   end
 
   it "marks both child output files as sync" do
     support = described_class.new
     stdout_file = instance_double(File)
     stderr_file = instance_double(File)
+    calls = []
 
-    expect(stdout_file).to receive(:sync=).with(true)
-    expect(stderr_file).to receive(:sync=).with(true)
+    allow(stdout_file).to receive(:sync=) { |value| calls << [:stdout, value] }
+    allow(stderr_file).to receive(:sync=) { |value| calls << [:stderr, value] }
 
     support.sync_child_output_files(
       stdout_file:,
       stderr_file:
     )
+
+    expect(calls).to eq([[:stdout, true], [:stderr, true]])
   end
 end

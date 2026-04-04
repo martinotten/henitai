@@ -135,6 +135,12 @@ module Henitai
       def run_mutant(mutant:, test_files:, timeout:)
         raise NotImplementedError
       end
+
+      private
+
+      def pause(seconds)
+        sleep(seconds)
+      end
     end
 
     # RSpec integration adapter.
@@ -238,10 +244,6 @@ module Henitai
 
       def rspec_options
         ["--require", "henitai/rspec_coverage_formatter"]
-      end
-
-      def pause(seconds)
-        sleep(seconds)
       end
 
       def scenario_log_support

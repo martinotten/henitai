@@ -192,12 +192,14 @@ RSpec.describe Henitai::Integration::Minitest do
   it "requires config/environment.rb only when it exists" do
     integration = described_class.new
     env_file = File.expand_path("config/environment.rb")
+    calls = []
 
     allow(File).to receive(:exist?).with(env_file).and_return(true)
-
-    expect(integration).to receive(:require).with(env_file)
+    allow(integration).to receive(:require) { |path| calls << path }
 
     integration.send(:preload_environment)
+
+    expect(calls).to eq([env_file])
   end
 
   it "adds the test directory to the load path only once" do
@@ -229,9 +231,8 @@ RSpec.describe Henitai::Integration::Minitest do
       write_file(dir, "test/models/sample_spec.rb", "")
       write_file(dir, "test/system/browser_test.rb", "")
 
-      expect(described_class.new.test_files).to match_array(
-        ["test/models/sample_test.rb", "test/models/sample_spec.rb"]
-      )
+      expect(described_class.new.test_files).to contain_exactly("test/models/sample_test.rb",
+                                                                "test/models/sample_spec.rb")
     end
   end
 
