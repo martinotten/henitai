@@ -105,7 +105,12 @@ module Henitai
     def self.for(name)
       const_get(name.capitalize)
     rescue NameError
-      raise ArgumentError, "Unknown integration: #{name}. Available: rspec"
+      available = constants.filter_map do |constant_name|
+        integration = const_get(constant_name)
+        constant_name.to_s.downcase if integration.is_a?(Class) && integration < Base
+      end.sort.join(", ")
+
+      raise ArgumentError, "Unknown integration: #{name}. Available: #{available}"
     end
 
     # Base class for all integrations.
@@ -185,6 +190,7 @@ module Henitai
       private
 
       def run_in_child(mutant:, test_files:, log_paths:)
+        Thread.report_on_exception = false
         scenario_log_support.with_coverage_dir(mutant.id) do
           scenario_log_support.capture_child_output(log_paths) do
             return 2 if Mutant::Activator.activate!(mutant) == :compile_error
@@ -231,7 +237,7 @@ module Henitai
       end
 
       def rspec_options
-        ["--require", "henitai/coverage_formatter"]
+        ["--require", "henitai/rspec_coverage_formatter"]
       end
 
       def pause(seconds)

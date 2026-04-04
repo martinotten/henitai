@@ -192,19 +192,22 @@ RSpec.describe Henitai::Configuration do
   end
 
   it "warns on unknown keys and still loads the known ones" do
-    expect do
-      load_configuration(<<~YAML)
-        integration:
-          name: rspec
-        dashboard:
-          project: example/repo
-          unknown_flag: true
-        mutation:
-          timeout: 12.5
-          unknown_flag: true
-        unknown_top_level: yes
-      YAML
-    end.to output(/Unknown configuration key/).to_stderr
+    allow(Henitai::ConfigurationValidator).to receive(:warn)
+
+    load_configuration(<<~YAML)
+      integration:
+        name: rspec
+      dashboard:
+        project: example/repo
+        unknown_flag: true
+      mutation:
+        timeout: 12.5
+        unknown_flag: true
+      unknown_top_level: yes
+    YAML
+
+    expect(Henitai::ConfigurationValidator).to have_received(:warn)
+      .with(/Unknown configuration key/).at_least(:once)
   end
 
   it "loads a custom reports directory" do

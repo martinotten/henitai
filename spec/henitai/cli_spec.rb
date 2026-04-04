@@ -158,8 +158,11 @@ RSpec.describe Henitai::CLI do
   it "includes the unknown command name in the warning" do
     cli = described_class.new(["bogus"])
     cli.define_singleton_method(:exit) { |_status = nil| nil }
+    allow(cli).to receive(:warn)
 
-    expect { cli.run }.to output(/Unknown command: bogus/).to_stderr
+    cli.run
+
+    expect(cli).to have_received(:warn).with("Unknown command: bogus")
   end
 
   it "passes subject patterns through" do
@@ -253,8 +256,11 @@ RSpec.describe Henitai::CLI do
       cli.define_singleton_method(:exit) do |status = nil|
         raise "expected exit status 2, got #{status.inspect}" unless status == 2
       end
+      allow(cli).to receive(:warn)
 
-      expect { cli.run }.to output(/boom/).to_stderr
+      cli.run
+
+      expect(cli).to have_received(:warn).with("Henitai::ConfigurationError: boom")
     end
   end
 
@@ -413,8 +419,11 @@ RSpec.describe Henitai::CLI do
         cli = described_class.new(["init", "custom.yml", "extra"])
         allow($stdin).to receive_messages(tty?: false, gets: nil)
         cli.define_singleton_method(:exit) { |_status = nil| nil }
+        allow(cli).to receive(:warn)
 
-        expect { cli.run }.to output(/Unexpected arguments: extra/).to_stderr
+        cli.run
+
+        expect(cli).to have_received(:warn).with("Unexpected arguments: extra")
       end
     end
   end
@@ -476,9 +485,11 @@ RSpec.describe Henitai::CLI do
     cli = described_class.new(%w[operator list])
     exit_status = nil
     cli.define_singleton_method(:exit) { |status = nil| exit_status = status }
+    allow(cli).to receive(:warn)
 
     aggregate_failures do
-      expect { cli.run }.to output(/Missing operator metadata for: MissingOperator/).to_stderr
+      cli.run
+      expect(cli).to have_received(:warn).with("Missing operator metadata for: MissingOperator")
       expect(exit_status).to eq(1)
     end
   end
@@ -486,8 +497,11 @@ RSpec.describe Henitai::CLI do
   it "prints a warning for unknown operator subcommands" do
     cli = described_class.new(%w[operator bogus])
     cli.define_singleton_method(:exit) { |_status = nil| nil }
+    allow(cli).to receive(:warn)
 
-    expect { cli.run }.to output(/Unknown operator command: bogus/).to_stderr
+    cli.run
+
+    expect(cli).to have_received(:warn).with("Unknown operator command: bogus")
   end
 
   it "exits non-zero for unknown operator subcommands" do

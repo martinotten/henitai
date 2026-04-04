@@ -95,4 +95,51 @@ RSpec.describe Henitai::Integration::Rspec do
       end
     end
   end
+
+  it "follows plain requires through the load path during fallback selection" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "spec/models"))
+      FileUtils.mkdir_p(File.join(dir, "load_path_helpers"))
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+
+      File.write(File.join(dir, "spec/models/widget_spec.rb"), <<~RUBY)
+        require "sample_helper"
+
+        RSpec.describe Widget do
+        end
+      RUBY
+
+      File.write(File.join(dir, "spec/models/other_spec.rb"), <<~RUBY)
+        RSpec.describe Other do
+        end
+      RUBY
+
+      File.write(File.join(dir, "load_path_helpers/sample_helper.rb"), <<~RUBY)
+        require_relative "../lib/sample"
+      RUBY
+
+      source_file = File.join(dir, "lib/sample.rb")
+      File.write(source_file, "class Sample::Thing; end")
+
+      original_load_path = $LOAD_PATH.dup
+      $LOAD_PATH.unshift(File.join(dir, "load_path_helpers"))
+
+      Dir.chdir(dir) do
+        subject = Henitai::Subject.new(
+          namespace: "Example",
+          method_name: "value",
+          method_type: :instance,
+          source_location: {
+            file: source_file,
+            range: nil
+          }
+        )
+
+        expect(described_class.new.select_tests(subject))
+          .to eq(["spec/models/widget_spec.rb"])
+      end
+    ensure
+      $LOAD_PATH.replace(original_load_path)
+    end
+  end
 end

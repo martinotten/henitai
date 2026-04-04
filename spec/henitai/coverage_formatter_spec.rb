@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "open3"
 require "spec_helper"
 require "stringio"
 require "tmpdir"
@@ -99,17 +100,51 @@ RSpec.describe Henitai::CoverageFormatter do
         notification = build_notification("spec/models/sample_spec.rb")
 
         allow(Coverage).to receive(:peek_result).and_raise(StandardError)
+        allow(formatter).to receive(:warn)
 
         aggregate_failures do
-          expect do
-            formatter.example_finished(notification)
-            formatter.example_finished(notification)
-            formatter.dump_summary(nil)
-          end.to output(/Per-test coverage unavailable/).to_stderr
+          formatter.example_finished(notification)
+          formatter.example_finished(notification)
+          formatter.dump_summary(nil)
+
+          expect(formatter).to have_received(:warn).once.with(
+            "Per-test coverage unavailable; skipping coverage formatter output"
+          )
 
           expect(File.exist?("coverage/henitai_per_test.json")).to be(false)
         end
       end
+    end
+  end
+
+  it "can be required without rspec/core being available" do
+    script = <<~RUBY
+      module Kernel
+        alias __henitai_original_require__ require
+
+        def require(path)
+          raise LoadError, "blocked rspec/core" if path == "rspec/core"
+
+          __henitai_original_require__(path)
+        end
+      end
+
+      require "henitai/coverage_formatter"
+      puts "ok"
+    RUBY
+
+    stdout, stderr, status = Open3.capture3(
+      "ruby",
+      "-I",
+      "lib",
+      "-e",
+      script,
+      chdir: Dir.pwd
+    )
+
+    aggregate_failures do
+      expect(status.success?).to be(true), stderr
+      expect(stdout).to eq("ok\n")
     end
   end
 end

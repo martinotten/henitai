@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "open3"
 require "spec_helper"
 require "tmpdir"
 
@@ -8,6 +9,24 @@ RSpec.describe Henitai::Integration::Minitest do
   def with_temp_workspace
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) { yield dir }
+    end
+  end
+
+  def with_env(key, value)
+    original = ENV.fetch(key, nil)
+
+    if value.nil?
+      ENV.delete(key)
+    else
+      ENV[key] = value
+    end
+
+    yield
+  ensure
+    if original.nil?
+      ENV.delete(key)
+    else
+      ENV[key] = original
     end
   end
 
@@ -130,6 +149,126 @@ RSpec.describe Henitai::Integration::Minitest do
       )
 
       expect(described_class.new.select_tests(subject)).to eq(["test/widget_test.rb"])
+    end
+  end
+
+  it "builds the minitest baseline suite command" do
+    integration = described_class.new
+
+    expect(integration.send(:suite_command, ["test/sample_test.rb"])).to eq(
+      [
+        "bundle",
+        "exec",
+        "ruby",
+        "-I",
+        "test",
+        "-r",
+        "henitai/minitest_simplecov",
+        "-e",
+        "ARGV.each { |f| require File.expand_path(f) }",
+        "test/sample_test.rb"
+      ]
+    )
+  end
+
+  it "spawns the baseline suite with the minitest subprocess environment" do
+    integration = described_class.new
+
+    with_temp_workspace do
+      allow(Process).to receive(:spawn).and_return(4321)
+      allow(integration).to receive(:wait_with_timeout).and_return(:timeout)
+
+      integration.run_suite(["test/sample_test.rb"], timeout: 4.0)
+
+      expect(Process).to have_received(:spawn).with(
+        integration.send(:subprocess_env),
+        *integration.send(:suite_command, ["test/sample_test.rb"]),
+        out: kind_of(File),
+        err: kind_of(File)
+      )
+    end
+  end
+
+  it "requires config/environment.rb only when it exists" do
+    integration = described_class.new
+    env_file = File.expand_path("config/environment.rb")
+
+    allow(File).to receive(:exist?).with(env_file).and_return(true)
+
+    expect(integration).to receive(:require).with(env_file)
+
+    integration.send(:preload_environment)
+  end
+
+  it "adds the test directory to the load path only once" do
+    integration = described_class.new
+    original_load_path = $LOAD_PATH.dup
+    test_dir = File.expand_path("test")
+
+    $LOAD_PATH.replace(original_load_path.reject { |path| path == test_dir })
+
+    2.times { integration.send(:setup_load_path) }
+
+    expect($LOAD_PATH.count(test_dir)).to eq(1)
+  ensure
+    $LOAD_PATH.replace(original_load_path)
+  end
+
+  it "sets subprocess defaults for baseline runs" do
+    with_env("RAILS_ENV", nil) do
+      expect(described_class.new.send(:subprocess_env)).to eq(
+        "RAILS_ENV" => "test",
+        "PARALLEL_WORKERS" => "1"
+      )
+    end
+  end
+
+  it "lists minitest test files and excludes system tests" do
+    with_temp_workspace do |dir|
+      write_file(dir, "test/models/sample_test.rb", "")
+      write_file(dir, "test/models/sample_spec.rb", "")
+      write_file(dir, "test/system/browser_test.rb", "")
+
+      expect(described_class.new.test_files).to match_array(
+        ["test/models/sample_test.rb", "test/models/sample_spec.rb"]
+      )
+    end
+  end
+
+  it "boots the minitest integration when rspec/core is unavailable" do
+    script = <<~RUBY
+      module Kernel
+        alias __henitai_original_require__ require
+
+        def require(path)
+          raise LoadError, "blocked rspec/core" if path == "rspec/core"
+
+          __henitai_original_require__(path)
+        end
+      end
+
+      require "henitai"
+      require "henitai/integration"
+
+      command = Henitai::Integration::Minitest.new.send(
+        :suite_command,
+        ["test/sample_test.rb"]
+      )
+      puts command.last
+    RUBY
+
+    stdout, stderr, status = Open3.capture3(
+      "ruby",
+      "-I",
+      "lib",
+      "-e",
+      script,
+      chdir: Dir.pwd
+    )
+
+    aggregate_failures do
+      expect(status.success?).to be(true), stderr
+      expect(stdout).to eq("test/sample_test.rb\n")
     end
   end
 

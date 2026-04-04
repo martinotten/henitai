@@ -193,6 +193,29 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  it "resolves the rspec and minitest integrations" do
+    expect(Henitai::Integration.for("rspec")).to eq(Henitai::Integration::Rspec)
+    expect(Henitai::Integration.for("minitest")).to eq(Henitai::Integration::Minitest)
+  end
+
+  it "raises a helpful error for an unknown integration" do
+    expect { Henitai::Integration.for("unknown") }
+      .to raise_error(
+        ArgumentError,
+        "Unknown integration: unknown. Available: minitest, rspec"
+      )
+  end
+
+  it "keeps the base integration abstract" do
+    integration = Henitai::Integration::Base.new
+
+    expect { integration.select_tests(nil) }.to raise_error(NotImplementedError)
+    expect { integration.test_files }.to raise_error(NotImplementedError)
+    expect do
+      integration.run_mutant(mutant: nil, test_files: [], timeout: 1.0)
+    end.to raise_error(NotImplementedError)
+  end
+
   it "passes the configured timeout through the suite wait path" do
     integration = described_class.new
 
@@ -220,6 +243,30 @@ RSpec.describe Henitai::Integration::Rspec do
 
       expect(Henitai::Mutant::Activator).not_to have_received(:activate!)
     end
+  end
+
+  it "uses bundle exec rspec for the baseline suite command" do
+    integration = described_class.new
+
+    expect(integration.send(:suite_command, ["spec/foo_spec.rb"])).to eq(
+      ["bundle", "exec", "rspec", "spec/foo_spec.rb"]
+    )
+  end
+
+  it "requires the rspec-specific coverage formatter adapter" do
+    integration = described_class.new
+
+    expect(integration.send(:rspec_options)).to eq(
+      ["--require", "henitai/rspec_coverage_formatter"]
+    )
+  end
+
+  it "returns the discovered spec files as test files" do
+    integration = described_class.new
+
+    allow(integration).to receive(:spec_files).and_return(["spec/a_spec.rb"])
+
+    expect(integration.test_files).to eq(["spec/a_spec.rb"])
   end
 
   it "forks a child, sets the mutant id, and waits with timeout" do
@@ -284,7 +331,7 @@ RSpec.describe Henitai::Integration::Rspec do
           :activate,
           [
             :rspec,
-            ["spec/bar_spec.rb", "--require", "henitai/coverage_formatter"]
+            ["spec/bar_spec.rb", "--require", "henitai/rspec_coverage_formatter"]
           ],
           [:exit, 0],
           [:wait, 9876, 2.0]
@@ -384,7 +431,7 @@ RSpec.describe Henitai::Integration::Rspec do
         timeout: 0.1
       )
 
-      expect(record[:args]).to include("--require", "henitai/coverage_formatter")
+      expect(record[:args]).to include("--require", "henitai/rspec_coverage_formatter")
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env
     end
@@ -553,7 +600,7 @@ RSpec.describe Henitai::Integration::Rspec do
         rspec_files: [
           "spec/failing_spec.rb",
           "--require",
-          "henitai/coverage_formatter"
+          "henitai/rspec_coverage_formatter"
         ],
         child_status: 1
       )
@@ -731,43 +778,214 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  it "falls back when reading a spec file raises during direct matching" do
+    integration = described_class.new
+    subject = instance_double(
+      Henitai::Subject,
+      expression: "Sample#value",
+      namespace: "Sample"
+    )
+
+    allow(integration).to receive(:spec_files).and_return(
+      ["spec/broken_spec.rb", "spec/other_spec.rb"]
+    )
+    allow(File).to receive(:read).with("spec/broken_spec.rb").and_raise(Errno::EACCES)
+    allow(File).to receive(:read).with("spec/other_spec.rb").and_return("RSpec.describe String do end")
+    allow(integration).to receive(:fallback_spec_files).with(subject).and_return(["spec/fallback_spec.rb"])
+
+    expect(integration.select_tests(subject)).to eq(["spec/fallback_spec.rb"])
+  end
+
+  it "orders selection patterns by longest first and removes duplicates" do
+    integration = described_class.new
+    subject = instance_double(
+      Henitai::Subject,
+      expression: "Sample::Thing#value",
+      namespace: "Sample::Thing"
+    )
+
+    expect(integration.send(:selection_patterns, subject)).to eq(
+      ["Sample::Thing#value", "Sample::Thing"]
+    )
+  end
+
+  it "matches a source file when a spec only mentions the basename" do
+    integration = described_class.new
+    source_file = "/tmp/project/lib/sample.rb"
+
+    allow(File).to receive(:read).with("spec/sample_spec.rb").and_return(
+      'require_relative "../lib/sample"'
+    )
+
+    expect(
+      integration.send(:requires_source_file?, "spec/sample_spec.rb", source_file)
+    ).to eq(true)
+  end
+
+  it "matches a source file when a spec mentions the full source path" do
+    integration = described_class.new
+    source_file = "/tmp/project/lib/sample.rb"
+
+    allow(File).to receive(:read).with("spec/sample_spec.rb").and_return(source_file)
+    allow(File).to receive(:basename).with(source_file, ".rb").and_return("other_name")
+
+    expect(
+      integration.send(:requires_source_file?, "spec/sample_spec.rb", source_file)
+    ).to eq(true)
+  end
+
+  it "stops transitive traversal when the spec file was already visited" do
+    integration = described_class.new
+    spec_file = File.expand_path("spec/sample_spec.rb")
+
+    expect(
+      integration.send(
+        :requires_source_file_transitively?,
+        spec_file,
+        "lib/sample.rb",
+        [spec_file]
+      )
+    ).to eq(false)
+  end
+
+  it "records the visited spec before traversing its requires" do
+    integration = described_class.new
+    visited = []
+
+    allow(integration).to receive(:requires_source_file?).and_return(false)
+    allow(integration).to receive(:required_files).and_return([])
+
+    integration.send(
+      :requires_source_file_transitively?,
+      "spec/sample_spec.rb",
+      "lib/sample.rb",
+      visited
+    )
+
+    expect(visited).to include(File.expand_path("spec/sample_spec.rb"))
+  end
+
+  it "uses relative candidates when resolving require_relative directives" do
+    integration = described_class.new
+
+    allow(integration).to receive(:relative_candidates)
+      .with("spec/sample_spec.rb", "../sample")
+      .and_return(["relative.rb"])
+    allow(integration).to receive(:require_candidates)
+    allow(File).to receive(:file?).with("relative.rb").and_return(true)
+
+    expect(
+      integration.send(
+        :resolve_required_file,
+        "spec/sample_spec.rb",
+        "require_relative",
+        "../sample"
+      )
+    ).to eq("relative.rb")
+  end
+
+  it "expands relative candidates from the spec directory" do
+    integration = described_class.new
+
+    expect(
+      integration.send(:relative_candidates, "spec/models/sample_spec.rb", "../support/helper")
+    ).to eq(
+      integration.send(:expand_candidates, "spec/models", "../support/helper")
+    )
+  end
+
+  it "includes the spec dir, project dir, and load path for plain require candidates" do
+    integration = described_class.new
+    original_load_path = $LOAD_PATH.dup
+
+    allow(Dir).to receive(:pwd).and_return("/project")
+    $LOAD_PATH.unshift("/ruby/lib", "/gem/lib")
+
+    expect(
+      integration.send(:require_candidates, "spec/models/sample_spec.rb", "lib/sample")
+    ).to include(
+      File.expand_path("lib/sample", "spec/models"),
+      File.expand_path("lib/sample", "/project"),
+      File.expand_path("lib/sample", "/ruby/lib")
+    )
+  ensure
+    $LOAD_PATH.replace(original_load_path)
+  end
+
   it "writes child stdout and stderr into the combined scenario log" do
     with_temp_workspace do |dir|
-      test_file = write_file(dir, "spec/sample_spec.rb", sample_spec_source)
-      stdout_source = write_file(dir, "captured_stdout.txt", "captured stdout\n")
-      mutant = Struct.new(:id).new("mutant-1")
       integration = described_class.new
-      original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+      log_paths = integration.send(:scenario_log_paths, "mutant-1")
+      FileUtils.mkdir_p(File.dirname(log_paths[:stdout_path]))
+      File.write(log_paths[:stdout_path], "captured stdout\n")
+      File.write(log_paths[:stderr_path], "captured stderr\n")
 
-      begin
-        allow(Process).to receive(:exit)
-        allow(Process).to receive(:fork) do |_args, &block|
-          block.call
-          4321
-        end
-        allow(Process).to receive(:wait).with(4321, Process::WNOHANG).and_return(4321)
-        allow(Process).to receive(:last_status).and_return(
-          Struct.new(:success?, :exitstatus).new(true, 0)
-        )
-        allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-        allow(integration).to receive(:run_tests) do |_test_files|
-          File.open(stdout_source, "rb") do |file|
-            IO.copy_stream(file, $stdout)
-          end
-          warn "captured stderr"
-          0
-        end
+      result = integration.send(
+        :build_result,
+        Struct.new(:success?, :exitstatus).new(true, 0),
+        log_paths
+      )
 
-        result = integration.run_mutant(
-          mutant:,
-          test_files: [test_file],
-          timeout: 1.0
-        )
-
-        expect(File.read(result.log_path)).to eq(result.combined_output)
-      ensure
-        ENV["HENITAI_MUTANT_ID"] = original_env
-      end
+      expect(File.read(result.log_path)).to eq(result.combined_output)
     end
+  end
+
+  it "disables thread exception reporting in the mutant child" do
+    mutant = Struct.new(:id).new("mutant-thread")
+    integration = described_class.new
+    log_paths = {
+      stdout_path: "reports/mutation-logs/mutant-thread.stdout.log",
+      stderr_path: "reports/mutation-logs/mutant-thread.stderr.log",
+      log_path: "reports/mutation-logs/mutant-thread.log"
+    }
+    log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
+
+    allow(integration).to receive(:scenario_log_support).and_return(log_support)
+    allow(log_support).to receive(:with_coverage_dir).with(mutant.id).and_yield
+    allow(log_support).to receive(:capture_child_output).with(log_paths).and_yield
+    allow(Henitai::Mutant::Activator).to receive(:activate!).with(mutant).and_return(0)
+    allow(integration).to receive(:run_tests).with(["spec/foo_spec.rb"]).and_return(0)
+
+    expect(Thread).to receive(:report_on_exception=).with(false)
+
+    result = integration.send(
+      :run_in_child,
+      mutant:,
+      test_files: ["spec/foo_spec.rb"],
+      log_paths:
+    )
+
+    expect(result).to eq(0)
+  end
+
+  it "returns an empty string when reading a missing log file" do
+    integration = described_class.new
+
+    expect(integration.send(:read_log_file, "missing/log.log")).to eq("")
+  end
+
+  it "builds baseline log paths under reports/mutation-logs" do
+    integration = described_class.new
+
+    expect(integration.send(:scenario_log_paths, "baseline")).to eq(
+      stdout_path: "reports/mutation-logs/baseline.stdout.log",
+      stderr_path: "reports/mutation-logs/baseline.stderr.log",
+      log_path: "reports/mutation-logs/baseline.log"
+    )
+  end
+
+  it "formats combined logs without empty sections" do
+    integration = described_class.new
+
+    expect(integration.send(:combined_log, "out\n", "")).to eq("stdout:\nout\n")
+    expect(integration.send(:combined_log, "", "err\n")).to eq("stderr:\nerr\n")
+  end
+
+  it "delegates pause to sleep" do
+    integration = described_class.new
+
+    expect(integration).to receive(:sleep).with(0.25)
+
+    integration.send(:pause, 0.25)
   end
 end

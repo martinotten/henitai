@@ -4,6 +4,16 @@ require "spec_helper"
 require "henitai/configuration_validator"
 
 RSpec.describe Henitai::ConfigurationValidator do
+  def expect_warning(message_pattern = nil)
+    allow(described_class).to receive(:warn)
+
+    yield
+
+    matcher = have_received(:warn).at_least(:once)
+    matcher = matcher.with(message_pattern) if message_pattern
+    expect(described_class).to matcher
+  end
+
   # ---------------------------------------------------------------------------
   # validate!
   # ---------------------------------------------------------------------------
@@ -24,9 +34,9 @@ RSpec.describe Henitai::ConfigurationValidator do
     # Muster C: validate_top_level_keys delegiert an warn_unknown_keys.
     # Wird der Aufruf durch → 0 ersetzt, erscheint keine Warnung.
     it "warns about unknown top-level keys via validate!" do
-      expect do
+      expect_warning(/totally_unknown/) do
         described_class.validate!({ totally_unknown: true })
-      end.to output(/totally_unknown/).to_stderr
+      end
     end
   end
 
@@ -57,9 +67,9 @@ RSpec.describe Henitai::ConfigurationValidator do
 
     # Muster C: warn_unknown_keys mit Pfad "integration" delegiert
     it "warns about unknown integration sub-keys with full path" do
-      expect do
+      expect_warning(/integration\.typo_key/) do
         described_class.validate!({ integration: { typo_key: true } })
-      end.to output(/integration\.typo_key/).to_stderr
+      end
     end
 
     # Muster A: Pfad "integration.name"
@@ -190,9 +200,9 @@ RSpec.describe Henitai::ConfigurationValidator do
 
     # Muster C: warn_unknown_keys mit Pfad "dashboard" delegiert
     it "warns about unknown dashboard keys with full path" do
-      expect do
+      expect_warning(/dashboard\.typo_key/) do
         described_class.validate!({ dashboard: { typo_key: true } })
-      end.to output(/dashboard\.typo_key/).to_stderr
+      end
     end
 
     # Muster A: Pfad "dashboard.project"
@@ -228,9 +238,9 @@ RSpec.describe Henitai::ConfigurationValidator do
 
     # Muster C: warn_unknown_keys mit Pfad "mutation"
     it "warns about unknown mutation keys with full path" do
-      expect do
+      expect_warning(/mutation\.typo_key/) do
         described_class.validate!({ mutation: { typo_key: true } })
-      end.to output(/mutation\.typo_key/).to_stderr
+      end
     end
 
     it "rejects non-string ignore patterns with the full path in error" do
@@ -282,9 +292,9 @@ RSpec.describe Henitai::ConfigurationValidator do
 
     # Muster C: warn_unknown_keys mit Pfad "coverage_criteria"
     it "warns about unknown coverage_criteria keys with full path" do
-      expect do
+      expect_warning(/coverage_criteria\.typo_key/) do
         described_class.validate!({ coverage_criteria: { typo_key: true } })
-      end.to output(/coverage_criteria\.typo_key/).to_stderr
+      end
     end
 
     # Muster A: Interpolation "coverage_criteria.#{key}" im Fehlertext
@@ -313,9 +323,9 @@ RSpec.describe Henitai::ConfigurationValidator do
 
     # Muster C: warn_unknown_keys mit Pfad "thresholds"
     it "warns about unknown thresholds keys with full path" do
-      expect do
+      expect_warning(/thresholds\.typo_key/) do
         described_class.validate!({ thresholds: { typo_key: 80 } })
-      end.to output(/thresholds\.typo_key/).to_stderr
+      end
     end
 
     # Muster A: Interpolation "thresholds.#{key}"
@@ -376,15 +386,15 @@ RSpec.describe Henitai::ConfigurationValidator do
 
   describe "unknown key warnings" do
     it "includes the top-level key name" do
-      expect do
+      expect_warning("Unknown configuration key: unknown_top_level") do
         described_class.send(:warn_unknown_keys, { unknown_top_level: true }, %i[integration])
-      end.to output("Unknown configuration key: unknown_top_level\n").to_stderr
+      end
     end
 
     it "includes the nested key path" do
-      expect do
+      expect_warning("Unknown configuration key: mutation.unknown_flag") do
         described_class.send(:warn_unknown_keys, { unknown_flag: true }, %i[operators], "mutation")
-      end.to output("Unknown configuration key: mutation.unknown_flag\n").to_stderr
+      end
     end
   end
 

@@ -164,6 +164,7 @@ RSpec.describe Henitai::ExecutionEngine do
   it "warns when a significant share of mutants required retries" do
     pending = build_mutant(:pending, "Foo#bar")
     integration = build_integration
+    engine = described_class.new
 
     allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
     allow(integration).to receive(:run_mutant).and_return(
@@ -172,10 +173,11 @@ RSpec.describe Henitai::ExecutionEngine do
       :survived,
       :survived
     )
+    allow(engine).to receive(:warn)
 
-    expect do
-      described_class.new.run([pending], integration, build_config)
-    end.to output(/Flaky-test mitigation:/).to_stderr
+    engine.run([pending], integration, build_config)
+
+    expect(engine).to have_received(:warn).with(/Flaky-test mitigation:/)
   end
 
   it "does not warn about flaky mitigation below the retry threshold" do

@@ -10,8 +10,6 @@ module Henitai
     REPORT_DIR_ENV = "HENITAI_REPORTS_DIR"
     REPORT_FILE_NAME = "henitai_per_test.json"
 
-    RSpec::Core::Formatters.register self, :example_finished, :dump_summary
-
     def initialize(_output)
       @coverage_by_test = Hash.new do |hash, test_file|
         hash[test_file] = Hash.new { |nested, source_file| nested[source_file] = [] }
