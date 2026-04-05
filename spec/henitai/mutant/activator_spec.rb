@@ -522,4 +522,38 @@ RSpec.describe Henitai::Mutant::Activator do
     expect { described_class.activate!(mutant) }
       .to raise_error(ArgumentError, /wildcard/i)
   end
+
+  it "uses source_file_from_ast when target constant is not loaded" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, <<~RUBY)
+        class RealTransientSample
+          def value
+            1
+          end
+        end
+      RUBY
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      original_node = find_nodes(subject.ast_node, :int).first
+      mutant = build_mutant(
+        subject:,
+        original_node: original_node,
+        mutated_node: Parser::AST::Node.new(:int, [2]),
+        location: location_for(original_node)
+      )
+
+      call_count = 0
+      allow(Object).to receive(:const_get).and_wrap_original do |original, *args|
+        if args == ["RealTransientSample"]
+          call_count += 1
+          raise NameError, "Not found" if call_count == 1
+        end
+
+        original.call(*args)
+      end
+
+      described_class.activate!(mutant)
+
+      expect(RealTransientSample.new.value).to eq(2)
+    end
+  end
 end
