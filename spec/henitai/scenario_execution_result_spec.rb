@@ -52,4 +52,32 @@ RSpec.describe Henitai::ScenarioExecutionResult do
   it "shows logs without arguments when status is timeout" do
     expect(build_result(:timeout).should_show_logs?).to be(true)
   end
+
+  it "shows logs when all_logs is enabled" do
+    expect(build_result(:survived).should_show_logs?(all_logs: true)).to be(true)
+  end
+
+  it "combines stdout and stderr with labeled sections" do
+    result = build_result(:killed, stdout: "stdout content", stderr: "stderr content")
+
+    expect(result.combined_output).to eq(
+      "stdout:\nstdout content\nstderr:\nstderr content"
+    )
+  end
+
+  it "returns the combined output when all_logs is enabled" do
+    result = build_result(:killed, stdout: "stdout content", stderr: "stderr content")
+
+    expect(result.failure_tail(all_logs: true)).to eq(result.combined_output)
+  end
+
+  it "returns the tail for timeout results when all_logs is omitted" do
+    result = build_result(
+      :timeout,
+      stdout: "stdout line 1\nstdout line 2",
+      stderr: ""
+    )
+
+    expect(result.failure_tail).to eq(result.tail)
+  end
 end

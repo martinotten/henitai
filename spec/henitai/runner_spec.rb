@@ -230,6 +230,43 @@ RSpec.describe Henitai::Runner do
     end
   end
 
+  it "includes nested Ruby files from include paths" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib", "nested"))
+      File.write(File.join(dir, "lib", "nested", "sample.rb"), "class Sample; end\n")
+
+      Dir.chdir(dir) do
+        config = build_config(reporters: [])
+        runner = described_class.new(config:)
+
+        expect(runner.send(:source_files)).to eq([File.join("lib", "nested", "sample.rb")])
+      end
+    end
+  end
+
+  it "returns nil for the progress reporter when terminal output is disabled" do
+    config = build_config(reporters: [])
+    runner = described_class.new(config:)
+
+    expect(runner.send(:progress_reporter)).to be(nil)
+  end
+
+  it "builds a terminal progress reporter when terminal output is enabled" do
+    config = build_config(reporters: ["terminal"])
+    runner = described_class.new(config:)
+
+    expect(runner.send(:progress_reporter)).to be_a(Henitai::Reporter::Terminal)
+  end
+
+  it "normalizes relative paths with File.expand_path" do
+    config = build_config(reporters: [])
+    runner = described_class.new(config:)
+
+    expect(runner.send(:normalize_path, "lib/sample.rb")).to eq(
+      File.expand_path("lib/sample.rb")
+    )
+  end
+
   it "passes the configured reports dir to the execution engine" do
     config = build_config(reporters: [], reports_dir: "custom-reports")
     runner = described_class.new(config:)

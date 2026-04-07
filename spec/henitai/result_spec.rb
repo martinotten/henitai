@@ -77,8 +77,8 @@ RSpec.describe Henitai::Result do
     }
   end
 
-  def build_mutant(status:, duration: nil)
-    Dir.mktmpdir do |dir|
+  def build_mutant(status:, duration: nil, dir: nil)
+    if dir
       path = write_sample_file(dir)
       mutant = Henitai::Mutant.new(
         subject: sample_subject(path),
@@ -89,7 +89,11 @@ RSpec.describe Henitai::Result do
       )
       mutant.status = status
       mutant.duration = duration
-      mutant
+      return mutant
+    end
+
+    Dir.mktmpdir do |temp_dir|
+      build_mutant(status:, duration:, dir: temp_dir)
     end
   end
 
@@ -120,6 +124,12 @@ RSpec.describe Henitai::Result do
   def scoring_mutants
     %i[killed timeout runtime_error survived ignored no_coverage compile_error equivalent]
       .map { |status| status_mutant(status) }
+  end
+
+  def mutant_statuses(schema)
+    schema[:files].values.flat_map do |file|
+      file[:mutants].map { |mutant| mutant[:status] }
+    end
   end
 
   it "exposes the mutants collection" do
@@ -179,6 +189,40 @@ RSpec.describe Henitai::Result do
 
   it "serialises the expected schema version" do
     expect(result([build_mutant(status: :pending)]).to_stryker_schema[:schemaVersion]).to eq("1.0")
+  end
+
+  it "serialises the Stryker status vocabulary for every mutant status" do
+    Dir.mktmpdir do |dir|
+      mutants = %i[
+        killed
+        survived
+        timeout
+        ignored
+        no_coverage
+        compile_error
+        runtime_error
+        equivalent
+        pending
+        unknown
+      ].map { |status| build_mutant(status:, dir:) }
+
+      schema = result(mutants).to_stryker_schema
+
+      expect(mutant_statuses(schema)).to eq(
+        %w[
+          Killed
+          Survived
+          Timeout
+          Ignored
+          NoCoverage
+          CompileError
+          RuntimeError
+          Ignored
+          Pending
+          Pending
+        ]
+      )
+    end
   end
 
   it "omits equivalence uncertainty when there are no live mutants" do

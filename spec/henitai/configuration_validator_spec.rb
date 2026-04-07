@@ -435,6 +435,13 @@ RSpec.describe Henitai::ConfigurationValidator do
         Henitai::ConfigurationError, /mutation\.operators/
       )
     end
+
+    it "reports the rejected operator value in the error message" do
+      expect { described_class.send(:validate_operator, "heavy") }.to raise_error(
+        Henitai::ConfigurationError,
+        "Invalid configuration value for mutation.operators: expected one of light, full, got \"heavy\""
+      )
+    end
   end
 
   describe "validate_timeout" do
@@ -471,6 +478,13 @@ RSpec.describe Henitai::ConfigurationValidator do
       )
     end
 
+    it "reports the rejected mutant limit value in the error message" do
+      expect { described_class.send(:validate_max_mutants_per_line, 0) }.to raise_error(
+        Henitai::ConfigurationError,
+        "Invalid configuration value for mutation.max_mutants_per_line: expected Integer >= 1, got 0"
+      )
+    end
+
     it "rejects a non-integer with path in error" do
       expect { described_class.send(:validate_max_mutants_per_line, "5") }.to raise_error(
         Henitai::ConfigurationError, /mutation\.max_mutants_per_line/
@@ -501,6 +515,13 @@ RSpec.describe Henitai::ConfigurationValidator do
     it "rejects a negative integer with path in error" do
       expect { described_class.send(:validate_max_flaky_retries, -1) }.to raise_error(
         Henitai::ConfigurationError, /mutation\.max_flaky_retries/
+      )
+    end
+
+    it "reports the rejected retry budget in the error message" do
+      expect { described_class.send(:validate_max_flaky_retries, -1) }.to raise_error(
+        Henitai::ConfigurationError,
+        "Invalid configuration value for mutation.max_flaky_retries: expected Integer >= 0, got -1"
       )
     end
   end
@@ -542,6 +563,41 @@ RSpec.describe Henitai::ConfigurationValidator do
       expect do
         described_class.send(:validate_boolean, "yes", "coverage_criteria.test_result")
       end.to raise_error(Henitai::ConfigurationError, /for coverage_criteria\.test_result:/)
+    end
+  end
+
+  describe "validate_ignore_patterns" do
+    it "reports the invalid pattern and regexp error message" do
+      allow(Regexp).to receive(:new).and_raise(RegexpError, "missing ]")
+
+      expect do
+        described_class.send(:validate_ignore_patterns, ["[invalid_regex"])
+      end.to raise_error(
+        Henitai::ConfigurationError,
+        'Invalid configuration value for mutation.ignore_patterns: invalid regular expression "[invalid_regex": missing ]'
+      )
+    end
+  end
+
+  describe "validate_sampling_ratio" do
+    it "reports the rejected ratio value in the error message" do
+      expect do
+        described_class.send(:validate_sampling, { ratio: 1.5, strategy: "stratified" })
+      end.to raise_error(
+        Henitai::ConfigurationError,
+        "Invalid configuration value for mutation.sampling.ratio: expected Numeric between 0 and 1, got 1.5"
+      )
+    end
+  end
+
+  describe "validate_sampling_strategy" do
+    it "reports the rejected strategy value in the error message" do
+      expect do
+        described_class.send(:validate_sampling, { ratio: 0.5, strategy: "random" })
+      end.to raise_error(
+        Henitai::ConfigurationError,
+        'Invalid configuration value for mutation.sampling.strategy: expected stratified, got "random"'
+      )
     end
   end
 
