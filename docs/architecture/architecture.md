@@ -198,7 +198,6 @@ Representative configuration contract:
 mutation:
   operators: light
   timeout: 10
-  max_mutants_per_line: 1
   max_flaky_retries: 3
   sampling:
     ratio: 0.05
@@ -323,6 +322,10 @@ The operator system is split into a light set for MVP stability and a full set f
 | `BlockStatement` | Remove block content | `{ do_work }` -> `{}` |
 | `MethodExpression` | Replace method results with neutral values | `call_service` -> `nil` |
 | `AssignmentExpression` | Mutate assignment and compound-assignment operators | `+=` -> `-=` |
+| `UnaryOperator` | Remove unary minus and bitwise NOT by replacing with the receiver; `!` is excluded (owned by `BooleanLiteral`) | `-a` -> `a` |
+| `UpdateOperator` | Swap compound-assignment operators in arithmetic and logical pairs | `x += 1` -> `x -= 1`, `x \|\|= v` -> `x &&= v` |
+| `RegexMutator` | Mutate regex quantifiers (`+`/`*` swap) and anchors (`^`/`$` removal) | `/\d+/` -> `/\d*/` |
+| `MethodChainUnwrap` | Remove a link from a method chain by replacing the outer call with its receiver | `arr.sort.first` -> `arr.first` |
 
 ### 8.2 Cost Reduction Pipeline
 
@@ -475,7 +478,7 @@ The expected JSON shape follows the Stryker ecosystem conventions:
 - per-mutant locations, replacements, operators, and status values
 - explicit `coveredBy` and `killedBy` references when available
 
-### 8.9 Coverage Bootstrap
+### 8.9 Coverage Bootstrap and Method Coverage
 
 Henitai treats coverage as a required input for meaningful filtering. The
 runner checks coverage before subject resolution and mutant generation.
@@ -491,6 +494,24 @@ The bootstrap sequence is:
 This keeps `henitai run` self-contained while still separating mutation
 testing from the mechanics of coverage generation. The test suite is run only
 when needed, and Henitai consumes the resulting artifacts automatically.
+
+#### Method coverage for the static filter (ADR-07)
+
+Ruby line coverage has a blind spot: interior lines of multi-line hash and array literals
+can remain unmarked even when the enclosing method is fully exercised. To address this,
+the bootstrap helpers (`spec/spec_helper.rb`, `lib/henitai/minitest_simplecov.rb`) start
+`Coverage` with `lines: true, branches: true, methods: true` before SimpleCov initializes.
+SimpleCov 0.22 skips its own `Coverage.start` when coverage is already running, so the
+two libraries coexist without conflict.
+
+`StaticFilter` gains a `merge_method_coverage` step that reads the `methods` key from
+`.resultset.json` and expands the line ranges of any called method into the existing
+`file → [covered_lines]` map. A mutant is treated as covered when either its own line range
+is hit or the enclosing method has a positive call count. If the `methods` key is absent
+(older artifacts), the filter degrades gracefully to line-only coverage.
+
+The per-test coverage path (`henitai_per_test.json`) remains line-based; method granularity
+for per-test data is a known remaining gap tracked separately.
 
 ### 8.10 Mutation Switching
 
@@ -514,8 +535,10 @@ It should stay opt-in so the default mode remains easy to reason about.
 | Diff-based analysis by default | full-repository analysis on every run | accepted | keeps PR feedback cost-effective |
 | English as the canonical language | mixed German/English documentation | accepted | keeps docs, naming, and reviews aligned across the project |
 | Equivalent mutants are reported as uncertainty, not hidden | vendor-extension field in the primary JSON payload | accepted | preserves scientific honesty while keeping the primary Stryker payload schema-clean |
+| Method coverage as the static-filter signal (ADR-07) | line-only check; `Subject#source_range` heuristic; remove the gate entirely; explicit test-to-subject mapping | accepted | addresses the root cause of false `NoCoverage` classifications on interior hash/array lines without relying on a heuristic surrogate |
+| Remove per-line mutation cap (ADR-08) | keep the default cap; make it configurable only; use sampling instead | accepted | every other major mutation framework emits all mutations per node; the cap silently discarded granular operator output and made coverage metrics dishonest |
 
-If formal ADRs are introduced later, they should live next to this architecture document and use the same English terminology.
+Formal ADRs live in `docs/architecture/adr/` and use the same English terminology.
 
 ## 10. Quality Requirements
 
