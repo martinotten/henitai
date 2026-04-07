@@ -606,6 +606,56 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  it "returns the child status when the child exits at the timeout boundary" do
+    mutant = Struct.new(:id).new("mutant-3c")
+    integration = described_class.new
+    record = { waits: 0, pauses: [] }
+    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+    begin
+      stub_child_logging(integration)
+      allow(Process).to receive(:exit) { |status| record[:child_status] = status }
+      allow(Process).to receive(:fork) do |&block|
+        block.call
+        24_610
+      end
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+      allow(RSpec::Core::Runner).to receive(:run).and_return(true)
+      allow(integration).to receive(:pause) do |seconds|
+        record[:pauses] << seconds
+      end
+      allow(Process).to receive(:wait) do |pid, flags|
+        record[:waits] += 1
+
+        case record[:waits]
+        when 1, 2
+          nil
+        when 3
+          pid
+        end
+      end
+      allow(Process).to receive(:clock_gettime).and_return(0.0, 0.05, 0.1)
+      allow(Process).to receive_messages(
+        last_status: Struct.new(:success?).new(true)
+      )
+
+      result = integration.run_mutant(
+        mutant:,
+        test_files: ["spec/pending_spec.rb"],
+        timeout: 0.1
+      )
+
+      expect(result).to eq(:survived)
+      expect(record).to include(
+        waits: 3,
+        pauses: [0.01],
+        child_status: 0
+      )
+    ensure
+      ENV["HENITAI_MUTANT_ID"] = original_env
+    end
+  end
+
   it "exits the child with status 1 when RSpec reports a failure" do
     mutant = Struct.new(:id).new("mutant-4")
     integration = described_class.new

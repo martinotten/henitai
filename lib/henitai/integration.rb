@@ -226,8 +226,15 @@ module Henitai
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
 
         loop do
-          return Process.last_status if Process.wait(pid, Process::WNOHANG)
-          return handle_timeout(pid) if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+          wait_result = Process.wait(pid, Process::WNOHANG)
+          return Process.last_status if wait_result
+
+          if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+            final_wait_result = Process.wait(pid, Process::WNOHANG)
+            return Process.last_status if final_wait_result
+
+            return handle_timeout(pid)
+          end
 
           pause(0.01)
         end
