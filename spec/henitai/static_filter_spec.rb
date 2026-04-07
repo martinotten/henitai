@@ -435,6 +435,68 @@ RSpec.describe Henitai::StaticFilter do
     end
   end
 
+  it "treats mutant lines as covered when the enclosing method has a positive call count" do
+    Dir.mktmpdir do |dir|
+      mutant = build_mutant("foo.bar")
+      write_coverage_report(
+        dir,
+        {
+          "RSpec" => {
+            "coverage" => {
+              File.join(dir, "sample.rb") => {
+                "lines" => [1, nil, nil],
+                "methods" => {
+                  "[Example, :example, 1, 0, 3, 3]" => 5
+                }
+              }
+            }
+          }
+        }
+      )
+
+      mutant.location[:file]       = File.join(dir, "sample.rb")
+      mutant.location[:start_line] = 2
+      mutant.location[:end_line]   = 2
+
+      Dir.chdir(dir) do
+        described_class.new.apply([mutant], config)
+      end
+
+      expect(mutant.status).to eq(:pending)
+    end
+  end
+
+  it "does not cover mutant lines when the enclosing method has a zero call count" do
+    Dir.mktmpdir do |dir|
+      mutant = build_mutant("foo.bar")
+      write_coverage_report(
+        dir,
+        {
+          "RSpec" => {
+            "coverage" => {
+              File.join(dir, "sample.rb") => {
+                "lines" => [nil, nil, nil],
+                "methods" => {
+                  "[Example, :example, 1, 0, 3, 3]" => 0
+                }
+              }
+            }
+          }
+        }
+      )
+
+      mutant.location[:file]       = File.join(dir, "sample.rb")
+      mutant.location[:start_line] = 2
+      mutant.location[:end_line]   = 2
+
+      Dir.chdir(dir) do
+        described_class.new.apply([mutant], config)
+      end
+
+      expect(mutant.status).to eq(:no_coverage)
+    end
+  end
+
   it "keeps ignored mutants ignored even when they are uncovered" do
     Dir.mktmpdir do |dir|
       mutant = build_mutant("foo.bar")

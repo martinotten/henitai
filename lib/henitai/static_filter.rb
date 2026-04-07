@@ -32,6 +32,7 @@ module Henitai
       per_test_coverage_report_path = per_test_coverage_report_path(config)
 
       coverage_lines = coverage_lines_by_file(coverage_report_path)
+      coverage_lines = merge_method_coverage(coverage_lines, coverage_report_path)
       return coverage_lines unless coverage_lines.empty?
 
       coverage_lines_from_test_lines(
@@ -114,6 +115,40 @@ module Henitai
       patterns = Array(config&.ignore_patterns).dup.freeze
       @compiled_ignore_patterns ||= {}
       @compiled_ignore_patterns[patterns] ||= patterns.map { |pattern| Regexp.new(pattern) }
+    end
+
+    def merge_method_coverage(coverage_lines, path)
+      return coverage_lines unless File.exist?(path)
+
+      JSON.parse(File.read(path)).each_value do |suite|
+        suite.fetch("coverage", {}).each do |file, file_coverage|
+          merge_file_method_coverage(coverage_lines, file, file_coverage)
+        end
+      end
+
+      coverage_lines.transform_values(&:sort)
+    end
+
+    def merge_file_method_coverage(coverage_lines, file, file_coverage)
+      methods = file_coverage["methods"]
+      return unless methods.is_a?(Hash)
+
+      normalized = normalize_path(file)
+      methods.each do |key, count|
+        next unless count.to_i.positive?
+
+        range = method_line_range(key)
+        next unless range
+
+        coverage_lines[normalized] = Array(coverage_lines[normalized]) | range.to_a
+      end
+    end
+
+    def method_line_range(key)
+      m = key.match(/(\d+), \d+, (\d+), \d+\]\z/)
+      return unless m
+
+      (m.captures.first.to_i..m.captures.last.to_i)
     end
 
     def covered_lines(file_coverage)
