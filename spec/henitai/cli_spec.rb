@@ -333,12 +333,6 @@ RSpec.describe Henitai::CLI do
     end
   end
 
-  it "builds the exact default integration block" do
-    cli = described_class.new(["init"])
-
-    expect(cli.send(:integration_block)).to eq("integration:\n  name: rspec")
-  end
-
   it "can skip the explicit integration block during init" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
@@ -348,6 +342,37 @@ RSpec.describe Henitai::CLI do
         cli.run
 
         expect(File.read(".henitai.yml")).not_to include("integration:")
+      end
+    end
+  end
+
+  it "writes the exact default integration block during init" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        cli = described_class.new(["init"])
+        allow($stdin).to receive_messages(tty?: true, gets: "y\n")
+
+        cli.run
+
+        expect(File.read(".henitai.yml")).to eq(<<~YAML)
+          # yaml-language-server: $schema=./assets/schema/henitai.schema.json
+          includes:
+            - lib
+          mutation:
+            operators: light
+            timeout: 10.0
+            max_mutants_per_line: 1
+            max_flaky_retries: 3
+            sampling:
+              ratio: 0.05
+              strategy: stratified
+          reports_dir: reports
+          thresholds:
+            high: 80
+            low: 60
+          integration:
+            name: rspec
+        YAML
       end
     end
   end
@@ -465,10 +490,8 @@ RSpec.describe Henitai::CLI do
     ).to_stdout
   end
 
-  it "builds the exact operator help text" do
-    cli = described_class.new(%w[operator list])
-
-    expect(cli.send(:operator_help_text)).to eq(<<~HELP)
+  it "prints the exact operator help text for help" do
+    expect { described_class.new(%w[operator --help]).run }.to output(<<~HELP).to_stdout
       Hen'i-tai operator commands
 
       Usage:

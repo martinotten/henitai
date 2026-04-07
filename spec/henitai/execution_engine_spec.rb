@@ -222,6 +222,34 @@ RSpec.describe Henitai::ExecutionEngine do
     expect(thread_ids.uniq.size).to be > 1
   end
 
+  it "keeps a single pending mutant on the linear path even with parallel jobs configured" do
+    pending = build_mutant(:pending, "Foo#bar")
+    ignored = build_mutant(:ignored, "Foo#baz")
+    integration = build_integration
+    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", 2)
+    thread_ids = []
+
+    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
+      thread_ids << Thread.current.object_id
+      mutant.status = :killed
+    end
+
+    described_class.new.run([pending, ignored], integration, config)
+
+    expect(thread_ids).to eq([Thread.current.object_id])
+  end
+
+  it "treats zero jobs as linear execution" do
+    first = build_mutant(:pending, "Foo#bar")
+    second = build_mutant(:pending, "Foo#baz")
+    integration = build_integration
+    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", 0)
+
+    described_class.new.run([first, second], integration, config)
+
+    expect(integration.calls[:run_mutant]).to eq(2)
+  end
+
   it "keeps jobs=1 on the linear execution path" do
     first = build_mutant(:pending, "Foo#bar")
     second = build_mutant(:pending, "Foo#baz")
@@ -257,6 +285,62 @@ RSpec.describe Henitai::ExecutionEngine do
     described_class.new.run([first, second], integration, config)
 
     expect(thread_ids.uniq.size).to be > 1
+  end
+
+  it "returns the status from a scenario result object" do
+    pending = build_mutant(:pending, "Foo#bar")
+    integration = build_integration
+    config = build_config
+    result = Struct.new(:status).new(:killed)
+
+    allow(integration).to receive(:run_mutant).and_return(result)
+
+    described_class.new.run([pending], integration, config)
+
+    expect(pending.status).to eq(:killed)
+  end
+
+  it "formats the flaky retry ratio as a percentage" do
+    engine = described_class.new
+    mutants = 4.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
+    integration = build_integration
+    call_counts = Hash.new(0)
+    allow(engine).to receive(:warn)
+    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
+    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
+      expression = mutant.subject.expression
+      call_counts[expression] += 1
+
+      if expression == "Foo#bar0" && call_counts[expression] == 1
+        Struct.new(:status).new(:survived)
+      else
+        Struct.new(:status).new(:killed)
+      end
+    end
+
+    engine.run(mutants, integration, build_config)
+
+    expect(engine).to have_received(:warn).with(
+      "Flaky-test mitigation: 1/4 mutants required retries (25.00%)"
+    )
+  end
+
+  it "falls back to reports when the configured reports dir is blank" do
+    pending = build_mutant(:pending, "Foo#bar")
+    integration = build_integration
+    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "", 1)
+    observed_coverage_dir = nil
+
+    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
+      observed_coverage_dir = ENV.fetch("HENITAI_COVERAGE_DIR", nil)
+      mutant.status = :killed
+    end
+
+    described_class.new.run([pending], integration, config)
+
+    expect(observed_coverage_dir).to eq(
+      File.join("reports", "mutation-coverage")
+    )
   end
 
   it "exposes the configured reports dir to the integration run" do
