@@ -122,6 +122,24 @@ RSpec.describe Henitai::Result do
       .map { |status| status_mutant(status) }
   end
 
+  it "exposes the mutants collection" do
+    mutant = status_mutant(:killed)
+
+    expect(result([mutant]).mutants).to eq([mutant])
+  end
+
+  it "exposes the start time" do
+    expect(result([]).started_at).to eq(Time.at(0))
+  end
+
+  it "exposes the finish time" do
+    expect(result([]).finished_at).to eq(Time.at(1))
+  end
+
+  it "calculates duration from the provided timestamps" do
+    expect(result([]).duration).to eq(1.0)
+  end
+
   it "counts survived mutants" do
     mutants = [status_mutant(:survived), status_mutant(:survived), status_mutant(:killed)]
     expect(result(mutants).survived).to eq(2)
@@ -169,6 +187,14 @@ RSpec.describe Henitai::Result do
     ).to eq(
       mutation_score: nil,
       mutation_score_indicator: 0.0,
+      equivalence_uncertainty: nil
+    )
+  end
+
+  it "returns all-nil scoring summary for an empty mutant set" do
+    expect(result([]).scoring_summary).to eq(
+      mutation_score: nil,
+      mutation_score_indicator: nil,
       equivalence_uncertainty: nil
     )
   end

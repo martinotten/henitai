@@ -97,9 +97,10 @@ module Henitai
 
     def covered?(mutant, coverage_lines)
       file = normalize_path(mutant.location[:file])
-      start_line = mutant.location[:start_line]
-
-      Array(coverage_lines[file]).include?(start_line)
+      covered = Array(coverage_lines[file])
+      (mutant.location[:start_line]..mutant.location[:end_line]).any? do |line|
+        covered.include?(line)
+      end
     end
 
     def source_for(mutant)

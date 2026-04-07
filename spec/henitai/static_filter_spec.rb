@@ -215,6 +215,7 @@ RSpec.describe Henitai::StaticFilter do
 
       mutant.location[:file] = File.expand_path("lib/sample.rb", dir)
       mutant.location[:start_line] = 4
+      mutant.location[:end_line] = 4
 
       Dir.chdir(dir) do
         described_class.new.apply([mutant], config)
@@ -244,6 +245,7 @@ RSpec.describe Henitai::StaticFilter do
 
       mutant.location[:file] = File.join(dir, "lib", "sample.rb")
       mutant.location[:start_line] = 3
+      mutant.location[:end_line] = 3
 
       Dir.chdir(dir) do
         described_class.new.apply([mutant], config(reports_dir: coverage_dir))
@@ -269,6 +271,7 @@ RSpec.describe Henitai::StaticFilter do
 
       mutant.location[:file] = File.join(dir, "lib", "sample.rb")
       mutant.location[:start_line] = 2
+      mutant.location[:end_line] = 2
 
       Dir.chdir(dir) do
         described_class.new.apply([mutant], config(reports_dir: coverage_dir))
@@ -283,6 +286,7 @@ RSpec.describe Henitai::StaticFilter do
       mutant = build_mutant("foo.bar")
       mutant.location[:file] = "lib/sample.rb"
       mutant.location[:start_line] = 2
+      mutant.location[:end_line] = 2
 
       Dir.chdir(dir) do
         described_class.new.apply([mutant], config)
@@ -313,6 +317,7 @@ RSpec.describe Henitai::StaticFilter do
 
       mutant.location[:file] = "lib/sample.rb"
       mutant.location[:start_line] = 2
+      mutant.location[:end_line] = 2
 
       Dir.chdir(dir) do
         described_class.new.apply([mutant], config)
@@ -340,6 +345,7 @@ RSpec.describe Henitai::StaticFilter do
 
       mutant.location[:file] = File.join(dir, "sample.rb")
       mutant.location[:start_line] = 3
+      mutant.location[:end_line] = 3
 
       Dir.chdir(dir) do
         described_class.new.apply([mutant], config)
@@ -367,6 +373,35 @@ RSpec.describe Henitai::StaticFilter do
 
       mutant.location[:file] = File.join(dir, "sample.rb")
       mutant.location[:start_line] = 2
+      mutant.location[:end_line] = 2
+
+      Dir.chdir(dir) do
+        described_class.new.apply([mutant], config)
+      end
+
+      expect(mutant.status).to eq(:pending)
+    end
+  end
+
+  it "keeps covered mutants pending when only an interior line of the range is covered" do
+    Dir.mktmpdir do |dir|
+      mutant = build_mutant("foo.bar")
+      write_coverage_report(
+        dir,
+        {
+          "RSpec" => {
+            "coverage" => {
+              File.join(dir, "sample.rb") => {
+                "lines" => [nil, 1, nil]
+              }
+            }
+          }
+        }
+      )
+
+      mutant.location[:file] = File.join(dir, "sample.rb")
+      mutant.location[:start_line] = 1
+      mutant.location[:end_line] = 3
 
       Dir.chdir(dir) do
         described_class.new.apply([mutant], config)
@@ -390,6 +425,7 @@ RSpec.describe Henitai::StaticFilter do
 
       mutant.location[:file] = File.join(dir, "sample.rb")
       mutant.location[:start_line] = 3
+      mutant.location[:end_line] = 3
 
       Dir.chdir(dir) do
         described_class.new.apply([mutant], config)
@@ -417,6 +453,7 @@ RSpec.describe Henitai::StaticFilter do
 
       mutant.location[:file] = File.join(dir, "sample.rb")
       mutant.location[:start_line] = 3
+      mutant.location[:end_line] = 3
 
       Dir.chdir(dir) do
         described_class.new.apply([mutant], config(ignore_patterns: ["foo\\.bar"]))
