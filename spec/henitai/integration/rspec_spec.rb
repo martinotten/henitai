@@ -203,6 +203,30 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  it "uses the baseline log paths when running the full suite" do
+    integration = described_class.new
+
+    with_temp_workspace do |dir|
+      log_paths = {
+        stdout_path: File.join(dir, "reports", "mutation-logs", "baseline.stdout.log"),
+        stderr_path: File.join(dir, "reports", "mutation-logs", "baseline.stderr.log"),
+        log_path: File.join(dir, "reports", "mutation-logs", "baseline.log")
+      }
+
+      allow(integration).to receive(:scenario_log_paths).with("baseline").and_return(
+        log_paths
+      )
+      allow(Process).to receive(:spawn).and_return(4321)
+      allow(integration).to receive(:wait_with_timeout).and_return(
+        Struct.new(:success?, :exitstatus).new(true, 0)
+      )
+
+      integration.run_suite(["spec/foo_spec.rb"])
+
+      expect(integration).to have_received(:scenario_log_paths).with("baseline")
+    end
+  end
+
   it "resolves the rspec and minitest integrations" do
     expect(
       [
@@ -887,6 +911,22 @@ RSpec.describe Henitai::Integration::Rspec do
     expect(integration.select_tests(subject)).to eq(["spec/fallback_spec.rb"])
   end
 
+  it "skips broken fallback candidates and keeps matching ones" do
+    integration = described_class.new
+    subject = instance_double(Henitai::Subject, source_file: "lib/sample.rb")
+
+    allow(integration).to receive(:spec_files).and_return(
+      ["spec/broken_spec.rb", "spec/matching_spec.rb"]
+    )
+    allow(integration).to receive(:requires_source_file_transitively?) do |spec_file, _source_file, _visited = []|
+      raise Errno::EACCES if spec_file == "spec/broken_spec.rb"
+
+      true
+    end
+
+    expect(integration.send(:fallback_spec_files, subject)).to eq(["spec/matching_spec.rb"])
+  end
+
   it "orders selection patterns by longest first and removes duplicates" do
     integration = described_class.new
     subject = instance_double(
@@ -983,7 +1023,23 @@ RSpec.describe Henitai::Integration::Rspec do
     expect(
       integration.send(:relative_candidates, "spec/models/sample_spec.rb", "../support/helper")
     ).to eq(
+      [
+        File.expand_path("../support/helper", "spec/models"),
+        File.expand_path("../support/helper.rb", "spec/models")
+      ]
+    )
+  end
+
+  it "expands both plain and ruby candidates from the base path" do
+    integration = described_class.new
+
+    expect(
       integration.send(:expand_candidates, "spec/models", "../support/helper")
+    ).to eq(
+      [
+        File.expand_path("../support/helper", "spec/models"),
+        File.expand_path("../support/helper.rb", "spec/models")
+      ]
     )
   end
 
