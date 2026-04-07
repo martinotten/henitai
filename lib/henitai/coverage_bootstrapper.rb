@@ -9,7 +9,6 @@ module Henitai
 
     def ensure!(source_files:, config:, integration:)
       return if source_files.empty?
-      return if coverage_available?(source_files, config)
 
       bootstrap_coverage(integration, config)
       return if coverage_available?(source_files, config)
