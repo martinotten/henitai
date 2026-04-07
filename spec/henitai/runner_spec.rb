@@ -80,109 +80,115 @@ RSpec.describe Henitai::Runner do
   end
 
   it "runs the pipeline and reports the result" do
-    config = build_config
-    runner = described_class.new(config:)
-    subject = build_subject("Sample#answer", source_file: "lib/sample.rb")
-    subjects = [subject]
-    mutants = [build_mutant(subject)]
-    result = build_result(mutants)
-    calls = []
-    subject_resolver = instance_double(Henitai::SubjectResolver)
-    mutant_generator = instance_double(Henitai::MutantGenerator)
-    static_filter = instance_double(Henitai::StaticFilter)
-    coverage_bootstrapper = instance_double(Henitai::CoverageBootstrapper)
-    execution_engine = instance_double(Henitai::ExecutionEngine)
-    integration = instance_double(Henitai::Integration::Rspec)
-    history_store = build_history_store(calls)
-    reporter = instance_double(Henitai::Reporter::Terminal)
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
 
-    allow(runner).to receive_messages(
-      source_files: ["lib/sample.rb"],
-      coverage_bootstrapper:,
-      subject_resolver:,
-      mutant_generator:,
-      static_filter:,
-      execution_engine:,
-      integration:,
-      history_store:,
-      progress_reporter: reporter
-    )
-    allow(subject_resolver).to receive(:resolve_from_files) do |paths|
-      calls << [:resolve_from_files, paths]
-      subjects
-    end
-    allow(coverage_bootstrapper).to receive(:ensure!) do |kwargs|
-      calls << [:bootstrap, kwargs[:source_files], kwargs[:config]]
-    end
-    allow(mutant_generator).to receive(:generate) do |resolved_subjects, operators, kwargs|
-      calls << [:generate, resolved_subjects, operators.map(&:class), kwargs[:config]]
-      mutants
-    end
-    allow(static_filter).to receive(:apply) do |current_mutants, received_config|
-      calls << [:filter, current_mutants, received_config]
-      mutants
-    end
-    allow(execution_engine).to receive(:run) do |current_mutants,
-                                                 current_integration,
-                                                 received_config,
-                                                 progress_reporter:|
-      calls << [
-        :execute,
-        current_mutants,
-        current_integration,
-        received_config,
-        progress_reporter
-      ]
-      mutants
-    end
-    allow(Henitai::Result).to receive(:new) do |kwargs|
-      calls << [
-        :result,
-        kwargs[:mutants],
-        kwargs[:started_at].is_a?(Time),
-        kwargs[:finished_at].is_a?(Time)
-      ]
-      result
-    end
-    allow(Henitai::Reporter).to receive(:run_all) do |kwargs|
-      calls << [:report, kwargs]
-    end
+      Dir.chdir(dir) do
+        config = build_config
+        runner = described_class.new(config:)
+        subject = build_subject("Sample#answer", source_file: "lib/sample.rb")
+        subjects = [subject]
+        mutants = [build_mutant(subject)]
+        result = build_result(mutants)
+        calls = []
+        subject_resolver = instance_double(Henitai::SubjectResolver)
+        mutant_generator = instance_double(Henitai::MutantGenerator)
+        static_filter = instance_double(Henitai::StaticFilter)
+        coverage_bootstrapper = instance_double(Henitai::CoverageBootstrapper)
+        execution_engine = instance_double(Henitai::ExecutionEngine)
+        integration = instance_double(Henitai::Integration::Rspec)
+        history_store = build_history_store(calls)
+        reporter = instance_double(Henitai::Reporter::Terminal)
 
-    runner.run
+        allow(Henitai::Reporter::Terminal).to receive(:new).and_return(reporter)
+        allow(runner).to receive_messages(
+          coverage_bootstrapper:,
+          subject_resolver:,
+          mutant_generator:,
+          static_filter:,
+          execution_engine:,
+          integration:,
+          history_store:
+        )
+        allow(subject_resolver).to receive(:resolve_from_files) do |paths|
+          calls << [:resolve_from_files, paths]
+          subjects
+        end
+        allow(coverage_bootstrapper).to receive(:ensure!) do |kwargs|
+          calls << [:bootstrap, kwargs[:source_files], kwargs[:config]]
+        end
+        allow(mutant_generator).to receive(:generate) do |resolved_subjects, operators, kwargs|
+          calls << [:generate, resolved_subjects, operators.map(&:class), kwargs[:config]]
+          mutants
+        end
+        allow(static_filter).to receive(:apply) do |current_mutants, received_config|
+          calls << [:filter, current_mutants, received_config]
+          mutants
+        end
+        allow(execution_engine).to receive(:run) do |current_mutants,
+                                                     current_integration,
+                                                     received_config,
+                                                     progress_reporter:|
+          calls << [
+            :execute,
+            current_mutants,
+            current_integration,
+            received_config,
+            progress_reporter
+          ]
+          mutants
+        end
+        allow(Henitai::Result).to receive(:new) do |kwargs|
+          calls << [
+            :result,
+            kwargs[:mutants],
+            kwargs[:started_at].is_a?(Time),
+            kwargs[:finished_at].is_a?(Time)
+          ]
+          result
+        end
+        allow(Henitai::Reporter).to receive(:run_all) do |kwargs|
+          calls << [:report, kwargs]
+        end
 
-    expect(calls).to eq(
-      [
-        [
-          :bootstrap,
-          ["lib/sample.rb"],
-          config
-        ],
-        [:resolve_from_files, ["lib/sample.rb"]],
-        [
-          :generate,
-          subjects,
-          Henitai::Operator.for_set(:light).map(&:class),
-          config
-        ],
-        [:filter, mutants, config],
-        [:execute, mutants, integration, config, reporter],
-        [
-          :result,
-          mutants,
-          true,
-          true
-        ],
-        :history,
-        [
-          :report,
-          {
-            names: ["terminal"],
-            result:,
-            config:
-          }
-        ]
-      ]
-    )
+        runner.run
+
+        expect(calls).to eq(
+          [
+            [
+              :bootstrap,
+              ["lib/sample.rb"],
+              config
+            ],
+            [:resolve_from_files, ["lib/sample.rb"]],
+            [
+              :generate,
+              subjects,
+              Henitai::Operator.for_set(:light).map(&:class),
+              config
+            ],
+            [:filter, mutants, config],
+            [:execute, mutants, integration, config, reporter],
+            [
+              :result,
+              mutants,
+              true,
+              true
+            ],
+            :history,
+            [
+              :report,
+              {
+                names: ["terminal"],
+                result:,
+                config:
+              }
+            ]
+          ]
+        )
+      end
+    end
   end
 
   it "uses included Ruby files when no --since ref is given" do
@@ -210,8 +216,7 @@ RSpec.describe Henitai::Runner do
           static_filter:,
           execution_engine:,
           integration:,
-          history_store:,
-          progress_reporter: nil
+          history_store:
         )
         allow(subject_resolver).to receive(:resolve_from_files) do |paths|
           calls << paths
@@ -238,67 +243,157 @@ RSpec.describe Henitai::Runner do
       Dir.chdir(dir) do
         config = build_config(reporters: [])
         runner = described_class.new(config:)
+        subject_resolver = instance_double(Henitai::SubjectResolver)
+        mutant_generator = instance_double(Henitai::MutantGenerator)
+        static_filter = instance_double(Henitai::StaticFilter)
+        execution_engine = instance_double(Henitai::ExecutionEngine)
+        integration = instance_double(Henitai::Integration::Rspec)
+        history_store = build_history_store
+        result = build_result([])
+        calls = []
 
-        expect(runner.send(:source_files)).to eq([File.join("lib", "nested", "sample.rb")])
+        allow(runner).to receive_messages(
+          subject_resolver:,
+          mutant_generator:,
+          static_filter:,
+          execution_engine:,
+          integration:,
+          history_store:
+        )
+        allow(subject_resolver).to receive(:resolve_from_files) do |paths|
+          calls << paths
+          []
+        end
+        allow(mutant_generator).to receive(:generate).and_return([])
+        allow(static_filter).to receive(:apply).and_return([])
+        allow(execution_engine).to receive(:run).and_return([])
+        allow(Henitai::Result).to receive(:new).and_return(result)
+        allow(Henitai::Reporter).to receive(:run_all)
+
+        runner.run
+
+        expect(calls).to eq([[
+          File.join("lib", "nested", "sample.rb")
+        ]])
       end
     end
   end
 
-  it "returns nil for the progress reporter when terminal output is disabled" do
-    config = build_config(reporters: [])
-    runner = described_class.new(config:)
+  it "passes nil progress reporter when terminal output is disabled" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
 
-    expect(runner.send(:progress_reporter)).to be(nil)
+      Dir.chdir(dir) do
+        config = build_config(reporters: [])
+        runner = described_class.new(config:)
+        subject_resolver = instance_double(Henitai::SubjectResolver)
+        mutant_generator = instance_double(Henitai::MutantGenerator)
+        static_filter = instance_double(Henitai::StaticFilter)
+        execution_engine = instance_double(Henitai::ExecutionEngine)
+        integration = instance_double(Henitai::Integration::Rspec)
+        history_store = build_history_store
+        result = build_result([])
+
+        allow(runner).to receive_messages(
+          subject_resolver:,
+          mutant_generator:,
+          static_filter:,
+          execution_engine:,
+          integration:,
+          history_store:
+        )
+        allow(subject_resolver).to receive(:resolve_from_files).and_return([])
+        allow(mutant_generator).to receive(:generate).and_return([])
+        allow(static_filter).to receive(:apply).and_return([])
+        allow(execution_engine).to receive(:run) do |_mutants, _integration, _config, progress_reporter:|
+          expect(progress_reporter).to be(nil)
+          []
+        end
+        allow(Henitai::Result).to receive(:new).and_return(result)
+        allow(Henitai::Reporter).to receive(:run_all)
+
+        runner.run
+      end
+    end
   end
 
   it "builds a terminal progress reporter when terminal output is enabled" do
-    config = build_config(reporters: ["terminal"])
-    runner = described_class.new(config:)
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
 
-    expect(runner.send(:progress_reporter)).to be_a(Henitai::Reporter::Terminal)
-  end
+      Dir.chdir(dir) do
+        config = build_config(reporters: ["terminal"])
+        runner = described_class.new(config:)
+        subject_resolver = instance_double(Henitai::SubjectResolver)
+        mutant_generator = instance_double(Henitai::MutantGenerator)
+        static_filter = instance_double(Henitai::StaticFilter)
+        execution_engine = instance_double(Henitai::ExecutionEngine)
+        integration = instance_double(Henitai::Integration::Rspec)
+        history_store = build_history_store
+        result = build_result([])
 
-  it "normalizes relative paths with File.expand_path" do
-    config = build_config(reporters: [])
-    runner = described_class.new(config:)
+        allow(runner).to receive_messages(
+          subject_resolver:,
+          mutant_generator:,
+          static_filter:,
+          execution_engine:,
+          integration:,
+          history_store:
+        )
+        allow(subject_resolver).to receive(:resolve_from_files).and_return([])
+        allow(mutant_generator).to receive(:generate).and_return([])
+        allow(static_filter).to receive(:apply).and_return([])
+        allow(execution_engine).to receive(:run) do |_mutants, _integration, _config, progress_reporter:|
+          expect(progress_reporter).to be_a(Henitai::Reporter::Terminal)
+          []
+        end
+        allow(Henitai::Result).to receive(:new).and_return(result)
+        allow(Henitai::Reporter).to receive(:run_all)
 
-    expect(runner.send(:normalize_path, "lib/sample.rb")).to eq(
-      File.expand_path("lib/sample.rb")
-    )
+        runner.run
+      end
+    end
   end
 
   it "passes the configured reports dir to the execution engine" do
-    config = build_config(reporters: [], reports_dir: "custom-reports")
-    runner = described_class.new(config:)
-    subject_resolver = instance_double(Henitai::SubjectResolver)
-    mutant_generator = instance_double(Henitai::MutantGenerator)
-    static_filter = instance_double(Henitai::StaticFilter)
-    execution_engine = instance_double(Henitai::ExecutionEngine)
-    integration = instance_double(Henitai::Integration::Rspec)
-    history_store = build_history_store
-    result = build_result([])
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
 
-    allow(runner).to receive_messages(
-      source_files: ["lib/sample.rb"],
-      subject_resolver:,
-      mutant_generator:,
-      static_filter:,
-      execution_engine:,
-      integration:,
-      history_store:,
-      progress_reporter: nil
-    )
-    allow(subject_resolver).to receive(:resolve_from_files).and_return([])
-    allow(mutant_generator).to receive(:generate).and_return([])
-    allow(static_filter).to receive(:apply).and_return([])
-    allow(execution_engine).to receive(:run) do |_mutants, _integration, received_config, **_kwargs|
-      expect(received_config.reports_dir).to eq("custom-reports")
-      []
+      Dir.chdir(dir) do
+        config = build_config(reporters: [], reports_dir: "custom-reports")
+        runner = described_class.new(config:)
+        subject_resolver = instance_double(Henitai::SubjectResolver)
+        mutant_generator = instance_double(Henitai::MutantGenerator)
+        static_filter = instance_double(Henitai::StaticFilter)
+        execution_engine = instance_double(Henitai::ExecutionEngine)
+        integration = instance_double(Henitai::Integration::Rspec)
+        history_store = build_history_store
+        result = build_result([])
+
+        allow(runner).to receive_messages(
+          subject_resolver:,
+          mutant_generator:,
+          static_filter:,
+          execution_engine:,
+          integration:,
+          history_store:
+        )
+        allow(subject_resolver).to receive(:resolve_from_files).and_return([])
+        allow(mutant_generator).to receive(:generate).and_return([])
+        allow(static_filter).to receive(:apply).and_return([])
+        allow(execution_engine).to receive(:run) do |_mutants, _integration, received_config, **_kwargs|
+          expect(received_config.reports_dir).to eq("custom-reports")
+          []
+        end
+        allow(Henitai::Result).to receive(:new).and_return(result)
+        allow(Henitai::Reporter).to receive(:run_all)
+
+        runner.run
+      end
     end
-    allow(Henitai::Result).to receive(:new).and_return(result)
-    allow(Henitai::Reporter).to receive(:run_all)
-
-    runner.run
   end
 
   it "restricts Gate 1 to changed files when --since is given" do
@@ -326,8 +421,7 @@ RSpec.describe Henitai::Runner do
           static_filter:,
           execution_engine:,
           integration:,
-          history_store:,
-          progress_reporter: nil
+          history_store:
         )
         allow(diff_analyzer).to receive(:changed_files) do |kwargs|
           calls << kwargs
@@ -356,55 +450,61 @@ RSpec.describe Henitai::Runner do
   end
 
   it "applies CLI subject patterns after resolving subjects" do
-    config = build_config(reporters: [])
-    runner = described_class.new(
-      config:,
-      subjects: [Henitai::Subject.parse("Sample*")]
-    )
-    subject_resolver = instance_double(Henitai::SubjectResolver)
-    mutant_generator = instance_double(Henitai::MutantGenerator)
-    static_filter = instance_double(Henitai::StaticFilter)
-    execution_engine = instance_double(Henitai::ExecutionEngine)
-    integration = instance_double(Henitai::Integration::Rspec)
-    history_store = build_history_store
-    result = build_result([])
-    alpha = build_subject("Sample#alpha", source_file: "lib/sample.rb")
-    beta = build_subject("Sample#beta", source_file: "lib/sample.rb")
-    other = build_subject("Other#gamma", source_file: "lib/other.rb")
-    calls = []
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+      File.write(File.join(dir, "lib/other.rb"), "class Other; end\n")
 
-    allow(runner).to receive_messages(
-      source_files: ["lib/sample.rb"],
-      subject_resolver:,
-      mutant_generator:,
-      static_filter:,
-      execution_engine:,
-      integration:,
-      history_store:,
-      progress_reporter: nil
-    )
-    allow(subject_resolver).to receive_messages(
-      resolve_from_files: [alpha, beta, other],
-      apply_pattern: [alpha, beta]
-    )
-    allow(mutant_generator).to receive(:generate) do |selected_subjects, operators, kwargs|
-      calls << [selected_subjects, operators.map(&:class), kwargs[:config]]
-      []
+      Dir.chdir(dir) do
+        config = build_config(reporters: [])
+        runner = described_class.new(
+          config:,
+          subjects: [Henitai::Subject.parse("Sample*")]
+        )
+        subject_resolver = instance_double(Henitai::SubjectResolver)
+        mutant_generator = instance_double(Henitai::MutantGenerator)
+        static_filter = instance_double(Henitai::StaticFilter)
+        execution_engine = instance_double(Henitai::ExecutionEngine)
+        integration = instance_double(Henitai::Integration::Rspec)
+        history_store = build_history_store
+        result = build_result([])
+        alpha = build_subject("Sample#alpha", source_file: "lib/sample.rb")
+        beta = build_subject("Sample#beta", source_file: "lib/sample.rb")
+        other = build_subject("Other#gamma", source_file: "lib/other.rb")
+        calls = []
+
+        allow(runner).to receive_messages(
+          subject_resolver:,
+          mutant_generator:,
+          static_filter:,
+          execution_engine:,
+          integration:,
+          history_store:
+        )
+        allow(subject_resolver).to receive_messages(
+          resolve_from_files: [alpha, beta, other],
+          apply_pattern: [alpha, beta]
+        )
+        allow(mutant_generator).to receive(:generate) do |selected_subjects, operators, kwargs|
+          calls << [selected_subjects, operators.map(&:class), kwargs[:config]]
+          []
+        end
+        allow(static_filter).to receive(:apply).and_return([])
+        allow(execution_engine).to receive(:run).and_return([])
+        allow(Henitai::Result).to receive(:new).and_return(result)
+        allow(Henitai::Reporter).to receive(:run_all)
+
+        runner.run
+
+        expect(calls).to eq(
+          [[
+            [alpha, beta],
+            Henitai::Operator.for_set(:light).map(&:class),
+            config
+          ]]
+        )
+      end
     end
-    allow(static_filter).to receive(:apply).and_return([])
-    allow(execution_engine).to receive(:run).and_return([])
-    allow(Henitai::Result).to receive(:new).and_return(result)
-    allow(Henitai::Reporter).to receive(:run_all)
-
-    runner.run
-
-    expect(calls).to eq(
-      [[
-        [alpha, beta],
-        Henitai::Operator.for_set(:light).map(&:class),
-        config
-      ]]
-    )
   end
 end
 # rubocop:enable RSpec/ExampleLength

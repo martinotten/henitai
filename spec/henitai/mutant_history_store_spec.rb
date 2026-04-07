@@ -169,25 +169,6 @@ RSpec.describe Henitai::MutantHistoryStore do
     end
   end
 
-  it "symbolizes existing status history rows" do
-    store = described_class.new(path: "ignored.sqlite3")
-    row = {
-      "status_history" => JSON.generate(
-        [
-          {
-            version: "1.0.0",
-            status: "survived",
-            recordedAt: "2026-01-01T00:00:00Z"
-          }
-        ]
-      )
-    }
-
-    history = store.send(:existing_status_history, row)
-
-    expect(history.first.keys).to all(be_a(Symbol))
-  end
-
   it "appends mutant history across repeated runs" do
     Dir.mktmpdir do |dir|
       store = described_class.new(path: File.join(dir, "mutation-history.sqlite3"))

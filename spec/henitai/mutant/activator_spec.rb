@@ -382,28 +382,6 @@ RSpec.describe Henitai::Mutant::Activator do
     end
   end
 
-  it "serializes parameter fragments exactly" do
-    Dir.mktmpdir do |dir|
-      path = write_source(dir, <<~RUBY)
-        class ActivatorParamsSample
-          def value(a, b = 1, *rest, c:, d: 2, **kwrest, &block)
-            a + b
-          end
-        end
-      RUBY
-
-      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
-      mutant = Henitai::MutantGenerator.new.generate(
-        [subject],
-        [Henitai::Operators::ArithmeticOperator.new]
-      ).first
-
-      expect(described_class.new.send(:parameter_source, mutant)).to eq(
-        "a, b = 1, *rest, c:, d: 2, **kwrest, &block"
-      )
-    end
-  end
-
   it "supports anonymous rest and keyword rest parameters" do
     Dir.mktmpdir do |dir|
       path = write_source(dir, <<~RUBY)

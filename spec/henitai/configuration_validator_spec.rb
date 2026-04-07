@@ -343,57 +343,55 @@ RSpec.describe Henitai::ConfigurationValidator do
   end
 
   # ---------------------------------------------------------------------------
-  # Private helpers — direkt via send()
+  # Mutation validation through validate!
   # ---------------------------------------------------------------------------
 
   describe "sampling validation" do
     it "requires ratio to be paired with strategy" do
       expect do
-        described_class.send(:validate_sampling, { ratio: 0.5 })
+        described_class.validate!({ mutation: { sampling: { ratio: 0.5 } } })
       end.to raise_error(Henitai::ConfigurationError, /mutation\.sampling/)
     end
 
     it "requires strategy to be paired with ratio" do
       expect do
-        described_class.send(:validate_sampling, { strategy: "stratified" })
+        described_class.validate!({ mutation: { sampling: { strategy: "stratified" } } })
       end.to raise_error(Henitai::ConfigurationError, /mutation\.sampling/)
     end
 
-    # Muster C: validate_sampling_ratio(…) → 0
     it "rejects an out-of-range ratio" do
       expect do
-        described_class.send(:validate_sampling, { ratio: 1.5, strategy: "stratified" })
+        described_class.validate!({ mutation: { sampling: { ratio: 1.5, strategy: "stratified" } } })
       end.to raise_error(Henitai::ConfigurationError, /mutation\.sampling\.ratio/)
     end
 
-    # Muster C: validate_sampling_strategy(…) → 0
     it "rejects an unknown strategy" do
       expect do
-        described_class.send(:validate_sampling, { ratio: 0.5, strategy: "random" })
+        described_class.validate!({ mutation: { sampling: { ratio: 0.5, strategy: "random" } } })
       end.to raise_error(Henitai::ConfigurationError, /mutation\.sampling\.strategy/)
     end
 
     it "accepts a valid ratio + strategy pair" do
       expect do
-        described_class.send(:validate_sampling, { ratio: 0.5, strategy: "stratified" })
+        described_class.validate!({ mutation: { sampling: { ratio: 0.5, strategy: "stratified" } } })
       end.not_to raise_error
     end
 
     it "accepts nil sampling" do
-      expect { described_class.send(:validate_sampling, nil) }.not_to raise_error
+      expect { described_class.validate!({ mutation: { sampling: nil } }) }.not_to raise_error
     end
   end
 
   describe "unknown key warnings" do
     it "includes the top-level key name" do
       expect_warning("Unknown configuration key: unknown_top_level") do
-        described_class.send(:warn_unknown_keys, { unknown_top_level: true }, %i[integration])
+        described_class.validate!({ unknown_top_level: true })
       end
     end
 
     it "includes the nested key path" do
       expect_warning("Unknown configuration key: mutation.unknown_flag") do
-        described_class.send(:warn_unknown_keys, { unknown_flag: true }, %i[operators], "mutation")
+        described_class.validate!({ mutation: { unknown_flag: true } })
       end
     end
   end
@@ -401,7 +399,7 @@ RSpec.describe Henitai::ConfigurationValidator do
   describe "string array validation" do
     it "describes a non-array value precisely" do
       expect do
-        described_class.send(:validate_string_array, "lib", "includes")
+        described_class.validate!({ includes: "lib" })
       end.to raise_error(
         Henitai::ConfigurationError,
         /includes: expected Array<String>, got String/
@@ -410,7 +408,9 @@ RSpec.describe Henitai::ConfigurationValidator do
 
     it "describes mixed array element types precisely" do
       expect do
-        described_class.send(:validate_string_array, ["(send _ :puts _)", 1], "mutation.ignore_patterns")
+        described_class.validate!(
+          { mutation: { ignore_patterns: ["(send _ :puts _)", 1] } }
+        )
       end.to raise_error(
         Henitai::ConfigurationError,
         /mutation\.ignore_patterns: expected Array<String>, got Array<String, Integer>/
@@ -420,24 +420,23 @@ RSpec.describe Henitai::ConfigurationValidator do
 
   describe "validate_operator" do
     it "accepts nil" do
-      expect { described_class.send(:validate_operator, nil) }.not_to raise_error
+      expect { described_class.validate!({ mutation: { operators: nil } }) }.not_to raise_error
     end
 
     it "accepts :light and :full" do
       %w[light full].each do |op|
-        expect { described_class.send(:validate_operator, op) }.not_to raise_error
+        expect { described_class.validate!({ mutation: { operators: op } }) }.not_to raise_error
       end
     end
 
-    # Muster C: configuration_error(…) → 0
     it "rejects an unknown operator with path in error" do
-      expect { described_class.send(:validate_operator, "heavy") }.to raise_error(
+      expect { described_class.validate!({ mutation: { operators: "heavy" } }) }.to raise_error(
         Henitai::ConfigurationError, /mutation\.operators/
       )
     end
 
     it "reports the rejected operator value in the error message" do
-      expect { described_class.send(:validate_operator, "heavy") }.to raise_error(
+      expect { described_class.validate!({ mutation: { operators: "heavy" } }) }.to raise_error(
         Henitai::ConfigurationError,
         "Invalid configuration value for mutation.operators: expected one of light, full, got \"heavy\""
       )
@@ -446,16 +445,15 @@ RSpec.describe Henitai::ConfigurationValidator do
 
   describe "validate_timeout" do
     it "accepts nil" do
-      expect { described_class.send(:validate_timeout, nil) }.not_to raise_error
+      expect { described_class.validate!({ mutation: { timeout: nil } }) }.not_to raise_error
     end
 
     it "accepts a numeric value" do
-      expect { described_class.send(:validate_timeout, 30) }.not_to raise_error
+      expect { described_class.validate!({ mutation: { timeout: 30 } }) }.not_to raise_error
     end
 
-    # Muster A: Interpolation im Fehlertext
     it "rejects a non-numeric timeout with path in error" do
-      expect { described_class.send(:validate_timeout, "30s") }.to raise_error(
+      expect { described_class.validate!({ mutation: { timeout: "30s" } }) }.to raise_error(
         Henitai::ConfigurationError,
         "Invalid configuration value for mutation.timeout: expected Numeric, got String"
       )
@@ -464,62 +462,66 @@ RSpec.describe Henitai::ConfigurationValidator do
 
   describe "validate_max_mutants_per_line" do
     it "accepts nil" do
-      expect { described_class.send(:validate_max_mutants_per_line, nil) }.not_to raise_error
+      expect do
+        described_class.validate!({ mutation: { max_mutants_per_line: nil } })
+      end.not_to raise_error
     end
 
     it "accepts a positive integer" do
-      expect { described_class.send(:validate_max_mutants_per_line, 5) }.not_to raise_error
+      expect do
+        described_class.validate!({ mutation: { max_mutants_per_line: 5 } })
+      end.not_to raise_error
     end
 
-    # Muster C: configuration_error(…) → 0
     it "rejects zero with path in error" do
-      expect { described_class.send(:validate_max_mutants_per_line, 0) }.to raise_error(
+      expect { described_class.validate!({ mutation: { max_mutants_per_line: 0 } }) }.to raise_error(
         Henitai::ConfigurationError, /mutation\.max_mutants_per_line/
       )
     end
 
     it "reports the rejected mutant limit value in the error message" do
-      expect { described_class.send(:validate_max_mutants_per_line, 0) }.to raise_error(
+      expect { described_class.validate!({ mutation: { max_mutants_per_line: 0 } }) }.to raise_error(
         Henitai::ConfigurationError,
         "Invalid configuration value for mutation.max_mutants_per_line: expected Integer >= 1, got 0"
       )
     end
 
     it "rejects a non-integer with path in error" do
-      expect { described_class.send(:validate_max_mutants_per_line, "5") }.to raise_error(
-        Henitai::ConfigurationError, /mutation\.max_mutants_per_line/
-      )
+      expect do
+        described_class.validate!({ mutation: { max_mutants_per_line: "5" } })
+      end.to raise_error(Henitai::ConfigurationError, /mutation\.max_mutants_per_line/)
     end
   end
 
   describe "validate_max_flaky_retries" do
     it "accepts nil" do
-      expect { described_class.send(:validate_max_flaky_retries, nil) }.not_to raise_error
+      expect do
+        described_class.validate!({ mutation: { max_flaky_retries: nil } })
+      end.not_to raise_error
     end
 
     it "accepts zero" do
-      expect { described_class.send(:validate_max_flaky_retries, 0) }.not_to raise_error
+      expect { described_class.validate!({ mutation: { max_flaky_retries: 0 } }) }.not_to raise_error
     end
 
     it "accepts a positive integer" do
-      expect { described_class.send(:validate_max_flaky_retries, 3) }.not_to raise_error
+      expect { described_class.validate!({ mutation: { max_flaky_retries: 3 } }) }.not_to raise_error
     end
 
-    # Muster C: configuration_error(…) → 0
     it "rejects a non-integer with path in error" do
-      expect { described_class.send(:validate_max_flaky_retries, "3") }.to raise_error(
+      expect { described_class.validate!({ mutation: { max_flaky_retries: "3" } }) }.to raise_error(
         Henitai::ConfigurationError, /mutation\.max_flaky_retries/
       )
     end
 
     it "rejects a negative integer with path in error" do
-      expect { described_class.send(:validate_max_flaky_retries, -1) }.to raise_error(
+      expect { described_class.validate!({ mutation: { max_flaky_retries: -1 } }) }.to raise_error(
         Henitai::ConfigurationError, /mutation\.max_flaky_retries/
       )
     end
 
     it "reports the rejected retry budget in the error message" do
-      expect { described_class.send(:validate_max_flaky_retries, -1) }.to raise_error(
+      expect { described_class.validate!({ mutation: { max_flaky_retries: -1 } }) }.to raise_error(
         Henitai::ConfigurationError,
         "Invalid configuration value for mutation.max_flaky_retries: expected Integer >= 0, got -1"
       )
@@ -528,22 +530,21 @@ RSpec.describe Henitai::ConfigurationValidator do
 
   describe "validate_threshold" do
     it "accepts 0" do
-      expect { described_class.send(:validate_threshold, 0, "thresholds.low") }.not_to raise_error
+      expect { described_class.validate!({ thresholds: { low: 0 } }) }.not_to raise_error
     end
 
     it "accepts 100" do
-      expect { described_class.send(:validate_threshold, 100, "thresholds.high") }.not_to raise_error
+      expect { described_class.validate!({ thresholds: { high: 100 } }) }.not_to raise_error
     end
 
-    # Muster C + A: configuration_error(…) → 0 und Interpolation im Pfad
     it "rejects a value above 100 with path in error" do
-      expect { described_class.send(:validate_threshold, 101, "thresholds.high") }.to raise_error(
+      expect { described_class.validate!({ thresholds: { high: 101 } }) }.to raise_error(
         Henitai::ConfigurationError, /for thresholds\.high:/
       )
     end
 
     it "rejects a non-integer with path in error" do
-      expect { described_class.send(:validate_threshold, "90", "thresholds.low") }.to raise_error(
+      expect { described_class.validate!({ thresholds: { low: "90" } }) }.to raise_error(
         Henitai::ConfigurationError, /for thresholds\.low:/
       )
     end
@@ -551,17 +552,16 @@ RSpec.describe Henitai::ConfigurationValidator do
 
   describe "validate_boolean" do
     it "accepts true" do
-      expect { described_class.send(:validate_boolean, true, "coverage_criteria.test_result") }.not_to raise_error
+      expect { described_class.validate!({ coverage_criteria: { test_result: true } }) }.not_to raise_error
     end
 
     it "accepts false" do
-      expect { described_class.send(:validate_boolean, false, "coverage_criteria.process_abort") }.not_to raise_error
+      expect { described_class.validate!({ coverage_criteria: { process_abort: false } }) }.not_to raise_error
     end
 
-    # Muster A: Interpolation #{path} im Fehlertext
     it "rejects a non-boolean with path in error" do
       expect do
-        described_class.send(:validate_boolean, "yes", "coverage_criteria.test_result")
+        described_class.validate!({ coverage_criteria: { test_result: "yes" } })
       end.to raise_error(Henitai::ConfigurationError, /for coverage_criteria\.test_result:/)
     end
   end
@@ -571,7 +571,7 @@ RSpec.describe Henitai::ConfigurationValidator do
       allow(Regexp).to receive(:new).and_raise(RegexpError, "missing ]")
 
       expect do
-        described_class.send(:validate_ignore_patterns, ["[invalid_regex"])
+        described_class.validate!({ mutation: { ignore_patterns: ["[invalid_regex"] } })
       end.to raise_error(
         Henitai::ConfigurationError,
         'Invalid configuration value for mutation.ignore_patterns: invalid regular expression "[invalid_regex": missing ]'
@@ -582,7 +582,7 @@ RSpec.describe Henitai::ConfigurationValidator do
   describe "validate_sampling_ratio" do
     it "reports the rejected ratio value in the error message" do
       expect do
-        described_class.send(:validate_sampling, { ratio: 1.5, strategy: "stratified" })
+        described_class.validate!({ mutation: { sampling: { ratio: 1.5, strategy: "stratified" } } })
       end.to raise_error(
         Henitai::ConfigurationError,
         "Invalid configuration value for mutation.sampling.ratio: expected Numeric between 0 and 1, got 1.5"
@@ -593,7 +593,7 @@ RSpec.describe Henitai::ConfigurationValidator do
   describe "validate_sampling_strategy" do
     it "reports the rejected strategy value in the error message" do
       expect do
-        described_class.send(:validate_sampling, { ratio: 0.5, strategy: "random" })
+        described_class.validate!({ mutation: { sampling: { ratio: 0.5, strategy: "random" } } })
       end.to raise_error(
         Henitai::ConfigurationError,
         'Invalid configuration value for mutation.sampling.strategy: expected stratified, got "random"'
@@ -603,16 +603,15 @@ RSpec.describe Henitai::ConfigurationValidator do
 
   describe "validate_optional_string" do
     it "accepts nil" do
-      expect { described_class.send(:validate_optional_string, nil, "reports_dir") }.not_to raise_error
+      expect { described_class.validate!({ reports_dir: nil }) }.not_to raise_error
     end
 
     it "accepts a string" do
-      expect { described_class.send(:validate_optional_string, "coverage/", "reports_dir") }.not_to raise_error
+      expect { described_class.validate!({ reports_dir: "coverage/" }) }.not_to raise_error
     end
 
-    # Muster A: Interpolation #{path} im Fehlertext
     it "rejects a non-string non-nil value with path in error" do
-      expect { described_class.send(:validate_optional_string, 42, "reports_dir") }.to raise_error(
+      expect { described_class.validate!({ reports_dir: 42 }) }.to raise_error(
         Henitai::ConfigurationError, /for reports_dir:/
       )
     end
@@ -620,13 +619,12 @@ RSpec.describe Henitai::ConfigurationValidator do
 
   describe "ensure_hash!" do
     it "accepts a hash" do
-      expect { described_class.send(:ensure_hash!, {}, "integration") }.not_to raise_error
+      expect { described_class.validate!({ dashboard: {} }) }.not_to raise_error
     end
 
-    # Muster A: Interpolation #{path} im Fehlertext der ensure_hash!-Methode
     it "rejects a non-hash with the path in the error" do
-      expect { described_class.send(:ensure_hash!, "string", "integration") }.to raise_error(
-        Henitai::ConfigurationError, /for integration:/
+      expect { described_class.validate!({ dashboard: "string" }) }.to raise_error(
+        Henitai::ConfigurationError, /for dashboard:/
       )
     end
   end
