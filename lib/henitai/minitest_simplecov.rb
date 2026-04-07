@@ -6,6 +6,9 @@
 # Must be required before any application code is loaded so that Coverage
 # tracking is active from the first line.
 
+require "coverage"
+Coverage.start(lines: true, branches: true, methods: true)
+
 require "simplecov"
 
 SimpleCov.coverage_dir(ENV.fetch("HENITAI_COVERAGE_DIR", "coverage"))
