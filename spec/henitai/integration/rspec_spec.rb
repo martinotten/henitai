@@ -206,9 +206,8 @@ RSpec.describe Henitai::Integration::Rspec do
     allow(Process).to receive(:exit) { |status| record[:child_status] = status }
   end
 
-  def stub_timeout_boundary_fork(record)
+  def stub_timeout_boundary_fork(_record)
     allow(Process).to receive(:fork) do |&block|
-      record[:forked] = true
       block.call
       24_610
     end
@@ -696,7 +695,7 @@ RSpec.describe Henitai::Integration::Rspec do
         timeout: 0.1
       )
 
-      expect([result, record]).to eq(
+      expect([result.status, record]).to eq(
         [
           :survived,
           {

@@ -411,6 +411,106 @@ RSpec.describe Henitai::SubjectResolver do
     end
   end
 
+  it "does not treat arbitrary block calls as define_method" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Foo
+            aaa(:bar) do
+              1
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects).to be_empty
+    end
+  end
+
+  it "does not treat lexicographically later block calls as define_method" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Foo
+            zzz(:bar) do
+              1
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects).to be_empty
+    end
+  end
+
+  it "does not resolve define_method on a constant receiver" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Foo
+            Foo.define_method(:bar) do
+              1
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects).to be_empty
+    end
+  end
+
+  it "does not resolve a self receiver with an earlier method name" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Foo
+            self.aaa(:bar) do
+              1
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects).to be_empty
+    end
+  end
+
+  it "does not resolve a self receiver with a later method name" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Foo
+            self.zzz(:bar) do
+              1
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects).to be_empty
+    end
+  end
+
   it "ignores define_method calls on non-self receivers" do
     Dir.mktmpdir do |dir|
       path = write_source(
@@ -479,6 +579,30 @@ RSpec.describe Henitai::SubjectResolver do
     filtered = described_class.new.apply_pattern(subjects, "Foo#bar")
 
     expect(filtered.map(&:expression)).to eq(["Foo#bar"])
+  end
+
+  it "does not match a different exact expression" do
+    subjects = [
+      Henitai::Subject.parse("Foo#baz"),
+      Henitai::Subject.parse("Foo.bar"),
+      Henitai::Subject.parse("Foo::Bar#qux")
+    ]
+
+    filtered = described_class.new.apply_pattern(subjects, "Foo#bar")
+
+    expect(filtered).to be_empty
+  end
+
+  it "does not match a lexicographically earlier exact expression" do
+    subjects = [
+      Henitai::Subject.parse("Foo#aaa"),
+      Henitai::Subject.parse("Foo.bar"),
+      Henitai::Subject.parse("Foo::Bar#aaa")
+    ]
+
+    filtered = described_class.new.apply_pattern(subjects, "Foo#bar")
+
+    expect(filtered).to be_empty
   end
 
   it "filters subjects by a namespace wildcard expression" do
