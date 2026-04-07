@@ -556,4 +556,30 @@ RSpec.describe Henitai::Mutant::Activator do
       expect(RealTransientSample.new.value).to eq(2)
     end
   end
+
+  it "does not suppress warn calls emitted by the loaded source file" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, <<~RUBY)
+        class Gate4WarningSample
+          warn "deprecation notice from loaded file"
+          def value
+            1
+          end
+        end
+      RUBY
+
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      original_node = find_nodes(subject.ast_node, :int).first
+      mutant = build_mutant(
+        subject:,
+        original_node: original_node,
+        mutated_node: Parser::AST::Node.new(:int, [2]),
+        location: location_for(original_node)
+      )
+
+      expect { described_class.activate!(mutant) }.to output(
+        /deprecation notice from loaded file/
+      ).to_stderr
+    end
+  end
 end

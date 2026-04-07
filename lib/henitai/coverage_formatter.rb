@@ -89,7 +89,7 @@ module Henitai
     def line_counts_for(file_coverage)
       case file_coverage
       when Hash
-        Array(file_coverage["lines"])
+        Array(file_coverage[:lines] || file_coverage["lines"])
       else
         Array(file_coverage)
       end

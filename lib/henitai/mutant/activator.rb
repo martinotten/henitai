@@ -7,6 +7,22 @@ module Henitai
   class Mutant
     # Activates a mutant inside the forked child process.
     class Activator
+      # Filters "already initialized constant" C-level warnings that fire when
+      # a source file is loaded into a process that already has the constant
+      # defined via require. Uses a thread-local flag so the filter is active
+      # only during load_source_file, leaving all other warnings untouched.
+      module ConstantRedefinitionFilter
+        PATTERN = /already initialized constant|previous definition of/.freeze
+        private_constant :PATTERN
+
+        def warn(msg, **kwargs)
+          return if Thread.current[:henitai_filter_const_warnings] && PATTERN.match?(msg.to_s)
+
+          super
+        end
+      end
+      Warning.singleton_class.prepend(ConstantRedefinitionFilter)
+
       SERIALIZER_METHODS = {
         arg: :argument_parameter_fragment,
         optarg: :optional_parameter_fragment,
@@ -26,8 +42,9 @@ module Henitai
         subject = mutant.subject
         raise ArgumentError, "Cannot activate wildcard subjects" if subject.method_name.nil?
 
+        target = target_for(subject)
         Henitai::WarningSilencer.silence do
-          target_for(subject).class_eval(method_source(mutant), __FILE__, __LINE__ + 1)
+          target.class_eval(method_source(mutant), __FILE__, __LINE__ + 1)
           nil
         end
       rescue Unparser::UnsupportedNodeError
@@ -195,7 +212,10 @@ module Henitai
         source_file = subject.source_file || source_file_from_ast(subject)
         return unless source_file && File.file?(source_file)
 
+        Thread.current[:henitai_filter_const_warnings] = true
         load(source_file)
+      ensure
+        Thread.current[:henitai_filter_const_warnings] = false
       end
 
       def source_file_from_ast(subject)

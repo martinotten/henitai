@@ -93,6 +93,32 @@ RSpec.describe Henitai::CoverageFormatter do
     end
   end
 
+  it "handles the real Coverage.peek_result shape with symbol-keyed hashes" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        formatter = described_class.new(StringIO.new)
+        notification = build_notification("spec/models/sample_spec.rb")
+
+        allow(Coverage).to receive(:peek_result).and_return(
+          File.expand_path("lib/sample.rb") => {
+            lines: [nil, 1, 0, 3],
+            branches: {},
+            methods: {}
+          }
+        )
+
+        formatter.example_finished(notification)
+        formatter.dump_summary(nil)
+
+        expect(JSON.parse(File.read("coverage/henitai_per_test.json"))).to eq(
+          "spec/models/sample_spec.rb" => {
+            File.expand_path("lib/sample.rb") => [2, 4]
+          }
+        )
+      end
+    end
+  end
+
   it "warns once and skips the report when coverage is unavailable" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
