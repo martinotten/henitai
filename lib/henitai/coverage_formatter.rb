@@ -103,7 +103,9 @@ module Henitai
 
     def serializable_report
       @coverage_by_test.transform_values do |source_map|
-        source_map.transform_values { |lines| lines.uniq.sort }
+        source_map.to_h do |source_file, lines|
+          [File.expand_path(source_file), lines.uniq.sort]
+        end
       end
     end
   end
