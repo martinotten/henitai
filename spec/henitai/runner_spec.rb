@@ -273,8 +273,8 @@ RSpec.describe Henitai::Runner do
         runner.run
 
         expect(calls).to eq([[
-          File.join("lib", "nested", "sample.rb")
-        ]])
+                              File.join("lib", "nested", "sample.rb")
+                            ]])
       end
     end
   end
@@ -307,7 +307,7 @@ RSpec.describe Henitai::Runner do
         allow(mutant_generator).to receive(:generate).and_return([])
         allow(static_filter).to receive(:apply).and_return([])
         allow(execution_engine).to receive(:run) do |_mutants, _integration, _config, progress_reporter:|
-          expect(progress_reporter).to be(nil)
+          expect(progress_reporter).to be_nil
           []
         end
         allow(Henitai::Result).to receive(:new).and_return(result)
