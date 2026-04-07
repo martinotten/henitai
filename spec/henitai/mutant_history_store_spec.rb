@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require "spec_helper"
 require "tmpdir"
 require "parser/current"
@@ -116,6 +117,38 @@ RSpec.describe Henitai::MutantHistoryStore do
     end
   end
 
+  it "uses a stable SHA-256 mutant ID" do
+    Dir.mktmpdir do |dir|
+      store = described_class.new(path: File.join(dir, "mutation-history.sqlite3"))
+      mutant = build_mutant(status: :survived, mutated_source: "1 - 0")
+
+      store.record(
+        build_result(
+          [mutant],
+          { mutation_score: 80.0, mutation_score_indicator: 40.0, equivalence_uncertainty: nil }
+        ),
+        version: "1.0.0",
+        recorded_at: Time.utc(2026, 1, 1)
+      )
+
+      expected_id = Digest::SHA256.hexdigest(
+        [
+          mutant.subject.expression,
+          mutant.operator,
+          mutant.description,
+          mutant.location[:file],
+          mutant.location[:start_line],
+          mutant.location[:end_line],
+          mutant.location[:start_col],
+          mutant.location[:end_col],
+          Unparser.unparse(mutant.mutated_node)
+        ].join("\0")
+      )
+
+      expect(store.trend_report[:mutants].first[:mutantId]).to eq(expected_id)
+    end
+  end
+
   it "returns status history entries with symbol keys" do
     Dir.mktmpdir do |dir|
       store = described_class.new(path: File.join(dir, "mutation-history.sqlite3"))
@@ -134,6 +167,25 @@ RSpec.describe Henitai::MutantHistoryStore do
         expect(entry).not_to have_key("status")
       end
     end
+  end
+
+  it "symbolizes existing status history rows" do
+    store = described_class.new(path: "ignored.sqlite3")
+    row = {
+      "status_history" => JSON.generate(
+        [
+          {
+            version: "1.0.0",
+            status: "survived",
+            recordedAt: "2026-01-01T00:00:00Z"
+          }
+        ]
+      )
+    }
+
+    history = store.send(:existing_status_history, row)
+
+    expect(history.first.keys).to all(be_a(Symbol))
   end
 
   it "appends mutant history across repeated runs" do
@@ -175,9 +227,23 @@ RSpec.describe Henitai::MutantHistoryStore do
         [
           mutant_report[:currentStatus],
           mutant_report[:daysAlive],
+          mutant_report[:firstSeenVersion],
+          mutant_report[:firstSeenAt],
+          mutant_report[:lastSeenVersion],
+          mutant_report[:lastSeenAt],
           mutant_report[:statusHistory].map { |entry| entry[:status] }
         ]
-      ).to eq(["killed", 1, %w[survived killed]])
+      ).to eq(
+        [
+          "killed",
+          1,
+          "1.0.0",
+          "2026-01-01T12:00:00Z",
+          "1.1.0",
+          "2026-01-02T12:00:00Z",
+          %w[survived killed]
+        ]
+      )
     end
   end
 end

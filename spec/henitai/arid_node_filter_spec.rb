@@ -64,6 +64,12 @@ RSpec.describe Henitai::AridNodeFilter do
     expect(described_class.new.suppressed?(node, config)).to be(true)
   end
 
+  it "does not suppress logger calls on non-Rails constants" do
+    node = parse('Foo.logger.warn("x")')
+
+    expect(described_class.new.suppressed?(node, config)).to be(false)
+  end
+
   it "suppresses debugger calls" do
     node = parse("binding.pry")
 

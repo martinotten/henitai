@@ -382,6 +382,28 @@ RSpec.describe Henitai::Mutant::Activator do
     end
   end
 
+  it "serializes parameter fragments exactly" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, <<~RUBY)
+        class ActivatorParamsSample
+          def value(a, b = 1, *rest, c:, d: 2, **kwrest, &block)
+            a + b
+          end
+        end
+      RUBY
+
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      mutant = Henitai::MutantGenerator.new.generate(
+        [subject],
+        [Henitai::Operators::ArithmeticOperator.new]
+      ).first
+
+      expect(described_class.new.send(:parameter_source, mutant)).to eq(
+        "a, b = 1, *rest, c:, d: 2, **kwrest, &block"
+      )
+    end
+  end
+
   it "supports anonymous rest and keyword rest parameters" do
     Dir.mktmpdir do |dir|
       path = write_source(dir, <<~RUBY)
@@ -430,6 +452,33 @@ RSpec.describe Henitai::Mutant::Activator do
 
       expect(ActivatorForwardArgsSample.new.value(1, 2, a: 3)).to eq(2)
     end
+  end
+
+  it "raises when the source file path is missing" do
+    subject = Henitai::Subject.new(
+      namespace: "MissingActivatorSourcePath",
+      method_name: "value",
+      method_type: :instance,
+      source_location: {
+        file: "/tmp/henitai-mutation-remediation/missing-activator-source.rb",
+        range: 1..1
+      },
+      ast_node: nil
+    )
+    mutant = build_mutant(
+      subject:,
+      original_node: Parser::AST::Node.new(:int, [1]),
+      mutated_node: Parser::AST::Node.new(:int, [2]),
+      location: {
+        file: "/tmp/henitai-mutation-remediation/missing-activator-source.rb",
+        start_line: 1,
+        end_line: 1,
+        start_col: 0,
+        end_col: 1
+      }
+    )
+
+    expect { described_class.activate!(mutant) }.to raise_error(NameError)
   end
 
   it "mutates within rescue bodies" do

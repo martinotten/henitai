@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "parser/current"
 require "spec_helper"
 require "tmpdir"
 
@@ -10,6 +11,12 @@ RSpec.describe Henitai::SubjectResolver do
     FileUtils.mkdir_p(File.dirname(path))
     File.write(path, source)
     path
+  end
+
+  it "returns false for anonymous class blocks without a callable send node" do
+    node = Struct.new(:type, :children).new(:block, [nil])
+
+    expect(described_class.new.send(:anonymous_class_block?, node)).to be(false)
   end
 
   it "resolves nested namespaces and method types from source files" do
@@ -44,6 +51,17 @@ RSpec.describe Henitai::SubjectResolver do
         ]
       )
     end
+  end
+
+  it "extracts root-qualified constant names" do
+    resolver = described_class.new
+    node = Parser::CurrentRuby.parse("::Foo")
+
+    expect(resolver.send(:constant_name, node)).to eq("Foo")
+    expect(resolver.send(:constant_name, node.children.first)).to eq("")
+    expect(
+      resolver.send(:constant_name, Parser::CurrentRuby.parse("::Foo::Bar"))
+    ).to eq("Foo::Bar")
   end
 
   it "preserves source location metadata for each subject" do
@@ -206,6 +224,20 @@ RSpec.describe Henitai::SubjectResolver do
     end
   end
 
+  it "ignores define_method calls on non-self receivers" do
+    node = Parser::CurrentRuby.parse("other.define_method(:bar)")
+
+    expect(described_class.new.send(:define_method_call?, node)).to be(false)
+  end
+
+  it "returns false for malformed define_method calls" do
+    resolver = described_class.new
+    malformed = Struct.new(:type, :children).new(:int, [])
+
+    expect(resolver.send(:define_method_call?, nil)).to be(false)
+    expect(resolver.send(:define_method_call?, malformed)).to be(false)
+  end
+
   it "ignores anonymous classes and generated methods while keeping explicit defs" do
     Dir.mktmpdir do |dir|
       path = write_source(
@@ -247,6 +279,10 @@ RSpec.describe Henitai::SubjectResolver do
         ]
       )
     end
+  end
+
+  it "strips a leading colon from symbol names" do
+    expect(described_class.new.send(:symbol_name, ":foo")).to eq("foo")
   end
 
   it "filters subjects by an exact expression" do

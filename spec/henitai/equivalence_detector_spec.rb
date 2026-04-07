@@ -130,10 +130,32 @@ RSpec.describe Henitai::EquivalenceDetector do
     expect(mutant.status).to eq(:pending)
   end
 
+  it "keeps additive mutants pending when the mutated operator is not additive" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:value), :+, int(0)),
+      mutated_node: binary_send(lvar(:value), :*, int(0))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
   it "keeps multiplicative mutants pending unless the original operand is one" do
     mutant = build_mutant(
       original_node: binary_send(lvar(:value), :*, int(2)),
       mutated_node: binary_send(lvar(:value), :/, int(1))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps multiplicative mutants pending when the mutated operator is not multiplicative" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:value), :*, int(1)),
+      mutated_node: binary_send(lvar(:value), :+, int(1))
     )
 
     described_class.new.analyze(mutant)
