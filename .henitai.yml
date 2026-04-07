@@ -11,7 +11,7 @@ includes:
 # Mutation operator configuration
 mutation:
   operators: light          # light (default) | full
-  timeout: 20.0             # seconds per mutant
+  timeout: 10.0             # seconds per mutant
   ignore_patterns:
     - "(send _ {:log :debug :info :warn :error} _)"  # Logger calls
     - "(send _ :puts _)"                              # puts / debug output

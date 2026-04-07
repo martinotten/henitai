@@ -82,10 +82,8 @@ module Henitai
 
       def body_source_for_mutant(body, mutant)
         original_range = mutant.original_node.location&.expression
-        return compile_safe_unparse(body) unless original_range
-
         location = body.location
-        return compile_safe_unparse(body) unless location
+        return source_body(location, body) unless original_range && location
 
         replacement = compile_safe_unparse(mutant.mutated_node)
         body_source_for_location(location, original_range, replacement, body)
@@ -94,9 +92,11 @@ module Henitai
       def body_source_for_location(location, original_range, replacement, body)
         if heredoc_location?(location)
           heredoc_body_source(location, original_range, replacement) ||
+            source_body(location, body) ||
             compile_safe_unparse(body)
         else
           expression_source(location, original_range, replacement) ||
+            source_body(location, body) ||
             compile_safe_unparse(body)
         end
       end
@@ -200,6 +200,16 @@ module Henitai
         return unless body_source
 
         "#{location.expression.source}\n#{body_source}#{location.heredoc_end.source}"
+      end
+
+      def source_body(location, body)
+        return compile_safe_unparse(body) unless location
+
+        if heredoc_location?(location)
+          "#{location.expression.source}\n#{location.heredoc_body.source}#{location.heredoc_end.source}"
+        else
+          location.expression.source
+        end
       end
 
       def expression_source(location, original_range, replacement)

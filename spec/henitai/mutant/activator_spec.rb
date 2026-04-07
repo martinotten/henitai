@@ -242,7 +242,12 @@ RSpec.describe Henitai::Mutant::Activator do
       mutant = Henitai::MutantGenerator.new.generate(
         [subject],
         [Henitai::Operators::StringLiteral.new]
-      ).find { |candidate| candidate.location[:start_line] == 243 }
+      ).find do |candidate|
+        candidate.description == 'replaced string with ""' &&
+          candidate.original_node.location.expression.source.include?("<!DOCTYPE html>")
+      end
+
+      abort("heredoc mutant not found") unless mutant
 
       begin
         Timeout.timeout(1) { Henitai::Mutant::Activator.activate!(mutant) }
@@ -262,6 +267,42 @@ RSpec.describe Henitai::Mutant::Activator do
     )
 
     expect([status.success?, stderr, stdout]).to eq([true, "", "ok\n"])
+  end
+
+  it "uses raw source when the original node has no location metadata" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, <<~RUBY)
+        class ActivatorHeredocFallbackSample
+          def value
+            <<~HTML
+              <html>
+                <body>hello</body>
+              </html>
+            HTML
+          end
+        end
+      RUBY
+
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      body_node = subject.ast_node.children[2]
+      original_node = Parser::AST::Node.new(:str, ["hello"])
+      mutant = build_mutant(
+        subject:,
+        original_node:,
+        mutated_node: Parser::AST::Node.new(:str, ["goodbye"]),
+        location: location_for(find_nodes(subject.ast_node, :str).first)
+      )
+
+      allow(Unparser).to receive(:unparse).and_wrap_original do |original, node|
+        raise "body unparse should not be used" if node.equal?(body_node)
+
+        original.call(node)
+      end
+
+      described_class.activate!(mutant)
+
+      expect(ActivatorHeredocFallbackSample.new.value).to include("<body>hello</body>")
+    end
   end
 
   it "returns compile_error when Unparser cannot round-trip the replacement" do
