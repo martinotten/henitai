@@ -121,11 +121,12 @@ RSpec.describe Henitai::CLI do
 
   it "does not continue the run pipeline after run -v" do
     cli = described_class.new(["run", "-v"])
-    allow(Henitai::Runner).to receive(:new)
+    allow(Henitai::Runner).to receive(:new).and_raise(
+      "run pipeline should not continue after version"
+    )
     cli.define_singleton_method(:exit) { |_status = nil| nil }
 
     expect { cli.run }.to output("#{Henitai::VERSION}\n").to_stdout
-    expect(Henitai::Runner).not_to have_received(:new)
   end
 
   it "prints the help text for -h" do

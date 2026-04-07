@@ -569,12 +569,15 @@ RSpec.describe Henitai::ConfigurationValidator do
   describe "validate_ignore_patterns" do
     it "reports the invalid pattern and regexp error message" do
       allow(Regexp).to receive(:new).and_raise(RegexpError, "missing ]")
+      message = <<~MESSAGE.strip
+        Invalid configuration value for mutation.ignore_patterns: invalid regular expression "[invalid_regex": missing ]
+      MESSAGE
 
       expect do
         described_class.validate!({ mutation: { ignore_patterns: ["[invalid_regex"] } })
       end.to raise_error(
         Henitai::ConfigurationError,
-        'Invalid configuration value for mutation.ignore_patterns: invalid regular expression "[invalid_regex": missing ]'
+        message
       )
     end
   end

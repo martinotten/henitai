@@ -56,6 +56,76 @@ RSpec.describe Henitai::MutantHistoryStore do
     Struct.new(:mutants, :scoring_summary).new(mutants, summary)
   end
 
+  def record_run(store, mutant:, summary:, version:, recorded_at:)
+    store.record(
+      build_result([mutant], summary),
+      version:,
+      recorded_at:
+    )
+  end
+
+  def record_history_chain(store, mutant)
+    record_first_history_run(store, mutant)
+    mutant.status = :killed
+    record_second_history_run(store, mutant)
+  end
+
+  def expect_mutant_history(mutant_report)
+    expect(mutant_history_values(mutant_report)).to eq(expected_mutant_history_values)
+  end
+
+  def record_first_history_run(store, mutant)
+    record_run(
+      store,
+      mutant:,
+      summary: {
+        mutation_score: 80.0,
+        mutation_score_indicator: 40.0,
+        equivalence_uncertainty: "~10-15% of live mutants"
+      },
+      version: "1.0.0",
+      recorded_at: Time.utc(2026, 1, 1, 12, 0, 0)
+    )
+  end
+
+  def record_second_history_run(store, mutant)
+    record_run(
+      store,
+      mutant:,
+      summary: {
+        mutation_score: 90.0,
+        mutation_score_indicator: 45.0,
+        equivalence_uncertainty: nil
+      },
+      version: "1.1.0",
+      recorded_at: Time.utc(2026, 1, 2, 12, 0, 0)
+    )
+  end
+
+  def mutant_history_values(mutant_report)
+    [
+      mutant_report[:currentStatus],
+      mutant_report[:daysAlive],
+      mutant_report[:firstSeenVersion],
+      mutant_report[:firstSeenAt],
+      mutant_report[:lastSeenVersion],
+      mutant_report[:lastSeenAt],
+      mutant_report[:statusHistory].map { |entry| entry[:status] }
+    ]
+  end
+
+  def expected_mutant_history_values
+    [
+      "killed",
+      1,
+      "1.0.0",
+      "2026-01-01T12:00:00Z",
+      "1.1.0",
+      "2026-01-02T12:00:00Z",
+      %w[survived killed]
+    ]
+  end
+
   it "returns an empty report before any runs are recorded" do
     Dir.mktmpdir do |dir|
       report = described_class.new(path: File.join(dir, "mutation-history.sqlite3")).trend_report
@@ -174,57 +244,8 @@ RSpec.describe Henitai::MutantHistoryStore do
       store = described_class.new(path: File.join(dir, "mutation-history.sqlite3"))
       mutant = build_mutant(status: :survived)
 
-      store.record(
-        build_result(
-          [mutant],
-          {
-            mutation_score: 80.0,
-            mutation_score_indicator: 40.0,
-            equivalence_uncertainty: "~10-15% of live mutants"
-          }
-        ),
-        version: "1.0.0",
-        recorded_at: Time.utc(2026, 1, 1, 12, 0, 0)
-      )
-
-      mutant.status = :killed
-
-      store.record(
-        build_result(
-          [mutant],
-          {
-            mutation_score: 90.0,
-            mutation_score_indicator: 45.0,
-            equivalence_uncertainty: nil
-          }
-        ),
-        version: "1.1.0",
-        recorded_at: Time.utc(2026, 1, 2, 12, 0, 0)
-      )
-
-      mutant_report = store.trend_report[:mutants].first
-
-      expect(
-        [
-          mutant_report[:currentStatus],
-          mutant_report[:daysAlive],
-          mutant_report[:firstSeenVersion],
-          mutant_report[:firstSeenAt],
-          mutant_report[:lastSeenVersion],
-          mutant_report[:lastSeenAt],
-          mutant_report[:statusHistory].map { |entry| entry[:status] }
-        ]
-      ).to eq(
-        [
-          "killed",
-          1,
-          "1.0.0",
-          "2026-01-01T12:00:00Z",
-          "1.1.0",
-          "2026-01-02T12:00:00Z",
-          %w[survived killed]
-        ]
-      )
+      record_history_chain(store, mutant)
+      expect_mutant_history(store.trend_report[:mutants].first)
     end
   end
 end

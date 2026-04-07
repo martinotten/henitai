@@ -78,23 +78,25 @@ RSpec.describe Henitai::Result do
   end
 
   def build_mutant(status:, duration: nil, dir: nil)
-    if dir
-      path = write_sample_file(dir)
-      mutant = Henitai::Mutant.new(
-        subject: sample_subject(path),
-        operator: "ArithmeticOperator",
-        nodes: sample_nodes(path),
-        description: "replaced + with -",
-        location: sample_location(path)
-      )
-      mutant.status = status
-      mutant.duration = duration
-      return mutant
-    end
+    return build_mutant_in_dir(status:, duration:, dir:) if dir
 
     Dir.mktmpdir do |temp_dir|
       build_mutant(status:, duration:, dir: temp_dir)
     end
+  end
+
+  def build_mutant_in_dir(status:, duration:, dir:)
+    path = write_sample_file(dir)
+    mutant = Henitai::Mutant.new(
+      subject: sample_subject(path),
+      operator: "ArithmeticOperator",
+      nodes: sample_nodes(path),
+      description: "replaced + with -",
+      location: sample_location(path)
+    )
+    mutant.status = status
+    mutant.duration = duration
+    mutant
   end
 
   def result(mutants)
