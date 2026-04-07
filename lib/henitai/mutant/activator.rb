@@ -12,7 +12,7 @@ module Henitai
       # defined via require. Uses a thread-local flag so the filter is active
       # only during load_source_file, leaving all other warnings untouched.
       module ConstantRedefinitionFilter
-        PATTERN = /already initialized constant|previous definition of/.freeze
+        PATTERN = /already initialized constant|previous definition of/
         private_constant :PATTERN
 
         def warn(msg, **kwargs)
@@ -74,44 +74,30 @@ module Henitai
         subject_node = mutant.subject.ast_node
         return compile_safe_unparse(mutant.mutated_node) unless subject_node
 
-        mutated_subject = replace_node(
-          subject_node,
-          mutant.original_node,
-          mutant.mutated_node
-        )
-        body = method_body(mutated_subject) || Parser::AST::Node.new(:nil, [])
-        compile_safe_unparse(body)
+        body = method_body(subject_node)
+        return compile_safe_unparse(Parser::AST::Node.new(:nil, [])) unless body
+
+        body_source_for_mutant(body, mutant)
       end
 
-      def replace_node(node, original_node, mutated_node)
-        return mutated_node if same_node?(node, original_node)
-        return node unless node.is_a?(Parser::AST::Node)
+      def body_source_for_mutant(body, mutant)
+        original_range = mutant.original_node.location&.expression
+        return compile_safe_unparse(body) unless original_range
 
-        updated_children = node.children.map do |child|
-          replace_child(child, original_node, mutated_node)
-        end
+        location = body.location
+        return compile_safe_unparse(body) unless location
 
-        return node if updated_children == node.children
-
-        Parser::AST::Node.new(node.type, updated_children)
+        replacement = compile_safe_unparse(mutant.mutated_node)
+        body_source_for_location(location, original_range, replacement, body)
       end
 
-      def same_node?(left, right)
-        left_location = node_location_signature(left)
-        right_location = node_location_signature(right)
-        return left.equal?(right) unless left_location && right_location
-
-        left_location == right_location
-      end
-
-      def replace_child(child, original_node, mutated_node)
-        case child
-        when Parser::AST::Node
-          replace_node(child, original_node, mutated_node)
-        when Array
-          child.map { |item| replace_child(item, original_node, mutated_node) }
+      def body_source_for_location(location, original_range, replacement, body)
+        if heredoc_location?(location)
+          heredoc_body_source(location, original_range, replacement) ||
+            compile_safe_unparse(body)
         else
-          child
+          expression_source(location, original_range, replacement) ||
+            compile_safe_unparse(body)
         end
       end
 
@@ -201,6 +187,28 @@ module Henitai
         subject_node.children[1]
       end
 
+      def heredoc_location?(location)
+        location.respond_to?(:heredoc_body) && location.heredoc_body
+      end
+
+      def heredoc_body_source(location, original_range, replacement)
+        body_source = replace_source_fragment(
+          location.heredoc_body,
+          original_range,
+          replacement
+        )
+        return unless body_source
+
+        "#{location.expression.source}\n#{body_source}#{location.heredoc_end.source}"
+      end
+
+      def expression_source(location, original_range, replacement)
+        source_range = location.expression
+        return unless source_range
+
+        replace_source_fragment(source_range, original_range, replacement)
+      end
+
       def load_target(subject)
         Object.const_get(subject.namespace.delete_prefix("::"))
       rescue NameError
@@ -231,17 +239,17 @@ module Henitai
         expression.source_buffer.name
       end
 
-      def node_location_signature(node)
-        expression = node&.location&.expression
-        return unless expression
+      def replace_source_fragment(source_range, original_range, replacement)
+        source = source_range.source
+        start = original_range.begin_pos - source_range.begin_pos
+        stop = original_range.end_pos - source_range.begin_pos
+        return unless start >= 0 && stop <= source.bytesize && start <= stop
 
-        [
-          expression.source_buffer.name,
-          expression.line,
-          expression.column,
-          expression.last_line,
-          expression.last_column
-        ]
+        prefix = source.byteslice(0, start)
+        suffix = source.byteslice(stop, source.bytesize - stop)
+        return unless prefix && suffix
+
+        prefix + replacement + suffix
       end
 
       def compile_safe_unparse(node)

@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "open3"
 require "spec_helper"
 require "tmpdir"
+require "timeout"
 
 RSpec.describe Henitai::Mutant::Activator do
   def write_source(dir, source)
@@ -225,6 +227,41 @@ RSpec.describe Henitai::Mutant::Activator do
 
       expect(ActivatorDefineMethodSample.new.value).to eq(-1)
     end
+  end
+
+  it "activates heredoc string mutations without timing out" do
+    script = <<~RUBY
+      require "henitai"
+      require "timeout"
+
+      resolver = Henitai::SubjectResolver.new
+      subject = resolver.resolve_from_files(["lib/henitai/reporter.rb"]).find do |candidate|
+        candidate.expression == "Henitai::Reporter::Html#html_document"
+      end
+
+      mutant = Henitai::MutantGenerator.new.generate(
+        [subject],
+        [Henitai::Operators::StringLiteral.new]
+      ).find { |candidate| candidate.location[:start_line] == 243 }
+
+      begin
+        Timeout.timeout(1) { Henitai::Mutant::Activator.activate!(mutant) }
+        puts "ok"
+      rescue Timeout::Error
+        puts "timeout"
+      end
+    RUBY
+
+    stdout, stderr, status = Open3.capture3(
+      "bundle",
+      "exec",
+      "ruby",
+      "-e",
+      script,
+      chdir: Dir.pwd
+    )
+
+    expect([status.success?, stderr, stdout]).to eq([true, "", "ok\n"])
   end
 
   it "returns compile_error when Unparser cannot round-trip the replacement" do
