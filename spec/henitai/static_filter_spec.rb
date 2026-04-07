@@ -549,6 +549,52 @@ RSpec.describe Henitai::StaticFilter do
     end
   end
 
+  describe "#normalize_path caching" do
+    it "resolves each unique path only once per StaticFilter instance" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "sample.rb")
+        FileUtils.touch(path)
+
+        filter = described_class.new
+
+        expect(File).to receive(:realpath).once.and_call_original
+        2.times { filter.send(:normalize_path, path) }
+      end
+    end
+
+    it "resolves different paths independently" do
+      Dir.mktmpdir do |dir|
+        path_a = File.join(dir, "a.rb")
+        path_b = File.join(dir, "b.rb")
+        FileUtils.touch(path_a)
+        FileUtils.touch(path_b)
+
+        filter = described_class.new
+
+        expect(File).to receive(:realpath).twice.and_call_original
+        filter.send(:normalize_path, path_a)
+        filter.send(:normalize_path, path_b)
+      end
+    end
+
+    it "falls back to the expanded path when the file does not exist" do
+      filter = described_class.new
+      result = filter.send(:normalize_path, "/no/such/file.rb")
+
+      expect(result).to eq(File.expand_path("/no/such/file.rb"))
+    end
+
+    it "caches the fallback result for non-existent paths" do
+      filter = described_class.new
+      path = "/no/such/file.rb"
+
+      filter.send(:normalize_path, path)
+
+      expect(File).not_to receive(:realpath)
+      filter.send(:normalize_path, path)
+    end
+  end
+
   it "keeps mutants without source metadata pending" do
     Dir.mktmpdir do |dir|
       mutant = Henitai::Mutant.new(

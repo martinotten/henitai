@@ -91,4 +91,67 @@ RSpec.describe Henitai::SourceParser do
       end
     RUBY
   end
+
+  describe ".parse_file caching" do
+    around do |example|
+      described_class.clear_cache!
+      example.run
+      described_class.clear_cache!
+    end
+
+    it "returns the same object on repeated calls without a file change" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "sample.rb")
+        File.write(path, "class A; def m = 1; end")
+
+        first  = described_class.parse_file(path)
+        second = described_class.parse_file(path)
+
+        expect(second).to be(first)
+      end
+    end
+
+    it "returns a fresh parse when the file mtime changes" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "sample.rb")
+        File.write(path, "class A; def m = 1; end")
+        first = described_class.parse_file(path)
+
+        # Advance mtime by touching the file content (guarantees a different mtime)
+        sleep 0.01
+        File.write(path, "class A; def m = 2; end")
+        second = described_class.parse_file(path)
+
+        expect(second).not_to be(first)
+      end
+    end
+
+    it "caches different files under separate entries" do
+      Dir.mktmpdir do |dir|
+        path_a = File.join(dir, "a.rb")
+        path_b = File.join(dir, "b.rb")
+        File.write(path_a, "class A; end")
+        File.write(path_b, "class B; end")
+
+        ast_a = described_class.parse_file(path_a)
+        ast_b = described_class.parse_file(path_b)
+
+        expect(ast_a).not_to be(ast_b)
+        expect(described_class.parse_file(path_a)).to be(ast_a)
+        expect(described_class.parse_file(path_b)).to be(ast_b)
+      end
+    end
+
+    it "does not call File.read a second time for a cached file" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "sample.rb")
+        File.write(path, "class A; def m = 1; end")
+
+        described_class.parse_file(path)
+
+        expect(File).not_to receive(:read).with(path)
+        described_class.parse_file(path)
+      end
+    end
+  end
 end

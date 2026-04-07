@@ -57,6 +57,11 @@ module Henitai
         @mutants = []
         @arid_node_filter = arid_node_filter
         @syntax_validator = syntax_validator
+        subject_range = subject.source_range
+        if subject_range
+          @subject_range_begin = subject_range.begin
+          @subject_range_end   = subject_range.end
+        end
         @operators_by_node_type = operators.each_with_object(
           Hash.new { |hash, key| hash[key] = [] }
         ) do |operator, map|
@@ -92,15 +97,12 @@ module Henitai
       end
 
       def node_within_subject_range?(node)
+        return true unless @subject_range_begin
+
         location = node.location&.expression
-        return true unless location && @subject.source_range
+        return true unless location
 
-        node_range = location.line..location.last_line
-        ranges_overlap?(node_range, @subject.source_range)
-      end
-
-      def ranges_overlap?(left, right)
-        left.begin <= right.end && right.begin <= left.end
+        location.line <= @subject_range_end && @subject_range_begin <= location.last_line
       end
     end
 

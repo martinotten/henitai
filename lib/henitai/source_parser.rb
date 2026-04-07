@@ -12,12 +12,23 @@ module Henitai
   class SourceParser
     DEFAULT_PATH = "(string)"
 
+    @cache = {}
+
     def self.parse(source, path: DEFAULT_PATH)
       new.parse(source, path:)
     end
 
+    # Returns the parsed AST for +path+, re-using a cached result when the
+    # file's mtime has not changed. This avoids parsing the same file twice
+    # across pipeline phases (e.g. SubjectResolver then MutantGenerator).
     def self.parse_file(path)
-      new.parse_file(path)
+      key = [path, File.mtime(path)]
+      @cache[key] ||= new.parse_file(path)
+    end
+
+    # Clears the parse cache. Intended for test isolation.
+    def self.clear_cache!
+      @cache.clear
     end
 
     def parse(source, path: DEFAULT_PATH)

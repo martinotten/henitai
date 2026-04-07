@@ -498,36 +498,81 @@ RSpec.describe Henitai::MutantGenerator do
       end
     end
 
-    # L102: ranges_overlap? ReturnValue → 0 (truthy)
-    # L106: left.begin <= right.end → left.begin != right.end
-    describe "#ranges_overlap?" do
-      let(:visitor) do
-        subject = Henitai::Subject.new(namespace: "S", method_name: "run")
+    describe "#node_within_subject_range?" do
+      # Build a lightweight node double with only the interface node_within_subject_range? touches.
+      FakeExpression = Struct.new(:line, :last_line)
+      FakeLocation   = Struct.new(:expression)
+
+      def fake_node_at(start_line, end_line)
+        Struct.new(:location).new(
+          FakeLocation.new(FakeExpression.new(start_line, end_line))
+        )
+      end
+
+      def visitor_with_range(start_line, end_line)
+        subject = Henitai::Subject.new(
+          namespace: "S",
+          method_name: "run",
+          source_location: { file: "s.rb", range: start_line..end_line }
+        )
         visitor_class.new(subject, [], config: nil,
                                        arid_node_filter: arid_filter,
                                        syntax_validator: syntax_validator)
       end
 
-      it "returns true for overlapping ranges" do
-        expect(visitor.send(:ranges_overlap?, 1..5, 3..8)).to be true
+      it "returns true when node range overlaps with subject range" do
+        visitor = visitor_with_range(3, 8)
+        expect(visitor.send(:node_within_subject_range?, fake_node_at(1, 5))).to be true
       end
 
-      # Tötet L102: wenn 0 (truthy) zurückgegeben wird, passt dieser Test noch —
-      # aber der false-Fall unten kann mit ReturnValue 0 nicht mehr false sein.
-      it "returns false for disjoint ranges" do
-        expect(visitor.send(:ranges_overlap?, 1..3, 5..8)).to be false
+      it "returns false when node range is entirely before subject range" do
+        visitor = visitor_with_range(5, 8)
+        expect(visitor.send(:node_within_subject_range?, fake_node_at(1, 3))).to be false
       end
 
-      # Tötet L106: left.begin != right.end gibt true für (6..9, 1..5):
-      # 6 != 5 = true && 1 <= 9 = true → fälschlich true.
-      # Original: 6 <= 5 = false → korrekt false.
-      it "returns false when left range begins after right range ends (L106 boundary)" do
-        expect(visitor.send(:ranges_overlap?, 6..9, 1..5)).to be false
+      it "returns false when node range is entirely after subject range" do
+        visitor = visitor_with_range(1, 5)
+        expect(visitor.send(:node_within_subject_range?, fake_node_at(6, 9))).to be false
       end
 
-      it "returns true when ranges share exactly one boundary line" do
-        expect(visitor.send(:ranges_overlap?, 1..5, 5..8)).to be true
+      it "returns true when node and subject share exactly one boundary line" do
+        visitor = visitor_with_range(1, 5)
+        expect(visitor.send(:node_within_subject_range?, fake_node_at(5, 8))).to be true
       end
+
+      it "returns true for any node when subject has no source_range" do
+        subject = Henitai::Subject.new(
+          namespace: "S",
+          method_name: "run",
+          source_location: { file: "s.rb", range: nil }
+        )
+        visitor = visitor_class.new(subject, [], config: nil,
+                                                 arid_node_filter: arid_filter,
+                                                 syntax_validator: syntax_validator)
+        expect(visitor.send(:node_within_subject_range?, fake_node_at(99, 200))).to be true
+      end
+
+      it "returns true when the node has no location expression" do
+        visitor = visitor_with_range(1, 5)
+        node_without_loc = Struct.new(:location).new(FakeLocation.new(nil))
+        expect(visitor.send(:node_within_subject_range?, node_without_loc)).to be true
+      end
+    end
+
+    it "pre-computes subject source_range once during initialization" do
+      subject = instance_double(
+        Henitai::Subject,
+        namespace: "S",
+        expression: "S#run",
+        source_range: 1..5,
+        source_file: nil
+      )
+
+      expect(subject).to receive(:source_range).once.and_return(1..5)
+
+      visitor_class.new(subject, [], config: nil,
+                                     arid_node_filter: arid_filter,
+                                     syntax_validator: syntax_validator)
     end
   end
 end

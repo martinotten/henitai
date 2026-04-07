@@ -183,10 +183,16 @@ module Henitai
     end
 
     def normalize_path(path)
+      @normalize_path_cache ||= {}
+      return @normalize_path_cache[path] if @normalize_path_cache.key?(path)
+
       expanded = File.expand_path(path)
-      File.realpath(expanded)
-    rescue Errno::ENOENT, Errno::ENOTDIR
-      expanded
+      resolved = begin
+        File.realpath(expanded)
+      rescue Errno::ENOENT, Errno::ENOTDIR
+        expanded
+      end
+      @normalize_path_cache[path] = resolved
     end
 
     def equivalence_detector
