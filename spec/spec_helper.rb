@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require "coverage"
+Coverage.start(lines: true, branches: true, methods: true)
+
 require "simplecov"
 SimpleCov.coverage_dir(ENV.fetch("HENITAI_COVERAGE_DIR", "coverage"))
 SimpleCov.start do
