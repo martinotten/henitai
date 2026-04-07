@@ -92,12 +92,10 @@ module Henitai
       def body_source_for_location(location, original_range, replacement, body)
         if heredoc_location?(location)
           heredoc_body_source(location, original_range, replacement) ||
-            source_body(location, body) ||
-            compile_safe_unparse(body)
+            source_body(location, body)
         else
           expression_source(location, original_range, replacement) ||
-            source_body(location, body) ||
-            compile_safe_unparse(body)
+            source_body(location, body)
         end
       end
 
