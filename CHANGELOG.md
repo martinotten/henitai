@@ -9,7 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.2] - 2026-04-07
 
+### Added
+- Method coverage is now enabled in both RSpec and Minitest bootstraps, and
+  the static filter merges method-level coverage into the line map
+
 ### Fixed
+- Coverage baseline regeneration now happens on every `henitai run`, so stale
+  coverage state does not leak between runs
+- Coverage handling now accepts symbol-keyed `Coverage.peek_result` output and
+  canonicalizes source file keys in `henitai_per_test.json`
+- Integration child processes isolate stdio correctly, and the integration
+  pause signature was restored so captured output stays stable
+- Coverage checks now consider the full mutant line range instead of only the
+  starting line
 - `Henitai::Mutant::Activator` now rewrites heredoc-backed method bodies from
   source slices instead of unparsing the whole body, eliminating timeouts on
   HTML reporter mutants
