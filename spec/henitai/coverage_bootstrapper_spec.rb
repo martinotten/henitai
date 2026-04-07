@@ -55,7 +55,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
     )
   end
 
-  it "always runs the test suite on each invocation" do
+  it "runs the suite when no coverage report exists" do
     static_filter = instance_double(Henitai::StaticFilter)
     integration = build_integration(
       test_files: ["spec/sample_spec.rb"],
@@ -124,5 +124,242 @@ RSpec.describe Henitai::CoverageBootstrapper do
       Henitai::CoverageError,
       /coverage/i
     )
+  end
+
+  # ---------------------------------------------------------------------------
+  # Option 1: coverage freshness check
+  # ---------------------------------------------------------------------------
+
+  describe "freshness check" do
+    it "skips the bootstrap when the coverage report is newer than all watched files" do
+      Dir.mktmpdir do |dir|
+        source = File.join(dir, "lib/sample.rb")
+        spec   = File.join(dir, "spec/sample_spec.rb")
+        report = File.join(dir, "reports/coverage/.resultset.json")
+
+        FileUtils.mkdir_p(File.dirname(source))
+        FileUtils.mkdir_p(File.dirname(spec))
+        FileUtils.mkdir_p(File.dirname(report))
+
+        File.write(source, "class Sample; end")
+        File.write(spec,   "# spec")
+
+        # Write the report last so its mtime is newest
+        sleep 0.01
+        File.write(report, "{}")
+
+        config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
+        integration = instance_double(
+          Henitai::Integration::Rspec,
+          test_files: [spec]
+        )
+        bootstrapper = described_class.new
+
+        expect(integration).not_to receive(:run_suite)
+
+        bootstrapper.ensure!(source_files: [source], config:, integration:)
+      end
+    end
+
+    it "runs the bootstrap when a source file is newer than the coverage report" do
+      Dir.mktmpdir do |dir|
+        source = File.join(dir, "lib/sample.rb")
+        spec   = File.join(dir, "spec/sample_spec.rb")
+        report = File.join(dir, "reports/coverage/.resultset.json")
+
+        FileUtils.mkdir_p(File.dirname(source))
+        FileUtils.mkdir_p(File.dirname(spec))
+        FileUtils.mkdir_p(File.dirname(report))
+
+        File.write(spec, "# spec")
+
+        # Write report before source so source is newer
+        File.write(report, "{}")
+        sleep 0.01
+        File.write(source, "class Sample; end")
+
+        config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
+        static_filter = instance_double(Henitai::StaticFilter)
+        integration = instance_double(
+          Henitai::Integration::Rspec,
+          test_files: [spec],
+          run_suite: :survived
+        )
+        bootstrapper = described_class.new(static_filter:)
+
+        allow(static_filter).to receive(:coverage_lines_for).and_return(
+          { File.expand_path(source) => [1] }
+        )
+        allow(integration).to receive(:run_suite).and_return(:survived)
+
+        bootstrapper.ensure!(source_files: [source], config:, integration:)
+
+        expect(integration).to have_received(:run_suite)
+      end
+    end
+
+    it "runs the bootstrap when a test file is newer than the coverage report" do
+      Dir.mktmpdir do |dir|
+        source = File.join(dir, "lib/sample.rb")
+        spec   = File.join(dir, "spec/sample_spec.rb")
+        report = File.join(dir, "reports/coverage/.resultset.json")
+
+        FileUtils.mkdir_p(File.dirname(source))
+        FileUtils.mkdir_p(File.dirname(spec))
+        FileUtils.mkdir_p(File.dirname(report))
+
+        File.write(source, "class Sample; end")
+
+        # Write report before spec so spec is newer
+        File.write(report, "{}")
+        sleep 0.01
+        File.write(spec, "# updated spec")
+
+        config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
+        static_filter = instance_double(Henitai::StaticFilter)
+        integration = instance_double(
+          Henitai::Integration::Rspec,
+          test_files: [spec],
+          run_suite: :survived
+        )
+        bootstrapper = described_class.new(static_filter:)
+
+        allow(static_filter).to receive(:coverage_lines_for).and_return(
+          { File.expand_path(source) => [1] }
+        )
+        allow(integration).to receive(:run_suite).and_return(:survived)
+
+        bootstrapper.ensure!(source_files: [source], config:, integration:)
+
+        expect(integration).to have_received(:run_suite)
+      end
+    end
+
+    it "treats a file that no longer exists as stale" do
+      Dir.mktmpdir do |dir|
+        source  = File.join(dir, "lib/sample.rb")
+        ghost   = File.join(dir, "lib/deleted.rb")
+        spec    = File.join(dir, "spec/sample_spec.rb")
+        report  = File.join(dir, "reports/coverage/.resultset.json")
+
+        FileUtils.mkdir_p(File.dirname(source))
+        FileUtils.mkdir_p(File.dirname(spec))
+        FileUtils.mkdir_p(File.dirname(report))
+
+        File.write(source, "class Sample; end")
+        File.write(spec,   "# spec")
+        sleep 0.01
+        File.write(report, "{}")
+        # ghost is never created — simulates a deleted file in the watch list
+
+        config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
+        static_filter = instance_double(Henitai::StaticFilter)
+        integration = instance_double(
+          Henitai::Integration::Rspec,
+          test_files: [spec],
+          run_suite: :survived
+        )
+        bootstrapper = described_class.new(static_filter:)
+
+        allow(static_filter).to receive(:coverage_lines_for).and_return(
+          { File.expand_path(source) => [1] }
+        )
+        allow(integration).to receive(:run_suite).and_return(:survived)
+
+        bootstrapper.ensure!(source_files: [source, ghost], config:, integration:)
+
+        expect(integration).to have_received(:run_suite)
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Option 3: scoped test files forwarding
+  # ---------------------------------------------------------------------------
+
+  describe "scoped test files" do
+    it "passes explicit test_files to run_suite instead of all tests" do
+      static_filter = instance_double(Henitai::StaticFilter)
+      integration = instance_double(
+        Henitai::Integration::Rspec,
+        test_files: ["spec/other_spec.rb"]
+      )
+      bootstrapper = described_class.new(static_filter:)
+
+      allow(static_filter).to receive(:coverage_lines_for).and_return(
+        { File.expand_path("lib/sample.rb") => [1] }
+      )
+      allow(integration).to receive(:run_suite).and_return(:survived)
+
+      bootstrapper.ensure!(
+        source_files: [File.expand_path("lib/sample.rb")],
+        config: build_config,
+        integration:,
+        test_files: ["spec/sample_spec.rb"]
+      )
+
+      expect(integration).to have_received(:run_suite).with(["spec/sample_spec.rb"])
+    end
+
+    it "uses integration.test_files when test_files is nil" do
+      static_filter = instance_double(Henitai::StaticFilter)
+      integration = build_integration(
+        test_files: ["spec/sample_spec.rb"],
+        run_suite_result: :survived
+      )
+      bootstrapper = described_class.new(static_filter:)
+
+      allow(static_filter).to receive(:coverage_lines_for).and_return(
+        { File.expand_path("lib/sample.rb") => [1] }
+      )
+      allow(integration).to receive(:run_suite).and_return(:survived)
+
+      bootstrapper.ensure!(
+        source_files: [File.expand_path("lib/sample.rb")],
+        config: build_config,
+        integration:,
+        test_files: nil
+      )
+
+      expect(integration).to have_received(:run_suite).with(["spec/sample_spec.rb"])
+    end
+
+    it "uses scoped test_files for the freshness watch list" do
+      Dir.mktmpdir do |dir|
+        source       = File.join(dir, "lib/sample.rb")
+        scoped_spec  = File.join(dir, "spec/sample_spec.rb")
+        unrelated    = File.join(dir, "spec/other_spec.rb")
+        report       = File.join(dir, "reports/coverage/.resultset.json")
+
+        FileUtils.mkdir_p(File.dirname(source))
+        FileUtils.mkdir_p(File.dirname(scoped_spec))
+        FileUtils.mkdir_p(File.dirname(report))
+
+        File.write(source,      "class Sample; end")
+        File.write(scoped_spec, "# scoped spec")
+        sleep 0.01
+        File.write(report, "{}")
+        # unrelated spec is newer — written after the report
+        sleep 0.01
+        File.write(unrelated, "# unrelated newer spec")
+
+        config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
+        integration = instance_double(
+          Henitai::Integration::Rspec,
+          test_files: [scoped_spec, unrelated]
+        )
+        bootstrapper = described_class.new
+
+        # Only the scoped spec is watched — the newer unrelated spec is ignored
+        expect(integration).not_to receive(:run_suite)
+
+        bootstrapper.ensure!(
+          source_files: [source],
+          config:,
+          integration:,
+          test_files: [scoped_spec]
+        )
+      end
+    end
   end
 end

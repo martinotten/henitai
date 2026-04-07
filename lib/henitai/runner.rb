@@ -35,13 +35,37 @@ module Henitai
     end
 
     # Entry point — runs the full pipeline and returns a Result.
+    #
+    # Coverage bootstrap (Gate 0) runs in a background thread so that Gate 1
+    # (subject resolution) and Gate 2 (mutant generation) proceed concurrently.
+    # The thread is joined before Gate 3 (static filtering), which is the first
+    # phase that requires coverage data.
+    #
+    # For targeted runs (`subjects:` provided), the bootstrap is further scoped
+    # to the spec files that cover the requested subjects rather than the full
+    # suite, reducing the baseline run time proportionally.
+    #
     # @return [Result]
     def run
       started_at = Time.now
       source_files = self.source_files
-      bootstrap_coverage(source_files)
+
+      # Gate 1 — resolve subjects before starting the bootstrap so we can
+      # derive the scoped test file list for targeted runs (option 3).
       subjects = resolve_subjects(source_files)
+
+      # Start bootstrap in background (option 2). For targeted runs, restrict
+      # to relevant spec files (option 3). Skip entirely if coverage is already
+      # fresh (option 1 — handled inside CoverageBootstrapper#ensure!).
+      scoped_tests   = scoped_bootstrap_test_files(subjects)
+      bootstrap_thread = Thread.new { bootstrap_coverage(source_files, scoped_tests) }
+
+      # Gate 2 — generate mutants while the bootstrap is in progress.
       mutants = generate_mutants(subjects)
+
+      # Block here until coverage is available, then proceed to Gate 3.
+      bootstrap_thread.join
+
       mutants = filter_mutants(mutants)
       mutants = execute_mutants(mutants)
       finished_at = Time.now
@@ -101,6 +125,25 @@ module Henitai
       @result
     end
 
+    # Returns the spec files to use for the coverage bootstrap.
+    #
+    # For full runs (no subject pattern given), returns nil so the bootstrapper
+    # falls back to the integration's full test-file list.
+    #
+    # For targeted runs, returns the union of test files selected for each
+    # resolved subject. Falls back to nil (all tests) if the selection is empty,
+    # so the bootstrapper always has a non-empty file list.
+    def scoped_bootstrap_test_files(subjects)
+      return nil if pattern_subjects.empty?
+
+      files = subjects.flat_map { |subject| integration.select_tests(subject) }.uniq
+      files.empty? ? nil : files
+    end
+
+    def bootstrap_coverage(source_files, test_files = nil)
+      coverage_bootstrapper.ensure!(source_files:, config:, integration:, test_files:)
+    end
+
     def subject_resolver
       @subject_resolver ||= SubjectResolver.new
     end
@@ -123,10 +166,6 @@ module Henitai
 
     def coverage_bootstrapper
       @coverage_bootstrapper ||= CoverageBootstrapper.new
-    end
-
-    def bootstrap_coverage(source_files)
-      coverage_bootstrapper.ensure!(source_files:, config:, integration:)
     end
 
     def integration

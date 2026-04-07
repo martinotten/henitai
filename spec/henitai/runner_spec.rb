@@ -79,6 +79,14 @@ RSpec.describe Henitai::Runner do
     history_store
   end
 
+  # The bootstrap runs in a background thread (option 2) so bootstrap and
+  # generate are concurrent. We check:
+  #   - every phase fires with the correct arguments
+  #   - the partial ordering guaranteed by the implementation holds:
+  #       resolve < generate  (both sequential in main thread)
+  #       bootstrap < filter  (thread is joined before filter)
+  #       generate  < filter  (sequential in main thread)
+  #       filter    < execute (sequential in main thread)
   it "runs the pipeline and reports the result" do
     Dir.mktmpdir do |dir|
       FileUtils.mkdir_p(File.join(dir, "lib"))
@@ -91,6 +99,7 @@ RSpec.describe Henitai::Runner do
         subjects = [subject]
         mutants = [build_mutant(subject)]
         result = build_result(mutants)
+        mu = Mutex.new
         calls = []
         subject_resolver = instance_double(Henitai::SubjectResolver)
         mutant_generator = instance_double(Henitai::MutantGenerator)
@@ -112,81 +121,216 @@ RSpec.describe Henitai::Runner do
           history_store:
         )
         allow(subject_resolver).to receive(:resolve_from_files) do |paths|
-          calls << [:resolve_from_files, paths]
+          mu.synchronize { calls << [:resolve_from_files, paths] }
           subjects
         end
         allow(coverage_bootstrapper).to receive(:ensure!) do |kwargs|
-          calls << [:bootstrap, kwargs[:source_files], kwargs[:config]]
+          mu.synchronize { calls << [:bootstrap, kwargs[:source_files], kwargs[:config]] }
         end
         allow(mutant_generator).to receive(:generate) do |resolved_subjects, operators, kwargs|
-          calls << [:generate, resolved_subjects, operators.map(&:class), kwargs[:config]]
+          mu.synchronize do
+            calls << [:generate, resolved_subjects, operators.map(&:class), kwargs[:config]]
+          end
           mutants
         end
         allow(static_filter).to receive(:apply) do |current_mutants, received_config|
-          calls << [:filter, current_mutants, received_config]
+          mu.synchronize { calls << [:filter, current_mutants, received_config] }
           mutants
         end
         allow(execution_engine).to receive(:run) do |current_mutants,
                                                      current_integration,
                                                      received_config,
                                                      progress_reporter:|
-          calls << [
-            :execute,
-            current_mutants,
-            current_integration,
-            received_config,
-            progress_reporter
-          ]
+          mu.synchronize do
+            calls << [:execute, current_mutants, current_integration, received_config,
+                      progress_reporter]
+          end
           mutants
         end
         allow(Henitai::Result).to receive(:new) do |kwargs|
-          calls << [
-            :result,
-            kwargs[:mutants],
-            kwargs[:started_at].is_a?(Time),
-            kwargs[:finished_at].is_a?(Time)
-          ]
+          mu.synchronize do
+            calls << [:result, kwargs[:mutants], kwargs[:started_at].is_a?(Time),
+                      kwargs[:finished_at].is_a?(Time)]
+          end
           result
         end
         allow(Henitai::Reporter).to receive(:run_all) do |kwargs|
-          calls << [:report, kwargs]
+          mu.synchronize { calls << [:report, kwargs] }
         end
 
         runner.run
 
-        expect(calls).to eq(
-          [
-            [
-              :bootstrap,
-              ["lib/sample.rb"],
-              config
-            ],
-            [:resolve_from_files, ["lib/sample.rb"]],
-            [
-              :generate,
-              subjects,
-              Henitai::Operator.for_set(:light).map(&:class),
-              config
-            ],
-            [:filter, mutants, config],
-            [:execute, mutants, integration, config, reporter],
-            [
-              :result,
-              mutants,
-              true,
-              true
-            ],
-            :history,
-            [
-              :report,
-              {
-                names: ["terminal"],
-                result:,
-                config:
-              }
-            ]
-          ]
+        # Every phase fired with the expected arguments
+        expect(calls.find { |c| c[0] == :bootstrap }).to eq(
+          [:bootstrap, ["lib/sample.rb"], config]
         )
+        expect(calls.find { |c| c[0] == :resolve_from_files }).to eq(
+          [:resolve_from_files, ["lib/sample.rb"]]
+        )
+        expect(calls.find { |c| c[0] == :generate }).to eq(
+          [:generate, subjects, Henitai::Operator.for_set(:light).map(&:class), config]
+        )
+        expect(calls.find { |c| c[0] == :filter }).to   eq([:filter, mutants, config])
+        expect(calls.find { |c| c[0] == :execute }).to  eq([:execute, mutants, integration, config, reporter])
+        expect(calls.find { |c| c[0] == :result }).to   eq([:result, mutants, true, true])
+        expect(calls).to include(:history)
+        expect(calls.find { |c| c[0] == :report }).to   eq([:report, { names: ["terminal"], result:, config: }])
+
+        # Guaranteed partial ordering
+        idx = ->(tag) { calls.index { |c| c.is_a?(Array) && c[0] == tag } }
+        expect(idx.(:resolve_from_files)).to be < idx.(:generate)
+        expect(idx.(:bootstrap)).to          be < idx.(:filter)
+        expect(idx.(:generate)).to           be < idx.(:filter)
+        expect(idx.(:filter)).to             be < idx.(:execute)
+      end
+    end
+  end
+
+  # Option 2: bootstrap and generate_mutants proceed concurrently.
+  it "generates mutants while the coverage bootstrap is in progress" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+      Dir.chdir(dir) do
+        config = build_config(reporters: [])
+        runner = described_class.new(config:)
+        subject_resolver = instance_double(Henitai::SubjectResolver)
+        mutant_generator = instance_double(Henitai::MutantGenerator)
+        static_filter = instance_double(Henitai::StaticFilter)
+        coverage_bootstrapper = instance_double(Henitai::CoverageBootstrapper)
+        execution_engine = instance_double(Henitai::ExecutionEngine)
+        integration = instance_double(Henitai::Integration::Rspec)
+        history_store = build_history_store
+        result = build_result([])
+        events = []
+        mu = Mutex.new
+
+        allow(runner).to receive_messages(
+          coverage_bootstrapper:,
+          subject_resolver:,
+          mutant_generator:,
+          static_filter:,
+          execution_engine:,
+          integration:,
+          history_store:
+        )
+        allow(subject_resolver).to receive(:resolve_from_files).and_return([])
+        allow(coverage_bootstrapper).to receive(:ensure!) do |**|
+          sleep 0.04  # hold the bootstrap thread open long enough for generate to run
+          mu.synchronize { events << :bootstrap_end }
+        end
+        allow(mutant_generator).to receive(:generate) do |*|
+          mu.synchronize { events << :generate }
+          []
+        end
+        allow(static_filter).to receive(:apply).and_return([])
+        allow(execution_engine).to receive(:run).and_return([])
+        allow(Henitai::Result).to receive(:new).and_return(result)
+        allow(Henitai::Reporter).to receive(:run_all)
+
+        runner.run
+
+        # generate must complete before the bootstrap finishes sleeping
+        expect(events.index(:generate)).to be < events.index(:bootstrap_end)
+      end
+    end
+  end
+
+  # Option 3: targeted runs pass scoped test files to the bootstrapper.
+  it "passes scoped test files to the bootstrapper for targeted runs" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+      Dir.chdir(dir) do
+        config = build_config(reporters: [])
+        runner = described_class.new(
+          config:,
+          subjects: [Henitai::Subject.parse("Sample*")]
+        )
+        subject = build_subject("Sample#answer", source_file: "lib/sample.rb")
+        subject_resolver = instance_double(Henitai::SubjectResolver)
+        mutant_generator = instance_double(Henitai::MutantGenerator)
+        static_filter = instance_double(Henitai::StaticFilter)
+        coverage_bootstrapper = instance_double(Henitai::CoverageBootstrapper)
+        execution_engine = instance_double(Henitai::ExecutionEngine)
+        integration = instance_double(Henitai::Integration::Rspec)
+        history_store = build_history_store
+        result = build_result([])
+        received_test_files = nil
+
+        allow(runner).to receive_messages(
+          coverage_bootstrapper:,
+          subject_resolver:,
+          mutant_generator:,
+          static_filter:,
+          execution_engine:,
+          integration:,
+          history_store:
+        )
+        allow(subject_resolver).to receive(:resolve_from_files).and_return([subject])
+        allow(subject_resolver).to receive(:apply_pattern).and_return([subject])
+        allow(integration).to receive(:select_tests).with(subject).and_return(
+          ["spec/sample_spec.rb"]
+        )
+        allow(coverage_bootstrapper).to receive(:ensure!) do |**kwargs|
+          received_test_files = kwargs[:test_files]
+        end
+        allow(mutant_generator).to receive(:generate).and_return([])
+        allow(static_filter).to receive(:apply).and_return([])
+        allow(execution_engine).to receive(:run).and_return([])
+        allow(Henitai::Result).to receive(:new).and_return(result)
+        allow(Henitai::Reporter).to receive(:run_all)
+
+        runner.run
+
+        expect(received_test_files).to eq(["spec/sample_spec.rb"])
+      end
+    end
+  end
+
+  # Option 3: full runs (no subject pattern) pass nil so all tests are used.
+  it "passes nil test_files to the bootstrapper for full runs" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+      Dir.chdir(dir) do
+        config = build_config(reporters: [])
+        runner = described_class.new(config:)
+        subject_resolver = instance_double(Henitai::SubjectResolver)
+        mutant_generator = instance_double(Henitai::MutantGenerator)
+        static_filter = instance_double(Henitai::StaticFilter)
+        coverage_bootstrapper = instance_double(Henitai::CoverageBootstrapper)
+        execution_engine = instance_double(Henitai::ExecutionEngine)
+        integration = instance_double(Henitai::Integration::Rspec)
+        history_store = build_history_store
+        result = build_result([])
+        received_test_files = :not_set
+
+        allow(runner).to receive_messages(
+          coverage_bootstrapper:,
+          subject_resolver:,
+          mutant_generator:,
+          static_filter:,
+          execution_engine:,
+          integration:,
+          history_store:
+        )
+        allow(subject_resolver).to receive(:resolve_from_files).and_return([])
+        allow(coverage_bootstrapper).to receive(:ensure!) do |**kwargs|
+          received_test_files = kwargs[:test_files]
+        end
+        allow(mutant_generator).to receive(:generate).and_return([])
+        allow(static_filter).to receive(:apply).and_return([])
+        allow(execution_engine).to receive(:run).and_return([])
+        allow(Henitai::Result).to receive(:new).and_return(result)
+        allow(Henitai::Reporter).to receive(:run_all)
+
+        runner.run
+
+        expect(received_test_files).to be_nil
       end
     end
   end
@@ -485,6 +629,7 @@ RSpec.describe Henitai::Runner do
           resolve_from_files: [alpha, beta, other],
           apply_pattern: [alpha, beta]
         )
+        allow(integration).to receive(:select_tests).and_return([])
         allow(mutant_generator).to receive(:generate) do |selected_subjects, operators, kwargs|
           calls << [selected_subjects, operators.map(&:class), kwargs[:config]]
           []

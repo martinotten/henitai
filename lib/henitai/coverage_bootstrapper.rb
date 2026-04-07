@@ -7,10 +7,19 @@ module Henitai
       @static_filter = static_filter
     end
 
-    def ensure!(source_files:, config:, integration:)
+    # Runs the test suite to collect coverage, unless a fresh report already
+    # exists.
+    #
+    # @param source_files [Array<String>] lib files whose coverage must be present
+    # @param config       [Configuration]
+    # @param integration  [Integration::Base]
+    # @param test_files   [Array<String>, nil] test files to run; defaults to
+    #                     all files reported by the integration when nil
+    def ensure!(source_files:, config:, integration:, test_files: nil)
       return if source_files.empty?
+      return if coverage_fresh?(source_files, config, integration, test_files)
 
-      bootstrap_coverage(integration, config)
+      bootstrap_coverage(integration, config, test_files)
       return if coverage_available?(source_files, config)
 
       raise CoverageError,
@@ -33,9 +42,28 @@ module Henitai
       Array(source_files).map { |path| File.expand_path(path) }
     end
 
-    def bootstrap_coverage(integration, config)
+    # Returns true when a coverage report already exists and is newer than
+    # every watched source and test file. Stale or absent reports return false.
+    def coverage_fresh?(source_files, config, integration, test_files)
+      report_path = coverage_report_path(config)
+      return false unless File.exist?(report_path)
+
+      report_mtime = File.mtime(report_path)
+      watched = Array(source_files) + Array(test_files || integration.test_files)
+      watched.all? do |path|
+        File.mtime(path) <= report_mtime
+      rescue Errno::ENOENT
+        false
+      end
+    end
+
+    def coverage_report_path(config)
+      File.join(coverage_dir(config), ".resultset.json")
+    end
+
+    def bootstrap_coverage(integration, config, test_files = nil)
       with_coverage_dir(config) do
-        result = integration.run_suite(integration.test_files)
+        result = integration.run_suite(test_files || integration.test_files)
         return if result == :survived
 
         raise CoverageError, build_bootstrap_error(result)

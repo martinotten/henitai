@@ -105,6 +105,13 @@ pipeline change and is better treated as a separate decision.
   this is a known remaining gap and is out of scope for this ADR
 - existing score semantics are preserved: this change only improves coverage classification
   before execution, it does not alter what counts as killed or survived
+- method coverage data is the prerequisite for Option E (explicit test-to-subject mapping,
+  deferred above): the call-count map already associates each method with a non-zero count
+  when any test exercised it; extending the formatter to record *which* test exercised *which*
+  method converts that into the mutant-to-test map that Option E requires, eliminating the
+  monolithic baseline suite run entirely. Adopting raw method coverage now is therefore not
+  only a correctness fix for the static filter — it is the enabler for the most impactful
+  long-term bootstrap optimisation available to the pipeline.
 
 ## Notes
 
