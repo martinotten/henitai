@@ -190,6 +190,57 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  def stub_timeout_boundary_run(integration, record)
+    stub_child_logging(integration)
+    stub_timeout_boundary_exit(record)
+    stub_timeout_boundary_fork(record)
+    stub_timeout_boundary_activation
+    stub_timeout_boundary_rspec
+    stub_timeout_boundary_pause(integration, record)
+    stub_timeout_boundary_wait(record)
+    stub_timeout_boundary_clock
+    stub_timeout_boundary_status
+  end
+
+  def stub_timeout_boundary_exit(record)
+    allow(Process).to receive(:exit) { |status| record[:child_status] = status }
+  end
+
+  def stub_timeout_boundary_fork(record)
+    allow(Process).to receive(:fork) do |&block|
+      record[:forked] = true
+      block.call
+      24_610
+    end
+  end
+
+  def stub_timeout_boundary_activation
+    allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+  end
+
+  def stub_timeout_boundary_rspec
+    allow(RSpec::Core::Runner).to receive(:run).and_return(true)
+  end
+
+  def stub_timeout_boundary_pause(integration, record)
+    allow(integration).to receive(:pause) { |seconds| record[:pauses] << seconds }
+  end
+
+  def stub_timeout_boundary_wait(record)
+    allow(Process).to receive(:wait) do |pid, _flags|
+      record[:waits] += 1
+      record[:waits] == 3 ? pid : nil
+    end
+  end
+
+  def stub_timeout_boundary_clock
+    allow(Process).to receive(:clock_gettime).and_return(0.0, 0.05, 0.1)
+  end
+
+  def stub_timeout_boundary_status
+    allow(Process).to receive_messages(last_status: Struct.new(:success?).new(true))
+  end
+
   it "runs the full suite" do
     integration = described_class.new
 
@@ -637,31 +688,7 @@ RSpec.describe Henitai::Integration::Rspec do
     original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
 
     begin
-      stub_child_logging(integration)
-      allow(Process).to receive(:exit) { |status| record[:child_status] = status }
-      allow(Process).to receive(:fork) do |&block|
-        block.call
-        24_610
-      end
-      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(RSpec::Core::Runner).to receive(:run).and_return(true)
-      allow(integration).to receive(:pause) do |seconds|
-        record[:pauses] << seconds
-      end
-      allow(Process).to receive(:wait) do |pid, flags|
-        record[:waits] += 1
-
-        case record[:waits]
-        when 1, 2
-          nil
-        when 3
-          pid
-        end
-      end
-      allow(Process).to receive(:clock_gettime).and_return(0.0, 0.05, 0.1)
-      allow(Process).to receive_messages(
-        last_status: Struct.new(:success?).new(true)
-      )
+      stub_timeout_boundary_run(integration, record)
 
       result = integration.run_mutant(
         mutant:,
@@ -669,11 +696,15 @@ RSpec.describe Henitai::Integration::Rspec do
         timeout: 0.1
       )
 
-      expect(result).to eq(:survived)
-      expect(record).to include(
-        waits: 3,
-        pauses: [0.01],
-        child_status: 0
+      expect([result, record]).to eq(
+        [
+          :survived,
+          {
+            waits: 3,
+            pauses: [0.01],
+            child_status: 0
+          }
+        ]
       )
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env

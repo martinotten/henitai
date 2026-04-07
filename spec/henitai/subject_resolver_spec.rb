@@ -65,6 +65,26 @@ RSpec.describe Henitai::SubjectResolver do
     end
   end
 
+  it "preserves source location metadata for class methods" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Foo
+            def self.bar
+              1
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects.map(&:source_range)).to eq([2..4])
+    end
+  end
+
   it "resolves methods inside singleton classes as class subjects" do
     Dir.mktmpdir do |dir|
       path = write_source(
@@ -85,6 +105,29 @@ RSpec.describe Henitai::SubjectResolver do
       subjects = described_class.new.resolve_from_files([path])
 
       expect(subjects.map(&:expression)).to eq(["Foo::Bar.qux"])
+    end
+  end
+
+  it "preserves singleton context for nested class declarations" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Foo
+            class << self
+              class Bar
+                def baz
+                end
+              end
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects.map(&:expression)).to eq(["Foo::Bar.baz"])
     end
   end
 
@@ -206,6 +249,25 @@ RSpec.describe Henitai::SubjectResolver do
     end
   end
 
+  it "resolves root-qualified nested namespaces" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          module ::Foo::Bar
+            def baz
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects.map(&:expression)).to eq(["Foo::Bar#baz"])
+    end
+  end
+
   it "ignores anonymous classes and generated methods while keeping explicit defs" do
     Dir.mktmpdir do |dir|
       path = write_source(
@@ -249,6 +311,106 @@ RSpec.describe Henitai::SubjectResolver do
     end
   end
 
+  it "ignores anonymous constructor blocks for Module" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Foo
+            Module.new do
+              def hidden = 1
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects).to be_empty
+    end
+  end
+
+  it "ignores anonymous constructor blocks for Class" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Foo
+            Class.new do
+              def hidden = 1
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects).to be_empty
+    end
+  end
+
+  it "ignores anonymous constructor blocks for Struct" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Foo
+            Struct.new(:token) do
+              def hidden = 1
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects).to be_empty
+    end
+  end
+
+  it "ignores anonymous constructor blocks for Data" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Foo
+            Data.define(:value) do
+              def hidden = 1
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects).to be_empty
+    end
+  end
+
+  it "does not ignore blocks attached to named receivers using new" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Foo
+            Foo.new do
+              def kept = 1
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects.map(&:expression)).to include("Foo#kept")
+    end
+  end
+
   it "ignores define_method calls on non-self receivers" do
     Dir.mktmpdir do |dir|
       path = write_source(
@@ -257,6 +419,44 @@ RSpec.describe Henitai::SubjectResolver do
         <<~RUBY
           class Foo
             other.define_method(:bar) do
+              1
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects).to be_empty
+    end
+  end
+
+  it "ignores top-level define_method calls" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          define_method(:bar) do
+            1
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+
+      expect(subjects).to be_empty
+    end
+  end
+
+  it "ignores define_method calls without a literal name" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Foo
+            define_method do
               1
             end
           end
@@ -298,6 +498,36 @@ RSpec.describe Henitai::SubjectResolver do
         "Foo::Bar#baz"
       ]
     )
+  end
+
+  it "applies wildcard patterns to resolved subjects from files" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          module Foo
+            def bar
+            end
+
+            module Nested
+              def baz
+              end
+            end
+          end
+
+          module Bar
+            def qux
+            end
+          end
+        RUBY
+      )
+
+      subjects = described_class.new.resolve_from_files([path])
+      filtered = described_class.new.apply_pattern(subjects, "Foo*")
+
+      expect(filtered.map(&:expression)).to eq(["Foo#bar", "Foo::Nested#baz"])
+    end
   end
 
   it "skips subjects without namespace metadata when applying a wildcard" do
