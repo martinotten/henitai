@@ -566,19 +566,22 @@ module Henitai
 
     def build_result: (Array[Mutant], Time, Time) -> Result
     def persist_history: (Result, Time) -> void
-    def bootstrap_coverage: (Array[String]) -> void
+    def bootstrap_coverage: (Array[String], ?Array[String]?) -> void
+    def scoped_bootstrap_test_files: (Array[Subject]) -> Array[String]?
     def with_reports_dir: () { () -> untyped } -> untyped
   end
 
   class CoverageBootstrapper
     def initialize: (?static_filter: StaticFilter) -> void
-    def ensure!: (source_files: Array[String], config: Configuration, integration: Integration::Base) -> void
+    def ensure!: (source_files: Array[String], config: Configuration, integration: Integration::Base, ?test_files: Array[String]?) -> void
 
     private
 
     def static_filter: () -> StaticFilter
     def coverage_available?: (Array[String], Configuration) -> bool
-    def bootstrap_coverage: (Integration::Base, Configuration) -> void
+    def coverage_fresh?: (Array[String], Configuration, Integration::Base, Array[String]?) -> bool
+    def coverage_report_path: (Configuration) -> String
+    def bootstrap_coverage: (Integration::Base, Configuration, ?Array[String]?) -> void
     def source_file_paths: (Array[String]) -> Array[String]
   end
 
