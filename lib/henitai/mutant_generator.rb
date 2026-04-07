@@ -44,10 +44,7 @@ module Henitai
         syntax_validator:
       )
       visitor.process(SourceParser.parse_file(subject.source_file))
-      prune_mutants_per_line(
-        visitor.mutants,
-        max_mutants_per_line: config&.max_mutants_per_line || 1
-      )
+      visitor.mutants
     end
 
     # Depth-first pre-order AST visitor for a single subject.
@@ -107,18 +104,6 @@ module Henitai
       end
     end
 
-    def prune_mutants_per_line(mutants, max_mutants_per_line:)
-      grouped = mutants.each_with_object({}) do |mutant, selected|
-        key = line_key(mutant)
-        selected[key] ||= []
-        selected[key] << mutant
-      end
-
-      grouped.values.flat_map do |mutants_for_line|
-        mutants_for_line.sort_by { |mutant| mutant_priority_key(mutant) }.take(max_mutants_per_line)
-      end
-    end
-
     def sample_mutants(mutants, config:, sampling_strategy:)
       sampling = config&.sampling
       return mutants unless sampling
@@ -129,30 +114,6 @@ module Henitai
         ratio: sampling[:ratio],
         strategy: sampling[:strategy] || :stratified
       )
-    end
-
-    def line_key(mutant)
-      [
-        mutant.location[:file],
-        mutant.location[:start_line]
-      ]
-    end
-
-    def mutant_priority_key(mutant)
-      [
-        operator_priority(mutant.operator),
-        mutant.location[:start_col] || 0,
-        mutant.description
-      ]
-    end
-
-    def operator_priority(operator_name)
-      operator_priority_map.fetch(operator_name, operator_priority_map.length)
-    end
-
-    def operator_priority_map
-      # The constant order defines signal priority for per-line pruning.
-      @operator_priority_map ||= Operator::FULL_SET.each_with_index.to_h
     end
   end
 end

@@ -13,6 +13,7 @@ group :development do
   gem "rubocop-rspec", require: false
   gem "simplecov", "~> 0.22", require: false
   gem "steep", require: false # Type checking via RBS
+  gem "mutant-rspec"
 end
 
 gem "sqlite3", "~> 1.7"

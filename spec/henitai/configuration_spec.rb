@@ -35,7 +35,6 @@ RSpec.describe Henitai::Configuration do
       reports_dir: config.reports_dir,
       all_logs: config.all_logs,
       timeout: config.timeout,
-      max_mutants_per_line: config.max_mutants_per_line,
       max_flaky_retries: config.max_flaky_retries,
       sampling: config.sampling,
       coverage_criteria: config.coverage_criteria,
@@ -83,7 +82,6 @@ RSpec.describe Henitai::Configuration do
       jobs: nil,
       reports_dir: "reports",
       all_logs: false,
-      max_mutants_per_line: 1,
       max_flaky_retries: 3,
       sampling: nil
     }
@@ -153,7 +151,6 @@ RSpec.describe Henitai::Configuration do
       reports_dir: "reports",
       all_logs: false,
       timeout: 10.0,
-      max_mutants_per_line: 1,
       max_flaky_retries: 3,
       sampling: nil,
       coverage_criteria: {
@@ -176,7 +173,6 @@ RSpec.describe Henitai::Configuration do
       reports_dir: "reports",
       all_logs: false,
       timeout: 10.0,
-      max_mutants_per_line: 1,
       max_flaky_retries: 3,
       sampling: nil,
       coverage_criteria: {
@@ -258,18 +254,6 @@ RSpec.describe Henitai::Configuration do
     end.to raise_error(
       Henitai::ConfigurationError,
       /mutation\.operators/
-    )
-  end
-
-  it "aborts on invalid max mutants per line values" do
-    expect do
-      load_configuration(<<~YAML)
-        mutation:
-          max_mutants_per_line: 0
-      YAML
-    end.to raise_error(
-      Henitai::ConfigurationError,
-      /mutation\.max_mutants_per_line/
     )
   end
 
@@ -414,10 +398,9 @@ RSpec.describe Henitai::Configuration do
     )
   end
 
-  it "loads sampling and max mutants per line settings" do
+  it "loads sampling settings" do
     config = load_configuration(<<~YAML)
       mutation:
-        max_mutants_per_line: 2
         max_flaky_retries: 4
         sampling:
           ratio: 0.25
@@ -426,12 +409,10 @@ RSpec.describe Henitai::Configuration do
 
     expect(
       {
-        max_mutants_per_line: config.max_mutants_per_line,
         max_flaky_retries: config.max_flaky_retries,
         sampling: config.sampling
       }
     ).to eq(
-      max_mutants_per_line: 2,
       max_flaky_retries: 4,
       sampling: {
         ratio: 0.25,

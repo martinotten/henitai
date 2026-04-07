@@ -1,0 +1,6 @@
+usage: opensource
+integration: rspec
+includes:
+  - lib
+requires:
+  - henitai/eager_load

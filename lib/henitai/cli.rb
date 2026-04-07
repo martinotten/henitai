@@ -25,7 +25,6 @@ module Henitai
       "mutation:",
       "  operators: light",
       "  timeout: 10.0",
-      "  max_mutants_per_line: 1",
       "  max_flaky_retries: 3",
       "  sampling:",
       "    ratio: 0.05",
@@ -51,7 +50,11 @@ module Henitai
       "PatternMatch" => ["Pattern matching", "in { x: Integer } -> in { x: String }"],
       "BlockStatement" => ["Block statements", "{ do_work } -> {}"],
       "MethodExpression" => ["Method calls", "call_service -> nil"],
-      "AssignmentExpression" => ["Assignment expressions", "x += 1 -> x -= 1"]
+      "AssignmentExpression" => ["Assignment expressions", "x += 1 -> x -= 1"],
+      "MethodChainUnwrap" => ["Method chain unwrap", "a.b.c -> a.b"],
+      "RegexMutator" => ["Regex literals", "/foo+/ -> /foo*/"],
+      "UnaryOperator" => ["Unary operators", "-x -> x"],
+      "UpdateOperator" => ["Compound assignment", "x += 1 -> x -= 1"]
     }.freeze
 
     def self.start(argv)

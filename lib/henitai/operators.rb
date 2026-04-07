@@ -21,5 +21,9 @@ module Henitai
     autoload :BlockStatement, "henitai/operators/block_statement"
     autoload :MethodExpression, "henitai/operators/method_expression"
     autoload :AssignmentExpression, "henitai/operators/assignment_expression"
+    autoload :MethodChainUnwrap,    "henitai/operators/method_chain_unwrap"
+    autoload :RegexMutator,         "henitai/operators/regex_mutator"
+    autoload :UnaryOperator,        "henitai/operators/unary_operator"
+    autoload :UpdateOperator,       "henitai/operators/update_operator"
   end
 end

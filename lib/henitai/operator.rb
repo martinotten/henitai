@@ -32,12 +32,16 @@ module Henitai
     FULL_SET = (LIGHT_SET + %w[
       ArrayDeclaration
       HashLiteral
+      MethodChainUnwrap
       RangeLiteral
+      RegexMutator
       SafeNavigation
       PatternMatch
       BlockStatement
       MethodExpression
       AssignmentExpression
+      UnaryOperator
+      UpdateOperator
     ]).freeze
 
     # @param set [Symbol] :light or :full

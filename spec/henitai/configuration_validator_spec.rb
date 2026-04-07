@@ -460,39 +460,6 @@ RSpec.describe Henitai::ConfigurationValidator do
     end
   end
 
-  describe "validate_max_mutants_per_line" do
-    it "accepts nil" do
-      expect do
-        described_class.validate!({ mutation: { max_mutants_per_line: nil } })
-      end.not_to raise_error
-    end
-
-    it "accepts a positive integer" do
-      expect do
-        described_class.validate!({ mutation: { max_mutants_per_line: 5 } })
-      end.not_to raise_error
-    end
-
-    it "rejects zero with path in error" do
-      expect { described_class.validate!({ mutation: { max_mutants_per_line: 0 } }) }.to raise_error(
-        Henitai::ConfigurationError, /mutation\.max_mutants_per_line/
-      )
-    end
-
-    it "reports the rejected mutant limit value in the error message" do
-      expect { described_class.validate!({ mutation: { max_mutants_per_line: 0 } }) }.to raise_error(
-        Henitai::ConfigurationError,
-        "Invalid configuration value for mutation.max_mutants_per_line: expected Integer >= 1, got 0"
-      )
-    end
-
-    it "rejects a non-integer with path in error" do
-      expect do
-        described_class.validate!({ mutation: { max_mutants_per_line: "5" } })
-      end.to raise_error(Henitai::ConfigurationError, /mutation\.max_mutants_per_line/)
-    end
-  end
-
   describe "validate_max_flaky_retries" do
     it "accepts nil" do
       expect do

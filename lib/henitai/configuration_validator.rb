@@ -16,7 +16,7 @@ module Henitai
       dashboard
       jobs
     ].freeze
-    VALID_MUTATION_KEYS = %i[operators timeout ignore_patterns max_mutants_per_line max_flaky_retries sampling].freeze
+    VALID_MUTATION_KEYS = %i[operators timeout ignore_patterns max_flaky_retries sampling].freeze
     VALID_SAMPLING_KEYS = %i[ratio strategy].freeze
     VALID_COVERAGE_CRITERIA_KEYS = %i[test_result timeout process_abort].freeze
     VALID_THRESHOLDS_KEYS = %i[high low].freeze
@@ -110,7 +110,6 @@ module Henitai
 
       def validate_mutation_limits(value)
         validate_timeout(value[:timeout])
-        validate_max_mutants_per_line(value[:max_mutants_per_line])
         validate_max_flaky_retries(value[:max_flaky_retries])
       end
 
@@ -200,15 +199,6 @@ module Henitai
             "invalid regular expression #{pattern.inspect}: #{e.message}"
           )
         end
-      end
-
-      def validate_max_mutants_per_line(value)
-        return if value.nil?
-        return if value.is_a?(Integer) && value >= 1
-
-        configuration_error(
-          "Invalid configuration value for mutation.max_mutants_per_line: expected Integer >= 1, got #{value.inspect}"
-        )
       end
 
       def validate_max_flaky_retries(value)

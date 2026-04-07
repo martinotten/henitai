@@ -4,6 +4,16 @@ require "fileutils"
 require "spec_helper"
 require "tmpdir"
 
+module Henitai
+  class FakeIntOperatorForVisitor < Operator
+    def self.node_types = [:int]
+
+    def mutate(node, subject:)
+      [build_mutant(subject:, original_node: node, mutated_node: node, description: "fake int")]
+    end
+  end
+end
+
 RSpec.describe Henitai::MutantGenerator do
   def write_source(dir, relative_path, source)
     path = File.join(dir, relative_path)
@@ -214,82 +224,30 @@ RSpec.describe Henitai::MutantGenerator do
     end
   end
 
-  it "keeps the highest priority mutant on a line" do
-    Dir.mktmpdir do |dir|
-      path = write_source(dir, "lib/sample.rb", <<~RUBY)
-        class Sample
-          def announce
-            1 + 2 == 3
+  describe "returns all mutations from all operators on the same line" do
+    subject(:descriptions) do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "lib/sample.rb", <<~RUBY)
+          class Sample
+            def announce
+              1 + 2 == 3
+            end
           end
-        end
-      RUBY
+        RUBY
 
-      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
-      operators = [
-        Henitai::Operators::EqualityOperator.new,
-        Henitai::Operators::ArithmeticOperator.new
-      ]
+        subj = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+        operators = [
+          Henitai::Operators::EqualityOperator.new,
+          Henitai::Operators::ArithmeticOperator.new
+        ]
 
-      mutants = described_class.new.generate([subject], operators)
-
-      expect(mutants.map(&:description)).to eq(["replaced + with -"])
+        described_class.new.generate([subj], operators).map(&:description)
+      end
     end
-  end
 
-  it "honors the configured max mutants per line" do
-    Dir.mktmpdir do |dir|
-      path = write_source(dir, "lib/sample.rb", <<~RUBY)
-        class Sample
-          def announce
-            1 + 2 - 3
-          end
-        end
-      RUBY
-
-      config = write_configuration(
-        dir,
-        <<~YAML
-          mutation:
-            max_mutants_per_line: 2
-        YAML
-      )
-      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
-
-      mutants = described_class.new.generate(
-        [subject],
-        [Henitai::Operators::ArithmeticOperator.new],
-        config:
-      )
-
-      expect(mutants.map(&:description)).to contain_exactly(
-        "replaced + with -",
-        "replaced - with +"
-      )
-    end
-  end
-
-  # L49 NoCoverage: config&.max_mutants_per_line || 1
-  # Bei config: nil muss der || 1-Fallback greifen — ein Mutant pro Zeile.
-  it "defaults to 1 mutant per line when no config is given" do
-    Dir.mktmpdir do |dir|
-      path = write_source(dir, "lib/sample.rb", <<~RUBY)
-        class Sample
-          def announce
-            1 + 2 - 3
-          end
-        end
-      RUBY
-
-      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
-      mutants = described_class.new.generate(
-        [subject],
-        [Henitai::Operators::ArithmeticOperator.new],
-        config: nil
-      )
-
-      lines = mutants.map { |m| m.location[:start_line] }
-      expect(lines).to eq(lines.uniq)
-    end
+    it { is_expected.to include("replaced + with -") }
+    it { is_expected.to include("replaced == with !=") }
+    it { expect(descriptions.length).to be > 1 }
   end
 
   it "applies stratified sampling when configured" do
@@ -350,67 +308,6 @@ RSpec.describe Henitai::MutantGenerator do
     end
   end
 
-  describe "#line_key" do
-    let(:generator) { described_class.new }
-
-    # L135 NoCoverage: ReturnValue auf [file, start_line]-Array
-    it "returns a two-element array of file and start_line" do
-      mutant = instance_double(
-        Henitai::Mutant,
-        location: { file: "lib/foo.rb", start_line: 7 }
-      )
-      expect(generator.send(:line_key, mutant)).to eq(["lib/foo.rb", 7])
-    end
-  end
-
-  describe "#mutant_priority_key" do
-    let(:generator) { described_class.new }
-
-    # L142 NoCoverage: ReturnValue auf Priority-Key-Array
-    it "returns a three-element priority key" do
-      mutant = instance_double(
-        Henitai::Mutant,
-        operator: "ArithmeticOperator",
-        location: { start_col: 4 },
-        description: "replaced + with -"
-      )
-      key = generator.send(:mutant_priority_key, mutant)
-      expect(key).to eq([0, 4, "replaced + with -"])
-    end
-
-    # L144 NoCoverage: mutant.location[:start_col] || 0
-    it "falls back to column 0 when start_col is absent" do
-      mutant = instance_double(
-        Henitai::Mutant,
-        operator: "ArithmeticOperator",
-        location: { start_col: nil },
-        description: "x"
-      )
-      expect(generator.send(:mutant_priority_key, mutant)[1]).to eq(0)
-    end
-  end
-
-  describe "#operator_priority_map" do
-    let(:generator) { described_class.new }
-
-    # L150 Survived: ReturnValue — Methode gibt 0 zurück statt Hash
-    it "returns a Hash keyed by operator name" do
-      expect(generator.send(:operator_priority_map)).to include("ArithmeticOperator" => 0)
-    end
-
-    it "is memoized across calls" do
-      first_map = generator.send(:operator_priority_map)
-      second_map = generator.send(:operator_priority_map)
-
-      expect(first_map).to be(second_map)
-    end
-
-    it "returns the map size as the fallback priority for unknown operators" do
-      map = generator.send(:operator_priority_map)
-      expect(generator.send(:operator_priority, "UnknownOperator")).to eq(map.length)
-    end
-  end
-
   # ---------------------------------------------------------------------------
   # SubjectVisitor — direkte Tests der nested class
   # Ursache aller Survived-Mutanten L73–L106: Der Coverage-Tracker attributiert
@@ -422,17 +319,7 @@ RSpec.describe Henitai::MutantGenerator do
     let(:arid_filter)   { Henitai::AridNodeFilter.new }
     let(:syntax_validator) { Henitai::SyntaxValidator.new }
 
-    def make_int_operator
-      stub_const("Henitai::FakeIntOperatorForVisitor",
-                 Class.new(Henitai::Operator) do
-                   def self.node_types = [:int]
-
-                   def mutate(node, subject:)
-                     [build_mutant(subject:, original_node: node, mutated_node: node, description: "fake int")]
-                   end
-                 end)
-      Henitai::FakeIntOperatorForVisitor.new
-    end
+    def make_int_operator = Henitai::FakeIntOperatorForVisitor.new
 
     def make_subject_for(path, expression)
       Henitai::SubjectResolver.new.resolve_from_files([path]).find do |s|
