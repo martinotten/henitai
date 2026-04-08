@@ -136,9 +136,13 @@ RSpec.describe Henitai::SourceParser do
         ast_a = described_class.parse_file(path_a)
         ast_b = described_class.parse_file(path_b)
 
-        expect(ast_a).not_to be(ast_b)
-        expect(described_class.parse_file(path_a)).to be(ast_a)
-        expect(described_class.parse_file(path_b)).to be(ast_b)
+        expect(
+          [
+            ast_a.equal?(ast_b),
+            described_class.parse_file(path_a).equal?(ast_a),
+            described_class.parse_file(path_b).equal?(ast_b)
+          ]
+        ).to eq([false, true, true])
       end
     end
 
@@ -147,10 +151,12 @@ RSpec.describe Henitai::SourceParser do
         path = File.join(dir, "sample.rb")
         File.write(path, "class A; def m = 1; end")
 
+        allow(File).to receive(:read).and_call_original
         described_class.parse_file(path)
 
-        expect(File).not_to receive(:read).with(path)
         described_class.parse_file(path)
+
+        expect(File).to have_received(:read).once.with(path)
       end
     end
   end

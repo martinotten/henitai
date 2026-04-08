@@ -103,8 +103,8 @@ RSpec.describe Henitai::Operators::AssignmentExpression do
       end
 
       expect(op_asgn_swaps.size).to eq(1),
-        "expected exactly 1 += → -= mutant, got #{op_asgn_swaps.size}: " \
-        "#{op_asgn_swaps.map { |m| "#{m.operator}: #{m.description}" }.inspect}"
+                                    "expected exactly 1 += → -= mutant, got #{op_asgn_swaps.size}: " \
+                                    "#{op_asgn_swaps.map { |m| "#{m.operator}: #{m.description}" }.inspect}"
     end
   end
 end

@@ -57,7 +57,7 @@ module Henitai
       # Start bootstrap in background (option 2). For targeted runs, restrict
       # to relevant spec files (option 3). Skip entirely if coverage is already
       # fresh (option 1 — handled inside CoverageBootstrapper#ensure!).
-      scoped_tests   = scoped_bootstrap_test_files(subjects)
+      scoped_tests = scoped_bootstrap_test_files(subjects)
       bootstrap_thread = Thread.new { bootstrap_coverage(source_files, scoped_tests) }
 
       # Gate 2 — generate mutants while the bootstrap is in progress.

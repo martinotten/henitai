@@ -153,6 +153,14 @@ module Henitai
       def pause(seconds)
         sleep(seconds)
       end
+
+      def rspec_options
+        ["--require", "henitai/rspec_coverage_formatter"]
+      end
+
+      def scenario_log_support
+        @scenario_log_support ||= ScenarioLogSupport.new
+      end
     end
 
     # RSpec integration adapter.
@@ -205,19 +213,6 @@ module Henitai
         build_result(wait_with_timeout(pid, timeout), log_paths)
       end
 
-      private
-
-      def run_in_child(mutant:, test_files:, log_paths:)
-        Thread.report_on_exception = false
-        scenario_log_support.with_coverage_dir(mutant.id) do
-          scenario_log_support.capture_child_output(log_paths) do
-            return 2 if Mutant::Activator.activate!(mutant) == :compile_error
-
-            run_tests(test_files)
-          end
-        end
-      end
-
       def suite_command(test_files)
         ["bundle", "exec", "rspec", *test_files]
       end
@@ -259,32 +254,6 @@ module Henitai
         return status if status.is_a?(Integer)
 
         status == true ? 0 : 1
-      end
-
-      def rspec_options
-        ["--require", "henitai/rspec_coverage_formatter"]
-      end
-
-      def scenario_log_support
-        @scenario_log_support ||= ScenarioLogSupport.new
-      end
-
-      def read_log_file(path)
-        return "" unless File.exist?(path)
-
-        File.read(path)
-      end
-
-      def write_combined_log(path, stdout, stderr)
-        FileUtils.mkdir_p(File.dirname(path))
-        File.write(path, combined_log(stdout, stderr))
-      end
-
-      def combined_log(stdout, stderr)
-        [
-          (stdout.empty? ? nil : "stdout:\n#{stdout}"),
-          (stderr.empty? ? nil : "stderr:\n#{stderr}")
-        ].compact.join("\n")
       end
 
       def scenario_log_paths(name)
@@ -409,6 +378,56 @@ module Henitai
         Process.wait(pid)
       rescue Errno::ECHILD, Errno::ESRCH
         nil
+      end
+
+      def run_in_child(mutant:, test_files:, log_paths:)
+        Thread.report_on_exception = false
+        scenario_log_support.with_coverage_dir(mutant.id) do
+          scenario_log_support.capture_child_output(log_paths) do
+            return 2 if Mutant::Activator.activate!(mutant) == :compile_error
+
+            run_tests(test_files)
+          end
+        end
+      end
+
+      def read_log_file(path)
+        return "" unless File.exist?(path)
+
+        File.read(path)
+      end
+
+      def write_combined_log(path, stdout, stderr)
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, combined_log(stdout, stderr))
+      end
+
+      def combined_log(stdout, stderr)
+        [
+          (stdout.empty? ? nil : "stdout:\n#{stdout}"),
+          (stderr.empty? ? nil : "stderr:\n#{stderr}")
+        ].compact.join("\n")
+      end
+    end
+
+    # Stores the child-process log helpers shared by the integration specs.
+    class ScenarioLogSupport
+      def read_log_file(path)
+        return "" unless File.exist?(path)
+
+        File.read(path)
+      end
+
+      def write_combined_log(path, stdout, stderr)
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, combined_log(stdout, stderr))
+      end
+
+      def combined_log(stdout, stderr)
+        [
+          (stdout.empty? ? nil : "stdout:\n#{stdout}"),
+          (stderr.empty? ? nil : "stderr:\n#{stderr}")
+        ].compact.join("\n")
       end
     end
 

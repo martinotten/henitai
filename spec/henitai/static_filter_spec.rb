@@ -557,8 +557,10 @@ RSpec.describe Henitai::StaticFilter do
 
         filter = described_class.new
 
-        expect(File).to receive(:realpath).once.and_call_original
+        allow(File).to receive(:realpath).and_call_original
         2.times { filter.send(:normalize_path, path) }
+
+        expect(File).to have_received(:realpath).once
       end
     end
 
@@ -571,9 +573,11 @@ RSpec.describe Henitai::StaticFilter do
 
         filter = described_class.new
 
-        expect(File).to receive(:realpath).twice.and_call_original
+        allow(File).to receive(:realpath).and_call_original
         filter.send(:normalize_path, path_a)
         filter.send(:normalize_path, path_b)
+
+        expect(File).to have_received(:realpath).twice
       end
     end
 
@@ -588,10 +592,12 @@ RSpec.describe Henitai::StaticFilter do
       filter = described_class.new
       path = "/no/such/file.rb"
 
+      allow(File).to receive(:realpath).and_call_original
       filter.send(:normalize_path, path)
 
-      expect(File).not_to receive(:realpath)
       filter.send(:normalize_path, path)
+
+      expect(File).to have_received(:realpath).once.with(path)
     end
   end
 

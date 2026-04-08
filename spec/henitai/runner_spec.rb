@@ -160,28 +160,32 @@ RSpec.describe Henitai::Runner do
 
         runner.run
 
-        # Every phase fired with the expected arguments
-        expect(calls.find { |c| c[0] == :bootstrap }).to eq(
-          [:bootstrap, ["lib/sample.rb"], config]
-        )
-        expect(calls.find { |c| c[0] == :resolve_from_files }).to eq(
-          [:resolve_from_files, ["lib/sample.rb"]]
-        )
-        expect(calls.find { |c| c[0] == :generate }).to eq(
-          [:generate, subjects, Henitai::Operator.for_set(:light).map(&:class), config]
-        )
-        expect(calls.find { |c| c[0] == :filter }).to   eq([:filter, mutants, config])
-        expect(calls.find { |c| c[0] == :execute }).to  eq([:execute, mutants, integration, config, reporter])
-        expect(calls.find { |c| c[0] == :result }).to   eq([:result, mutants, true, true])
-        expect(calls).to include(:history)
-        expect(calls.find { |c| c[0] == :report }).to   eq([:report, { names: ["terminal"], result:, config: }])
+        expect(calls).to satisfy do |events|
+          resolve_call = [:resolve_from_files, ["lib/sample.rb"]]
+          bootstrap_call = [:bootstrap, ["lib/sample.rb"], config]
+          generate_call = [:generate, subjects, Henitai::Operator.for_set(:light).map(&:class), config]
+          filter_call = [:filter, mutants, config]
+          execute_call = [:execute, mutants, integration, config, reporter]
+          result_call = [:result, mutants, true, true]
+          report_call = [:report, { names: ["terminal"], result:, config: }]
 
-        # Guaranteed partial ordering
-        idx = ->(tag) { calls.index { |c| c.is_a?(Array) && c[0] == tag } }
-        expect(idx.(:resolve_from_files)).to be < idx.(:generate)
-        expect(idx.(:bootstrap)).to          be < idx.(:filter)
-        expect(idx.(:generate)).to           be < idx.(:filter)
-        expect(idx.(:filter)).to             be < idx.(:execute)
+          resolve_index = events.index(resolve_call)
+          bootstrap_index = events.index(bootstrap_call)
+          generate_index = events.index(generate_call)
+          filter_index = events.index(filter_call)
+          execute_index = events.index(execute_call)
+          result_index = events.index(result_call)
+          report_index = events.index(report_call)
+
+          resolve_index && bootstrap_index && generate_index &&
+            filter_index && execute_index && result_index && report_index &&
+            resolve_index < generate_index &&
+            bootstrap_index < filter_index &&
+            generate_index < filter_index &&
+            filter_index < execute_index &&
+            result_index < report_index &&
+            events.include?(:history)
+        end
       end
     end
   end
@@ -217,7 +221,7 @@ RSpec.describe Henitai::Runner do
         )
         allow(subject_resolver).to receive(:resolve_from_files).and_return([])
         allow(coverage_bootstrapper).to receive(:ensure!) do |**|
-          sleep 0.04  # hold the bootstrap thread open long enough for generate to run
+          sleep 0.04 # hold the bootstrap thread open long enough for generate to run
           mu.synchronize { events << :bootstrap_end }
         end
         allow(mutant_generator).to receive(:generate) do |*|
@@ -269,8 +273,7 @@ RSpec.describe Henitai::Runner do
           integration:,
           history_store:
         )
-        allow(subject_resolver).to receive(:resolve_from_files).and_return([subject])
-        allow(subject_resolver).to receive(:apply_pattern).and_return([subject])
+        allow(subject_resolver).to receive_messages(resolve_from_files: [subject], apply_pattern: [subject])
         allow(integration).to receive(:select_tests).with(subject).and_return(
           ["spec/sample_spec.rb"]
         )

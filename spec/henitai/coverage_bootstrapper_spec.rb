@@ -150,7 +150,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
 
         config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
         static_filter = instance_double(Henitai::StaticFilter)
-        integration = instance_double(
+        integration = instance_spy(
           Henitai::Integration::Rspec,
           test_files: [spec]
         )
@@ -159,9 +159,10 @@ RSpec.describe Henitai::CoverageBootstrapper do
         allow(static_filter).to receive(:coverage_lines_for).and_return(
           { File.expand_path(source) => [1] }
         )
-        expect(integration).not_to receive(:run_suite)
 
         bootstrapper.ensure!(source_files: [source], config:, integration:)
+
+        expect(integration).not_to have_received(:run_suite)
       end
     end
 
@@ -178,14 +179,14 @@ RSpec.describe Henitai::CoverageBootstrapper do
         File.write(source, "class Sample; end")
         File.write(spec,   "# spec")
         sleep 0.01
-        File.write(report, "{}")  # fresh but empty — no coverage for source
+        File.write(report, "{}") # fresh but empty — no coverage for source
 
         config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
         static_filter = instance_double(Henitai::StaticFilter)
         integration = instance_double(
           Henitai::Integration::Rspec,
           test_files: [spec],
-          run_suite:  :survived
+          run_suite: :survived
         )
         bootstrapper = described_class.new(static_filter:)
 
@@ -398,7 +399,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
         )
 
         # Only the scoped spec is watched — the newer unrelated spec is ignored
-        expect(integration).not_to receive(:run_suite)
+        allow(integration).to receive(:run_suite)
 
         bootstrapper.ensure!(
           source_files: [source],
@@ -406,6 +407,8 @@ RSpec.describe Henitai::CoverageBootstrapper do
           integration:,
           test_files: [scoped_spec]
         )
+
+        expect(integration).not_to have_received(:run_suite)
       end
     end
   end

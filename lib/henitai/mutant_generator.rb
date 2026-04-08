@@ -57,18 +57,8 @@ module Henitai
         @mutants = []
         @arid_node_filter = arid_node_filter
         @syntax_validator = syntax_validator
-        subject_range = subject.source_range
-        if subject_range
-          @subject_range_begin = subject_range.begin
-          @subject_range_end   = subject_range.end
-        end
-        @operators_by_node_type = operators.each_with_object(
-          Hash.new { |hash, key| hash[key] = [] }
-        ) do |operator, map|
-          operator.class.node_types.each do |node_type|
-            map[node_type] << operator
-          end
-        end
+        initialize_subject_range(subject)
+        @operators_by_node_type = index_operators(operators)
       end
 
       def process(node)
@@ -103,6 +93,22 @@ module Henitai
         return true unless location
 
         location.line <= @subject_range_end && @subject_range_begin <= location.last_line
+      end
+
+      def initialize_subject_range(subject)
+        subject_range = subject.source_range
+        return unless subject_range
+
+        @subject_range_begin = subject_range.begin
+        @subject_range_end = subject_range.end
+      end
+
+      def index_operators(operators)
+        operators.each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |operator, map|
+          operator.class.node_types.each do |node_type|
+            map[node_type] << operator
+          end
+        end
       end
     end
 

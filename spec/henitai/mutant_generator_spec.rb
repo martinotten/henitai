@@ -500,12 +500,12 @@ RSpec.describe Henitai::MutantGenerator do
 
     describe "#node_within_subject_range?" do
       # Build a lightweight node double with only the interface node_within_subject_range? touches.
-      FakeExpression = Struct.new(:line, :last_line)
-      FakeLocation   = Struct.new(:expression)
+      let(:fake_expression_class) { Struct.new(:line, :last_line) }
+      let(:fake_location_class) { Struct.new(:expression) }
 
       def fake_node_at(start_line, end_line)
         Struct.new(:location).new(
-          FakeLocation.new(FakeExpression.new(start_line, end_line))
+          fake_location_class.new(fake_expression_class.new(start_line, end_line))
         )
       end
 
@@ -554,7 +554,7 @@ RSpec.describe Henitai::MutantGenerator do
 
       it "returns true when the node has no location expression" do
         visitor = visitor_with_range(1, 5)
-        node_without_loc = Struct.new(:location).new(FakeLocation.new(nil))
+        node_without_loc = Struct.new(:location).new(fake_location_class.new(nil))
         expect(visitor.send(:node_within_subject_range?, node_without_loc)).to be true
       end
     end
@@ -568,11 +568,13 @@ RSpec.describe Henitai::MutantGenerator do
         source_file: nil
       )
 
-      expect(subject).to receive(:source_range).once.and_return(1..5)
+      allow(subject).to receive(:source_range).and_return(1..5)
 
       visitor_class.new(subject, [], config: nil,
                                      arid_node_filter: arid_filter,
                                      syntax_validator: syntax_validator)
+
+      expect(subject).to have_received(:source_range).once
     end
   end
 end
