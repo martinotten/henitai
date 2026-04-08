@@ -49,29 +49,10 @@ module Henitai
     def run
       started_at = Time.now
       source_files = self.source_files
-
-      # Gate 1 — resolve subjects before starting the bootstrap so we can
-      # derive the scoped test file list for targeted runs (option 3).
       subjects = resolve_subjects(source_files)
+      mutants = execute_mutants(mutants_for(subjects, source_files))
 
-      # Start bootstrap in background (option 2). For targeted runs, restrict
-      # to relevant spec files (option 3). Skip entirely if coverage is already
-      # fresh (option 1 — handled inside CoverageBootstrapper#ensure!).
-      scoped_tests = scoped_bootstrap_test_files(subjects)
-      bootstrap_thread = Thread.new { bootstrap_coverage(source_files, scoped_tests) }
-
-      # Gate 2 — generate mutants while the bootstrap is in progress.
-      mutants = generate_mutants(subjects)
-
-      # Block here until coverage is available, then proceed to Gate 3.
-      bootstrap_thread.join
-
-      mutants = filter_mutants(mutants)
-      mutants = refresh_coverage_for_targeted_run(mutants, source_files) if targeted_run?
-      mutants = execute_mutants(mutants)
-      finished_at = Time.now
-
-      build_result(mutants, started_at, finished_at)
+      build_result(mutants, started_at, Time.now)
     end
 
     private
@@ -94,11 +75,27 @@ module Henitai
       static_filter.apply(mutants, config)
     end
 
+    def mutants_for(subjects, source_files)
+      bootstrap_thread = bootstrap_mutants(source_files, subjects)
+      mutants = generate_mutants(subjects)
+      bootstrap_thread.join
+
+      filtered_mutants = filter_mutants(mutants)
+      return filtered_mutants unless targeted_run?
+
+      refresh_coverage_for_targeted_run(filtered_mutants, source_files)
+    end
+
     def refresh_coverage_for_targeted_run(mutants, source_files)
       return mutants unless retry_full_bootstrap?(mutants)
 
       bootstrap_coverage(source_files)
       filter_mutants(mutants)
+    end
+
+    def bootstrap_mutants(source_files, subjects)
+      scoped_tests = scoped_bootstrap_test_files(subjects)
+      Thread.new { bootstrap_coverage(source_files, scoped_tests) }
     end
 
     def execute_mutants(mutants)
@@ -224,8 +221,8 @@ module Henitai
     end
 
     def retry_full_bootstrap?(mutants)
-      executable_mutants = Array(mutants).select do |mutant|
-        !%i[ignored compile_error equivalent].include?(mutant.status)
+      executable_mutants = Array(mutants).reject do |mutant|
+        %i[ignored compile_error equivalent].include?(mutant.status)
       end
       return false if executable_mutants.empty?
 

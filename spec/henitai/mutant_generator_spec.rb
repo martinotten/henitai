@@ -142,6 +142,45 @@ RSpec.describe Henitai::MutantGenerator do
     expect(mutants).to eq([])
   end
 
+  it "returns no mutants when source parsing yields no node" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", "class Sample; end\n")
+      subject = Henitai::Subject.new(
+        namespace: "Sample",
+        method_name: "alpha",
+        source_location: { file: path, range: 1..1 }
+      )
+      fake_operator = stub_const(
+        "Henitai::FakeIntOperator",
+        Class.new(Henitai::Operator) do
+          def self.node_types
+            [:int]
+          end
+
+          def mutate(node, subject:)
+            [
+              build_mutant(
+                subject:,
+                original_node: node,
+                mutated_node: node,
+                description: "fake int"
+              )
+            ]
+          end
+        end
+      )
+
+      source_parser = instance_double(Henitai::SourceParser)
+      allow(Henitai::SourceParser).to receive(:new).and_return(source_parser)
+      allow(source_parser).to receive(:parse_file).with(path).and_return(nil)
+      allow(Henitai::MutantGenerator::SubjectVisitor).to receive(:new)
+
+      described_class.new.generate([subject], [fake_operator])
+
+      expect(Henitai::MutantGenerator::SubjectVisitor).not_to have_received(:new)
+    end
+  end
+
   it "skips arid nodes before applying operators" do
     Dir.mktmpdir do |dir|
       path = write_source(dir, "lib/sample.rb", <<~RUBY)
