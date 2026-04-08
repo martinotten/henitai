@@ -55,6 +55,21 @@ RSpec.describe Henitai::Operators::UpdateOperator do
     expect(mutate(node).first.description).to eq("replaced &&= with ||=")
   end
 
+  it "preserves the target and value when swapping logical assignments" do
+    aggregate_failures do
+      or_node = find_nodes(parse("x ||= nil"), :or_asgn).first
+      and_node = find_nodes(parse("x &&= true"), :and_asgn).first
+
+      or_mutant = mutate(or_node).first
+      and_mutant = mutate(and_node).first
+
+      expect(or_mutant.mutated_node.children[0]).to eq(or_node.children[0])
+      expect(or_mutant.mutated_node.children[1]).to eq(or_node.children[1])
+      expect(and_mutant.mutated_node.children[0]).to eq(and_node.children[0])
+      expect(and_mutant.mutated_node.children[1]).to eq(and_node.children[1])
+    end
+  end
+
   it "uses the swapped operator in the mutated node" do
     node = find_nodes(parse("total += amount"), :op_asgn).first
 

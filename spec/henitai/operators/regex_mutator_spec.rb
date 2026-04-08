@@ -51,7 +51,7 @@ RSpec.describe Henitai::Operators::RegexMutator do
     node = find_nodes(parse("/[a-z]/"), :regexp).first
     descriptions = mutate(node).map(&:description)
 
-    expect(descriptions).to include("negated character class [a-z]")
+    expect(descriptions).to include("negated character class")
   end
 
   it "does not negate an already-negated character class" do
@@ -94,5 +94,30 @@ RSpec.describe Henitai::Operators::RegexMutator do
     mutant = mutate(node).find { |m| m.description.include?("+") }
 
     expect(mutant.mutated_node.children[1]).to eq(node.children[1])
+  end
+
+  it "skips duplicate regex mutants and invalid replacements" do
+    node = find_nodes(parse("/simple/"), :regexp).first
+
+    duplicate = described_class.new.send(
+      :build_regex_mutant,
+      node,
+      nil,
+      "simple",
+      "simple",
+      "noop",
+      subject: mutation_subject
+    )
+    invalid = described_class.new.send(
+      :build_regex_mutant,
+      node,
+      nil,
+      "(",
+      "simple",
+      "broken",
+      subject: mutation_subject
+    )
+
+    expect([duplicate, invalid]).to eq([nil, nil])
   end
 end

@@ -74,13 +74,7 @@ module Henitai
       end
 
       def case_children(children)
-        return [[], nil] if children.empty?
-
-        if children.last&.type == :when
-          [children, nil]
-        else
-          [children[0...-1], children.last]
-        end
+        [children[0...-1], children.last]
       end
 
       def condition_variants(node, subject:, condition:)

@@ -51,13 +51,20 @@ RSpec.describe Henitai::Operators::HashLiteral do
     )
   end
 
-  it "leaves string keys unchanged in mixed hashes" do
-    mutant = mutate('{ foo: 1, "bar" => 2 }').find do |candidate|
-      candidate.description == "replaced symbol key with string key"
-    end
+  it "mutates only symbol-keyed pairs in mixed hashes" do
+    mutants = mutate('{ foo: 1, "bar" => 2 }')
 
-    expect(mutant.mutated_node.children.map { |pair| pair.children.first.type }).to eq(
-      %i[str str]
+    expect(mutants.map(&:description)).to eq(
+      [
+        "replaced hash with empty hash",
+        "replaced symbol key with string key"
+      ]
+    )
+  end
+
+  it "does not treat string-keyed pairs as symbol keys" do
+    expect(mutate('{ "bar" => 2 }').map(&:description)).to eq(
+      ["replaced hash with empty hash"]
     )
   end
 

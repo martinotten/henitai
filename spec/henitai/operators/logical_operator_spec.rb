@@ -37,6 +37,13 @@ RSpec.describe Henitai::Operators::LogicalOperator do
     end
   end
 
+  it "preserves both operands when replacing && with ||" do
+    node = find_nodes(parse("left && right"), :and).first
+    mutant = mutate("left && right").find { |candidate| candidate.description == "replaced && with ||" }
+
+    expect(mutant.mutated_node.children.take(2)).to eq(node.children.take(2))
+  end
+
   it "mutates || to &&, lhs, and rhs" do
     aggregate_failures do
       mutants = mutate("left || right")
@@ -52,6 +59,13 @@ RSpec.describe Henitai::Operators::LogicalOperator do
         :send
       )
     end
+  end
+
+  it "preserves both operands when replacing || with &&" do
+    node = find_nodes(parse("left || right"), :or).first
+    mutant = mutate("left || right").find { |candidate| candidate.description == "replaced || with &&" }
+
+    expect(mutant.mutated_node.children.take(2)).to eq(node.children.take(2))
   end
 
   it "mutates keyword and/or forms the same way" do

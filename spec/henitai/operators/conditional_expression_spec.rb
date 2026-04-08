@@ -125,6 +125,22 @@ RSpec.describe Henitai::Operators::ConditionalExpression do
     )
   end
 
+  it "preserves the original case condition when negating case expressions" do
+    source = <<~RUBY
+      case state
+      when :ready
+        :go
+      end
+    RUBY
+
+    original_condition = find_nodes(parse(source), :send).find do |candidate|
+      candidate.children[1] == :state
+    end
+    mutant = mutate(source).find { |candidate| candidate.description == "negated condition" }
+
+    expect(mutant.mutated_node.children.first.children.first).to eq(original_condition)
+  end
+
   it "mutates empty case expressions conservatively" do
     mutants = mutate(<<~RUBY)
       case state
@@ -165,6 +181,35 @@ RSpec.describe Henitai::Operators::ConditionalExpression do
     end
   end
 
+  it "preserves the original loop condition when negating while and until expressions" do
+    aggregate_failures do
+      while_source = <<~RUBY
+        while running
+          step
+        end
+      RUBY
+
+      until_source = <<~RUBY
+        until ready
+          step
+        end
+      RUBY
+
+      while_condition = find_nodes(parse(while_source), :send).find do |candidate|
+        candidate.children[1] == :running
+      end
+      until_condition = find_nodes(parse(until_source), :send).find do |candidate|
+        candidate.children[1] == :ready
+      end
+
+      while_mutant = mutate(while_source).find { |candidate| candidate.description == "negated condition" }
+      until_mutant = mutate(until_source).find { |candidate| candidate.description == "negated condition" }
+
+      expect(while_mutant.mutated_node.children.first.children.first).to eq(while_condition)
+      expect(until_mutant.mutated_node.children.first.children.first).to eq(until_condition)
+    end
+  end
+
   it "ignores non-conditional nodes" do
     expect(described_class.new.mutate(parse("foo.bar"), subject: mutation_subject))
       .to eq([])
@@ -186,5 +231,17 @@ RSpec.describe Henitai::Operators::ConditionalExpression do
         expect { Unparser.unparse(mutant.mutated_node) }.not_to raise_error, msg
       end
     end
+  end
+
+  it "uses nil nodes when a case branch body is missing" do
+    source = <<~RUBY
+      case state
+      when :ready
+      end
+    RUBY
+
+    mutant = mutate(source).find { |candidate| candidate.description == "kept when branch 1" }
+
+    expect(mutant.mutated_node.type).to eq(:nil)
   end
 end

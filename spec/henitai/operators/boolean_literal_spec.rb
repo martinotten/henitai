@@ -42,6 +42,14 @@ RSpec.describe Henitai::Operators::BooleanLiteral do
     end
   end
 
+  it "ignores ordinary method calls" do
+    node = find_nodes(parse("service.call"), :send).find do |candidate|
+      candidate.children[1] == :call
+    end
+
+    expect(mutate(node)).to eq([])
+  end
+
   it "handles booleans in defaults, hashes, and ternaries" do
     source = <<~RUBY
       def example(enabled = true)

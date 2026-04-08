@@ -53,30 +53,21 @@ module Henitai
       end
 
       def quantifier_swaps(source)
-        results = []
-        if source.match?(/(?<=[^*+?\\])\+/)
-          results << [source.gsub(/(?<=[^*+?\\])\+/, "*"), "replaced + quantifier with *"]
-        end
-        if source.match?(/(?<=[^*+?\\])\*/)
-          results << [source.gsub(/(?<=[^*+?\\])\*/, "+"), "replaced * quantifier with +"]
-        end
-        results
+        [
+          [source.gsub(/(?<=[^*+?\\])\+/, "*"), "replaced + quantifier with *"],
+          [source.gsub(/(?<=[^*+?\\])\*/, "+"), "replaced * quantifier with +"]
+        ]
       end
 
       def anchor_removals(source)
-        results = []
-        results << [source.sub("^", ""), "removed ^ anchor"] if source.start_with?("^")
-        results << [source.sub(/\$$/, ""), "removed $ anchor"] if source.end_with?("$")
-        results
+        [
+          [source.sub("^", ""), "removed ^ anchor"],
+          [source.sub(/\$$/, ""), "removed $ anchor"]
+        ]
       end
 
       def char_class_negations(source)
-        return [] unless source.match?(/\[[^\^]/)
-
-        match = source.match(/\[[^\]]+\]/)
-        return [] unless match
-
-        [[source.gsub(/\[(?!\^)/, "[^"), "negated character class #{match[0]}"]]
+        [[source.gsub(/\[(?!\^)/, "[^"), "negated character class"]]
       end
 
       def valid_regex?(source)

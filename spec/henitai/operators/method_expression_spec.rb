@@ -32,6 +32,10 @@ RSpec.describe Henitai::Operators::MethodExpression do
     )
   end
 
+  it "ignores non-send nodes" do
+    expect(described_class.new.mutate(parse("123"), subject: mutation_subject)).to eq([])
+  end
+
   it "ignores arithmetic operator sends" do
     expect(mutate("a + b", method_name: :+)).to eq([])
   end

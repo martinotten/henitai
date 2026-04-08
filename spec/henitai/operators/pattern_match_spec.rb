@@ -52,4 +52,23 @@ RSpec.describe Henitai::Operators::PatternMatch do
 
     expect(mutant.mutated_node.children[1].children[1]).to be_nil
   end
+
+  it "preserves the arm pattern and body when removing a guard" do
+    source = <<~RUBY
+      case value
+      in { x: Integer } if ready
+        :ok
+      else
+        :no
+      end
+    RUBY
+
+    original_arm = find_nodes(parse(source), :in_pattern).first
+    mutant = mutate(source).find { |candidate| candidate.description == "removed pattern guard 1" }
+    guarded_arm = mutant.mutated_node.children[1]
+
+    expect([guarded_arm.children[0], guarded_arm.children[2]]).to eq(
+      [original_arm.children[0], original_arm.children[2]]
+    )
+  end
 end
