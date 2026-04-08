@@ -227,11 +227,16 @@ module Henitai
       private
 
       def pause: (Float) -> void
+      def rspec_options: () -> Array[String]
+      def scenario_log_support: () -> ScenarioLogSupport
     end
 
     class ScenarioLogSupport
       def capture_child_output: (Hash[Symbol, String]) { () -> untyped } -> untyped
       def with_coverage_dir: (String) { () -> untyped } -> untyped
+      def read_log_file: (String) -> String
+      def write_combined_log: (String, String, String) -> void
+      def combined_log: (String, String) -> String
 
       private
 
@@ -271,8 +276,6 @@ module Henitai
       def combined_log: (String, String) -> String
       def scenario_log_paths: (String) -> Hash[Symbol, String]
       def run_tests: (Array[String]) -> Integer
-      def scenario_log_support: () -> ScenarioLogSupport
-      def rspec_options: () -> Array[String]
       def spec_files: () -> Array[String]
       def fallback_spec_files: (Subject) -> Array[String]
       def selection_patterns: (Subject) -> Array[String]
