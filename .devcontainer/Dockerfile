@@ -1,35 +1,35 @@
 # Hen'i-tai 変異体 — Dev Container
 
-FROM ruby:4.0.2-alpine
+FROM ruby:4
 
 ARG USERNAME=vscode
 ARG USER_UID=1000
 ARG USER_GID=${USER_UID}
 
 # Install system dependencies for Ruby development and native gem builds.
-RUN apk add --no-cache \
-    bash \
-    build-base \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
     curl \
     git \
     jq \
     libffi-dev \
-    gdbm-dev \
+    libgdbm-dev \
     libxml2-dev \
     libxslt-dev \
-    ncurses-dev \
+    libncurses-dev \
     python3 \
     nodejs \
     npm \
-    openssl-dev \
-    readline-dev \
-    yaml-dev \
-    zlib-dev \
+    libssl-dev \
+    libreadline-dev \
+    libyaml-dev \
+    zlib1g-dev \
     ripgrep \
     perl \
+    && rm -rf /var/lib/apt/lists/* \
     && npm install -g @openai/codex \
-    && addgroup -g ${USER_GID} ${USERNAME} \
-    && adduser -D -u ${USER_UID} -G ${USERNAME} -s /bin/bash ${USERNAME}
+    && groupadd --gid ${USER_GID} ${USERNAME} \
+    && useradd --uid ${USER_UID} --gid ${USER_GID} -m -s /bin/bash ${USERNAME}
 
 USER ${USERNAME}
 
