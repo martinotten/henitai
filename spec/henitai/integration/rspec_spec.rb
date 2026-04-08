@@ -5,6 +5,11 @@ require "spec_helper"
 require "tmpdir"
 
 RSpec.describe Henitai::Integration::Rspec do
+  before do
+    allow(Process).to receive(:setsid).and_return(0)
+    allow(Process).to receive(:kill).and_raise(Errno::ESRCH)
+  end
+
   def with_temp_workspace
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) { yield dir }
@@ -414,6 +419,45 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  it "cleans up the mutant process group after a successful run" do
+    mutant = Struct.new(:id).new("mutant-1a")
+    integration = described_class.new
+    record = { signals: [] }
+    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+    begin
+      stub_child_logging(integration)
+      allow(Process).to receive(:exit) { |status| record[:child_status] = status }
+      allow(Process).to receive(:fork) do |&block|
+        record[:forked] = true
+        block.call
+        4322
+      end
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+      allow(integration).to receive(:run_tests).and_return(0)
+      allow(Process).to receive(:wait).and_return(4322)
+      allow(Process).to receive_messages(last_status: Struct.new(:success?).new(true))
+      allow(Process).to receive(:kill) do |signal, pid|
+        record[:signals] << [signal, pid]
+        raise Errno::ESRCH if signal == :SIGKILL
+      end
+
+      integration.run_mutant(
+        mutant:,
+        test_files: ["spec/foo_spec.rb"],
+        timeout: 1.5
+      )
+
+      expect(record).to include(
+        forked: true,
+        child_status: 0,
+        signals: [[:SIGTERM, -4322], [:SIGKILL, -4322]]
+      )
+    ensure
+      ENV["HENITAI_MUTANT_ID"] = original_env
+    end
+  end
+
   it "activates the mutant before running child tests" do
     mutant = Struct.new(:id).new("mutant-2")
     integration = described_class.new
@@ -640,7 +684,7 @@ RSpec.describe Henitai::Integration::Rspec do
       )
 
       expect(record).to include(
-        signals: [[:SIGTERM, 2468], [:SIGKILL, 2468]],
+        signals: [[:SIGTERM, -2468], [:SIGKILL, -2468]],
         forked: true,
         child_status: 0
       )
@@ -670,7 +714,7 @@ RSpec.describe Henitai::Integration::Rspec do
       )
 
       expect(record).to include(
-        signals: [[:SIGTERM, 2469], [:SIGKILL, 2469]],
+        signals: [[:SIGTERM, -2469], [:SIGKILL, -2469]],
         reaped: 2469,
         forked: true,
         child_status: 0

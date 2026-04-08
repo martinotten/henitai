@@ -227,8 +227,13 @@ module Henitai
       private
 
       def pause: (Float) -> void
+      def wait_with_timeout: (Integer, Float) -> untyped
+      def handle_timeout: (Integer) -> Symbol
+      def reap_child: (Integer) -> void
+      def cleanup_process_group: (Integer) -> void
       def rspec_options: () -> Array[String]
       def scenario_log_support: () -> ScenarioLogSupport
+      def spawn_suite_process: (Array[String], Hash[Symbol, String]) -> Integer
     end
 
     class ScenarioLogSupport
@@ -266,8 +271,6 @@ module Henitai
 
       def run_in_child: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
       def suite_command: (Array[String]) -> Array[String]
-      def wait_with_timeout: (Integer, Float) -> untyped
-      def handle_timeout: (Integer) -> Symbol
       def build_result: (untyped, Hash[Symbol, String]) -> ScenarioExecutionResult
       def scenario_status: (untyped) -> Symbol
       def exit_status_for: (untyped) -> Integer?
@@ -296,7 +299,6 @@ module Henitai
       private
 
       def run_in_child: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
-      def suite_command: (Array[String]) -> Array[String]
       def run_tests: (Array[String]) -> Integer
       def preload_environment: () -> void
       def setup_load_path: () -> void

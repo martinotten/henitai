@@ -154,6 +154,47 @@ module Henitai
         sleep(seconds)
       end
 
+      def wait_with_timeout(pid, timeout)
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+
+        loop do
+          wait_result = Process.wait(pid, Process::WNOHANG)
+          return Process.last_status if wait_result
+
+          if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+            final_wait_result = Process.wait(pid, Process::WNOHANG)
+            return Process.last_status if final_wait_result
+
+            return handle_timeout(pid)
+          end
+
+          pause(0.01)
+        end
+      end
+
+      def handle_timeout(pid)
+        begin
+          cleanup_process_group(pid)
+        ensure
+          reap_child(pid)
+        end
+        :timeout
+      end
+
+      def reap_child(pid)
+        Process.wait(pid)
+      rescue Errno::ECHILD, Errno::ESRCH
+        nil
+      end
+
+      def cleanup_process_group(pid)
+        Process.kill(:SIGTERM, -pid)
+        pause(2.0)
+        Process.kill(:SIGKILL, -pid)
+      rescue Errno::ESRCH
+        nil
+      end
+
       def rspec_options
         ["--require", "henitai/rspec_coverage_formatter"]
       end
@@ -194,58 +235,32 @@ module Henitai
 
       def run_mutant(mutant:, test_files:, timeout:)
         log_paths = scenario_log_paths("mutant-#{mutant.id}")
+        wait_result = nil
         pid = Process.fork do
+          Process.setsid
           ENV["HENITAI_MUTANT_ID"] = mutant.id
           Process.exit(run_in_child(mutant:, test_files:, log_paths:))
         end
 
-        build_result(wait_with_timeout(pid, timeout), log_paths)
+        wait_result = wait_with_timeout(pid, timeout)
+        build_result(wait_result, log_paths)
+      ensure
+        cleanup_process_group(pid) if pid && wait_result && wait_result != :timeout
       end
 
       def run_suite(test_files, timeout: DEFAULT_SUITE_TIMEOUT)
         log_paths = scenario_log_paths("baseline")
+        wait_result = nil
         FileUtils.mkdir_p(File.dirname(log_paths[:stdout_path]))
-        pid = File.open(log_paths[:stdout_path], "w") do |stdout_file|
-          File.open(log_paths[:stderr_path], "w") do |stderr_file|
-            Process.spawn(*suite_command(test_files), out: stdout_file, err: stderr_file)
-          end
-        end
-        build_result(wait_with_timeout(pid, timeout), log_paths)
+        pid = spawn_suite_process(test_files, log_paths)
+        wait_result = wait_with_timeout(pid, timeout)
+        build_result(wait_result, log_paths)
+      ensure
+        cleanup_process_group(pid) if pid && wait_result && wait_result != :timeout
       end
 
       def suite_command(test_files)
         ["bundle", "exec", "rspec", *test_files]
-      end
-
-      def wait_with_timeout(pid, timeout)
-        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
-
-        loop do
-          wait_result = Process.wait(pid, Process::WNOHANG)
-          return Process.last_status if wait_result
-
-          if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
-            final_wait_result = Process.wait(pid, Process::WNOHANG)
-            return Process.last_status if final_wait_result
-
-            return handle_timeout(pid)
-          end
-
-          pause(0.01)
-        end
-      end
-
-      def handle_timeout(pid)
-        begin
-          Process.kill(:SIGTERM, pid)
-          pause(2.0)
-          Process.kill(:SIGKILL, pid)
-        rescue Errno::ESRCH
-          # The child may exit after SIGTERM but before SIGKILL.
-        ensure
-          reap_child(pid)
-        end
-        :timeout
       end
 
       def run_tests(test_files)
@@ -374,10 +389,17 @@ module Henitai
         ].uniq
       end
 
-      def reap_child(pid)
-        Process.wait(pid)
-      rescue Errno::ECHILD, Errno::ESRCH
-        nil
+      def spawn_suite_process(test_files, log_paths)
+        File.open(log_paths[:stdout_path], "w") do |stdout_file|
+          File.open(log_paths[:stderr_path], "w") do |stderr_file|
+            Process.spawn(
+              *suite_command(test_files),
+              out: stdout_file,
+              err: stderr_file,
+              pgroup: true
+            )
+          end
+        end
       end
 
       def run_in_child(mutant:, test_files:, log_paths:)
