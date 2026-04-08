@@ -132,6 +132,8 @@ module Henitai
 
     def process_mutant(mutant, integration, config, progress_reporter, mutex)
       test_files = prioritized_tests_for(mutant, integration, config)
+      mutant.covered_by = test_files if mutant.respond_to?(:covered_by=)
+      mutant.tests_completed = test_files.size if mutant.respond_to?(:tests_completed=)
       scenario_result = run_with_flaky_retry(mutant, integration, config, test_files, mutex)
       mutant.status = scenario_status(scenario_result)
 

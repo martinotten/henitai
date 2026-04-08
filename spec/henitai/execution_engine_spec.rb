@@ -30,7 +30,7 @@ RSpec.describe Henitai::ExecutionEngine do
   end
 
   def build_mutant(status, expression)
-    Struct.new(:status, :subject) do
+    Struct.new(:status, :subject, :covered_by, :tests_completed) do
       def pending?
         status == :pending
       end
@@ -388,6 +388,24 @@ RSpec.describe Henitai::ExecutionEngine do
     end
 
     expect(observed_tests).to eq(["spec/covered_spec.rb"])
+  end
+
+  it "records the selected tests on the mutant for report serialization" do
+    pending = build_mutant(:pending, "Foo#bar")
+    integration = build_integration
+
+    allow(integration).to receive(:select_tests).and_return(
+      %w[spec/covered_spec.rb spec/other_spec.rb]
+    )
+    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
+      mutant.status = :killed
+    end
+
+    described_class.new.run([pending], integration, build_config)
+
+    expect([pending.covered_by, pending.tests_completed]).to eq(
+      [%w[spec/covered_spec.rb spec/other_spec.rb], 2]
+    )
   end
 
   it "falls back to reports when the configured reports dir is blank" do

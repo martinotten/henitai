@@ -227,6 +227,22 @@ RSpec.describe Henitai::Result do
     end
   end
 
+  it "serialises coveredBy and testsCompleted when test data is present" do
+    Dir.mktmpdir do |dir|
+      mutant = build_mutant(status: :killed, dir:)
+      mutant.covered_by = ["spec/sample_spec.rb"]
+      mutant.tests_completed = 1
+
+      schema = result([mutant]).to_stryker_schema
+      file = schema[:files].keys.first
+
+      expect(schema[:files][file][:mutants].first).to include(
+        coveredBy: ["spec/sample_spec.rb"],
+        testsCompleted: 1
+      )
+    end
+  end
+
   it "omits equivalence uncertainty when there are no live mutants" do
     expect(
       result([status_mutant(:ignored), status_mutant(:equivalent)]).scoring_summary

@@ -229,6 +229,84 @@ RSpec.describe Henitai::Mutant::Activator do
     end
   end
 
+  it "serializes block parameters from block nodes" do
+    activator = described_class.new
+    subject_node = Parser::CurrentRuby.parse(<<~RUBY)
+      define_method(:value) do |value, &block|
+        1
+      end
+    RUBY
+    subject = Henitai::Subject.new(
+      namespace: "Sample",
+      method_name: "value",
+      ast_node: subject_node
+    )
+    mutant = instance_double(Henitai::Mutant, subject:)
+
+    expect(activator.send(:parameter_source, mutant)).to eq("value, &block")
+  end
+
+  it "returns the subject node when method_body receives a plain node" do
+    activator = described_class.new
+    node = Parser::CurrentRuby.parse("1")
+
+    expect(activator.send(:method_body, node)).to eq(node)
+  end
+
+  it "uses heredoc body source when the location is heredoc" do
+    activator = described_class.new
+    location = Struct.new(:expression, :heredoc_body, :heredoc_end).new(
+      Struct.new(:source).new("<<~HTML"),
+      Struct.new(:source).new("<body>hello</body>"),
+      Struct.new(:source).new("HTML")
+    )
+
+    allow(activator).to receive(:heredoc_location?).with(location).and_return(true)
+    allow(activator).to receive(:heredoc_body_source).with(location, :range, "replacement")
+                                                     .and_return("mutated heredoc")
+
+    expect(
+      activator.send(:body_source_for_location, location, :range, "replacement", Object.new)
+    ).to eq("mutated heredoc")
+  end
+
+  it "builds heredoc body source when replacement succeeds" do
+    activator = described_class.new
+    location = Struct.new(:expression, :heredoc_body, :heredoc_end).new(
+      Struct.new(:source).new("<<~HTML"),
+      Struct.new(:source).new("<body>hello</body>"),
+      Struct.new(:source).new("HTML")
+    )
+
+    allow(activator).to receive(:replace_source_fragment).with(
+      location.heredoc_body,
+      :range,
+      "replacement"
+    ).and_return("mutated body")
+
+    expect(activator.send(:heredoc_body_source, location, :range, "replacement")).to eq(
+      "<<~HTML\nmutated bodyHTML"
+    )
+  end
+
+  it "falls back to compile_safe_unparse when the location is missing" do
+    activator = described_class.new
+    body = Object.new
+
+    allow(activator).to receive(:compile_safe_unparse).with(body).and_return("compiled")
+
+    expect(activator.send(:source_body, nil, body)).to eq("compiled")
+  end
+
+  it "uses the location source when the location is present" do
+    activator = described_class.new
+    location = Struct.new(:expression).new(Struct.new(:source).new("body source"))
+
+    allow(activator).to receive(:compile_safe_unparse).and_return("compiled")
+
+    expect(activator.send(:source_body, location, Object.new)).to eq("body source")
+  end
+
   it "activates heredoc string mutations without timing out" do
     script = <<~RUBY
       require "henitai"

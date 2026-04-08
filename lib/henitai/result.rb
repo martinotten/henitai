@@ -119,7 +119,17 @@ module Henitai
         status: stryker_status(mutant.status),
         description: mutant.description,
         duration: duration_for(mutant)
-      }.compact
+      }.compact.merge(coverage_schema(mutant))
+    end
+
+    def coverage_schema(mutant)
+      covered_by = Array(mutant.covered_by).compact
+      return {} if covered_by.empty?
+
+      {
+        coveredBy: covered_by,
+        testsCompleted: mutant.tests_completed || covered_by.size
+      }
     end
 
     def replacement_for(mutant)

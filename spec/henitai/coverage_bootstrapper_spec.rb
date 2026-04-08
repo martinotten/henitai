@@ -9,6 +9,14 @@ RSpec.describe Henitai::CoverageBootstrapper do
     Struct.new(:reports_dir).new("reports")
   end
 
+  def build_bootstrapper(static_filter:, per_test_coverage_available: true)
+    described_class.new(static_filter:).tap do |bootstrapper|
+      allow(bootstrapper).to receive(:per_test_coverage_available?).and_return(
+        per_test_coverage_available
+      )
+    end
+  end
+
   def with_env(key, value)
     original = ENV.fetch(key, nil)
     ENV[key] = value
@@ -36,16 +44,22 @@ RSpec.describe Henitai::CoverageBootstrapper do
       run_suite_result: :survived
     )
 
-    bootstrapper = described_class.new(static_filter:)
+    bootstrapper = build_bootstrapper(static_filter:)
 
     allow(static_filter).to receive(:coverage_lines_for).and_return(
       { File.expand_path("lib/sample.rb") => [2] }
     )
     allow(integration).to receive(:run_suite) do |_test_files|
       expect(
-        ENV.fetch("HENITAI_COVERAGE_DIR", nil)
+        [
+          ENV.fetch("HENITAI_COVERAGE_DIR", nil),
+          ENV.fetch("HENITAI_REPORTS_DIR", nil)
+        ]
       ).to eq(
-        File.join("reports", "coverage")
+        [
+          File.join("reports", "coverage"),
+          "reports"
+        ]
       )
       :survived
     end
@@ -64,10 +78,38 @@ RSpec.describe Henitai::CoverageBootstrapper do
       run_suite_result: :survived
     )
 
-    bootstrapper = described_class.new(static_filter:)
+    bootstrapper = build_bootstrapper(static_filter:)
 
     allow(static_filter).to receive(:coverage_lines_for).and_return(
       { File.expand_path("lib/sample.rb") => [2] }
+    )
+    allow(integration).to receive(:run_suite).and_return(:survived)
+
+    bootstrapper.ensure!(
+      source_files: [File.expand_path("lib/sample.rb")],
+      config: build_config,
+      integration:
+    )
+
+    expect(integration).to have_received(:run_suite).with(["spec/sample_spec.rb"])
+  end
+
+  it "runs the suite when the per-test coverage report is missing" do
+    static_filter = instance_double(Henitai::StaticFilter)
+    integration = build_integration(
+      test_files: ["spec/sample_spec.rb"],
+      run_suite_result: :survived
+    )
+
+    bootstrapper = build_bootstrapper(static_filter:)
+
+    allow(static_filter).to receive(:coverage_lines_for).and_return(
+      { File.expand_path("lib/sample.rb") => [2] }
+    )
+    allow(bootstrapper).to receive_messages(
+      coverage_fresh?: true,
+      coverage_available?: true,
+      per_test_coverage_fresh?: false
     )
     allow(integration).to receive(:run_suite).and_return(:survived)
 
@@ -87,7 +129,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
       run_suite_result: :survived
     )
 
-    bootstrapper = described_class.new(static_filter:)
+    bootstrapper = build_bootstrapper(static_filter:)
 
     allow(static_filter).to receive(:coverage_lines_for).and_return(
       { File.expand_path("lib/sample.rb") => [2] }
@@ -111,7 +153,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
       run_suite_result: :survived
     )
 
-    bootstrapper = described_class.new(static_filter:)
+    bootstrapper = build_bootstrapper(static_filter:)
 
     allow(static_filter).to receive(:coverage_lines_for).and_return({})
     allow(integration).to receive(:run_suite).and_return(:survived)
@@ -154,11 +196,12 @@ RSpec.describe Henitai::CoverageBootstrapper do
           Henitai::Integration::Rspec,
           test_files: [spec]
         )
-        bootstrapper = described_class.new(static_filter:)
+        bootstrapper = build_bootstrapper(static_filter:)
 
         allow(static_filter).to receive(:coverage_lines_for).and_return(
           { File.expand_path(source) => [1] }
         )
+        allow(bootstrapper).to receive(:per_test_coverage_fresh?).and_return(true)
 
         bootstrapper.ensure!(source_files: [source], config:, integration:)
 
@@ -188,7 +231,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
           test_files: [spec],
           run_suite: :survived
         )
-        bootstrapper = described_class.new(static_filter:)
+        bootstrapper = build_bootstrapper(static_filter:)
 
         # First call (freshness guard): no coverage → bootstrap runs
         # Second call (post-bootstrap guard): coverage is now available
@@ -196,6 +239,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
           {},
           { File.expand_path(source) => [1] }
         )
+        allow(bootstrapper).to receive(:per_test_coverage_fresh?).and_return(true)
         allow(integration).to receive(:run_suite).and_return(:survived)
 
         bootstrapper.ensure!(source_files: [source], config:, integration:)
@@ -228,7 +272,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
           test_files: [spec],
           run_suite: :survived
         )
-        bootstrapper = described_class.new(static_filter:)
+        bootstrapper = build_bootstrapper(static_filter:)
 
         allow(static_filter).to receive(:coverage_lines_for).and_return(
           { File.expand_path(source) => [1] }
@@ -265,7 +309,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
           test_files: [spec],
           run_suite: :survived
         )
-        bootstrapper = described_class.new(static_filter:)
+        bootstrapper = build_bootstrapper(static_filter:)
 
         allow(static_filter).to receive(:coverage_lines_for).and_return(
           { File.expand_path(source) => [1] }
@@ -302,7 +346,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
           test_files: [spec],
           run_suite: :survived
         )
-        bootstrapper = described_class.new(static_filter:)
+        bootstrapper = build_bootstrapper(static_filter:)
 
         allow(static_filter).to receive(:coverage_lines_for).and_return(
           { File.expand_path(source) => [1] }
@@ -327,7 +371,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
         Henitai::Integration::Rspec,
         test_files: ["spec/other_spec.rb"]
       )
-      bootstrapper = described_class.new(static_filter:)
+      bootstrapper = build_bootstrapper(static_filter:)
 
       allow(static_filter).to receive(:coverage_lines_for).and_return(
         { File.expand_path("lib/sample.rb") => [1] }
@@ -350,7 +394,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
         test_files: ["spec/sample_spec.rb"],
         run_suite_result: :survived
       )
-      bootstrapper = described_class.new(static_filter:)
+      bootstrapper = build_bootstrapper(static_filter:)
 
       allow(static_filter).to receive(:coverage_lines_for).and_return(
         { File.expand_path("lib/sample.rb") => [1] }
@@ -392,11 +436,12 @@ RSpec.describe Henitai::CoverageBootstrapper do
           Henitai::Integration::Rspec,
           test_files: [scoped_spec, unrelated]
         )
-        bootstrapper = described_class.new(static_filter:)
+        bootstrapper = build_bootstrapper(static_filter:)
 
         allow(static_filter).to receive(:coverage_lines_for).and_return(
           { File.expand_path(source) => [1] }
         )
+        allow(bootstrapper).to receive(:per_test_coverage_fresh?).and_return(true)
 
         # Only the scoped spec is watched — the newer unrelated spec is ignored
         allow(integration).to receive(:run_suite)

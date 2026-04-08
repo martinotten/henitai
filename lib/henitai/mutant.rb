@@ -35,7 +35,7 @@ module Henitai
 
     attr_reader :id, :subject, :operator, :original_node, :mutated_node,
                 :mutation_type, :description, :location
-    attr_accessor :status, :killing_test, :duration
+    attr_accessor :status, :killing_test, :duration, :covered_by, :tests_completed
 
     # @param subject [Subject] the subject being mutated
     # @param operator [Symbol] operator name, e.g. :ArithmeticOperator
@@ -53,6 +53,8 @@ module Henitai
       @status        = :pending
       @killing_test  = nil
       @duration      = nil
+      @covered_by    = nil
+      @tests_completed = nil
     end
 
     def killed?      = @status == :killed

@@ -206,7 +206,7 @@ module Henitai
       end
 
       def rspec_options
-        ["--require", "henitai/rspec_coverage_formatter"]
+        []
       end
 
       def subprocess_env
@@ -301,7 +301,13 @@ module Henitai
       end
 
       def suite_command(test_files)
-        ["bundle", "exec", "rspec", *test_files]
+        [
+          "bundle", "exec", "ruby",
+          "-r", "henitai/rspec_coverage_formatter",
+          "-S", "rspec", *test_files,
+          "--format", "progress",
+          "--format", "Henitai::CoverageFormatter"
+        ]
       end
 
       def run_tests(test_files)
