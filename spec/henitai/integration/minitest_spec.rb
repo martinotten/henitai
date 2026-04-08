@@ -7,7 +7,7 @@ require "tmpdir"
 
 RSpec.describe Henitai::Integration::Minitest do
   before do
-    allow(Process).to receive(:setsid).and_return(0)
+    allow(Process).to receive(:setpgid).and_return(0)
     allow(Process).to receive(:kill).and_raise(Errno::ESRCH)
   end
 
