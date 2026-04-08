@@ -154,6 +154,8 @@ module Henitai
     attr_accessor status: Symbol
     attr_accessor killing_test: String?
     attr_accessor duration: Float?
+    attr_accessor covered_by: Array[String]?
+    attr_accessor tests_completed: Integer?
 
     def initialize: (subject: Subject, operator: String, nodes: Hash[Symbol, untyped], description: String, location: Hash[Symbol, untyped]) -> void
     def killed?: () -> bool
@@ -540,6 +542,7 @@ module Henitai
 
     def build_files_section: () -> Hash[Symbol, untyped]
     def mutant_to_schema: (Mutant) -> Hash[Symbol, untyped]
+    def coverage_schema: (Mutant) -> Hash[Symbol, untyped]
     def replacement_for: (Mutant) -> String
     def location_for: (Mutant) -> Hash[Symbol, untyped]
     def line_column: (Mutant, Symbol) -> Hash[Symbol, Integer]
