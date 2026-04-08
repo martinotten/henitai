@@ -13,7 +13,8 @@ module Henitai
   #
   # Additional operators (full set):
   #   ArrayDeclaration, HashLiteral, RangeLiteral, SafeNavigation,
-  #   PatternMatch, BlockStatement, MethodExpression, AssignmentExpression
+  #   PatternMatch, BlockStatement, MethodExpression, AssignmentExpression,
+  #   UnaryOperator, UpdateOperator, RegexMutator, MethodChainUnwrap
   #
   # Each operator subclass must implement:
   #   - .node_types  → Array<Symbol>  AST node types this operator handles

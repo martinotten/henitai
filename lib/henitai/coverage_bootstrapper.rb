@@ -17,9 +17,16 @@ module Henitai
     #                     all files reported by the integration when nil
     def ensure!(source_files:, config:, integration:, test_files: nil)
       return if source_files.empty?
-      return if coverage_fresh?(source_files, config, integration, test_files)
 
-      bootstrap_coverage(integration, config, test_files)
+      # Skip the bootstrap only when the report is both newer than all watched
+      # files AND actually covers the configured sources. A fresh but irrelevant
+      # report (e.g. from a different working directory) must still trigger a
+      # re-bootstrap rather than silently proceeding with no usable coverage.
+      unless coverage_fresh?(source_files, config, integration, test_files) &&
+             coverage_available?(source_files, config)
+        bootstrap_coverage(integration, config, test_files)
+      end
+
       return if coverage_available?(source_files, config)
 
       raise CoverageError,

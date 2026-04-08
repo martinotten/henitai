@@ -4,13 +4,14 @@ require_relative "../parser_current"
 
 module Henitai
   module Operators
-    # Mutates compound assignments and reduces ||= to a plain assignment.
+    # Reduces ||= to a plain assignment, removing the memoization guard.
+    #
+    # Arithmetic compound assignments (+=, -=, *=, /=) are covered by
+    # UpdateOperator, which also handles the logical pair swap (||= ↔ &&=).
+    # AssignmentExpression is intentionally scoped to or_asgn reduction only
+    # to avoid emitting duplicate mutants in the full operator set.
     class AssignmentExpression < Henitai::Operator
-      NODE_TYPES = %i[op_asgn or_asgn].freeze
-      OPERATOR_MAP = {
-        :+ => :-,
-        :- => :+
-      }.freeze
+      NODE_TYPES = %i[or_asgn].freeze
 
       def self.node_types
         NODE_TYPES
@@ -18,8 +19,6 @@ module Henitai
 
       def mutate(node, subject:)
         case node.type
-        when :op_asgn
-          mutate_compound_assignment(node, subject:)
         when :or_asgn
           # Memoization-style ||= is usually filtered earlier by AridNodeFilter.
           mutate_coalesce_assignment(node, subject:)
@@ -29,21 +28,6 @@ module Henitai
       end
 
       private
-
-      def mutate_compound_assignment(node, subject:)
-        left, operator, right = node.children
-        replacement = OPERATOR_MAP[operator]
-        return [] unless replacement
-
-        [
-          build_mutant(
-            subject:,
-            original_node: node,
-            mutated_node: Parser::AST::Node.new(:op_asgn, [left, replacement, right]),
-            description: "replaced #{operator} with #{replacement}"
-          )
-        ]
-      end
 
       def mutate_coalesce_assignment(node, subject:)
         left, right = node.children

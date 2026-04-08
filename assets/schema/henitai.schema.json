@@ -37,10 +37,6 @@
         "timeout": {
           "type": "number"
         },
-        "max_mutants_per_line": {
-          "type": "integer",
-          "minimum": 1
-        },
         "max_flaky_retries": {
           "type": "integer",
           "minimum": 0

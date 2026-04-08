@@ -71,7 +71,6 @@ includes:
 mutation:
   operators: light   # light | full
   timeout: 10.0
-  max_mutants_per_line: 1
   max_flaky_retries: 3
   sampling:
     ratio: 0.05
