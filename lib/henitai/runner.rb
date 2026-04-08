@@ -67,6 +67,7 @@ module Henitai
       bootstrap_thread.join
 
       mutants = filter_mutants(mutants)
+      mutants = refresh_coverage_for_targeted_run(mutants, source_files) if targeted_run?
       mutants = execute_mutants(mutants)
       finished_at = Time.now
 
@@ -91,6 +92,13 @@ module Henitai
 
     def filter_mutants(mutants)
       static_filter.apply(mutants, config)
+    end
+
+    def refresh_coverage_for_targeted_run(mutants, source_files)
+      return mutants unless retry_full_bootstrap?(mutants)
+
+      bootstrap_coverage(source_files)
+      filter_mutants(mutants)
     end
 
     def execute_mutants(mutants)
@@ -209,6 +217,19 @@ module Henitai
 
     def pattern_subjects
       Array(@subjects)
+    end
+
+    def targeted_run?
+      !pattern_subjects.empty?
+    end
+
+    def retry_full_bootstrap?(mutants)
+      executable_mutants = Array(mutants).select do |mutant|
+        !%i[ignored compile_error equivalent].include?(mutant.status)
+      end
+      return false if executable_mutants.empty?
+
+      executable_mutants.all? { |mutant| mutant.status == :no_coverage }
     end
 
     def unique_subjects(subjects)
