@@ -10,6 +10,8 @@ AllCops:
     - "vendor/**/*"
     - "tmp/**/*"
     - ".simplecov"
+    - "reports/**/*"
+    - "coverage/**/*"
 
 Style/FrozenStringLiteralComment:
   Enabled: true
