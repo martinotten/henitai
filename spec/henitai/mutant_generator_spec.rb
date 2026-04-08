@@ -76,6 +76,41 @@ RSpec.describe Henitai::MutantGenerator do
     end
   end
 
+  it "reuses the resolved subject AST instead of reparsing the file" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", source_with_two_subjects)
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).find do |candidate|
+        candidate.expression == "Sample#alpha"
+      end
+
+      fake_operator = stub_const(
+        "Henitai::FakeIntOperatorForSubjectAst",
+        Class.new(Henitai::Operator) do
+          def self.node_types
+            [:int]
+          end
+
+          def mutate(node, subject:)
+            [
+              build_mutant(
+                subject:,
+                original_node: node,
+                mutated_node: node,
+                description: "fake int"
+              )
+            ]
+          end
+        end
+      )
+
+      allow(Henitai::SourceParser).to receive(:parse_file).and_raise("reparsed subject")
+
+      mutants = described_class.new.generate([subject], [fake_operator])
+
+      expect(mutants.map(&:description)).to include("fake int")
+    end
+  end
+
   it "returns no mutants for a subject without source metadata" do
     fake_operator = stub_const(
       "Henitai::FakeIntOperator",

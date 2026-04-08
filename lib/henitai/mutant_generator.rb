@@ -34,7 +34,8 @@ module Henitai
     end
 
     def generate_for_subject(subject, operators, config:, arid_node_filter:, syntax_validator:)
-      return [] unless subject.source_file && subject.source_range
+      source_node = source_node_for(subject)
+      return [] unless source_node
 
       visitor = SubjectVisitor.new(
         subject,
@@ -43,7 +44,7 @@ module Henitai
         arid_node_filter:,
         syntax_validator:
       )
-      visitor.process(SourceParser.parse_file(subject.source_file))
+      visitor.process(source_node)
       visitor.mutants
     end
 
@@ -122,6 +123,13 @@ module Henitai
         ratio: sampling[:ratio],
         strategy: sampling[:strategy] || :stratified
       )
+    end
+
+    def source_node_for(subject)
+      return subject.ast_node if subject.ast_node
+      return nil unless subject.source_file && subject.source_range
+
+      SourceParser.new.parse_file(subject.source_file)
     end
   end
 end

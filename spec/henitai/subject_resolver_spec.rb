@@ -170,6 +170,33 @@ RSpec.describe Henitai::SubjectResolver do
     end
   end
 
+  it "uses an instance parser for file resolution" do
+    Dir.mktmpdir do |dir|
+      path = write_source(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Foo
+            def bar
+              1
+            end
+          end
+        RUBY
+      )
+
+      parsed_ast = Henitai::SourceParser.new.parse_file(path)
+      parser = instance_double(Henitai::SourceParser)
+
+      allow(Henitai::SourceParser).to receive(:new).and_return(parser)
+      allow(Henitai::SourceParser).to receive(:parse_file).and_raise("class cache used")
+      allow(parser).to receive(:parse_file).and_return(parsed_ast)
+
+      described_class.new.resolve_from_files([path])
+
+      expect(parser).to have_received(:parse_file).with(path)
+    end
+  end
+
   it "resolves define_method subjects with static names" do
     Dir.mktmpdir do |dir|
       path = write_source(

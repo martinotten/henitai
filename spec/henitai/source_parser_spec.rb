@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "tmpdir"
 require "unparser"
 
 RSpec.describe Henitai::SourceParser do
