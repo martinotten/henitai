@@ -191,7 +191,17 @@ module Henitai
         Process.kill(:SIGTERM, -pid)
         pause(2.0)
         Process.kill(:SIGKILL, -pid)
+      rescue Errno::EPERM
+        cleanup_child_process(pid)
       rescue Errno::ESRCH
+        nil
+      end
+
+      def cleanup_child_process(pid)
+        Process.kill(:SIGTERM, pid)
+        pause(2.0)
+        Process.kill(:SIGKILL, pid)
+      rescue Errno::EPERM, Errno::ESRCH
         nil
       end
 
@@ -237,7 +247,7 @@ module Henitai
         log_paths = scenario_log_paths("mutant-#{mutant.id}")
         wait_result = nil
         pid = Process.fork do
-          Process.setsid
+          Process.setpgid(0, 0)
           ENV["HENITAI_MUTANT_ID"] = mutant.id
           Process.exit(run_in_child(mutant:, test_files:, log_paths:))
         end
@@ -245,7 +255,10 @@ module Henitai
         wait_result = wait_with_timeout(pid, timeout)
         build_result(wait_result, log_paths)
       ensure
-        cleanup_process_group(pid) if pid && wait_result && wait_result != :timeout
+        if pid
+          cleanup_process_group(pid) unless wait_result == :timeout
+          reap_child(pid) if wait_result.nil?
+        end
       end
 
       def run_suite(test_files, timeout: DEFAULT_SUITE_TIMEOUT)
@@ -256,7 +269,10 @@ module Henitai
         wait_result = wait_with_timeout(pid, timeout)
         build_result(wait_result, log_paths)
       ensure
-        cleanup_process_group(pid) if pid && wait_result && wait_result != :timeout
+        if pid
+          cleanup_process_group(pid) unless wait_result == :timeout
+          reap_child(pid) if wait_result.nil?
+        end
       end
 
       def suite_command(test_files)
@@ -472,13 +488,11 @@ module Henitai
 
       def run_suite(test_files, timeout: DEFAULT_SUITE_TIMEOUT)
         log_paths = scenario_log_paths("baseline")
-        FileUtils.mkdir_p(File.dirname(log_paths[:stdout_path]))
-        pid = File.open(log_paths[:stdout_path], "w") do |stdout_file|
-          File.open(log_paths[:stderr_path], "w") do |stderr_file|
-            Process.spawn(subprocess_env, *suite_command(test_files), out: stdout_file, err: stderr_file)
-          end
-        end
-        build_result(wait_with_timeout(pid, timeout), log_paths)
+        pid = spawn_suite_process(test_files, log_paths)
+        wait_result = wait_with_timeout(pid, timeout)
+        build_result(wait_result, log_paths)
+      ensure
+        cleanup_suite_process(pid, wait_result)
       end
 
       private
@@ -515,6 +529,27 @@ module Henitai
         env["RAILS_ENV"] = "test" unless ENV["RAILS_ENV"] == "test"
         env["PARALLEL_WORKERS"] = "1"
         env
+      end
+
+      def spawn_suite_process(test_files, log_paths)
+        FileUtils.mkdir_p(File.dirname(log_paths[:stdout_path]))
+        File.open(log_paths[:stdout_path], "w") do |stdout_file|
+          File.open(log_paths[:stderr_path], "w") do |stderr_file|
+            Process.spawn(
+              subprocess_env,
+              *suite_command(test_files),
+              out: stdout_file,
+              err: stderr_file
+            )
+          end
+        end
+      end
+
+      def cleanup_suite_process(pid, wait_result)
+        return unless pid
+
+        cleanup_child_process(pid)
+        reap_child(pid) if wait_result.nil?
       end
 
       def spec_files

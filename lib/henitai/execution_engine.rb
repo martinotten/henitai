@@ -1,10 +1,13 @@
 # frozen_string_literal: true
 
-require "etc"
-
 module Henitai
   # Runs pending mutants through the selected integration.
   class ExecutionEngine
+    ParallelExecutionContext = Struct.new(
+      :queue, :integration, :config, :progress_reporter,
+      :mutex, :state, :old_handlers, :stdin_watcher
+    )
+
     def run(mutants, integration, config, progress_reporter: nil)
       with_reports_dir(config) do
         with_coverage_dir(config) do
@@ -31,7 +34,9 @@ module Henitai
 
     def worker_count(config)
       configured_jobs = config.respond_to?(:jobs) ? config.jobs : nil
-      configured_jobs || Etc.nprocessors
+      return configured_jobs unless configured_jobs.nil?
+
+      AvailableCpuCount.detect
     end
 
     def run_linear(mutants, integration, config, progress_reporter, mutex)
@@ -41,19 +46,92 @@ module Henitai
     end
 
     def run_parallel(mutants, integration, config, progress_reporter, mutex)
-      queue = Queue.new
-      mutants.each { |mutant| queue << mutant }
+      context = build_parallel_context(
+        mutants,
+        integration,
+        config,
+        progress_reporter,
+        mutex
+      )
+      install_parallel_signal_traps(context)
+      start_parallel_stdin_watcher(context) if pipe_stdin?
+      parallel_workers(context).each(&:join)
+    ensure
+      stop_parallel_stdin_watcher(context)
+      restore_parallel_signal_traps(context)
+      raise Interrupt if context&.state&.fetch(:stopping, false)
+    end
 
-      Array.new(worker_count(config)) do
-        Thread.new do
-          loop do
-            mutant = queue.pop(true)
-            process_mutant(mutant, integration, config, progress_reporter, mutex)
-          rescue ThreadError
-            break
-          end
-        end
-      end.each(&:join)
+    def pipe_stdin?
+      $stdin.stat.pipe?
+    rescue Errno::EBADF
+      false
+    end
+
+    def build_parallel_queue(mutants)
+      Queue.new.tap { |queue| mutants.each { |mutant| queue << mutant } }
+    end
+
+    def build_parallel_context(mutants, integration, config, progress_reporter, mutex)
+      ParallelExecutionContext.new(
+        build_parallel_queue(mutants), integration, config, progress_reporter,
+        mutex, { stopping: false }
+      )
+    end
+
+    def install_parallel_signal_traps(context)
+      context.old_handlers = {
+        int: trap(:INT) { stop_parallel_execution(context) },
+        term: trap(:TERM) { stop_parallel_execution(context) },
+        hup: trap(:HUP) { stop_parallel_execution(context) }
+      }
+    end
+
+    def stop_parallel_execution(context)
+      context.state[:stopping] = true
+      context.queue.clear
+    end
+
+    def start_parallel_stdin_watcher(context)
+      context.stdin_watcher = Thread.new do
+        $stdin.read
+        stop_parallel_execution(context)
+      rescue IOError, Errno::EBADF
+        nil
+      end
+    end
+
+    def parallel_workers(context)
+      Array.new(worker_count(context.config)) { Thread.new { process_parallel_worker(context) } }
+    end
+
+    def process_parallel_worker(context)
+      loop do
+        break if context.state[:stopping]
+
+        process_mutant(
+          context.queue.pop(true),
+          context.integration,
+          context.config,
+          context.progress_reporter,
+          context.mutex
+        )
+      rescue ThreadError
+        break
+      end
+    end
+
+    def stop_parallel_stdin_watcher(context)
+      context&.stdin_watcher&.kill
+    end
+
+    def restore_parallel_signal_traps(context)
+      handlers = context&.old_handlers
+      return unless handlers
+
+      trap(:INT, handlers[:int] || "DEFAULT")
+      trap(:TERM, handlers[:term] || "DEFAULT")
+      trap(:HUP, handlers[:hup] || "DEFAULT")
     end
 
     def process_mutant(mutant, integration, config, progress_reporter, mutex)

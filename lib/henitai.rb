@@ -33,6 +33,7 @@ module Henitai
   autoload :MutantGenerator, "henitai/mutant_generator"
   autoload :MutantHistoryStore, "henitai/mutant_history_store"
   autoload :AridNodeFilter, "henitai/arid_node_filter"
+  autoload :AvailableCpuCount, "henitai/available_cpu_count"
   autoload :EquivalenceDetector, "henitai/equivalence_detector"
   autoload :StaticFilter, "henitai/static_filter"
   autoload :StillbornFilter, "henitai/stillborn_filter"

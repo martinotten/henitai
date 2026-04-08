@@ -287,6 +287,39 @@ RSpec.describe Henitai::ExecutionEngine do
     expect(thread_ids.uniq.size).to be > 1
   end
 
+  it "respects the container CPU quota when jobs are not configured" do
+    mutants = 4.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
+    integration = build_integration
+    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", nil)
+    active = 0
+    max_active = 0
+    guard = Mutex.new
+
+    allow(Etc).to receive(:nprocessors).and_return(128)
+    allow(File).to receive(:file?).and_call_original
+    allow(File).to receive(:read).and_call_original
+    allow(File).to receive(:file?).with("/sys/fs/cgroup/cpu.max").and_return(true)
+    allow(File).to receive(:read).with("/sys/fs/cgroup/cpu.max").and_return("200000 100000\n")
+    allow(File).to receive(:file?).with("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").and_return(false)
+    allow(File).to receive(:file?).with("/sys/fs/cgroup/cpu/cpu.cfs_period_us").and_return(false)
+    allow(File).to receive(:file?).with("/sys/fs/cgroup/cpuset.cpus.effective").and_return(false)
+    allow(File).to receive(:file?).with("/sys/fs/cgroup/cpuset.cpus").and_return(false)
+    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
+      guard.synchronize do
+        active += 1
+        max_active = [max_active, active].max
+      end
+      sleep 0.02
+      mutant.status = :killed
+    ensure
+      guard.synchronize { active -= 1 }
+    end
+
+    described_class.new.run(mutants, integration, config)
+
+    expect(max_active).to eq(2)
+  end
+
   it "returns the status from a scenario result object" do
     pending = build_mutant(:pending, "Foo#bar")
     integration = build_integration
@@ -397,5 +430,43 @@ RSpec.describe Henitai::ExecutionEngine do
 
       expect(ENV.fetch("HENITAI_COVERAGE_DIR", nil)).to eq("preexisting")
     end
+  end
+
+  it "stops parallel execution when the stdin pipe is closed (docker exec disconnect)" do
+    first  = build_mutant(:pending, "Foo#bar")
+    second = build_mutant(:pending, "Foo#baz")
+    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", 2)
+    fake_stdin_r, fake_stdin_w = IO.pipe
+    ran = []
+
+    allow(integration = build_integration).to receive(:run_mutant) do |mutant:, **_|
+      ran << mutant.subject.expression
+      sleep 0.05
+      mutant.status = :killed
+    end
+
+    engine = described_class.new
+    allow(engine).to receive(:pipe_stdin?).and_return(true)
+
+    t = Thread.new do
+      original = $stdin
+      $stdin = fake_stdin_r
+      engine.run([first, second], integration, config)
+    rescue Interrupt
+      nil
+    ensure
+      $stdin = original
+      fake_stdin_r.close unless fake_stdin_r.closed?
+    end
+
+    # Let workers start, then simulate docker exec disconnect
+    sleep 0.01
+    fake_stdin_w.close
+
+    t.join(2)
+    expect(t.alive?).to be(false)
+  ensure
+    fake_stdin_w.close unless fake_stdin_w.closed?
+    fake_stdin_r.close unless fake_stdin_r.closed?
   end
 end
