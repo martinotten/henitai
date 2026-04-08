@@ -3,10 +3,8 @@
 module Henitai
   # Runs pending mutants through the selected integration.
   class ExecutionEngine
-    ParallelExecutionContext = Struct.new(
-      :queue, :integration, :config, :progress_reporter,
-      :mutex, :state, :old_handlers, :stdin_watcher
-    )
+    ParallelExecutionContext = Struct.new(:queue, :integration, :config, :progress_reporter,
+                                          :mutex, :state, :old_handlers, :stdin_watcher)
 
     def run(mutants, integration, config, progress_reporter: nil)
       with_reports_dir(config) do
@@ -34,9 +32,7 @@ module Henitai
 
     def worker_count(config)
       configured_jobs = config.respond_to?(:jobs) ? config.jobs : nil
-      return configured_jobs unless configured_jobs.nil?
-
-      AvailableCpuCount.detect
+      configured_jobs || 1
     end
 
     def run_linear(mutants, integration, config, progress_reporter, mutex)
@@ -147,16 +143,18 @@ module Henitai
     end
 
     def prioritized_tests_for(mutant, integration, config)
-      test_prioritizer.sort(
-        integration.select_tests(mutant.subject),
+      tests = integration.select_tests(mutant.subject)
+      tests = per_test_coverage_selector.filter(
+        tests,
         mutant,
-        test_history(config)
+        reports_dir: config.reports_dir
       )
+      test_prioritizer.sort(tests, mutant, test_history(config))
     end
 
-    def test_prioritizer
-      @test_prioritizer ||= TestPrioritizer.new
-    end
+    def test_prioritizer = @test_prioritizer ||= TestPrioritizer.new
+
+    def per_test_coverage_selector = @per_test_coverage_selector ||= PerTestCoverageSelector.new
 
     def test_history(config)
       return {} unless config.respond_to?(:history)

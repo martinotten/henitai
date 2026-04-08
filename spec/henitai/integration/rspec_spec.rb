@@ -6,7 +6,7 @@ require "tmpdir"
 
 RSpec.describe Henitai::Integration::Rspec do
   before do
-    allow(Process).to receive(:setsid).and_return(0)
+    allow(Process).to receive(:setpgid).and_return(0)
     allow(Process).to receive(:kill).and_raise(Errno::ESRCH)
   end
 
@@ -456,6 +456,24 @@ RSpec.describe Henitai::Integration::Rspec do
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env
     end
+  end
+
+  it "falls back to the child pid when process-group cleanup is not permitted" do
+    integration = described_class.new
+    record = { signals: [] }
+
+    allow(Process).to receive(:getpgid).with(4322).and_return(4322)
+    allow(Process).to receive(:kill) do |signal, pid|
+      record[:signals] << [signal, pid]
+      raise Errno::EPERM if pid.negative?
+    end
+    allow(integration).to receive(:pause)
+
+    integration.send(:cleanup_process_group, 4322)
+
+    expect(record[:signals]).to eq(
+      [[:SIGTERM, -4322], [:SIGTERM, 4322], [:SIGKILL, 4322]]
+    )
   end
 
   it "activates the mutant before running child tests" do
@@ -1180,6 +1198,43 @@ RSpec.describe Henitai::Integration::Rspec do
     )
 
     expect([calls, result]).to eq([[false], 0])
+  end
+
+  it "forces single-worker parallel env inside the mutant child" do
+    mutant = Struct.new(:id).new("mutant-parallel-env")
+    integration = described_class.new
+    log_paths = {
+      stdout_path: "reports/mutation-logs/mutant-parallel-env.stdout.log",
+      stderr_path: "reports/mutation-logs/mutant-parallel-env.stderr.log",
+      log_path: "reports/mutation-logs/mutant-parallel-env.log"
+    }
+    log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
+    original_parallel_workers = ENV.fetch("PARALLEL_WORKERS", nil)
+    observed_parallel_workers = nil
+
+    allow(integration).to receive(:scenario_log_support).and_return(log_support)
+    allow(log_support).to receive(:with_coverage_dir).with(mutant.id).and_yield
+    allow(log_support).to receive(:capture_child_output).with(log_paths).and_yield
+    allow(Henitai::Mutant::Activator).to receive(:activate!).with(mutant).and_return(0)
+    allow(integration).to receive(:run_tests).with(["spec/foo_spec.rb"]) do
+      observed_parallel_workers = ENV.fetch("PARALLEL_WORKERS", nil)
+      0
+    end
+
+    integration.send(
+      :run_in_child,
+      mutant:,
+      test_files: ["spec/foo_spec.rb"],
+      log_paths:
+    )
+
+    expect(observed_parallel_workers).to eq("1")
+  ensure
+    if original_parallel_workers.nil?
+      ENV.delete("PARALLEL_WORKERS")
+    else
+      ENV["PARALLEL_WORKERS"] = original_parallel_workers
+    end
   end
 
   it "returns an empty string when reading a missing log file" do

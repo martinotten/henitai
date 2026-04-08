@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "tmpdir"
 
 IntegrationSpy = Class.new do
   attr_reader :calls
@@ -59,6 +60,32 @@ RSpec.describe Henitai::ExecutionEngine do
     else
       ENV[key] = original
     end
+  end
+
+  def with_temp_reports_dir(&block)
+    Dir.mktmpdir do |dir|
+      block.call(dir)
+    end
+  end
+
+  def build_located_mutant(expression, file:, line:)
+    Struct.new(:status, :subject, :location) do
+      def pending?
+        status == :pending
+      end
+    end.new(
+      :pending,
+      build_subject(expression),
+      {
+        file: file,
+        start_line: line,
+        end_line: line
+      }
+    )
+  end
+
+  def write_per_test_coverage_report(reports_dir, coverage)
+    File.write(File.join(reports_dir, "henitai_per_test.json"), coverage.to_json)
   end
 
   it "runs only pending mutants" do
@@ -268,14 +295,13 @@ RSpec.describe Henitai::ExecutionEngine do
     expect(thread_ids.uniq.size).to eq(1)
   end
 
-  it "falls back to the CPU count when jobs are not configured" do
+  it "runs linearly when jobs are not configured" do
     first = build_mutant(:pending, "Foo#bar")
     second = build_mutant(:pending, "Foo#baz")
     integration = build_integration
     config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", nil)
     thread_ids = []
 
-    allow(Etc).to receive(:nprocessors).and_return(2)
     allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
       thread_ids << Thread.current.object_id
       sleep 0.01
@@ -284,40 +310,7 @@ RSpec.describe Henitai::ExecutionEngine do
 
     described_class.new.run([first, second], integration, config)
 
-    expect(thread_ids.uniq.size).to be > 1
-  end
-
-  it "respects the container CPU quota when jobs are not configured" do
-    mutants = 4.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
-    integration = build_integration
-    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", nil)
-    active = 0
-    max_active = 0
-    guard = Mutex.new
-
-    allow(Etc).to receive(:nprocessors).and_return(128)
-    allow(File).to receive(:file?).and_call_original
-    allow(File).to receive(:read).and_call_original
-    allow(File).to receive(:file?).with("/sys/fs/cgroup/cpu.max").and_return(true)
-    allow(File).to receive(:read).with("/sys/fs/cgroup/cpu.max").and_return("200000 100000\n")
-    allow(File).to receive(:file?).with("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").and_return(false)
-    allow(File).to receive(:file?).with("/sys/fs/cgroup/cpu/cpu.cfs_period_us").and_return(false)
-    allow(File).to receive(:file?).with("/sys/fs/cgroup/cpuset.cpus.effective").and_return(false)
-    allow(File).to receive(:file?).with("/sys/fs/cgroup/cpuset.cpus").and_return(false)
-    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
-      guard.synchronize do
-        active += 1
-        max_active = [max_active, active].max
-      end
-      sleep 0.02
-      mutant.status = :killed
-    ensure
-      guard.synchronize { active -= 1 }
-    end
-
-    described_class.new.run(mutants, integration, config)
-
-    expect(max_active).to eq(2)
+    expect(thread_ids.uniq.size).to eq(1)
   end
 
   it "returns the status from a scenario result object" do
@@ -356,6 +349,45 @@ RSpec.describe Henitai::ExecutionEngine do
     expect(engine).to have_received(:warn).with(
       "Flaky-test mitigation: 1/4 mutants required retries (25.00%)"
     )
+  end
+
+  it "filters candidate tests by per-test coverage before executing a mutant" do
+    pending = build_located_mutant("Foo#bar", file: "lib/foo.rb", line: 3)
+    integration = build_integration
+    observed_tests = nil
+
+    with_temp_reports_dir do |reports_dir|
+      write_per_test_coverage_report(
+        reports_dir,
+        {
+          "spec/covered_spec.rb" => {
+            File.expand_path("lib/foo.rb") => [3]
+          },
+          "spec/uncovered_spec.rb" => {
+            File.expand_path("lib/foo.rb") => [8]
+          }
+        }
+      )
+
+      config = Struct.new(:timeout, :reports_dir, :jobs, :history).new(
+        12.5,
+        reports_dir,
+        1,
+        {}
+      )
+
+      allow(integration).to receive(:select_tests).and_return(
+        %w[spec/covered_spec.rb spec/uncovered_spec.rb]
+      )
+      allow(integration).to receive(:run_mutant) do |mutant:, test_files:, **_kwargs|
+        observed_tests = test_files
+        mutant.status = :killed
+      end
+
+      described_class.new.run([pending], integration, config)
+    end
+
+    expect(observed_tests).to eq(["spec/covered_spec.rb"])
   end
 
   it "falls back to reports when the configured reports dir is blank" do

@@ -12,7 +12,7 @@ module Henitai
   class Configuration
     DEFAULT_TIMEOUT   = 10.0
     DEFAULT_OPERATORS = :light
-    DEFAULT_JOBS      = nil # auto-detect
+    DEFAULT_JOBS      = 1
     DEFAULT_MAX_FLAKY_RETRIES = 3
     DEFAULT_REPORTS_DIR = "reports"
     DEFAULT_COVERAGE_CRITERIA = {
@@ -70,7 +70,7 @@ module Henitai
                        integration
                      end
       @includes = raw[:includes] || ["lib"]
-      @jobs = raw[:jobs]
+      @jobs = raw.fetch(:jobs, DEFAULT_JOBS)
       @reporters = raw[:reporters] || ["terminal"]
       @reports_dir = raw[:reports_dir] || DEFAULT_REPORTS_DIR
       @all_logs = raw[:all_logs] == true

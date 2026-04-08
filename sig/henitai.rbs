@@ -231,8 +231,12 @@ module Henitai
       def handle_timeout: (Integer) -> Symbol
       def reap_child: (Integer) -> void
       def cleanup_process_group: (Integer) -> void
+      def cleanup_child_process: (Integer) -> void
       def rspec_options: () -> Array[String]
+      def subprocess_env: () -> Hash[String, String]
       def scenario_log_support: () -> ScenarioLogSupport
+      def with_subprocess_env: () { () -> untyped } -> untyped
+      def restore_subprocess_env: (Hash[String, String?]) -> void
       def spawn_suite_process: (Array[String], Hash[Symbol, String]) -> Integer
     end
 
@@ -279,6 +283,7 @@ module Henitai
       def combined_log: (String, String) -> String
       def scenario_log_paths: (String) -> Hash[Symbol, String]
       def run_tests: (Array[String]) -> Integer
+      def with_subprocess_env: () { () -> untyped } -> untyped
       def spec_files: () -> Array[String]
       def fallback_spec_files: (Subject) -> Array[String]
       def selection_patterns: (Subject) -> Array[String]
@@ -303,6 +308,7 @@ module Henitai
       def preload_environment: () -> void
       def setup_load_path: () -> void
       def subprocess_env: () -> Hash[String, String]
+      def cleanup_suite_process: (Integer?, untyped) -> void
       def spec_files: () -> Array[String]
     end
   end
@@ -368,6 +374,8 @@ module Henitai
     def worker_count: (untyped) -> Integer
     def run_linear: (Array[Mutant], untyped, untyped, untyped?, untyped) -> void
     def run_parallel: (Array[Mutant], untyped, untyped, untyped?, untyped) -> void
+    def pipe_stdin?: () -> bool
+    def start_stdin_watcher: () { () -> void } -> Thread
     def process_mutant: (Mutant, untyped, untyped, untyped?, ?untyped) -> void
     def prioritized_tests_for: (Mutant, untyped, untyped) -> Array[String]
     def test_prioritizer: () -> TestPrioritizer

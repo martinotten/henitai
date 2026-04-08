@@ -100,6 +100,9 @@ Per-test coverage reporting is currently wired through the RSpec child runner.
 Minitest integration reuses the same selection and execution flow, but does not
 yet enable the per-test coverage formatter.
 
+Henitai currently defaults to linear mutant execution. Set `jobs` in
+`.henitai.yml` or pass `--jobs N` to opt into parallel mutant execution.
+
 By default, Henitai keeps child test output out of the live terminal. Each
 baseline or mutant run writes captured stdout/stderr to `reports/mutation-logs/`
 and the terminal only shows progress plus a concise summary. Pass

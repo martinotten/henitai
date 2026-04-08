@@ -79,7 +79,7 @@ RSpec.describe Henitai::Configuration do
     {
       integration: "rspec",
       operators: :light,
-      jobs: nil,
+      jobs: 1,
       reports_dir: "reports",
       all_logs: false,
       max_flaky_retries: 3,
@@ -147,7 +147,7 @@ RSpec.describe Henitai::Configuration do
     expect(configuration_snapshot(load_missing_configuration)).to eq(
       integration: "rspec",
       operators: :light,
-      jobs: nil,
+      jobs: 1,
       reports_dir: "reports",
       all_logs: false,
       timeout: 10.0,
@@ -169,7 +169,7 @@ RSpec.describe Henitai::Configuration do
     expect(configuration_snapshot(load_configuration(""))).to eq(
       integration: "rspec",
       operators: :light,
-      jobs: nil,
+      jobs: 1,
       reports_dir: "reports",
       all_logs: false,
       timeout: 10.0,

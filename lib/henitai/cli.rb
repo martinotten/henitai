@@ -12,7 +12,7 @@ module Henitai
   #   --use INTEGRATION Override integration from config (e.g. rspec)
   #   --config PATH     Path to .henitai.yml (default: .henitai.yml)
   #   --operators SET   Operator set: light (default) | full
-  #   --jobs N          Number of parallel workers (default: CPU count)
+  #   --jobs N          Number of parallel workers (default: 1)
   #   --all-logs        Print all captured child logs
   #   -h, --help        Show this help message
   #   -v, --version     Show version
@@ -167,7 +167,7 @@ module Henitai
     end
 
     def add_jobs_option(opts, options)
-      opts.on("--jobs N", Integer, "Number of parallel workers") do |n|
+      opts.on("--jobs N", Integer, "Number of parallel workers (default: 1)") do |n|
         options[:jobs] = n
       end
     end

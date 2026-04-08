@@ -209,8 +209,33 @@ module Henitai
         ["--require", "henitai/rspec_coverage_formatter"]
       end
 
+      def subprocess_env
+        { "PARALLEL_WORKERS" => "1" }
+      end
+
       def scenario_log_support
         @scenario_log_support ||= ScenarioLogSupport.new
+      end
+
+      def with_subprocess_env
+        original_env = {} # : Hash[String, String?]
+        subprocess_env.each do |key, value|
+          original_env[key] = ENV.fetch(key, nil)
+          ENV[key] = value
+        end
+        yield
+      ensure
+        restore_subprocess_env(original_env)
+      end
+
+      def restore_subprocess_env(original_env)
+        original_env.each do |key, value|
+          if value.nil?
+            ENV.delete(key)
+          else
+            ENV[key] = value
+          end
+        end
       end
     end
 
@@ -409,6 +434,7 @@ module Henitai
         File.open(log_paths[:stdout_path], "w") do |stdout_file|
           File.open(log_paths[:stderr_path], "w") do |stderr_file|
             Process.spawn(
+              subprocess_env,
               *suite_command(test_files),
               out: stdout_file,
               err: stderr_file,
@@ -420,11 +446,13 @@ module Henitai
 
       def run_in_child(mutant:, test_files:, log_paths:)
         Thread.report_on_exception = false
-        scenario_log_support.with_coverage_dir(mutant.id) do
-          scenario_log_support.capture_child_output(log_paths) do
-            return 2 if Mutant::Activator.activate!(mutant) == :compile_error
+        with_subprocess_env do
+          scenario_log_support.with_coverage_dir(mutant.id) do
+            scenario_log_support.capture_child_output(log_paths) do
+              return 2 if Mutant::Activator.activate!(mutant) == :compile_error
 
-            run_tests(test_files)
+              run_tests(test_files)
+            end
           end
         end
       end
@@ -525,7 +553,7 @@ module Henitai
       end
 
       def subprocess_env
-        env = {} # : Hash[String, String]
+        env = super
         env["RAILS_ENV"] = "test" unless ENV["RAILS_ENV"] == "test"
         env["PARALLEL_WORKERS"] = "1"
         env
