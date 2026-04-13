@@ -2,6 +2,7 @@
 
 require "fileutils"
 require "minitest"
+require_relative "integration/rspec_process_runner"
 
 module Henitai
   # Namespace for test-framework integrations.
@@ -273,21 +274,7 @@ module Henitai
       end
 
       def run_mutant(mutant:, test_files:, timeout:)
-        log_paths = scenario_log_paths("mutant-#{mutant.id}")
-        wait_result = nil
-        pid = Process.fork do
-          Process.setpgid(0, 0)
-          ENV["HENITAI_MUTANT_ID"] = mutant.id
-          Process.exit(run_in_child(mutant:, test_files:, log_paths:))
-        end
-
-        wait_result = wait_with_timeout(pid, timeout)
-        build_result(wait_result, log_paths)
-      ensure
-        if pid
-          cleanup_process_group(pid) unless wait_result == :timeout
-          reap_child(pid) if wait_result.nil?
-        end
+        RspecProcessRunner.new.run_mutant(self, mutant:, test_files:, timeout:)
       end
 
       def per_test_coverage_supported?
@@ -295,17 +282,7 @@ module Henitai
       end
 
       def run_suite(test_files, timeout: DEFAULT_SUITE_TIMEOUT)
-        log_paths = scenario_log_paths("baseline")
-        wait_result = nil
-        FileUtils.mkdir_p(File.dirname(log_paths[:stdout_path]))
-        pid = spawn_suite_process(test_files, log_paths)
-        wait_result = wait_with_timeout(pid, timeout)
-        build_result(wait_result, log_paths)
-      ensure
-        if pid
-          cleanup_process_group(pid) unless wait_result == :timeout
-          reap_child(pid) if wait_result.nil?
-        end
+        RspecProcessRunner.new.run_suite(self, test_files, timeout:)
       end
 
       def suite_command(test_files)

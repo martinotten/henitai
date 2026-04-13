@@ -265,6 +265,11 @@ module Henitai
       def stderr_stream: () -> IO
     end
 
+    class RspecProcessRunner
+      def run_mutant: (Rspec, mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
+      def run_suite: (Rspec, Array[String], timeout: Float) -> ScenarioExecutionResult
+    end
+
     class Rspec < Base
       REQUIRE_DIRECTIVE_PATTERN: Regexp
       DEFAULT_SUITE_TIMEOUT: Float
@@ -365,6 +370,11 @@ module Henitai
   class CoverageReportReader
     def coverage_lines_by_file: (?String) -> Hash[String, Array[Integer]]
     def test_lines_by_file: (?String) -> Hash[String, Hash[String, Array[Integer]]]
+  end
+
+  class ParallelExecutionRunner
+    def initialize: (worker_count: Integer) -> void
+    def run: (Array[Mutant], untyped, untyped, untyped, ?Hash[Symbol, untyped]) -> void
   end
 
   class StaticFilter
