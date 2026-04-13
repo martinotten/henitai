@@ -71,6 +71,9 @@ module Henitai
 
     def start_parallel_stdin_watcher(context, stdin_pipe)
       return unless stdin_pipe
+      # CI runners expose stdin as a non-interactive pipe, so EOF there should
+      # not be treated as a user disconnect.
+      return if ci_environment?
 
       context.stdin_watcher = Thread.new do
         $stdin.read
@@ -122,6 +125,11 @@ module Henitai
         context.state[:stopping] = true
         context.queue.clear
       end
+    end
+
+    def ci_environment?
+      value = ENV.fetch("CI", nil)
+      value && !%w[0 false].include?(value.downcase)
     end
   end
 end

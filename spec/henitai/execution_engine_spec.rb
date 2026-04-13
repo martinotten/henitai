@@ -555,4 +555,39 @@ RSpec.describe Henitai::ExecutionEngine do
     fake_stdin_w.close unless fake_stdin_w.closed?
     fake_stdin_r.close unless fake_stdin_r.closed?
   end
+
+  it "does not treat CI stdin as a disconnect signal" do
+    first  = build_mutant(:pending, "Foo#bar")
+    second = build_mutant(:pending, "Foo#baz")
+    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", 2)
+    fake_stdin_r, fake_stdin_w = IO.pipe
+
+    allow(integration = build_integration).to receive(:run_mutant) do |mutant:, **_|
+      sleep 0.05
+      mutant.status = :killed
+    end
+
+    engine = described_class.new
+    allow(engine).to receive(:pipe_stdin?).and_return(true)
+
+    with_env("CI", "true") do
+      t = Thread.new do
+        original = $stdin
+        $stdin = fake_stdin_r
+        engine.run([first, second], integration, config)
+      ensure
+        $stdin = original
+        fake_stdin_r.close unless fake_stdin_r.closed?
+      end
+
+      sleep 0.01
+      fake_stdin_w.close
+
+      t.join(2)
+      expect(t.alive?).to be(false)
+    end
+  ensure
+    fake_stdin_w.close unless fake_stdin_w.closed?
+    fake_stdin_r.close unless fake_stdin_r.closed?
+  end
 end
