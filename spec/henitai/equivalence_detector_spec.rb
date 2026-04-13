@@ -27,6 +27,13 @@ RSpec.describe Henitai::EquivalenceDetector do
     Parser::AST::Node.new(:float, [value])
   end
 
+  def boolean(value)
+    # Parser uses :true / :false node types, so the AST symbols are intentional.
+    # rubocop:disable Lint/BooleanSymbol
+    Parser::AST::Node.new(value ? :true : :false, [])
+    # rubocop:enable Lint/BooleanSymbol
+  end
+
   def csend(receiver, operator, operand)
     Parser::AST::Node.new(:csend, [receiver, operator, operand])
   end
@@ -194,5 +201,49 @@ RSpec.describe Henitai::EquivalenceDetector do
     malformed = Parser::AST::Node.new(:send, [lvar(:value), :+, 0])
 
     expect(detector.send(:zero_operand?, malformed)).to be(false)
+  end
+
+  it "marks disjunctions with false as equivalent when collapsed to the lhs" do
+    mutant = build_mutant(
+      original_node: Parser::AST::Node.new(:or, [lvar(:value), boolean(false)]),
+      mutated_node: lvar(:value)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:equivalent)
+  end
+
+  it "marks disjunctions with false as equivalent when collapsed to the rhs" do
+    mutant = build_mutant(
+      original_node: Parser::AST::Node.new(:or, [boolean(false), lvar(:value)]),
+      mutated_node: lvar(:value)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:equivalent)
+  end
+
+  it "marks conjunctions with true as equivalent when collapsed to the lhs" do
+    mutant = build_mutant(
+      original_node: Parser::AST::Node.new(:and, [lvar(:value), boolean(true)]),
+      mutated_node: lvar(:value)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:equivalent)
+  end
+
+  it "marks conjunctions with true as equivalent when collapsed to the rhs" do
+    mutant = build_mutant(
+      original_node: Parser::AST::Node.new(:and, [boolean(true), lvar(:value)]),
+      mutated_node: lvar(:value)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:equivalent)
   end
 end

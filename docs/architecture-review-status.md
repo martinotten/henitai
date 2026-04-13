@@ -18,6 +18,7 @@ status labels:
 | ADR-07 Method Coverage | `stale` | `Coverage.start(lines: true, branches: true, methods: true)` is already present in `spec/spec_helper.rb` and `lib/henitai/minitest_simplecov.rb`. | Remove this from the open-issues list or mark it done in the review. |
 | AvailableCpuCount / worker default | `resolved` | The code intentionally keeps the conservative fallback at `1`, and the architecture docs now say so. | None. |
 | AridNodeFilter vs UpdateOperator | `resolved` | The asymmetry is now documented in code and in the architecture docs. | None. |
+| EquivalenceDetector expansion | `resolved` | The detector now covers obvious logical identities in addition to the existing arithmetic cases. | None. |
 | Inline directives (`henitai:disable`) | `docs-only` | The architecture docs now mark the directive syntax as planned, not implemented. | None unless the feature is implemented later. |
 | Execution modes (`dev-fast`, `ci-pr`, `ci-nightly`) | `docs-only` | The architecture docs now describe them as conceptual profiles instead of a first-class API. | None unless a profile layer is added later. |
 | `STRYKER_MUTATOR_WORKER` | `obsolete` | The review point no longer applies because the Stryker-specific worker convention was removed. | Drop it from any follow-up list. |
@@ -31,6 +32,8 @@ Completed:
   match the runtime behavior.
 - P2: The `AridNodeFilter` / `UpdateOperator` asymmetry is documented in code
   and architecture docs.
+- P2b: The `EquivalenceDetector` now covers the obvious logical identities
+  reported by the review.
 - P3: Inline directives are marked as planned, not implemented.
 - P4: Execution modes are documented as conceptual profiles, not a first-class
   API.

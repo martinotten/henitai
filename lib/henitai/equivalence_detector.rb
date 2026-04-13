@@ -10,13 +10,17 @@ module Henitai
   # obvious enough to be useful.
   class EquivalenceDetector
     def analyze(mutant)
-      return mutant unless equivalent_arithmetic_mutation?(mutant)
+      return mutant unless equivalent_mutation?(mutant)
 
       mutant.status = :equivalent
       mutant
     end
 
     private
+
+    def equivalent_mutation?(mutant)
+      equivalent_arithmetic_mutation?(mutant) || equivalent_logical_mutation?(mutant)
+    end
 
     def equivalent_arithmetic_mutation?(mutant)
       original = mutant.original_node
@@ -48,6 +52,61 @@ module Henitai
         multiplicative_operator?(mutated.children[1]) &&
         one_operand?(original) &&
         one_operand?(mutated)
+    end
+
+    def equivalent_logical_mutation?(mutant)
+      original = mutant.original_node
+      mutated = mutant.mutated_node
+      return false unless logical_node?(original)
+
+      logical_identity_equivalent?(original, mutated)
+    end
+
+    def logical_node?(node)
+      node.is_a?(Parser::AST::Node) && %i[and or].include?(node.type)
+    end
+
+    def logical_identity_equivalent?(original, mutated)
+      case original.type
+      when :or
+        false_identity_equivalent?(original, mutated)
+      when :and
+        true_identity_equivalent?(original, mutated)
+      else
+        false
+      end
+    end
+
+    def false_identity_equivalent?(original, mutated)
+      return true if false_operand?(original.children[0]) && same_node?(mutated, original.children[1])
+      return true if false_operand?(original.children[1]) && same_node?(mutated, original.children[0])
+
+      false
+    end
+
+    def true_identity_equivalent?(original, mutated)
+      return true if true_operand?(original.children[0]) && same_node?(mutated, original.children[1])
+      return true if true_operand?(original.children[1]) && same_node?(mutated, original.children[0])
+
+      false
+    end
+
+    def false_operand?(node)
+      # Parser uses :true / :false node types, so the AST symbols are intentional.
+      # rubocop:disable Lint/BooleanSymbol
+      boolean_literal?(node, :false)
+      # rubocop:enable Lint/BooleanSymbol
+    end
+
+    def true_operand?(node)
+      # Parser uses :true / :false node types, so the AST symbols are intentional.
+      # rubocop:disable Lint/BooleanSymbol
+      boolean_literal?(node, :true)
+      # rubocop:enable Lint/BooleanSymbol
+    end
+
+    def boolean_literal?(node, type)
+      node.is_a?(Parser::AST::Node) && node.type == type && node.children.empty?
     end
 
     def additive_operator?(operator)
