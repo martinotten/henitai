@@ -12,6 +12,10 @@ RSpec.describe Henitai::CoverageFormatter do
     Struct.new(:example).new(example)
   end
 
+  def report_path
+    File.join(ENV.fetch("HENITAI_REPORTS_DIR", "coverage"), "henitai_per_test.json")
+  end
+
   def with_env(key, value)
     original = ENV.fetch(key, nil)
     ENV[key] = value
@@ -45,7 +49,7 @@ RSpec.describe Henitai::CoverageFormatter do
         formatter.example_finished(notification)
         formatter.dump_summary(nil)
 
-        expect(JSON.parse(File.read("coverage/henitai_per_test.json"))).to eq(
+        expect(JSON.parse(File.read(report_path))).to eq(
           "spec/models/sample_spec.rb" => {
             File.expand_path("lib/sample.rb") => [2, 4]
           }
@@ -67,7 +71,7 @@ RSpec.describe Henitai::CoverageFormatter do
         formatter.example_finished(notification)
         formatter.dump_summary(nil)
 
-        expect(File).to exist("coverage/henitai_per_test.json")
+        expect(File).to exist(report_path)
       end
     end
   end
@@ -110,7 +114,7 @@ RSpec.describe Henitai::CoverageFormatter do
         formatter.example_finished(notification)
         formatter.dump_summary(nil)
 
-        expect(JSON.parse(File.read("coverage/henitai_per_test.json"))).to eq(
+        expect(JSON.parse(File.read(report_path))).to eq(
           "spec/models/sample_spec.rb" => {
             File.expand_path("lib/sample.rb") => [2, 4]
           }
@@ -132,7 +136,7 @@ RSpec.describe Henitai::CoverageFormatter do
         formatter.example_finished(notification)
         formatter.dump_summary(nil)
 
-        expect(JSON.parse(File.read("coverage/henitai_per_test.json"))).to eq(
+        expect(JSON.parse(File.read(report_path))).to eq(
           "spec/models/sample_spec.rb" => {
             File.expand_path("lib/sample.rb") => [2, 4]
           }
