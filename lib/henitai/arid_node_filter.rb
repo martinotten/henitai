@@ -38,6 +38,9 @@ module Henitai
       when :block
         block_match?(node)
       when :or_asgn
+        # Memoization-style ||= is treated as arid on purpose. UpdateOperator
+        # still mutates the &&= side of the logical pair, but the ||= source
+        # form is filtered here to avoid noisy mutants around memoization.
         true
       else
         false

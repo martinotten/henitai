@@ -50,6 +50,28 @@ RSpec.describe Henitai::ExecutionEngine do
     )
   end
 
+  it "keeps the conservative single-worker fallback when jobs is nil" do
+    pending_a = build_mutant(:pending, "Foo#bar")
+    pending_b = build_mutant(:pending, "Foo#baz")
+    integration = build_integration
+    config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(
+      12.5,
+      "coverage",
+      nil,
+      3
+    )
+
+    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
+    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
+      mutant.status = :killed
+    end
+    allow(Henitai::ParallelExecutionRunner).to receive(:new)
+
+    described_class.new.run([pending_a, pending_b], integration, config)
+
+    expect(Henitai::ParallelExecutionRunner).not_to have_received(:new)
+  end
+
   def with_env(key, value)
     original = ENV.fetch(key, nil)
     ENV[key] = value

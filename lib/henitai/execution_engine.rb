@@ -33,8 +33,9 @@ module Henitai
       configured_jobs = config.respond_to?(:jobs) ? config.jobs : nil
       return configured_jobs if configured_jobs
 
-      # TODO: wire AvailableCpuCount.detect into the fallback once the
-      # parallelism policy is settled.
+      # The fallback stays conservative for now; the execution policy still
+      # defaults to a single worker even though AvailableCpuCount exists as a
+      # future policy hook.
       1
     end
 

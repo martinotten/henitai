@@ -136,7 +136,9 @@ CLI
       -> Reporter
 ```
 
-Default execution modes are:
+The architecture draft groups configuration into the following execution-mode
+profiles, but the implementation currently exposes the underlying knobs
+directly rather than a first-class profile object:
 
 | Mode | Intended use | Typical strategy |
 |---|---|---|
@@ -339,6 +341,11 @@ The default phase gate sequence is:
 
 These gates exist to reduce noise before test execution, not after it.
 
+This is the cost-reduction view of the pipeline. The `Runner` comments use an
+execution-order view that includes Gate 0 (coverage bootstrap) and Gate 5
+(reporting), while stillborn filtering is enforced inside `SyntaxValidator`
+after operator application rather than as a standalone runtime phase.
+
 The original research-backed pipeline can be summarized as:
 
 | Gate | Function | Typical effect |
@@ -358,7 +365,13 @@ The arid-node catalog is intentionally extensible. The initial Ruby set includes
 - RSpec DSL helpers such as `let`, `subject`, `before`, and `after`
 - invariants such as `is_a?`, `respond_to?`, and `kind_of?`
 
-Memoization is a deliberate trade-off: `@var ||= compute_value` is treated as arid by default even though `||=` is a valid mutation target in the full operator set. This is the non-obvious exception in the arid-node list and should stay explicitly documented in the operator specs and CLI help. The default mode prioritizes signal over completeness.
+Memoization is a deliberate trade-off: `@var ||= compute_value` is treated as
+arid by default even though `||=` is a valid mutation target in the full
+operator set. That also means `UpdateOperator` can still emit the `&&=` side
+of the logical pair while the `||=` source form is filtered earlier. This is
+the non-obvious exception in the arid-node list and should stay explicitly
+documented in the operator specs and CLI help. The default mode prioritizes
+signal over completeness.
 
 ### 8.3 Equivalence Handling
 
@@ -410,7 +423,10 @@ Henitai reuses the idea of subject expressions from the Ruby `mutant` ecosystem:
 - file-based selection for bulk analysis
 - longest-prefix matching for RSpec-style examples
 
-Inline directives remain available for local control, for example disabling a subject or a specific operator family in generated or intentionally unstable code.
+Inline directives are documented as a future extension for local control, for
+example disabling a subject or a specific operator family in generated or
+intentionally unstable code. They are not implemented in the current codebase
+yet.
 
 Example directives:
 
@@ -434,7 +450,13 @@ Namespace-wide ignore rules belong in `.henitai.yml`, not in source comments.
 
 ### 8.6 Parallel Execution and Flaky Test Mitigation
 
-The execution engine runs mutants in parallel using a Thread+Queue worker pool. The number of workers defaults to `Etc.nprocessors` and can be overridden via `config.jobs`. Each worker forks a child process per mutant, so thread-level concurrency and process-level isolation are combined: threads coordinate the queue, forked processes provide the actual test isolation.
+The execution engine runs mutants in parallel using a Thread+Queue worker
+pool. The number of workers currently defaults to `1` and can be overridden
+via `config.jobs`. The `AvailableCpuCount` helper exists as a future policy
+hook, but it is not wired into the default path yet. Each worker forks a child
+process per mutant, so thread-level concurrency and process-level isolation
+are combined: threads coordinate the queue, forked processes provide the
+actual test isolation.
 
 Test instability is handled conservatively:
 
@@ -442,8 +464,6 @@ Test instability is handled conservatively:
 - survived mutants are retried up to `config.max_flaky_retries` times (default: 3) before being classified as survived
 - if more than 5% of executed mutants required at least one retry, a warning is emitted at the end of the run
 - unknown or flaky outcomes must be surfaced, not hidden
-
-Worker isolation follows the Stryker convention of setting `STRYKER_MUTATOR_WORKER` in each child process so hooks and test infrastructure can isolate state per worker.
 
 ### 8.7 Latent Mutant Tracking
 
