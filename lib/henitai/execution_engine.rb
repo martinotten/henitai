@@ -32,7 +32,11 @@ module Henitai
 
     def worker_count(config)
       configured_jobs = config.respond_to?(:jobs) ? config.jobs : nil
-      configured_jobs || 1
+      return configured_jobs if configured_jobs
+
+      # TODO: wire AvailableCpuCount.detect into the fallback once the
+      # parallelism policy is settled.
+      1
     end
 
     def run_linear(mutants, integration, config, progress_reporter, mutex)
@@ -55,6 +59,7 @@ module Henitai
     ensure
       stop_parallel_stdin_watcher(context)
       restore_parallel_signal_traps(context)
+      raise context.state[:error] if context&.state&.fetch(:error, nil)
       raise Interrupt if context&.state&.fetch(:stopping, false)
     end
 
@@ -114,6 +119,9 @@ module Henitai
         )
       rescue ThreadError
         break
+      rescue StandardError => e
+        record_parallel_error(context, e)
+        break
       end
     end
 
@@ -128,6 +136,14 @@ module Henitai
       trap(:INT, handlers[:int] || "DEFAULT")
       trap(:TERM, handlers[:term] || "DEFAULT")
       trap(:HUP, handlers[:hup] || "DEFAULT")
+    end
+
+    def record_parallel_error(context, error)
+      context.mutex.synchronize do
+        context.state[:error] ||= error
+        context.state[:stopping] = true
+        context.queue.clear
+      end
     end
 
     def process_mutant(mutant, integration, config, progress_reporter, mutex)

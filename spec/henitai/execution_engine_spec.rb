@@ -249,6 +249,20 @@ RSpec.describe Henitai::ExecutionEngine do
     expect(thread_ids.uniq.size).to be > 1
   end
 
+  it "raises when a parallel worker fails" do
+    first = build_mutant(:pending, "Foo#bar")
+    second = build_mutant(:pending, "Foo#baz")
+    integration = build_integration
+    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", 2)
+
+    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
+    allow(integration).to receive(:run_mutant).and_raise(StandardError, "boom")
+
+    expect do
+      described_class.new.run([first, second], integration, config)
+    end.to raise_error(StandardError, "boom")
+  end
+
   it "keeps a single pending mutant on the linear path even with parallel jobs configured" do
     pending = build_mutant(:pending, "Foo#bar")
     ignored = build_mutant(:ignored, "Foo#baz")

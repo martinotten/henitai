@@ -99,11 +99,12 @@ RSpec.describe Henitai::Result do
     mutant
   end
 
-  def result(mutants)
+  def result(mutants, thresholds: nil)
     described_class.new(
       mutants:,
       started_at: Time.at(0),
-      finished_at: Time.at(1)
+      finished_at: Time.at(1),
+      thresholds:
     )
   end
 
@@ -225,6 +226,15 @@ RSpec.describe Henitai::Result do
         ]
       )
     end
+  end
+
+  it "serialises configured thresholds" do
+    schema = result(
+      [build_mutant(status: :pending)],
+      thresholds: { high: 90, low: 70 }
+    ).to_stryker_schema
+
+    expect(schema[:thresholds]).to eq(high: 90, low: 70)
   end
 
   it "serialises coveredBy and testsCompleted when test data is present" do

@@ -225,6 +225,7 @@ module Henitai
       def test_files: () -> Array[String]
       def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
       def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
+      def per_test_coverage_supported?: () -> bool
 
       private
 
@@ -272,6 +273,7 @@ module Henitai
       def test_files: () -> Array[String]
       def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
       def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
+      def per_test_coverage_supported?: () -> bool
 
       private
 
@@ -522,12 +524,14 @@ module Henitai
     include UnparseHelper
 
     SCHEMA_VERSION: String
+    DEFAULT_THRESHOLDS: Hash[Symbol, Integer]
 
     attr_reader mutants: Array[Mutant]
     attr_reader started_at: Time
     attr_reader finished_at: Time
+    attr_reader thresholds: Hash[Symbol, Integer]
 
-    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time) -> void
+    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time, ?thresholds: Hash[Symbol, Integer]?) -> void
     def killed: () -> Integer
     def survived: () -> Integer
     def equivalent: () -> Integer
@@ -590,6 +594,7 @@ module Henitai
     def targeted_run?: () -> bool
     def retry_full_bootstrap?: (Array[Mutant]) -> bool
     def with_reports_dir: () { () -> untyped } -> untyped
+    def result_thresholds: () -> Hash[Symbol, Integer]?
   end
 
   class CoverageBootstrapper

@@ -78,7 +78,7 @@ module Henitai
     def mutants_for(subjects, source_files)
       bootstrap_thread = bootstrap_mutants(source_files, subjects)
       mutants = generate_mutants(subjects)
-      bootstrap_thread.join
+      bootstrap_thread.value
 
       filtered_mutants = filter_mutants(mutants)
       return filtered_mutants unless targeted_run?
@@ -123,7 +123,8 @@ module Henitai
       @result = Result.new(
         mutants:,
         started_at:,
-        finished_at:
+        finished_at:,
+        thresholds: result_thresholds
       )
       persist_history(@result, finished_at)
       report(@result)
@@ -235,6 +236,12 @@ module Henitai
 
     def normalize_path(path)
       File.expand_path(path)
+    end
+
+    def result_thresholds
+      return nil unless config.respond_to?(:thresholds)
+
+      config.thresholds
     end
   end
 end

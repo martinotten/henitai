@@ -170,7 +170,7 @@ RSpec.describe Henitai::SubjectResolver do
     end
   end
 
-  it "uses an instance parser for file resolution" do
+  it "uses the cached SourceParser class API for file resolution" do
     Dir.mktmpdir do |dir|
       path = write_source(
         dir,
@@ -185,15 +185,13 @@ RSpec.describe Henitai::SubjectResolver do
       )
 
       parsed_ast = Henitai::SourceParser.new.parse_file(path)
-      parser = instance_double(Henitai::SourceParser)
 
-      allow(Henitai::SourceParser).to receive(:new).and_return(parser)
-      allow(Henitai::SourceParser).to receive(:parse_file).and_raise("class cache used")
-      allow(parser).to receive(:parse_file).and_return(parsed_ast)
+      allow(Henitai::SourceParser).to receive(:parse_file).and_return(parsed_ast)
+      allow(Henitai::SourceParser).to receive(:new).and_raise("instance parser bypassed")
 
       described_class.new.resolve_from_files([path])
 
-      expect(parser).to have_received(:parse_file).with(path)
+      expect(Henitai::SourceParser).to have_received(:parse_file).with(path)
     end
   end
 

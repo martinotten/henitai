@@ -33,7 +33,8 @@ RSpec.describe Henitai::CoverageBootstrapper do
     instance_double(
       Henitai::Integration::Rspec,
       test_files: test_files,
-      run_suite: run_suite_result
+      run_suite: run_suite_result,
+      per_test_coverage_supported?: true
     )
   end
 
@@ -168,6 +169,52 @@ RSpec.describe Henitai::CoverageBootstrapper do
       Henitai::CoverageError,
       /coverage/i
     )
+  end
+
+  it "does not require per-test coverage for integrations that do not support it" do
+    Dir.mktmpdir do |dir|
+      source = File.join(dir, "lib/sample.rb")
+      spec = File.join(dir, "test/sample_test.rb")
+      report = File.join(dir, "reports/coverage/.resultset.json")
+
+      FileUtils.mkdir_p(File.dirname(source))
+      FileUtils.mkdir_p(File.dirname(spec))
+      FileUtils.mkdir_p(File.dirname(report))
+
+      File.write(source, "class Sample; end\n")
+      File.write(spec, "# test\n")
+      sleep 0.01
+      File.write(
+        report,
+        {
+          "RSpec" => {
+            "coverage" => {
+              File.expand_path(source) => {
+                "lines" => [nil, 1]
+              }
+            }
+          }
+        }.to_json
+      )
+
+      config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
+      static_filter = instance_double(Henitai::StaticFilter)
+      integration = instance_double(
+        Henitai::Integration::Minitest,
+        test_files: [spec],
+        per_test_coverage_supported?: false,
+        run_suite: :survived
+      )
+      bootstrapper = build_bootstrapper(static_filter:)
+
+      allow(static_filter).to receive(:coverage_lines_for).and_return(
+        File.expand_path(source) => [2]
+      )
+
+      bootstrapper.ensure!(source_files: [source], config:, integration:)
+
+      expect(integration).not_to have_received(:run_suite)
+    end
   end
 
   # ---------------------------------------------------------------------------

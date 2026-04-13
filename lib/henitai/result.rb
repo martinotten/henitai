@@ -11,13 +11,15 @@ module Henitai
     include UnparseHelper
 
     SCHEMA_VERSION = "1.0"
+    DEFAULT_THRESHOLDS = { high: 80, low: 60 }.freeze
 
-    attr_reader :mutants, :started_at, :finished_at
+    attr_reader :mutants, :started_at, :finished_at, :thresholds
 
-    def initialize(mutants:, started_at:, finished_at:)
+    def initialize(mutants:, started_at:, finished_at:, thresholds: nil)
       @mutants     = mutants
       @started_at  = started_at
       @finished_at = finished_at
+      @thresholds  = DEFAULT_THRESHOLDS.merge(thresholds || {})
     end
 
     # @return [Integer] number of killed mutants
@@ -88,7 +90,7 @@ module Henitai
     def to_stryker_schema
       {
         schemaVersion: SCHEMA_VERSION,
-        thresholds: { high: 80, low: 60 },
+        thresholds: thresholds,
         files: build_files_section
       }
     end

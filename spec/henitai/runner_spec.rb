@@ -150,7 +150,7 @@ RSpec.describe Henitai::Runner do
         allow(Henitai::Result).to receive(:new) do |kwargs|
           mu.synchronize do
             calls << [:result, kwargs[:mutants], kwargs[:started_at].is_a?(Time),
-                      kwargs[:finished_at].is_a?(Time)]
+                      kwargs[:finished_at].is_a?(Time), kwargs[:thresholds]]
           end
           result
         end
@@ -166,7 +166,7 @@ RSpec.describe Henitai::Runner do
           generate_call = [:generate, subjects, Henitai::Operator.for_set(:light).map(&:class), config]
           filter_call = [:filter, mutants, config]
           execute_call = [:execute, mutants, integration, config, reporter]
-          result_call = [:result, mutants, true, true]
+          result_call = [:result, mutants, true, true, config.thresholds]
           report_call = [:report, { names: ["terminal"], result:, config: }]
 
           resolve_index = events.index(resolve_call)

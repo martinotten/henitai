@@ -148,6 +148,10 @@ module Henitai
         raise NotImplementedError
       end
 
+      def per_test_coverage_supported?
+        false
+      end
+
       private
 
       def pause(seconds)
@@ -284,6 +288,10 @@ module Henitai
           cleanup_process_group(pid) unless wait_result == :timeout
           reap_child(pid) if wait_result.nil?
         end
+      end
+
+      def per_test_coverage_supported?
+        true
       end
 
       def run_suite(test_files, timeout: DEFAULT_SUITE_TIMEOUT)

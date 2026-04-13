@@ -27,9 +27,8 @@ module Henitai
 
     def resolve_from_file(path)
       subjects = []
-      parser = SourceParser.new
       walk(
-        parser.parse_file(path),
+        SourceParser.parse_file(path),
         namespace: nil,
         singleton_context: false,
         subjects:

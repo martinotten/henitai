@@ -47,9 +47,8 @@ module Henitai
 
     def coverage_ready?(source_files, config, integration, test_files)
       coverage_fresh?(source_files, config, integration, test_files) &&
-        per_test_coverage_fresh?(source_files, config, integration, test_files) &&
         coverage_available?(source_files, config) &&
-        per_test_coverage_available?(config)
+        per_test_coverage_ready?(source_files, config, integration, test_files)
     end
 
     def source_file_paths(source_files)
@@ -146,6 +145,19 @@ module Henitai
 
     def per_test_coverage_available?(config)
       File.exist?(per_test_coverage_report_path(config))
+    end
+
+    def per_test_coverage_ready?(source_files, config, integration, test_files)
+      return true unless per_test_coverage_supported?(integration)
+
+      per_test_coverage_fresh?(source_files, config, integration, test_files) &&
+        per_test_coverage_available?(config)
+    end
+
+    def per_test_coverage_supported?(integration)
+      return false unless integration.respond_to?(:per_test_coverage_supported?)
+
+      integration.per_test_coverage_supported?
     end
 
     def reports_dir(config)
