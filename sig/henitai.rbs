@@ -362,11 +362,22 @@ module Henitai
     def fallback_source: (untyped) -> String
   end
 
+  class CoverageReportReader
+    def coverage_lines_by_file: (?String) -> Hash[String, Array[Integer]]
+    def test_lines_by_file: (?String) -> Hash[String, Hash[String, Array[Integer]]]
+  end
+
   class StaticFilter
+    def initialize: (?coverage_report_reader: CoverageReportReader) -> void
     def apply: (Array[Mutant], untyped) -> Array[Mutant]
     def coverage_lines_for: (untyped) -> Hash[String, Array[Integer]]
     def coverage_lines_by_file: (?String) -> Hash[String, Array[Integer]]
     def test_lines_by_file: (?String) -> Hash[String, Hash[String, Array[Integer]]]
+  end
+
+  class PerTestCoverageSelector
+    def initialize: (?coverage_report_reader: CoverageReportReader) -> void
+    def filter: (Array[String], Mutant, reports_dir: String) -> Array[String]
   end
 
   class ExecutionEngine

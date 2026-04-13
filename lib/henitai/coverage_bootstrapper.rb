@@ -58,16 +58,12 @@ module Henitai
     # Returns true when a coverage report already exists and is newer than
     # every watched source and test file. Stale or absent reports return false.
     def coverage_fresh?(source_files, config, integration, test_files)
-      report_path = coverage_report_path(config)
-      return false unless File.exist?(report_path)
-
-      report_mtime = File.mtime(report_path)
-      watched = Array(source_files) + Array(test_files || integration.test_files)
-      watched.all? do |path|
-        File.mtime(path) <= report_mtime
-      rescue Errno::ENOENT
-        false
-      end
+      watched_files_fresh?(
+        coverage_report_path(config),
+        source_files,
+        integration,
+        test_files
+      )
     end
 
     def coverage_report_path(config)
@@ -131,16 +127,12 @@ module Henitai
     end
 
     def per_test_coverage_fresh?(source_files, config, integration, test_files)
-      report_path = per_test_coverage_report_path(config)
-      return false unless File.exist?(report_path)
-
-      report_mtime = File.mtime(report_path)
-      watched = Array(source_files) + Array(test_files || integration.test_files)
-      watched.all? do |path|
-        File.mtime(path) <= report_mtime
-      rescue Errno::ENOENT
-        false
-      end
+      watched_files_fresh?(
+        per_test_coverage_report_path(config),
+        source_files,
+        integration,
+        test_files
+      )
     end
 
     def per_test_coverage_available?(config)
@@ -158,6 +150,23 @@ module Henitai
       return false unless integration.respond_to?(:per_test_coverage_supported?)
 
       integration.per_test_coverage_supported?
+    end
+
+    def watched_files_fresh?(report_path, source_files, integration, test_files)
+      # This check assumes a single writer owns the coverage artifacts for the
+      # workspace. It is intentionally not an atomic snapshot-and-validate step.
+      return false unless File.exist?(report_path)
+
+      report_mtime = File.mtime(report_path)
+      watched_files(source_files, integration, test_files).all? do |path|
+        File.mtime(path) <= report_mtime
+      rescue Errno::ENOENT
+        false
+      end
+    end
+
+    def watched_files(source_files, integration, test_files)
+      Array(source_files) + Array(test_files || integration.test_files)
     end
 
     def reports_dir(config)

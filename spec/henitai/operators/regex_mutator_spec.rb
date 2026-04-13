@@ -83,6 +83,13 @@ RSpec.describe Henitai::Operators::RegexMutator do
     end
   end
 
+  it "treats anchors as one-way removals" do
+    node = find_nodes(parse("/^foo$/"), :regexp).first
+    descriptions = mutate(node).map(&:description)
+
+    expect(descriptions).to contain_exactly("removed ^ anchor", "removed $ anchor")
+  end
+
   it "does not mutate a regex with no applicable patterns" do
     node = find_nodes(parse("/simple/"), :regexp).first
 

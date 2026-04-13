@@ -7,7 +7,10 @@ module Henitai
     # Swaps compound assignment operators with their inverses.
     #
     # Covers arithmetic pairs (+=/-=, *=/=) via :op_asgn and
-    # logical pairs (||=/&&=) via :or_asgn/:and_asgn.
+    # logical pairs (||=/&&=) via :or_asgn/:and_asgn. Exponent and modulo
+    # compound assignments are intentionally excluded: they are not part of the
+    # supported swap matrix and are already covered by other operator families
+    # when appropriate.
     class UpdateOperator < Henitai::Operator
       NODE_TYPES = %i[op_asgn or_asgn and_asgn].freeze
       ARITHMETIC_SWAPS = {

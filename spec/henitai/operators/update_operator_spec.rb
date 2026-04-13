@@ -82,9 +82,10 @@ RSpec.describe Henitai::Operators::UpdateOperator do
     expect(mutate(node).first.mutated_node.children[0]).to eq(node.children[0])
   end
 
-  it "does not mutate unrecognised compound operators" do
-    node = find_nodes(parse("x **= 2"), :op_asgn).first
+  it "does not mutate unsupported compound operators" do
+    exponent = find_nodes(parse("x **= 2"), :op_asgn).first
+    modulo = find_nodes(parse("x %= 2"), :op_asgn).first
 
-    expect(mutate(node)).to eq([])
+    expect([mutate(exponent), mutate(modulo)]).to eq([[], []])
   end
 end

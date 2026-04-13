@@ -22,6 +22,7 @@ module Henitai
 
   autoload :Configuration, "henitai/configuration"
   autoload :CoverageBootstrapper, "henitai/coverage_bootstrapper"
+  autoload :CoverageReportReader, "henitai/coverage_report_reader"
   autoload :PerTestCoverageSelector, "henitai/per_test_coverage_selector"
   autoload :Subject, "henitai/subject"
   autoload :Mutant, "henitai/mutant"

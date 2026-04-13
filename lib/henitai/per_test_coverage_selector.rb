@@ -3,8 +3,8 @@
 module Henitai
   # Narrows candidate test files using the per-test coverage report.
   class PerTestCoverageSelector
-    def initialize(static_filter: StaticFilter.new)
-      @static_filter = static_filter
+    def initialize(coverage_report_reader: CoverageReportReader.new)
+      @coverage_report_reader = coverage_report_reader
     end
 
     def filter(tests, mutant, reports_dir:)
@@ -20,8 +20,6 @@ module Henitai
     end
 
     private
-
-    attr_reader :static_filter
 
     def location_available?(mutant)
       mutant.respond_to?(:location) &&
@@ -49,12 +47,14 @@ module Henitai
       @per_test_coverage ||= {}
       @per_test_coverage[reports_dir] ||= begin
         path = File.join(reports_dir, "henitai_per_test.json")
-        static_filter.test_lines_by_file(path)
+        coverage_report_reader.test_lines_by_file(path)
       end
     end
 
     def per_test_coverage_available?(reports_dir)
       !per_test_coverage(reports_dir).empty?
     end
+
+    attr_reader :coverage_report_reader
   end
 end

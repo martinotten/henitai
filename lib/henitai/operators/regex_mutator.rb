@@ -9,6 +9,8 @@ module Henitai
     #
     # Each applicable transformation yields a separate mutant. Invalid
     # results (unparseable regex) are discarded before emission.
+    # Anchor removal and character-class negation are intentionally one-way:
+    # they reduce noisy patterns rather than mirroring a full edit matrix.
     class RegexMutator < Henitai::Operator
       NODE_TYPES = %i[regexp].freeze
 
@@ -53,6 +55,8 @@ module Henitai
       end
 
       def quantifier_swaps(source)
+        # Quantifier swaps are symmetric. The other transforms are intentionally
+        # one-way because they model reductions instead of reversible edits.
         [
           [source.gsub(/(?<=[^*+?\\])\+/, "*"), "replaced + quantifier with *"],
           [source.gsub(/(?<=[^*+?\\])\*/, "+"), "replaced * quantifier with +"]
@@ -60,6 +64,8 @@ module Henitai
       end
 
       def anchor_removals(source)
+        # Anchors are removed, not added back. The mutation is deliberately
+        # asymmetric because "restoring" anchors would just recreate the input.
         [
           [source.sub("^", ""), "removed ^ anchor"],
           [source.sub(/\$$/, ""), "removed $ anchor"]
@@ -67,6 +73,8 @@ module Henitai
       end
 
       def char_class_negations(source)
+        # Negation only flips a positive class into a negated one. We do not
+        # emit the reverse mutation because that would mirror the same edit.
         [[source.gsub(/\[(?!\^)/, "[^"), "negated character class"]]
       end
 

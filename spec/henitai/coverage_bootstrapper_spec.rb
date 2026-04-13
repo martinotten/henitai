@@ -217,6 +217,74 @@ RSpec.describe Henitai::CoverageBootstrapper do
     end
   end
 
+  it "treats the coverage report as fresh when watched files are older" do
+    Dir.mktmpdir do |dir|
+      source = File.join(dir, "lib/sample.rb")
+      spec = File.join(dir, "spec/sample_spec.rb")
+      coverage_report = File.join(dir, "reports/coverage/.resultset.json")
+      per_test_report = File.join(dir, "reports/henitai_per_test.json")
+
+      FileUtils.mkdir_p(File.dirname(source))
+      FileUtils.mkdir_p(File.dirname(spec))
+      FileUtils.mkdir_p(File.dirname(coverage_report))
+
+      File.write(source, "class Sample; end\n")
+      File.write(spec, "# spec\n")
+      sleep 0.01
+      File.write(coverage_report, "{}")
+      File.write(per_test_report, "{}")
+
+      static_filter = instance_double(Henitai::StaticFilter)
+      integration = instance_double(
+        Henitai::Integration::Rspec,
+        test_files: [spec],
+        per_test_coverage_supported?: true
+      )
+      bootstrapper = build_bootstrapper(static_filter:)
+
+      expect(
+        bootstrapper.send(:watched_files_fresh?, coverage_report, [source], integration, nil)
+      ).to be(true)
+    end
+  end
+
+  it "treats the per-test report as fresh when watched files are older" do
+    Dir.mktmpdir do |dir|
+      source = File.join(dir, "lib/sample.rb")
+      spec = File.join(dir, "spec/sample_spec.rb")
+      coverage_report = File.join(dir, "reports/coverage/.resultset.json")
+      per_test_report = File.join(dir, "reports/henitai_per_test.json")
+
+      FileUtils.mkdir_p(File.dirname(source))
+      FileUtils.mkdir_p(File.dirname(spec))
+      FileUtils.mkdir_p(File.dirname(coverage_report))
+
+      File.write(source, "class Sample; end\n")
+      File.write(spec, "# spec\n")
+      sleep 0.01
+      File.write(coverage_report, "{}")
+      File.write(per_test_report, "{}")
+
+      static_filter = instance_double(Henitai::StaticFilter)
+      integration = instance_double(
+        Henitai::Integration::Rspec,
+        test_files: [spec],
+        per_test_coverage_supported?: true
+      )
+      bootstrapper = build_bootstrapper(static_filter:)
+
+      expect(
+        bootstrapper.send(
+          :watched_files_fresh?,
+          per_test_report,
+          [source],
+          integration,
+          nil
+        )
+      ).to be(true)
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Option 1: coverage freshness check
   # ---------------------------------------------------------------------------

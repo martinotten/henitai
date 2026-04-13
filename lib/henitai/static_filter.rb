@@ -1,12 +1,16 @@
 # frozen_string_literal: true
 
-require "json"
+require_relative "coverage_report_reader"
 
 module Henitai
   # Applies static, pre-execution filtering to generated mutants.
   class StaticFilter
-    DEFAULT_COVERAGE_REPORT_PATH = "coverage/.resultset.json"
-    DEFAULT_PER_TEST_COVERAGE_REPORT_PATH = "coverage/henitai_per_test.json"
+    DEFAULT_COVERAGE_REPORT_PATH = CoverageReportReader::DEFAULT_COVERAGE_REPORT_PATH
+    DEFAULT_PER_TEST_COVERAGE_REPORT_PATH = CoverageReportReader::DEFAULT_PER_TEST_COVERAGE_REPORT_PATH
+
+    def initialize(coverage_report_reader: CoverageReportReader.new)
+      @coverage_report_reader = coverage_report_reader
+    end
 
     # This method is the gate-level filter orchestrator.
     def apply(mutants, config)
@@ -41,30 +45,16 @@ module Henitai
     end
 
     def coverage_lines_by_file(path = DEFAULT_COVERAGE_REPORT_PATH)
-      return {} unless File.exist?(path)
-
-      coverage = Hash.new { |hash, key| hash[key] = [] }
-      JSON.parse(File.read(path)).each_value do |result|
-        result.fetch("coverage", {}).each do |file, file_coverage|
-          coverage[normalize_path(file)].concat(covered_lines(file_coverage))
-        end
-      end
-
-      coverage.transform_values(&:uniq).transform_values(&:sort)
+      coverage_report_reader.coverage_lines_by_file(path)
     end
 
     def test_lines_by_file(path = DEFAULT_PER_TEST_COVERAGE_REPORT_PATH)
-      return {} unless File.exist?(path)
-
-      parsed = JSON.parse(File.read(path))
-      return {} unless parsed.is_a?(Hash)
-
-      parsed.transform_values do |coverage|
-        normalize_test_coverage(coverage)
-      end
+      coverage_report_reader.test_lines_by_file(path)
     end
 
     private
+
+    attr_reader :coverage_report_reader
 
     def ignored?(mutant, config)
       source = source_for(mutant)
@@ -149,23 +139,6 @@ module Henitai
       return unless m
 
       (m.captures.first.to_i..m.captures.last.to_i)
-    end
-
-    def covered_lines(file_coverage)
-      Array(file_coverage["lines"]).each_with_index.filter_map do |count, index|
-        index + 1 if count.to_i.positive?
-      end
-    end
-
-    def normalize_test_coverage(coverage)
-      case coverage
-      when Hash
-        coverage.transform_values do |lines|
-          Array(lines).grep(Integer).uniq.sort
-        end
-      else
-        Array(coverage).grep(Integer).uniq.sort
-      end
     end
 
     def coverage_lines_from_test_lines(test_lines)
