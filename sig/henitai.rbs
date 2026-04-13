@@ -226,14 +226,14 @@ module Henitai
       def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
       def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
       def per_test_coverage_supported?: () -> bool
+      def wait_with_timeout: (Integer, Float) -> untyped
+      def reap_child: (Integer) -> void
+      def cleanup_process_group: (Integer) -> void
 
       private
 
       def pause: (Float) -> void
-      def wait_with_timeout: (Integer, Float) -> untyped
       def handle_timeout: (Integer) -> Symbol
-      def reap_child: (Integer) -> void
-      def cleanup_process_group: (Integer) -> void
       def cleanup_child_process: (Integer) -> void
       def rspec_options: () -> Array[String]
       def subprocess_env: () -> Hash[String, String]
@@ -303,7 +303,6 @@ module Henitai
       def relative_candidates: (String, String) -> Array[String]
       def require_candidates: (String, String) -> Array[String]
       def expand_candidates: (String, String) -> Array[String]
-      def reap_child: (Integer) -> void
     end
 
     class Minitest < Rspec

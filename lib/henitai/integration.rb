@@ -153,12 +153,6 @@ module Henitai
         false
       end
 
-      private
-
-      def pause(seconds)
-        sleep(seconds)
-      end
-
       def wait_with_timeout(pid, timeout)
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
 
@@ -177,15 +171,6 @@ module Henitai
         end
       end
 
-      def handle_timeout(pid)
-        begin
-          cleanup_process_group(pid)
-        ensure
-          reap_child(pid)
-        end
-        :timeout
-      end
-
       def reap_child(pid)
         Process.wait(pid)
       rescue Errno::ECHILD, Errno::ESRCH
@@ -200,6 +185,21 @@ module Henitai
         cleanup_child_process(pid)
       rescue Errno::ESRCH
         nil
+      end
+
+      private
+
+      def pause(seconds)
+        sleep(seconds)
+      end
+
+      def handle_timeout(pid)
+        begin
+          cleanup_process_group(pid)
+        ensure
+          reap_child(pid)
+        end
+        :timeout
       end
 
       def cleanup_child_process(pid)

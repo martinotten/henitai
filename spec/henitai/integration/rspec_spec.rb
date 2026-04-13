@@ -473,7 +473,7 @@ RSpec.describe Henitai::Integration::Rspec do
     end
     allow(integration).to receive(:pause)
 
-    integration.send(:cleanup_process_group, 4322)
+    integration.cleanup_process_group(4322)
 
     expect(record[:signals]).to eq(
       [[:SIGTERM, -4322], [:SIGTERM, 4322], [:SIGKILL, 4322]]

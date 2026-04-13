@@ -7,7 +7,7 @@ module Henitai
       def run_mutant(integration, mutant:, test_files:, timeout:)
         log_paths = integration.scenario_log_paths(mutant_log_name(mutant))
         pid = fork_mutant_process(integration, mutant, test_files, log_paths)
-        wait_result = integration.method(:wait_with_timeout).call(pid, timeout)
+        wait_result = integration.wait_with_timeout(pid, timeout)
         integration.build_result(wait_result, log_paths)
       ensure
         finalize_mutant_run(integration, pid, wait_result)
@@ -18,12 +18,12 @@ module Henitai
         wait_result = nil
         FileUtils.mkdir_p(File.dirname(log_paths[:stdout_path]))
         pid = integration.spawn_suite_process(test_files, log_paths)
-        wait_result = integration.method(:wait_with_timeout).call(pid, timeout)
+        wait_result = integration.wait_with_timeout(pid, timeout)
         integration.build_result(wait_result, log_paths)
       ensure
         if pid
-          integration.method(:cleanup_process_group).call(pid) unless wait_result == :timeout
-          integration.method(:reap_child).call(pid) if wait_result.nil?
+          integration.cleanup_process_group(pid) unless wait_result == :timeout
+          integration.reap_child(pid) if wait_result.nil?
         end
       end
 
@@ -46,8 +46,8 @@ module Henitai
       def finalize_mutant_run(integration, pid, wait_result)
         return unless pid
 
-        integration.method(:cleanup_process_group).call(pid) unless wait_result == :timeout
-        integration.method(:reap_child).call(pid) if wait_result.nil?
+        integration.cleanup_process_group(pid) unless wait_result == :timeout
+        integration.reap_child(pid) if wait_result.nil?
       end
 
       def mutant_log_name(mutant)
