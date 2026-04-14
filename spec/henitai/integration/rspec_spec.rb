@@ -23,26 +23,44 @@ RSpec.describe Henitai::Integration::Rspec do
     path
   end
 
-  # rubocop:disable Metrics/AbcSize
   def stub_suite_run(integration, pid:, wait_result:, build_result:)
     record = { wait_args: nil, cleanup: [], reap: [] }
 
+    stub_suite_spawn(pid)
+    stub_suite_wait(integration, record, wait_result)
+    stub_suite_result(integration, build_result)
+    stub_suite_cleanup(integration, record)
+    stub_suite_reap(integration, record)
+
+    record
+  end
+
+  def stub_suite_spawn(pid)
     allow(Process).to receive(:spawn).and_return(pid)
+  end
+
+  def stub_suite_wait(integration, record, wait_result)
     allow(integration).to receive(:wait_with_timeout) do |spawned_pid, timeout|
       record[:wait_args] = [spawned_pid, timeout]
       wait_result
     end
+  end
+
+  def stub_suite_result(integration, build_result)
     allow(integration).to receive(:build_result).and_return(build_result)
+  end
+
+  def stub_suite_cleanup(integration, record)
     allow(integration).to receive(:cleanup_process_group) do |value|
       record[:cleanup] << value
     end
+  end
+
+  def stub_suite_reap(integration, record)
     allow(integration).to receive(:reap_child) do |value|
       record[:reap] << value
     end
-
-    record
   end
-  # rubocop:enable Metrics/AbcSize
 
   def mutant_log_paths(name)
     {
@@ -1560,21 +1578,6 @@ RSpec.describe Henitai::Integration::Rspec do
       stderr_path: "reports/mutation-logs/baseline.stderr.log",
       log_path: "reports/mutation-logs/baseline.log"
     )
-  end
-
-  it "returns timeout for a timeout wait result and not for a successful wait result" do
-    integration = described_class.new
-    success_result = Struct.new(:success?).new(true)
-
-    expect(
-      [
-        integration.send(:scenario_status, :timeout),
-        integration.send(:scenario_status, success_result)
-      ]
-    ).to eq(%i[
-              timeout
-              survived
-            ])
   end
 
   it "formats combined logs without empty sections" do

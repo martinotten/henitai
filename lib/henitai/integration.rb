@@ -314,33 +314,16 @@ module Henitai
       end
 
       def build_result(wait_result, log_paths)
-        status = scenario_status(wait_result)
         stdout = read_log_file(log_paths[:stdout_path])
         stderr = read_log_file(log_paths[:stderr_path])
         write_combined_log(log_paths[:log_path], stdout, stderr)
 
-        ScenarioExecutionResult.new(
-          status:,
+        ScenarioExecutionResult.build(
+          wait_result:,
           stdout:,
           stderr:,
-          log_path: log_paths[:log_path],
-          exit_status: exit_status_for(wait_result)
+          log_path: log_paths[:log_path]
         )
-      end
-
-      def scenario_status(wait_result)
-        return :timeout if wait_result == :timeout
-        return :compile_error if exit_status_for(wait_result) == 2
-        return :survived if wait_result.respond_to?(:success?) && wait_result.success?
-
-        :killed
-      end
-
-      def exit_status_for(wait_result)
-        return nil if wait_result == :timeout
-        return nil unless wait_result.respond_to?(:exitstatus)
-
-        wait_result.exitstatus
       end
 
       def spec_files

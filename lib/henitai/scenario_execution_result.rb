@@ -5,6 +5,16 @@ module Henitai
   class ScenarioExecutionResult
     attr_reader :status, :stdout, :stderr, :exit_status, :log_path
 
+    def self.build(wait_result:, stdout:, stderr:, log_path:)
+      new(
+        status: status_for(wait_result),
+        stdout: stdout,
+        stderr: stderr,
+        log_path: log_path,
+        exit_status: exit_status_for(wait_result)
+      )
+    end
+
     def initialize(status:, stdout:, stderr:, log_path:, exit_status: nil)
       @status = status
       @stdout = stdout.to_s
@@ -63,6 +73,25 @@ module Henitai
     end
 
     private
+
+    class << self
+      private
+
+      def status_for(wait_result)
+        return :timeout if wait_result == :timeout
+        return :compile_error if exit_status_for(wait_result) == 2
+        return :survived if wait_result.respond_to?(:success?) && wait_result.success?
+
+        :killed
+      end
+
+      def exit_status_for(wait_result)
+        return nil if wait_result == :timeout
+        return nil unless wait_result.respond_to?(:exitstatus)
+
+        wait_result.exitstatus
+      end
+    end
 
     def stream_section(name, content)
       "#{name}:\n#{content}"
