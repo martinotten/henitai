@@ -27,7 +27,8 @@ module Henitai
       private
 
       def mutate_plain_string(node, subject:)
-        REPLACEMENTS.map do |replacement|
+        original_value = node.children.first
+        REPLACEMENTS.reject { |r| r == original_value }.map do |replacement|
           build_mutant(
             subject:,
             original_node: node,

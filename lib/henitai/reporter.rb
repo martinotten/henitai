@@ -126,11 +126,23 @@ module Henitai
       end
 
       def original_line(mutant)
-        format("- %s", safe_unparse(mutant.original_node))
+        format("- %s", display_unparse(mutant.original_node))
       end
 
       def mutated_line(mutant)
-        format("+ %s", safe_unparse(mutant.mutated_node))
+        format("+ %s", display_unparse(mutant.mutated_node))
+      end
+
+      # Like safe_unparse but makes invisible characters visible in terminal
+      # output. For string literal nodes the inner value is shown via #inspect
+      # so that e.g. "" vs " " vs "\n" are unambiguous. Other nodes unparse
+      # normally.
+      def display_unparse(node)
+        if node.is_a?(Parser::AST::Node) && node.type == :str
+          node.children.first.inspect
+        else
+          safe_unparse(node)
+        end
       end
 
       def score_line(result)
