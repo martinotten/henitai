@@ -19,7 +19,9 @@ module Henitai
     private
 
     def equivalent_mutation?(mutant)
-      equivalent_arithmetic_mutation?(mutant) || equivalent_logical_mutation?(mutant)
+      equivalent_arithmetic_mutation?(mutant) ||
+        equivalent_logical_mutation?(mutant) ||
+        equivalent_singleton_equality_mutation?(mutant)
     end
 
     def equivalent_arithmetic_mutation?(mutant)
@@ -135,6 +137,57 @@ module Henitai
       else
         false
       end
+    end
+
+    # Detects `lhs == <singleton>` mutated to `lhs.equal?(<singleton>)` (or the
+    # reverse).  The two forms are semantically identical whenever the RHS is a
+    # Ruby singleton: a Symbol, nil, true, false, or an Integer literal.
+    #
+    # Rationale by type:
+    #   Symbol  – interned; only one instance of :foo ever exists in a process.
+    #   nil/true/false – singletons by language specification.
+    #   Integer – immediate values in MRI/YARV; `1.equal?(1)` is always true.
+    def equivalent_singleton_equality_mutation?(mutant)
+      original = mutant.original_node
+      mutated  = mutant.mutated_node
+
+      equality_send?(original) && equality_send?(mutated) &&
+        same_receiver?(original, mutated) &&
+        singleton_rhs_match?(original, mutated) &&
+        equality_operators?(original.children[1], mutated.children[1])
+    end
+
+    def singleton_rhs_match?(original, mutated)
+      rhs = original.children[2]
+      singleton_literal?(rhs) && same_node?(rhs, mutated.children[2])
+    end
+
+    def equality_send?(node)
+      node.is_a?(Parser::AST::Node) &&
+        node.type == :send &&
+        node.children.size == 3 &&
+        equality_operator?(node.children[1])
+    end
+
+    def equality_operator?(operator)
+      %i[== equal?].include?(operator)
+    end
+
+    def equality_operators?(op_a, op_b)
+      equality_operator?(op_a) && equality_operator?(op_b) && op_a != op_b
+    end
+
+    # Returns true for AST nodes that represent Ruby singleton values:
+    # symbols, nil, true, false, and integer literals.
+    def singleton_literal?(node)
+      return false unless node.is_a?(Parser::AST::Node)
+
+      # rubocop:disable Lint/BooleanSymbol
+      case node.type
+      when :sym, :nil, :true, :false, :int then true
+      else false
+      end
+      # rubocop:enable Lint/BooleanSymbol
     end
 
     def same_node?(left, right)

@@ -246,4 +246,127 @@ RSpec.describe Henitai::EquivalenceDetector do
 
     expect(mutant.status).to eq(:equivalent)
   end
+
+  # ---------------------------------------------------------------------------
+  # Singleton equality: == <-> equal? on singleton RHS
+  # ---------------------------------------------------------------------------
+
+  def sym(name)
+    Parser::AST::Node.new(:sym, [name])
+  end
+
+  def nil_node
+    Parser::AST::Node.new(:nil, [])
+  end
+
+  it "marks `lhs == :sym` mutated to `lhs.equal?(:sym)` as equivalent" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:result), :==, sym(:timeout)),
+      mutated_node: binary_send(lvar(:result), :equal?, sym(:timeout))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:equivalent)
+  end
+
+  it "marks `lhs.equal?(:sym)` mutated to `lhs == :sym` as equivalent" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:result), :equal?, sym(:timeout)),
+      mutated_node: binary_send(lvar(:result), :==, sym(:timeout))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:equivalent)
+  end
+
+  it "marks `lhs == nil` mutated to `lhs.equal?(nil)` as equivalent" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:x), :==, nil_node),
+      mutated_node: binary_send(lvar(:x), :equal?, nil_node)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:equivalent)
+  end
+
+  it "marks `lhs == true` mutated to `lhs.equal?(true)` as equivalent" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:flag), :==, boolean(true)),
+      mutated_node: binary_send(lvar(:flag), :equal?, boolean(true))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:equivalent)
+  end
+
+  it "marks `lhs == false` mutated to `lhs.equal?(false)` as equivalent" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:flag), :==, boolean(false)),
+      mutated_node: binary_send(lvar(:flag), :equal?, boolean(false))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:equivalent)
+  end
+
+  it "marks `lhs == 42` mutated to `lhs.equal?(42)` as equivalent" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:code), :==, int(42)),
+      mutated_node: binary_send(lvar(:code), :equal?, int(42))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:equivalent)
+  end
+
+  it "keeps `lhs == rhs` mutated to `lhs.equal?(rhs)` pending when rhs is a string literal" do
+    string_node = Parser::AST::Node.new(:str, ["hello"])
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:x), :==, string_node),
+      mutated_node: binary_send(lvar(:x), :equal?, string_node)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps `lhs == rhs` mutated to `lhs.equal?(rhs)` pending when rhs is a variable" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:x), :==, lvar(:other)),
+      mutated_node: binary_send(lvar(:x), :equal?, lvar(:other))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps `lhs == :sym` mutated to `lhs.equal?(:other)` pending when symbols differ" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:x), :==, sym(:foo)),
+      mutated_node: binary_send(lvar(:x), :equal?, sym(:bar))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps `lhs == :sym` mutated to `lhs.equal?(:sym)` pending when receivers differ" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:x), :==, sym(:foo)),
+      mutated_node: binary_send(lvar(:y), :equal?, sym(:foo))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
 end
