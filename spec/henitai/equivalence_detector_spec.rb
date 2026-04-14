@@ -38,15 +38,43 @@ RSpec.describe Henitai::EquivalenceDetector do
     Parser::AST::Node.new(:csend, [receiver, operator, operand])
   end
 
+  def malformed_zero_node
+    Parser::AST::Node.new(:str, [0])
+  end
+
+  def malformed_one_node
+    Parser::AST::Node.new(:sym, [1])
+  end
+
+  def duck_false_node
+    # Parser uses :true / :false node types, so the AST symbols are intentional.
+    # rubocop:disable Lint/BooleanSymbol
+    Struct.new(:type, :children).new(:false, [])
+    # rubocop:enable Lint/BooleanSymbol
+  end
+
+  def duck_true_node
+    # Parser uses :true / :false node types, so the AST symbols are intentional.
+    # rubocop:disable Lint/BooleanSymbol
+    Struct.new(:type, :children).new(:true, [])
+    # rubocop:enable Lint/BooleanSymbol
+  end
+
+  def wrong_type_ast_node
+    Parser::AST::Node.new(:sym, [])
+  end
+
   it "marks addition and subtraction by zero as equivalent" do
     mutant = build_mutant(
       original_node: binary_send(lvar(:value), :+, int(0)),
       mutated_node: binary_send(lvar(:value), :-, int(0))
     )
 
-    described_class.new.analyze(mutant)
-
-    expect(mutant.status).to eq(:equivalent)
+    aggregate_failures do
+      result = described_class.new.analyze(mutant)
+      expect(result).to equal(mutant)
+      expect(mutant.status).to eq(:equivalent)
+    end
   end
 
   it "marks multiplication and division by one as equivalent" do
@@ -86,6 +114,17 @@ RSpec.describe Henitai::EquivalenceDetector do
     mutant = build_mutant(
       original_node: binary_send(lvar(:value), :+, int(0)),
       mutated_node: int(0)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps arithmetic mutants pending when the original node is not binary" do
+    mutant = build_mutant(
+      original_node: lvar(:value),
+      mutated_node: binary_send(lvar(:value), :+, int(0))
     )
 
     described_class.new.analyze(mutant)
@@ -203,6 +242,28 @@ RSpec.describe Henitai::EquivalenceDetector do
     expect(detector.send(:zero_operand?, malformed)).to be(false)
   end
 
+  it "keeps additive mutants pending with a malformed zero-like operand" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:value), :+, malformed_zero_node),
+      mutated_node: binary_send(lvar(:value), :-, malformed_zero_node)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps multiplicative mutants pending with a malformed one-like operand" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:value), :*, malformed_one_node),
+      mutated_node: binary_send(lvar(:value), :/, malformed_one_node)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
   it "marks disjunctions with false as equivalent when collapsed to the lhs" do
     mutant = build_mutant(
       original_node: Parser::AST::Node.new(:or, [lvar(:value), boolean(false)]),
@@ -257,6 +318,20 @@ RSpec.describe Henitai::EquivalenceDetector do
 
   def nil_node
     Parser::AST::Node.new(:nil, [])
+  end
+
+  def malformed_false_node
+    # Parser uses :true / :false node types, so the AST symbols are intentional.
+    # rubocop:disable Lint/BooleanSymbol
+    Parser::AST::Node.new(:false, [lvar(:unexpected)])
+    # rubocop:enable Lint/BooleanSymbol
+  end
+
+  def malformed_true_node
+    # Parser uses :true / :false node types, so the AST symbols are intentional.
+    # rubocop:disable Lint/BooleanSymbol
+    Parser::AST::Node.new(:true, [lvar(:unexpected)])
+    # rubocop:enable Lint/BooleanSymbol
   end
 
   it "marks `:sym == :sym` mutated to `:sym.equal?(:sym)` as equivalent" do
@@ -318,6 +393,110 @@ RSpec.describe Henitai::EquivalenceDetector do
     mutant = build_mutant(
       original_node: binary_send(int(10**100), :==, int(10**100)),
       mutated_node: binary_send(int(10**100), :equal?, int(10**100))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps a same-operator singleton comparison pending" do
+    mutant = build_mutant(
+      original_node: binary_send(sym(:ok), :==, sym(:ok)),
+      mutated_node: binary_send(sym(:ok), :==, sym(:ok))
+    )
+
+    aggregate_failures do
+      result = described_class.new.analyze(mutant)
+      expect(result).to equal(mutant)
+      expect(mutant.status).to eq(:pending)
+    end
+  end
+
+  it "keeps equality mutants pending when the receiver is not a singleton literal" do
+    receiver = Object.new
+    mutant = build_mutant(
+      original_node: binary_send(receiver, :==, receiver),
+      mutated_node: binary_send(receiver, :equal?, receiver)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps equality sends with extra arguments pending" do
+    receiver = sym(:ok)
+    extra_argument = sym(:extra)
+    mutant = build_mutant(
+      original_node: Parser::AST::Node.new(:send, [receiver, :==, receiver, extra_argument]),
+      mutated_node: Parser::AST::Node.new(:send, [receiver, :equal?, receiver, extra_argument])
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps disjunctions with malformed false-like operands pending" do
+    mutant = build_mutant(
+      original_node: Parser::AST::Node.new(:or, [malformed_false_node, lvar(:value)]),
+      mutated_node: lvar(:value)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps disjunctions with duck-typed false-like operands pending" do
+    mutant = build_mutant(
+      original_node: Parser::AST::Node.new(:or, [duck_false_node, lvar(:value)]),
+      mutated_node: lvar(:value)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps disjunctions with wrong-type AST operands pending" do
+    mutant = build_mutant(
+      original_node: Parser::AST::Node.new(:or, [wrong_type_ast_node, lvar(:value)]),
+      mutated_node: lvar(:value)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps conjunctions with malformed true-like operands pending" do
+    mutant = build_mutant(
+      original_node: Parser::AST::Node.new(:and, [malformed_true_node, lvar(:value)]),
+      mutated_node: lvar(:value)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps conjunctions with duck-typed true-like operands pending" do
+    mutant = build_mutant(
+      original_node: Parser::AST::Node.new(:and, [duck_true_node, lvar(:value)]),
+      mutated_node: lvar(:value)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps conjunctions with wrong-type AST operands pending" do
+    mutant = build_mutant(
+      original_node: Parser::AST::Node.new(:and, [wrong_type_ast_node, lvar(:value)]),
+      mutated_node: lvar(:value)
     )
 
     described_class.new.analyze(mutant)
