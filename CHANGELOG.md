@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-04-14
+
+### Fixed
+- Minitest is no longer required eagerly when `henitai/integration` loads, so
+  projects that do not include Minitest in their bundle can still boot and use
+  non-Minitest integrations without a parent-process `LoadError`
+
 ## [0.1.5] - 2026-04-14
 
 ### Fixed
@@ -159,7 +166,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI critical path: `henitai run` now executes the full pipeline, supports `--since`, returns CI-friendly exit codes, and `henitai version` prints `Henitai::VERSION`
 - RSpec per-test coverage output: `henitai/coverage_formatter` now writes `coverage/henitai_per_test.json`
 
-[Unreleased]: https://github.com/martinotten/henitai/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/martinotten/henitai/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/martinotten/henitai/compare/v0.1.5...v0.1.6
+[0.1.5]: https://github.com/martinotten/henitai/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/martinotten/henitai/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/martinotten/henitai/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/martinotten/henitai/compare/v0.1.1...v0.1.2
