@@ -38,6 +38,69 @@ RSpec.describe Henitai::CoverageBootstrapper do
     )
   end
 
+  def build_scoped_bootstrap_workspace(dir)
+    paths = bootstrap_workspace_paths(dir)
+    write_bootstrap_workspace(paths)
+    paths
+  end
+
+  def bootstrap_workspace_paths(dir)
+    {
+      source_a: File.join(dir, "lib/a.rb"),
+      source_b: File.join(dir, "lib/b.rb"),
+      scoped_spec: File.join(dir, "spec/scoped_spec.rb"),
+      full_spec: File.join(dir, "spec/full_spec.rb"),
+      report: File.join(dir, "reports/coverage/.resultset.json"),
+      per_test_report: File.join(dir, "reports/henitai_per_test.json")
+    }
+  end
+
+  def write_bootstrap_workspace(paths)
+    create_workspace_directories(paths)
+    write_workspace_source_files(paths)
+    write_workspace_reports(paths)
+  end
+
+  def create_workspace_directories(paths)
+    FileUtils.mkdir_p(File.dirname(paths[:source_a]))
+    FileUtils.mkdir_p(File.dirname(paths[:scoped_spec]))
+    FileUtils.mkdir_p(File.dirname(paths[:report]))
+  end
+
+  def write_workspace_source_files(paths)
+    File.write(paths[:source_a], "class A; end")
+    File.write(paths[:source_b], "class B; end")
+    File.write(paths[:scoped_spec], "# scoped spec")
+    File.write(paths[:full_spec], "# full spec")
+  end
+
+  def write_workspace_reports(paths)
+    sleep 0.01
+    File.write(paths[:report], "{}")
+    File.write(paths[:per_test_report], "{}")
+  end
+
+  def build_scoped_bootstrap_integration(scoped_spec, full_spec)
+    instance_double(
+      Henitai::Integration::Rspec,
+      test_files: [scoped_spec, full_spec],
+      run_suite: :survived,
+      per_test_coverage_supported?: true
+    )
+  end
+
+  def stub_scoped_bootstrap_coverage(static_filter, source_a, source_b)
+    allow(static_filter).to receive(:coverage_lines_for).and_return(
+      {},
+      { File.expand_path(source_a) => [1] },
+      { File.expand_path(source_a) => [1] },
+      {
+        File.expand_path(source_a) => [1],
+        File.expand_path(source_b) => [1]
+      }
+    )
+  end
+
   it "sets a dedicated coverage dir while bootstrapping the suite" do
     static_filter = instance_double(Henitai::StaticFilter)
     integration = build_integration(
@@ -471,6 +534,51 @@ RSpec.describe Henitai::CoverageBootstrapper do
         bootstrapper.ensure!(source_files: [source, ghost], config:, integration:)
 
         expect(integration).to have_received(:run_suite)
+      end
+    end
+
+    it "reruns the full suite when a scoped bootstrap only covers part of the sources" do
+      Dir.mktmpdir do |dir|
+        workspace = build_scoped_bootstrap_workspace(dir)
+        config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
+        static_filter = instance_double(Henitai::StaticFilter)
+        integration = build_scoped_bootstrap_integration(
+          workspace[:scoped_spec],
+          workspace[:full_spec]
+        )
+        bootstrapper = build_bootstrapper(static_filter:)
+
+        stub_scoped_bootstrap_coverage(
+          static_filter,
+          workspace[:source_a],
+          workspace[:source_b]
+        )
+        allow(bootstrapper).to receive(:per_test_coverage_fresh?).and_return(true)
+        calls = []
+        allow(integration).to receive(:run_suite) do |test_files|
+          calls << test_files
+          :survived
+        end
+
+        bootstrapper.ensure!(
+          source_files: [workspace[:source_a], workspace[:source_b]],
+          config:,
+          integration:,
+          test_files: [workspace[:scoped_spec]]
+        )
+
+        bootstrapper.ensure!(
+          source_files: [workspace[:source_a], workspace[:source_b]],
+          config:,
+          integration:
+        )
+
+        expect(calls).to eq(
+          [
+            [workspace[:scoped_spec]],
+            [workspace[:scoped_spec], workspace[:full_spec]]
+          ]
+        )
       end
     end
   end

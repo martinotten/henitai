@@ -27,7 +27,7 @@ module Henitai
         bootstrap_coverage(integration, config, test_files)
       end
 
-      return if coverage_available?(source_files, config)
+      return if coverage_available?(source_files, config, test_files)
 
       raise CoverageError,
             "Coverage data is unavailable for the configured source files"
@@ -37,22 +37,35 @@ module Henitai
 
     attr_reader :static_filter
 
-    def coverage_available?(source_files, config)
+    def coverage_available?(source_files, config, test_files)
       coverage_lines = static_filter.coverage_lines_for(config)
+      covered_sources = covered_source_files(source_files, coverage_lines)
+      existing_sources = existing_source_file_paths(source_files)
 
-      source_file_paths(source_files).any? do |path|
-        Array(coverage_lines[path]).any?
-      end
+      return covered_sources.any? if existing_sources.empty?
+      return covered_sources.any? if test_files
+
+      covered_sources == existing_sources
     end
 
     def coverage_ready?(source_files, config, integration, test_files)
       coverage_fresh?(source_files, config, integration, test_files) &&
-        coverage_available?(source_files, config) &&
+        coverage_available?(source_files, config, test_files) &&
         per_test_coverage_ready?(source_files, config, integration, test_files)
+    end
+
+    def covered_source_files(source_files, coverage_lines)
+      source_file_paths(source_files).select do |path|
+        Array(coverage_lines[path]).any?
+      end
     end
 
     def source_file_paths(source_files)
       Array(source_files).map { |path| File.expand_path(path) }
+    end
+
+    def existing_source_file_paths(source_files)
+      source_file_paths(source_files).select { |path| File.exist?(path) }
     end
 
     # Returns true when a coverage report already exists and is newer than
