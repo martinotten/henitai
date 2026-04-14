@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-04-14
+
+### Fixed
+- Steep type errors in `Runner` after removing targeted-run bootstrap scoping:
+  updated `bootstrap_mutants` RBS signature to match the new single-argument
+  form and removed stale signatures for `refresh_coverage_for_targeted_run`,
+  `scoped_bootstrap_test_files`, `targeted_run?`, and `retry_full_bootstrap?`
+- `RSpec/ExampleLength` offense in `coverage_bootstrapper_spec.rb` — extracted
+  workspace setup and report writing into helper methods
+
+### Changed
+- Targeted-run coverage bootstrap no longer scopes the initial run to the
+  subject's test files; the full suite is always used for the baseline,
+  trading a minor performance optimisation for reliability
+
 ## [0.1.4] - 2026-04-14
 
 ### Fixed
