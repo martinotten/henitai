@@ -12,7 +12,9 @@ end
 
 require_relative "support/warning_silencer"
 require "henitai"
-Dir[File.join(__dir__, "support/**/*.rb")].each { |path| require path }
+Dir[File.join(__dir__, "support/**/*.rb")]
+  .reject { |path| path.end_with?("_spec.rb") }
+  .each { |path| require path }
 
 SimpleCov.print_error_status = false
 SimpleCov.formatters = [SimpleCov::Formatter::QuietHTMLFormatter]

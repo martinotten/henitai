@@ -1,0 +1,10 @@
+includes:
+  - lib
+integration:
+  name: minitest
+reporters:
+  - json
+reports_dir: reports
+thresholds:
+  high: 100
+  low: 100

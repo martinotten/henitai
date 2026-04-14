@@ -33,6 +33,9 @@ jobs:
       - name: Run specs
         run: bundle exec rspec
 
+      - name: Run integration smoke projects
+        run: bundle exec rake smoke:integration:all
+
   mutation:
     name: Mutation Testing (incremental)
     runs-on: ubuntu-latest

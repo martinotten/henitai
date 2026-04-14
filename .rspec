@@ -1,0 +1,2 @@
+--pattern spec/**/*_spec.rb
+--exclude-pattern spec/fixtures/**/*_spec.rb

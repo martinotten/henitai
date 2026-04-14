@@ -162,10 +162,15 @@ git clone https://github.com/martinotten/henitai
 cd henitai
 bundle install
 bundle exec rspec        # run tests
+bundle exec rake smoke:integration:all # run rspec/minitest integration smoke projects
 bundle exec rubocop      # lint
 bundle exec henitai clean # remove stale generated report artifacts
 bundle exec henitai run  # dogfood
 ```
+
+Framework integration smoke projects live under `spec/fixtures/integration_smoke/`
+and exercise `henitai` against small RSpec and Minitest apps via the local path
+dependency.
 
 A Dev Container configuration is included (`.devcontainer/`) for VS Code with the official `ruby:4`
 image, the Codex CLI, and RTK preinstalled. Codex support is bootstrapped with

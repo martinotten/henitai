@@ -78,8 +78,8 @@ module Henitai
       def restore_child_output(output_files)
         reopen_child_output_stream(stdout_stream, output_files[:original_stdout])
         reopen_child_output_stream(stderr_stream, output_files[:original_stderr])
-        $stdout = output_files[:original_stdout]
-        $stderr = output_files[:original_stderr]
+        $stdout = stdout_stream
+        $stderr = stderr_stream
       end
 
       def reopen_child_output_stream(stream, original_stream)

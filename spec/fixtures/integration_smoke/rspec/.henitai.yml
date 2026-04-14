@@ -1,0 +1,10 @@
+includes:
+  - lib
+integration:
+  name: rspec
+reporters:
+  - json
+reports_dir: reports
+thresholds:
+  high: 100
+  low: 100
