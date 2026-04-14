@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-04-14
+
+### Added
+- Committed integration smoke projects for RSpec and Minitest, runnable via
+  `bundle exec rake smoke:integration:all`, to exercise `henitai` against
+  small real projects that depend on the local source checkout
+
+### Fixed
+- Child-process stdout/stderr restoration after captured test runs now keeps
+  the standard streams usable, preventing passing mutant executions from being
+  misclassified because the child exited with a closed stdio handle
+- Root `bundle exec rspec` no longer picks up the committed smoke fixture spec
+  files, and `spec/spec_helper.rb` no longer auto-requires support specs during
+  suite boot
+
 ## [0.1.6] - 2026-04-14
 
 ### Fixed
@@ -166,7 +181,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI critical path: `henitai run` now executes the full pipeline, supports `--since`, returns CI-friendly exit codes, and `henitai version` prints `Henitai::VERSION`
 - RSpec per-test coverage output: `henitai/coverage_formatter` now writes `coverage/henitai_per_test.json`
 
-[Unreleased]: https://github.com/martinotten/henitai/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/martinotten/henitai/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/martinotten/henitai/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/martinotten/henitai/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/martinotten/henitai/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/martinotten/henitai/compare/v0.1.3...v0.1.4
