@@ -28,6 +28,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     perl \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g @openai/codex \
+    && curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh \
+    && ln -s /root/.local/bin/rtk /usr/local/bin/rtk \
     && groupadd --gid ${USER_GID} ${USERNAME} \
     && useradd --uid ${USER_UID} --gid ${USER_GID} -m -s /bin/bash ${USERNAME}
 

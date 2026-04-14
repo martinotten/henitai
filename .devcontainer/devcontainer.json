@@ -24,7 +24,7 @@
       }
     }
   },
-  "postCreateCommand": "bundle install",
+  "postCreateCommand": "bundle install && rtk init -g --codex --auto-patch",
   "remoteEnv": {
     "BUNDLE_PATH": "/usr/local/bundle"
   },

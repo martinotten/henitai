@@ -167,7 +167,9 @@ bundle exec henitai clean # remove stale generated report artifacts
 bundle exec henitai run  # dogfood
 ```
 
-A Dev Container configuration is included (`.devcontainer/`) for VS Code with the official `ruby:4.0.2-alpine` image and the Codex CLI preinstalled.
+A Dev Container configuration is included (`.devcontainer/`) for VS Code with the official `ruby:4`
+image, the Codex CLI, and RTK preinstalled. Codex support is bootstrapped with
+`rtk init -g --codex --auto-patch` during container creation.
 
 ## Architecture
 
