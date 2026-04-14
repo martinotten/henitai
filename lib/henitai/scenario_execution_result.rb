@@ -61,11 +61,11 @@ module Henitai
       log_text.lines.last(lines).join
     end
 
-    def should_show_logs?(all_logs: false)
+    def should_show_logs?(all_logs: nil)
       all_logs || timeout?
     end
 
-    def failure_tail(all_logs: false, lines: 12)
+    def failure_tail(all_logs: nil, lines: 12)
       return combined_output if all_logs
       return "" unless should_show_logs?(all_logs:)
 

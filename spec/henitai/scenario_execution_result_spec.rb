@@ -12,6 +12,16 @@ RSpec.describe Henitai::ScenarioExecutionResult do
     Struct.new(:success?, :exitstatus).new(success, exitstatus)
   end
 
+  def build_exitstatus_only_result(exitstatus)
+    Struct.new(:exitstatus).new(exitstatus)
+  end
+
+  def write_log_file(dir, lines)
+    path = File.join(dir, "run.log")
+    File.write(path, "#{lines.join("\n")}\n")
+    path
+  end
+
   it "builds a timeout result from a timeout wait result" do
     result = described_class.build(
       wait_result: :timeout,
@@ -80,6 +90,23 @@ RSpec.describe Henitai::ScenarioExecutionResult do
     )
   end
 
+  it "builds a killed result from a non-timeout wait result with exit status 3" do
+    result = described_class.build(
+      wait_result: build_exitstatus_only_result(3),
+      stdout: "stdout",
+      stderr: "stderr",
+      log_path: "/tmp/run.log"
+    )
+
+    expect(result).to have_attributes(
+      status: :killed,
+      exit_status: 3,
+      stdout: "stdout",
+      stderr: "stderr",
+      log_path: "/tmp/run.log"
+    )
+  end
+
   it "equals another result with the same status" do
     a = build_result(:survived)
     b = build_result(:survived)
@@ -100,6 +127,12 @@ RSpec.describe Henitai::ScenarioExecutionResult do
 
   it "does not equal the timeout symbol when the status is killed" do
     expect(build_result(:killed)).not_to eq(:timeout)
+  end
+
+  it "equals another object that exposes a matching status" do
+    other = Struct.new(:status).new(:survived)
+
+    expect(build_result(:survived) == other).to be(true)
   end
 
   it "does not equal a different result status that sorts after the current one" do
@@ -173,10 +206,38 @@ RSpec.describe Henitai::ScenarioExecutionResult do
     expect(result.failure_tail(all_logs: true)).to eq(result.combined_output)
   end
 
+  it "returns the combined output for all_logs even when a log file exists" do
+    Dir.mktmpdir do |dir|
+      path = write_log_file(dir, ["line 1", "line 2", "line 3", "line 4"])
+      result = described_class.new(
+        status: :killed,
+        stdout: "stdout content",
+        stderr: "stderr content",
+        log_path: path
+      )
+
+      expect(result.failure_tail(all_logs: true)).to eq(result.combined_output)
+    end
+  end
+
   it "returns an empty failure tail for non-timeout results" do
     result = build_result(:survived, stdout: "stdout content", stderr: "stderr content")
 
     expect(result.failure_tail).to eq("")
+  end
+
+  it "returns an empty failure tail for non-timeout results even when a log file exists" do
+    Dir.mktmpdir do |dir|
+      path = write_log_file(dir, ["line 1", "line 2", "line 3", "line 4"])
+      result = described_class.new(
+        status: :survived,
+        stdout: "stdout content",
+        stderr: "stderr content",
+        log_path: path
+      )
+
+      expect(result.failure_tail).to eq("")
+    end
   end
 
   it "returns the tail for timeout results when all_logs is omitted" do
@@ -187,5 +248,38 @@ RSpec.describe Henitai::ScenarioExecutionResult do
     )
 
     expect(result.failure_tail).to eq(result.tail)
+  end
+
+  it "returns the log tail for timeout results when all_logs is omitted and a log file exists" do
+    Dir.mktmpdir do |dir|
+      path = write_log_file(
+        dir,
+        [
+          "line 1",
+          "line 2",
+          "line 3",
+          "line 4",
+          "line 5",
+          "line 6",
+          "line 7",
+          "line 8",
+          "line 9",
+          "line 10",
+          "line 11",
+          "line 12",
+          "line 13"
+        ]
+      )
+      result = described_class.new(
+        status: :timeout,
+        stdout: "stdout content",
+        stderr: "stderr content",
+        log_path: path
+      )
+
+      expect(result.failure_tail).to eq(
+        "line 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\n"
+      )
+    end
   end
 end
