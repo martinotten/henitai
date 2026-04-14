@@ -16,6 +16,36 @@ RSpec.describe Henitai::ScenarioExecutionResult do
     Struct.new(:exitstatus).new(exitstatus)
   end
 
+  def build_comparable_status(target)
+    Struct.new(:target) do
+      def ==(other)
+        other == target
+      end
+
+      def >=(_other)
+        false
+      end
+    end.new(target)
+  end
+
+  def build_timeout_like_wait_result(exitstatus)
+    Class.new do
+      attr_reader :exitstatus
+
+      def initialize(exitstatus)
+        @exitstatus = exitstatus
+      end
+
+      def ==(other)
+        other == :timeout
+      end
+
+      def <=>(_other)
+        nil
+      end
+    end.new(exitstatus)
+  end
+
   def write_log_file(dir, lines)
     path = File.join(dir, "run.log")
     File.write(path, "#{lines.join("\n")}\n")
@@ -73,6 +103,23 @@ RSpec.describe Henitai::ScenarioExecutionResult do
     )
   end
 
+  it "builds a compile error result from an exit status of 2.0" do
+    result = described_class.build(
+      wait_result: build_wait_result(success: false, exitstatus: 2.0),
+      stdout: "stdout",
+      stderr: "stderr",
+      log_path: "/tmp/run.log"
+    )
+
+    expect(result).to have_attributes(
+      status: :compile_error,
+      exit_status: 2.0,
+      stdout: "stdout",
+      stderr: "stderr",
+      log_path: "/tmp/run.log"
+    )
+  end
+
   it "builds a killed result from a failing wait result" do
     result = described_class.build(
       wait_result: build_wait_result(success: false, exitstatus: 1),
@@ -84,6 +131,40 @@ RSpec.describe Henitai::ScenarioExecutionResult do
     expect(result).to have_attributes(
       status: :killed,
       exit_status: 1,
+      stdout: "stdout",
+      stderr: "stderr",
+      log_path: "/tmp/run.log"
+    )
+  end
+
+  it "builds a killed result when the wait result has no exit status" do
+    result = described_class.build(
+      wait_result: Object.new,
+      stdout: "stdout",
+      stderr: "stderr",
+      log_path: "/tmp/run.log"
+    )
+
+    expect(result).to have_attributes(
+      status: :killed,
+      exit_status: nil,
+      stdout: "stdout",
+      stderr: "stderr",
+      log_path: "/tmp/run.log"
+    )
+  end
+
+  it "builds a timeout result from a timeout-like wait result with an exit status" do
+    result = described_class.build(
+      wait_result: build_timeout_like_wait_result(1),
+      stdout: "stdout",
+      stderr: "stderr",
+      log_path: "/tmp/run.log"
+    )
+
+    expect(result).to have_attributes(
+      status: :timeout,
+      exit_status: nil,
       stdout: "stdout",
       stderr: "stderr",
       log_path: "/tmp/run.log"
@@ -135,8 +216,32 @@ RSpec.describe Henitai::ScenarioExecutionResult do
     expect(build_result(:survived) == other).to be(true)
   end
 
+  it "equals another object that exposes a matching non-symbol status" do
+    other = Struct.new(:status).new(1)
+
+    expect(build_result(1.0) == other).to be(true)
+  end
+
   it "does not equal a different result status that sorts after the current one" do
     expect(build_result(:killed)).not_to eq(build_result(:timeout))
+  end
+
+  it "compares a comparable status object against a timeout symbol" do
+    expect(build_result(build_comparable_status(:timeout)).timeout?).to be(true)
+  end
+
+  it "compares a comparable status object against a matching status object" do
+    other = Struct.new(:status).new(:survived)
+
+    expect(build_result(build_comparable_status(:survived)) == other).to be(true)
+  end
+
+  it "compares a comparable status object against a matching symbol" do
+    expect(build_result(build_comparable_status(:survived)) == :survived).to be(true)
+  end
+
+  it "falls back to Object#== for non-symbol values" do
+    expect(build_result("survived") == "survived").to be(false)
   end
 
   it "reads log_text from the log file when it exists" do

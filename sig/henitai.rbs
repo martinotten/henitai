@@ -112,6 +112,7 @@ module Henitai
     attr_reader exit_status: Integer?
     attr_reader log_path: String
 
+    def self.build: (wait_result: untyped, stdout: String?, stderr: String?, log_path: String) -> ScenarioExecutionResult
     def initialize: (status: Symbol, stdout: String?, stderr: String?, log_path: String, ?exit_status: Integer?) -> void
     def survived?: () -> bool
     def killed?: () -> bool
@@ -121,6 +122,11 @@ module Henitai
     def tail: (?Integer) -> String
     def should_show_logs?: (?all_logs: bool) -> bool
     def failure_tail: (?all_logs: bool, ?lines: Integer) -> String
+
+    private
+
+    def self.status_for: (untyped) -> Symbol
+    def self.exit_status_for: (untyped) -> Integer?
   end
 
   class Subject
@@ -474,6 +480,7 @@ module Henitai
       def survived_mutant_header: (Mutant) -> String
       def original_line: (Mutant) -> String
       def mutated_line: (Mutant) -> String
+      def display_unparse: (untyped) -> String
       def score_line: (Result) -> String
       def format_row: (String, untyped) -> String
       def count_status: (Result, Symbol) -> Integer

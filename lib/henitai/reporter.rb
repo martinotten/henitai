@@ -138,7 +138,7 @@ module Henitai
       # so that e.g. "" vs " " vs "\n" are unambiguous. Other nodes unparse
       # normally.
       def display_unparse(node)
-        if node.is_a?(Parser::AST::Node) && node.type == :str
+        if node.respond_to?(:type) && node.respond_to?(:children) && node.type == :str
           node.children.first.inspect
         else
           safe_unparse(node)
