@@ -209,6 +209,39 @@ RSpec.describe Henitai::Integration::Rspec do
     stub_ordered_wait(integration, order)
   end
 
+  def stub_real_activation_run(integration, child_pid:)
+    stub_child_logging(integration)
+    allow(Process).to receive(:exit)
+    allow(Process).to receive(:fork) do |&block|
+      block.call
+      child_pid
+    end
+    allow(integration).to receive_messages(run_tests: 0, wait_with_timeout: :survived, build_result: :survived)
+    allow(integration).to receive(:cleanup_process_group)
+  end
+
+  def real_activation_source
+    <<~RUBY
+      class IntegrationRealActivationSample
+        def self.value(a, b = 1, *rest, c:, d: 2, **kwrest, &block)
+          a + b
+        end
+      end
+    RUBY
+  end
+
+  def real_activation_spec_source
+    <<~RUBY
+      require_relative "../lib/integration_real_activation_sample"
+
+      RSpec.describe IntegrationRealActivationSample do
+        it "uses the class method" do
+          expect(described_class.value(3, c: 4)).to eq(4)
+        end
+      end
+    RUBY
+  end
+
   def stub_ordered_exit(order)
     allow(Process).to receive(:exit) { |status| order << [:exit, status] }
   end
@@ -886,6 +919,41 @@ RSpec.describe Henitai::Integration::Rspec do
       )
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env
+    end
+  end
+
+  it "activates a real class-method mutant through the public integration API" do
+    with_temp_workspace do |dir|
+      source_path = write_file(dir, "lib/integration_real_activation_sample.rb", real_activation_source)
+      spec_path = write_file(
+        dir,
+        "spec/integration_real_activation_sample_spec.rb",
+        real_activation_spec_source
+      )
+
+      subject = Henitai::SubjectResolver.new.resolve_from_files([source_path]).find do |candidate|
+        candidate.expression == "IntegrationRealActivationSample.value"
+      end
+      mutant = Henitai::MutantGenerator.new.generate(
+        [subject],
+        [Henitai::Operators::ArithmeticOperator.new]
+      ).first
+      integration = described_class.new
+      original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+      begin
+        stub_real_activation_run(integration, child_pid: 12_345)
+
+        integration.run_mutant(
+          mutant:,
+          test_files: [spec_path],
+          timeout: 1.5
+        )
+
+        expect(IntegrationRealActivationSample.value(3, c: 4)).to eq(2)
+      ensure
+        ENV["HENITAI_MUTANT_ID"] = original_env
+      end
     end
   end
 
