@@ -22,14 +22,9 @@ RSpec.describe Henitai::CLI do
   end
 
   def write_minimal_report_artifacts(reports_dir)
-    paths = [
-      File.join(reports_dir, "mutation-logs", "baseline.log"),
-      File.join(reports_dir, "mutation-logs", "baseline.stdout.log"),
-      File.join(reports_dir, "mutation-logs", "baseline.stderr.log"),
-      File.join(reports_dir, "coverage", ".resultset.json"),
-      File.join(reports_dir, "coverage", ".last_run.json"),
-      File.join(reports_dir, "henitai_per_test.json")
-    ]
+    paths = Henitai::CLI::REPORT_CLEANUP_PATHS.map do |relative_path|
+      File.join(reports_dir, *relative_path)
+    end
 
     paths.each do |path|
       FileUtils.mkdir_p(File.dirname(path))

@@ -297,15 +297,8 @@ module Henitai
 
     def report_cleanup_paths(config)
       REPORT_CLEANUP_PATHS.map do |relative_path|
-        File.join(reports_dir_for_cleanup(config), *relative_path)
+        File.join(config.reports_dir, *relative_path)
       end
-    end
-
-    def reports_dir_for_cleanup(config)
-      return "reports" unless config.respond_to?(:reports_dir)
-      return "reports" if config.reports_dir.nil? || config.reports_dir.empty?
-
-      config.reports_dir
     end
 
     def exit_status_for(result, config)
