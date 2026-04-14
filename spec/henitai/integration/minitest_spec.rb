@@ -194,6 +194,61 @@ RSpec.describe Henitai::Integration::Minitest do
     end
   end
 
+  it "uses the baseline log name and wait timeout when running the suite" do
+    integration = described_class.new
+
+    with_temp_workspace do
+      calls = []
+      log_paths = {
+        stdout_path: "reports/mutation-logs/baseline.stdout.log",
+        stderr_path: "reports/mutation-logs/baseline.stderr.log",
+        log_path: "reports/mutation-logs/baseline.log"
+      }
+
+      allow(integration).to receive(:scenario_log_paths) do |name|
+        calls << [:scenario_log_paths, name]
+        log_paths
+      end
+      allow(Process).to receive(:spawn).and_return(4321)
+      allow(integration).to receive(:wait_with_timeout) do |pid, timeout|
+        calls << [:wait_with_timeout, pid, timeout]
+        :timeout
+      end
+      allow(integration).to receive(:build_result).and_return(:timeout)
+
+      integration.run_suite(["test/sample_test.rb"], timeout: 4.0)
+
+      expect(calls).to eq([
+                            [:scenario_log_paths, "baseline"],
+                            [:wait_with_timeout, 4321, 4.0]
+                          ])
+    end
+  end
+
+  it "cleans up and reaps the baseline child when the wait result is nil" do
+    integration = described_class.new
+
+    with_temp_workspace do
+      calls = []
+
+      allow(Process).to receive(:spawn).and_return(4321)
+      allow(integration).to receive_messages(wait_with_timeout: nil, build_result: :survived)
+      allow(integration).to receive(:cleanup_child_process) do |pid|
+        calls << [:cleanup, pid]
+      end
+      allow(integration).to receive(:reap_child) do |pid|
+        calls << [:reap, pid]
+      end
+
+      result = integration.run_suite(["test/sample_test.rb"], timeout: 4.0)
+
+      expect([result, calls]).to eq([
+                                      :survived,
+                                      [[:cleanup, 4321], [:reap, 4321]]
+                                    ])
+    end
+  end
+
   it "requires config/environment.rb only when it exists" do
     integration = described_class.new
     env_file = File.expand_path("config/environment.rb")

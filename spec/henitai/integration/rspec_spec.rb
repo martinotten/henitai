@@ -424,6 +424,27 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  it "spawns the baseline suite in its own process group" do
+    integration = described_class.new
+
+    with_temp_workspace do
+      allow(Process).to receive(:spawn).and_return(4321)
+      allow(integration).to receive(:wait_with_timeout).and_return(
+        Struct.new(:success?, :exitstatus).new(true, 0)
+      )
+
+      integration.run_suite(["spec/foo_spec.rb"])
+
+      expect(Process).to have_received(:spawn).with(
+        integration.send(:subprocess_env),
+        *integration.send(:suite_command, ["spec/foo_spec.rb"]),
+        out: kind_of(File),
+        err: kind_of(File),
+        pgroup: true
+      )
+    end
+  end
+
   it "resolves the rspec and minitest integrations" do
     expect(
       [
