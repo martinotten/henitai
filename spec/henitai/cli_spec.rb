@@ -5,7 +5,7 @@ require "tmpdir"
 require "stringio"
 
 RSpec.describe Henitai::CLI do
-  def write_configuration(dir)
+  def write_configuration(dir, reports_dir: "reports")
     path = File.join(dir, ".henitai.yml")
     File.write(
       path,
@@ -13,11 +13,30 @@ RSpec.describe Henitai::CLI do
         integration:
           name: rspec
         jobs: 2
+        reports_dir: #{reports_dir}
         mutation:
           operators: light
       YAML
     )
     path
+  end
+
+  def write_minimal_report_artifacts(reports_dir)
+    paths = [
+      File.join(reports_dir, "mutation-logs", "baseline.log"),
+      File.join(reports_dir, "mutation-logs", "baseline.stdout.log"),
+      File.join(reports_dir, "mutation-logs", "baseline.stderr.log"),
+      File.join(reports_dir, "coverage", ".resultset.json"),
+      File.join(reports_dir, "coverage", ".last_run.json"),
+      File.join(reports_dir, "henitai_per_test.json")
+    ]
+
+    paths.each do |path|
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, "stale")
+    end
+
+    paths
   end
 
   def configuration_snapshot(config)
@@ -119,6 +138,101 @@ RSpec.describe Henitai::CLI do
     ).to_stdout
   end
 
+  it "removes the minimal generated report artifacts with clean" do
+    Dir.mktmpdir do |dir|
+      reports_dir = File.join(dir, "custom-reports")
+      config_path = write_configuration(dir, reports_dir:)
+      cleanup_paths = write_minimal_report_artifacts(reports_dir)
+      sentinel_path = File.join(reports_dir, "mutation-history.json")
+
+      FileUtils.mkdir_p(reports_dir)
+      File.write(sentinel_path, "keep")
+
+      aggregate_failures do
+        expect do
+          described_class.new(["clean", "--config", config_path]).run
+        end.to output(/Removed 6 generated report artifacts/).to_stdout
+        expect(cleanup_paths.all? { |path| !File.exist?(path) }).to be(true)
+        expect(File).to exist(sentinel_path)
+      end
+    end
+  end
+
+  it "counts only the report artifacts that already exist" do
+    Dir.mktmpdir do |dir|
+      reports_dir = File.join(dir, "custom-reports")
+      config_path = write_configuration(dir, reports_dir:)
+      existing_path = File.join(reports_dir, "mutation-logs", "baseline.log")
+
+      FileUtils.mkdir_p(File.dirname(existing_path))
+      File.write(existing_path, "stale")
+
+      aggregate_failures do
+        expect do
+          described_class.new(["clean", "--config", config_path]).run
+        end.to output(/Removed 1 generated report artifact/).to_stdout
+        expect(File).not_to exist(existing_path)
+      end
+    end
+  end
+
+  it "prints clean help without removing any artifacts" do
+    Dir.mktmpdir do |dir|
+      reports_dir = File.join(dir, "custom-reports")
+      config_path = write_configuration(dir, reports_dir:)
+      cleanup_paths = write_minimal_report_artifacts(reports_dir)
+
+      aggregate_failures do
+        expect do
+          described_class.new(["clean", "--config", config_path, "--help"]).run
+        end.to output(/Usage: henitai clean/).to_stdout
+        expect(cleanup_paths.all? { |path| File.exist?(path) }).to be(true)
+      end
+    end
+  end
+
+  it "exits with a framework error code when clean fails" do
+    cli = described_class.new(["clean", "--config", ".henitai.yml"])
+    cli.define_singleton_method(:exit) do |status = nil|
+      raise "expected exit status 2, got #{status.inspect}" unless status == 2
+    end
+    allow(cli).to receive(:warn)
+    allow(Henitai::Configuration).to receive(:load).and_raise(Henitai::ConfigurationError, "boom")
+
+    cli.run
+
+    expect(cli).to have_received(:warn).with("Henitai::ConfigurationError: boom")
+  end
+
+  it "does not clean report artifacts automatically during run" do
+    Dir.mktmpdir do |dir|
+      reports_dir = File.join(dir, "custom-reports")
+      config_path = write_configuration(dir, reports_dir:)
+      cleanup_paths = write_minimal_report_artifacts(reports_dir)
+      sentinel_path = File.join(reports_dir, "mutation-history.json")
+      runner = build_runner(result: instance_double(Henitai::Result, mutation_score: 100))
+      runner_instantiated = false
+
+      FileUtils.mkdir_p(reports_dir)
+      File.write(sentinel_path, "keep")
+
+      allow(Henitai::Runner).to receive(:new) do |**_kwargs|
+        runner_instantiated = true
+        runner
+      end
+
+      cli = described_class.new(["run", "--config", config_path, "Foo#bar"])
+      cli.define_singleton_method(:exit) { |_status = nil| nil }
+      cli.run
+
+      aggregate_failures do
+        expect(runner_instantiated).to be(true)
+        expect(cleanup_paths.all? { |path| File.exist?(path) }).to be(true)
+        expect(File).to exist(sentinel_path)
+      end
+    end
+  end
+
   it "does not continue the run pipeline after run -v" do
     cli = described_class.new(["run", "-v"])
     allow(Henitai::Runner).to receive(:new).and_raise(
@@ -145,6 +259,10 @@ RSpec.describe Henitai::CLI do
 
   it "prints the help text when no command is given" do
     expect { described_class.new([]).run }.to output(/Hen'i-tai 変異体/).to_stdout
+  end
+
+  it "documents the clean command in the top-level help" do
+    expect { described_class.new([]).run }.to output(/henitai clean \[options\]/).to_stdout
   end
 
   # L181 — VERSION-Interpolation in help_text muss tatsächlich geprüft werden

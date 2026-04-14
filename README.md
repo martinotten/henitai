@@ -163,6 +163,7 @@ cd henitai
 bundle install
 bundle exec rspec        # run tests
 bundle exec rubocop      # lint
+bundle exec henitai clean # remove stale generated report artifacts
 bundle exec henitai run  # dogfood
 ```
 

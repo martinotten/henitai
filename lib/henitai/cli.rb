@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "optparse"
 module Henitai
   # Command-line interface entry point.
@@ -33,6 +34,15 @@ module Henitai
       "thresholds:",
       "  high: 80",
       "  low: 60"
+    ].freeze
+
+    REPORT_CLEANUP_PATHS = [
+      %w[mutation-logs baseline.log],
+      %w[mutation-logs baseline.stdout.log],
+      %w[mutation-logs baseline.stderr.log],
+      %w[coverage .resultset.json],
+      %w[coverage .last_run.json],
+      ["henitai_per_test.json"]
     ].freeze
 
     OPERATOR_METADATA = {
@@ -69,6 +79,7 @@ module Henitai
       command = @argv.shift
       case command
       when "run"     then run_command
+      when "clean"   then clean_command
       when "version" then puts Henitai::VERSION
       when "init"    then init_command
       when "operator" then operator_command
@@ -90,6 +101,18 @@ module Henitai
       config = load_config(options)
       result = run_pipeline(options, config)
       exit(exit_status_for(result, config))
+    rescue StandardError => e
+      handle_run_error(e)
+    end
+
+    def clean_command
+      @command_halted = false
+      options = parse_clean_options
+      return if @command_halted
+
+      config = load_config(options)
+      removed_paths = cleanup_report_artifacts(config)
+      puts clean_summary(removed_paths)
     rescue StandardError => e
       handle_run_error(e)
     end
@@ -137,6 +160,21 @@ module Henitai
         add_operator_option(opts, options)
         add_jobs_option(opts, options)
         add_output_option(opts, options)
+        add_help_option(opts)
+        add_version_option(opts)
+      end
+    end
+
+    def parse_clean_options
+      options = {}
+      build_clean_option_parser(options).parse!(@argv)
+      options
+    end
+
+    def build_clean_option_parser(options)
+      OptionParser.new do |opts|
+        opts.banner = "Usage: henitai clean [options]"
+        add_config_option(opts, options)
         add_help_option(opts)
         add_version_option(opts)
       end
@@ -198,6 +236,7 @@ module Henitai
 
         Usage:
           henitai run [options] [SUBJECT_PATTERN...]
+          henitai clean [options]
           henitai version
           henitai init [PATH]
           henitai operator list
@@ -207,6 +246,7 @@ module Henitai
           bundle exec henitai run --since origin/main
           bundle exec henitai run 'Foo::Bar#my_method'
           bundle exec henitai run 'MyNamespace*' --operators full
+          bundle exec henitai clean
           bundle exec henitai init
           bundle exec henitai operator list
 
@@ -237,6 +277,35 @@ module Henitai
     def handle_run_error(error)
       warn "#{error.class}: #{error.message}"
       exit 2
+    end
+
+    def clean_summary(removed_paths)
+      return "No generated report artifacts to clean" if removed_paths.empty?
+
+      format(
+        "Removed %<count>s generated report artifact%<plural>s",
+        count: removed_paths.length,
+        plural: removed_paths.length == 1 ? "" : "s"
+      )
+    end
+
+    def cleanup_report_artifacts(config)
+      removed_paths = report_cleanup_paths(config).select { |path| File.exist?(path) }
+      removed_paths.each { |path| FileUtils.rm_f(path) }
+      removed_paths
+    end
+
+    def report_cleanup_paths(config)
+      REPORT_CLEANUP_PATHS.map do |relative_path|
+        File.join(reports_dir_for_cleanup(config), *relative_path)
+      end
+    end
+
+    def reports_dir_for_cleanup(config)
+      return "reports" unless config.respond_to?(:reports_dir)
+      return "reports" if config.reports_dir.nil? || config.reports_dir.empty?
+
+      config.reports_dir
     end
 
     def exit_status_for(result, config)
