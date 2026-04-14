@@ -23,6 +23,35 @@ RSpec.describe Henitai::Integration::Rspec do
     path
   end
 
+  # rubocop:disable Metrics/AbcSize
+  def stub_suite_run(integration, pid:, wait_result:, build_result:)
+    record = { wait_args: nil, cleanup: [], reap: [] }
+
+    allow(Process).to receive(:spawn).and_return(pid)
+    allow(integration).to receive(:wait_with_timeout) do |spawned_pid, timeout|
+      record[:wait_args] = [spawned_pid, timeout]
+      wait_result
+    end
+    allow(integration).to receive(:build_result).and_return(build_result)
+    allow(integration).to receive(:cleanup_process_group) do |value|
+      record[:cleanup] << value
+    end
+    allow(integration).to receive(:reap_child) do |value|
+      record[:reap] << value
+    end
+
+    record
+  end
+  # rubocop:enable Metrics/AbcSize
+
+  def mutant_log_paths(name)
+    {
+      stdout_path: "reports/mutation-logs/#{name}.stdout.log",
+      stderr_path: "reports/mutation-logs/#{name}.stderr.log",
+      log_path: "reports/mutation-logs/#{name}.log"
+    }
+  end
+
   def sample_source
     <<~RUBY
       class Sample
@@ -249,12 +278,88 @@ RSpec.describe Henitai::Integration::Rspec do
     integration = described_class.new
 
     with_temp_workspace do
+      calls = { cleanup: [], reap: [] }
+
       allow(Process).to receive(:spawn).and_return(4321)
       allow(integration).to receive(:wait_with_timeout).and_return(
         Struct.new(:success?, :exitstatus).new(true, 0)
       )
+      allow(integration).to receive(:cleanup_process_group) do |pid|
+        calls[:cleanup] << pid
+      end
+      allow(integration).to receive(:reap_child) do |pid|
+        calls[:reap] << pid
+      end
 
-      expect(integration.run_suite(["spec/foo_spec.rb"])).to eq(:survived)
+      result = integration.run_suite(["spec/foo_spec.rb"])
+
+      expect([result, calls]).to eq([
+                                      :survived,
+                                      {
+                                        cleanup: [4321],
+                                        reap: []
+                                      }
+                                    ])
+    end
+  end
+
+  it "skips suite cleanup when the process never starts" do
+    integration = described_class.new
+
+    with_temp_workspace do
+      calls = { cleanup: [], reap: [] }
+
+      allow(Process).to receive(:spawn).and_return(nil)
+      allow(integration).to receive_messages(
+        wait_with_timeout: Struct.new(:success?, :exitstatus).new(true, 0),
+        build_result: :survived
+      )
+      allow(integration).to receive(:cleanup_process_group) do |pid|
+        calls[:cleanup] << pid
+      end
+      allow(integration).to receive(:reap_child) do |pid|
+        calls[:reap] << pid
+      end
+
+      result = integration.run_suite(["spec/foo_spec.rb"])
+
+      expect([result, calls]).to eq([
+                                      :survived,
+                                      {
+                                        cleanup: [],
+                                        reap: []
+                                      }
+                                    ])
+    end
+  end
+
+  it "reaps a suite child when the wait result is nil" do
+    integration = described_class.new
+
+    with_temp_workspace do
+      calls = { cleanup: [], reap: [] }
+
+      allow(Process).to receive(:spawn).and_return(4321)
+      allow(integration).to receive_messages(
+        wait_with_timeout: nil,
+        build_result: :survived
+      )
+      allow(integration).to receive(:cleanup_process_group) do |pid|
+        calls[:cleanup] << pid
+      end
+      allow(integration).to receive(:reap_child) do |pid|
+        calls[:reap] << pid
+      end
+
+      result = integration.run_suite(["spec/foo_spec.rb"])
+
+      expect([result, calls]).to eq([
+                                      :survived,
+                                      {
+                                        cleanup: [4321],
+                                        reap: [4321]
+                                      }
+                                    ])
     end
   end
 
@@ -279,6 +384,25 @@ RSpec.describe Henitai::Integration::Rspec do
       integration.run_suite(["spec/foo_spec.rb"])
 
       expect(integration).to have_received(:scenario_log_paths).with("baseline")
+    end
+  end
+
+  it "creates the baseline mutation log directory before spawning the suite" do
+    integration = described_class.new
+
+    with_temp_workspace do
+      allow(Process).to receive(:spawn).and_return(4321)
+      allow(integration).to receive(:wait_with_timeout).and_return(
+        Struct.new(:success?, :exitstatus).new(true, 0)
+      )
+
+      allow(FileUtils).to receive(:mkdir_p).and_call_original
+
+      integration.run_suite(["spec/foo_spec.rb"])
+
+      expect(FileUtils).to have_received(:mkdir_p)
+        .with("reports/mutation-logs")
+        .at_least(:once)
     end
   end
 
@@ -328,12 +452,23 @@ RSpec.describe Henitai::Integration::Rspec do
     integration = described_class.new
 
     with_temp_workspace do
-      allow(Process).to receive(:spawn).and_return(4321)
-      allow(integration).to receive(:wait_with_timeout).and_return(:timeout)
+      calls = stub_suite_run(
+        integration,
+        pid: 4321,
+        wait_result: :timeout,
+        build_result: :timeout
+      )
 
-      integration.run_suite(["spec/foo_spec.rb"], timeout: 12.5)
+      result = integration.run_suite(["spec/foo_spec.rb"], timeout: 12.5)
 
-      expect(integration).to have_received(:wait_with_timeout).with(4321, 12.5)
+      expect([result, calls]).to eq([
+                                      :timeout,
+                                      {
+                                        wait_args: [4321, 12.5],
+                                        cleanup: [],
+                                        reap: []
+                                      }
+                                    ])
     end
   end
 
@@ -423,6 +558,81 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  it "puts the child in its own process group before activation" do
+    mutant = Struct.new(:id).new("mutant-setpgid")
+    integration = described_class.new
+    record = {}
+    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+    begin
+      stub_child_logging(integration)
+      allow(Process).to receive(:exit) { |status| record[:child_status] = status }
+      allow(Process).to receive(:fork) do |&block|
+        record[:forked] = true
+        block.call
+        4329
+      end
+      allow(Process).to receive(:setpgid) do |pid, pgrp|
+        record[:setpgid] = [pid, pgrp]
+      end
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+      allow(integration).to receive(:run_tests).and_return(0)
+      allow(Process).to receive(:wait).and_return(4329)
+      allow(Process).to receive_messages(last_status: Struct.new(:success?).new(true))
+
+      integration.run_mutant(
+        mutant:,
+        test_files: ["spec/foo_spec.rb"],
+        timeout: 1.5
+      )
+
+      expect(record).to include(setpgid: [0, 0])
+    ensure
+      ENV["HENITAI_MUTANT_ID"] = original_env
+    end
+  end
+
+  it "uses the mutant id when building mutant log paths" do
+    mutant = Struct.new(:id).new("abc")
+    integration = described_class.new
+    log_paths = mutant_log_paths("mutant-abc")
+    record = { names: [], cleanup: [], reap: [] }
+
+    stub_child_logging(integration)
+    allow(Process).to receive(:exit)
+    allow(Process).to receive(:fork) do |&block|
+      block.call
+      4321
+    end
+    allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+    allow(integration).to receive(:run_tests).and_return(0)
+    allow(integration).to receive_messages(
+      wait_with_timeout: Struct.new(:success?, :exitstatus).new(true, 0),
+      build_result: :survived
+    )
+    allow(integration).to receive(:scenario_log_paths) do |name|
+      record[:names] << name
+      log_paths
+    end
+    allow(integration).to receive(:cleanup_process_group) do |pid|
+      record[:cleanup] << pid
+    end
+    allow(integration).to receive(:reap_child) do |pid|
+      record[:reap] << pid
+    end
+
+    result = integration.run_mutant(mutant:, test_files: ["spec/foo_spec.rb"], timeout: 1.5)
+
+    expect([result, record]).to eq([
+                                     :survived,
+                                     {
+                                       names: ["mutant-abc"],
+                                       cleanup: [4321],
+                                       reap: []
+                                     }
+                                   ])
+  end
+
   it "cleans up the mutant process group after a successful run" do
     mutant = Struct.new(:id).new("mutant-1a")
     integration = described_class.new
@@ -446,17 +656,148 @@ RSpec.describe Henitai::Integration::Rspec do
         raise Errno::ESRCH if signal == :SIGKILL
       end
 
-      integration.run_mutant(
+      result = integration.run_mutant(mutant:, test_files: ["spec/foo_spec.rb"], timeout: 1.5)
+
+      expect([result.status, record]).to eq([
+                                              :survived,
+                                              {
+                                                child_status: 0,
+                                                forked: true,
+                                                signals: [[:SIGTERM, -4322], [:SIGKILL, -4322]]
+                                              }
+                                            ])
+    ensure
+      ENV["HENITAI_MUTANT_ID"] = original_env
+    end
+  end
+
+  it "skips mutant cleanup when fork does not return a pid" do
+    mutant = Struct.new(:id).new("mutant-nil-pid")
+    integration = described_class.new
+    record = { cleanup: [], reap: [] }
+    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+    begin
+      stub_child_logging(integration)
+      allow(Process).to receive(:exit)
+      allow(Process).to receive(:fork) do |&block|
+        block.call
+        nil
+      end
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+      allow(integration).to receive(:run_tests).and_return(0)
+      allow(integration).to receive_messages(
+        wait_with_timeout: Struct.new(:success?, :exitstatus).new(true, 0),
+        build_result: :survived
+      )
+      allow(integration).to receive(:cleanup_process_group) do |pid|
+        record[:cleanup] << pid
+      end
+      allow(integration).to receive(:reap_child) do |pid|
+        record[:reap] << pid
+      end
+
+      result = integration.run_mutant(
         mutant:,
         test_files: ["spec/foo_spec.rb"],
         timeout: 1.5
       )
 
-      expect(record).to include(
-        forked: true,
-        child_status: 0,
-        signals: [[:SIGTERM, -4322], [:SIGKILL, -4322]]
+      expect([result, record]).to eq([
+                                       :survived,
+                                       {
+                                         cleanup: [],
+                                         reap: []
+                                       }
+                                     ])
+    ensure
+      ENV["HENITAI_MUTANT_ID"] = original_env
+    end
+  end
+
+  it "reaps a mutant child when the wait result is nil" do
+    mutant = Struct.new(:id).new("mutant-nil-wait")
+    integration = described_class.new
+    record = { cleanup: [], reap: [] }
+    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+    begin
+      stub_child_logging(integration)
+      allow(Process).to receive(:exit)
+      allow(Process).to receive(:fork) do |&block|
+        block.call
+        4323
+      end
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+      allow(integration).to receive(:run_tests).and_return(0)
+      allow(integration).to receive_messages(
+        wait_with_timeout: nil,
+        build_result: :survived
       )
+      allow(integration).to receive(:cleanup_process_group) do |pid|
+        record[:cleanup] << pid
+      end
+      allow(integration).to receive(:reap_child) do |pid|
+        record[:reap] << pid
+      end
+
+      result = integration.run_mutant(
+        mutant:,
+        test_files: ["spec/foo_spec.rb"],
+        timeout: 1.5
+      )
+
+      expect([result, record]).to eq([
+                                       :survived,
+                                       {
+                                         cleanup: [4323],
+                                         reap: [4323]
+                                       }
+                                     ])
+    ensure
+      ENV["HENITAI_MUTANT_ID"] = original_env
+    end
+  end
+
+  it "does not clean up a mutant child when the wait times out" do
+    mutant = Struct.new(:id).new("mutant-timeout")
+    integration = described_class.new
+    record = { cleanup: [], reap: [] }
+    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+    begin
+      stub_child_logging(integration)
+      allow(Process).to receive(:exit)
+      allow(Process).to receive(:fork) do |&block|
+        block.call
+        4324
+      end
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+      allow(integration).to receive(:run_tests).and_return(0)
+      allow(integration).to receive_messages(
+        wait_with_timeout: :timeout,
+        build_result: :timeout
+      )
+      allow(integration).to receive(:cleanup_process_group) do |pid|
+        record[:cleanup] << pid
+      end
+      allow(integration).to receive(:reap_child) do |pid|
+        record[:reap] << pid
+      end
+
+      result = integration.run_mutant(
+        mutant:,
+        test_files: ["spec/foo_spec.rb"],
+        timeout: 1.5
+      )
+
+      expect([result, record]).to eq([
+                                       :timeout,
+                                       {
+                                         cleanup: [],
+                                         reap: []
+                                       }
+                                     ])
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env
     end
@@ -631,6 +972,7 @@ RSpec.describe Henitai::Integration::Rspec do
       allow(integration).to receive(:pause) do |seconds|
         record[:pauses] << seconds
       end
+      allow(integration).to receive(:cleanup_process_group)
       allow(Process).to receive(:wait).and_return(nil, 24_603)
       allow(Process).to receive(:clock_gettime).and_return(0.0, 0.05, 0.05)
       allow(Process).to receive_messages(
@@ -1218,6 +1560,21 @@ RSpec.describe Henitai::Integration::Rspec do
       stderr_path: "reports/mutation-logs/baseline.stderr.log",
       log_path: "reports/mutation-logs/baseline.log"
     )
+  end
+
+  it "returns timeout for a timeout wait result and not for a successful wait result" do
+    integration = described_class.new
+    success_result = Struct.new(:success?).new(true)
+
+    expect(
+      [
+        integration.send(:scenario_status, :timeout),
+        integration.send(:scenario_status, success_result)
+      ]
+    ).to eq(%i[
+              timeout
+              survived
+            ])
   end
 
   it "formats combined logs without empty sections" do
