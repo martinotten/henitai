@@ -184,6 +184,10 @@ RSpec.describe Henitai::Integration::Minitest do
     )
   end
 
+  it "does not advertise per-test coverage support" do
+    expect(described_class.new.per_test_coverage_supported?).to be(false)
+  end
+
   it "spawns the baseline suite with the minitest subprocess environment" do
     integration = described_class.new
 

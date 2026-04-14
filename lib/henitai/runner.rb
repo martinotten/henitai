@@ -41,10 +41,6 @@ module Henitai
     # The thread is joined before Gate 3 (static filtering), which is the first
     # phase that requires coverage data.
     #
-    # For targeted runs (`subjects:` provided), the bootstrap is further scoped
-    # to the spec files that cover the requested subjects rather than the full
-    # suite, reducing the baseline run time proportionally.
-    #
     # @return [Result]
     def run
       started_at = Time.now
@@ -76,26 +72,15 @@ module Henitai
     end
 
     def mutants_for(subjects, source_files)
-      bootstrap_thread = bootstrap_mutants(source_files, subjects)
+      bootstrap_thread = bootstrap_mutants(source_files)
       mutants = generate_mutants(subjects)
       bootstrap_thread.value
 
-      filtered_mutants = filter_mutants(mutants)
-      return filtered_mutants unless targeted_run?
-
-      refresh_coverage_for_targeted_run(filtered_mutants, source_files)
-    end
-
-    def refresh_coverage_for_targeted_run(mutants, source_files)
-      return mutants unless retry_full_bootstrap?(mutants)
-
-      bootstrap_coverage(source_files)
       filter_mutants(mutants)
     end
 
-    def bootstrap_mutants(source_files, subjects)
-      scoped_tests = scoped_bootstrap_test_files(subjects)
-      Thread.new { bootstrap_coverage(source_files, scoped_tests) }
+    def bootstrap_mutants(source_files)
+      Thread.new { bootstrap_coverage(source_files) }
     end
 
     def execute_mutants(mutants)
@@ -129,21 +114,6 @@ module Henitai
       persist_history(@result, finished_at)
       report(@result)
       @result
-    end
-
-    # Returns the spec files to use for the coverage bootstrap.
-    #
-    # For full runs (no subject pattern given), returns nil so the bootstrapper
-    # falls back to the integration's full test-file list.
-    #
-    # For targeted runs, returns the union of test files selected for each
-    # resolved subject. Falls back to nil (all tests) if the selection is empty,
-    # so the bootstrapper always has a non-empty file list.
-    def scoped_bootstrap_test_files(subjects)
-      return nil if pattern_subjects.empty?
-
-      files = subjects.flat_map { |subject| integration.select_tests(subject) }.uniq
-      files.empty? ? nil : files
     end
 
     def bootstrap_coverage(source_files, test_files = nil)
@@ -215,19 +185,6 @@ module Henitai
 
     def pattern_subjects
       Array(@subjects)
-    end
-
-    def targeted_run?
-      !pattern_subjects.empty?
-    end
-
-    def retry_full_bootstrap?(mutants)
-      executable_mutants = Array(mutants).reject do |mutant|
-        %i[ignored compile_error equivalent].include?(mutant.status)
-      end
-      return false if executable_mutants.empty?
-
-      executable_mutants.all? { |mutant| mutant.status == :no_coverage }
     end
 
     def unique_subjects(subjects)

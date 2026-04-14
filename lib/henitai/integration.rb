@@ -477,6 +477,10 @@ module Henitai
     # runner. Minitest shares selection and execution semantics, but per-test
     # coverage collection is not yet wired into this path.
     class Minitest < Rspec
+      def per_test_coverage_supported?
+        false
+      end
+
       def run_mutant(mutant:, test_files:, timeout:)
         setup_load_path
         super

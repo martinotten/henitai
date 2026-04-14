@@ -45,7 +45,7 @@ module Henitai
       return covered_sources.any? if existing_sources.empty?
       return covered_sources.any? if test_files
 
-      covered_sources == existing_sources
+      covered_sources.any?
     end
 
     def coverage_ready?(source_files, config, integration, test_files)

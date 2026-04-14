@@ -186,6 +186,58 @@ RSpec.describe Henitai::CoverageBootstrapper do
     expect(integration).to have_received(:run_suite).with(["spec/sample_spec.rb"])
   end
 
+  it "accepts a fresh report that only covers part of the configured sources" do
+    Dir.mktmpdir do |dir|
+      source_a = File.join(dir, "lib/a.rb")
+      source_b = File.join(dir, "lib/b.rb")
+      spec = File.join(dir, "test/sample_test.rb")
+      report = File.join(dir, "reports/coverage/.resultset.json")
+
+      FileUtils.mkdir_p(File.dirname(source_a))
+      FileUtils.mkdir_p(File.dirname(spec))
+      FileUtils.mkdir_p(File.dirname(report))
+
+      File.write(source_a, "class A; end\n")
+      File.write(source_b, "class B; end\n")
+      File.write(spec, "# test\n")
+      sleep 0.01
+      File.write(
+        report,
+        {
+          "Minitest" => {
+            "coverage" => {
+              File.expand_path(source_a) => {
+                "lines" => [nil, 1]
+              }
+            }
+          }
+        }.to_json
+      )
+
+      config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
+      static_filter = instance_double(Henitai::StaticFilter)
+      integration = instance_double(
+        Henitai::Integration::Minitest,
+        test_files: [spec],
+        per_test_coverage_supported?: false
+      )
+      bootstrapper = build_bootstrapper(static_filter:)
+
+      allow(static_filter).to receive(:coverage_lines_for).and_return(
+        File.expand_path(source_a) => [1]
+      )
+      allow(integration).to receive(:run_suite).and_return(:survived)
+
+      bootstrapper.ensure!(
+        source_files: [source_a, source_b],
+        config:,
+        integration:
+      )
+
+      expect(integration).not_to have_received(:run_suite)
+    end
+  end
+
   it "restores the coverage dir environment after bootstrapping" do
     static_filter = instance_double(Henitai::StaticFilter)
     integration = build_integration(
@@ -537,50 +589,6 @@ RSpec.describe Henitai::CoverageBootstrapper do
       end
     end
 
-    it "reruns the full suite when a scoped bootstrap only covers part of the sources" do
-      Dir.mktmpdir do |dir|
-        workspace = build_scoped_bootstrap_workspace(dir)
-        config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
-        static_filter = instance_double(Henitai::StaticFilter)
-        integration = build_scoped_bootstrap_integration(
-          workspace[:scoped_spec],
-          workspace[:full_spec]
-        )
-        bootstrapper = build_bootstrapper(static_filter:)
-
-        stub_scoped_bootstrap_coverage(
-          static_filter,
-          workspace[:source_a],
-          workspace[:source_b]
-        )
-        allow(bootstrapper).to receive(:per_test_coverage_fresh?).and_return(true)
-        calls = []
-        allow(integration).to receive(:run_suite) do |test_files|
-          calls << test_files
-          :survived
-        end
-
-        bootstrapper.ensure!(
-          source_files: [workspace[:source_a], workspace[:source_b]],
-          config:,
-          integration:,
-          test_files: [workspace[:scoped_spec]]
-        )
-
-        bootstrapper.ensure!(
-          source_files: [workspace[:source_a], workspace[:source_b]],
-          config:,
-          integration:
-        )
-
-        expect(calls).to eq(
-          [
-            [workspace[:scoped_spec]],
-            [workspace[:scoped_spec], workspace[:full_spec]]
-          ]
-        )
-      end
-    end
   end
 
   # ---------------------------------------------------------------------------

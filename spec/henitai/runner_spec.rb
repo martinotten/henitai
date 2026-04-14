@@ -241,8 +241,8 @@ RSpec.describe Henitai::Runner do
     end
   end
 
-  # Option 3: targeted runs pass scoped test files to the bootstrapper.
-  it "passes scoped test files to the bootstrapper for targeted runs" do
+  # Targeted runs still bootstrap the full suite.
+  it "passes nil test_files to the bootstrapper for targeted runs" do
     Dir.mktmpdir do |dir|
       FileUtils.mkdir_p(File.join(dir, "lib"))
       File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
@@ -288,7 +288,7 @@ RSpec.describe Henitai::Runner do
 
         runner.run
 
-        expect(received_test_files).to eq(["spec/sample_spec.rb"])
+        expect(received_test_files).to be_nil
       end
     end
   end
@@ -334,57 +334,6 @@ RSpec.describe Henitai::Runner do
         runner.run
 
         expect(received_test_files).to be_nil
-      end
-    end
-  end
-
-  it "retries with the full suite when targeted bootstrap leaves all mutants uncovered" do
-    Dir.mktmpdir do |dir|
-      FileUtils.mkdir_p(File.join(dir, "lib"))
-      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
-
-      Dir.chdir(dir) do
-        config = build_config(reporters: [])
-        runner = described_class.new(
-          config:,
-          subjects: [Henitai::Subject.parse("Sample*")]
-        )
-        subject = build_subject("Sample#answer", source_file: "lib/sample.rb")
-        uncovered = build_mutant(subject).tap { |mutant| mutant.status = :no_coverage }
-        covered = build_mutant(subject)
-        subject_resolver = instance_double(Henitai::SubjectResolver)
-        mutant_generator = instance_double(Henitai::MutantGenerator)
-        static_filter = instance_double(Henitai::StaticFilter)
-        coverage_bootstrapper = instance_double(Henitai::CoverageBootstrapper)
-        execution_engine = instance_double(Henitai::ExecutionEngine)
-        integration = instance_double(Henitai::Integration::Rspec)
-        history_store = build_history_store
-        result = build_result([covered])
-        bootstrap_calls = []
-
-        allow(runner).to receive_messages(
-          coverage_bootstrapper:,
-          subject_resolver:,
-          mutant_generator:,
-          static_filter:,
-          execution_engine:,
-          integration:,
-          history_store:
-        )
-        allow(subject_resolver).to receive_messages(resolve_from_files: [subject], apply_pattern: [subject])
-        allow(integration).to receive(:select_tests).with(subject).and_return(["spec/sample_spec.rb"])
-        allow(coverage_bootstrapper).to receive(:ensure!) do |**kwargs|
-          bootstrap_calls << kwargs[:test_files]
-        end
-        allow(mutant_generator).to receive(:generate).and_return([build_mutant(subject)])
-        allow(static_filter).to receive(:apply).and_return([uncovered], [covered])
-        allow(execution_engine).to receive(:run).and_return([covered])
-        allow(Henitai::Result).to receive(:new).and_return(result)
-        allow(Henitai::Reporter).to receive(:run_all)
-
-        runner.run
-
-        expect(bootstrap_calls).to eq([["spec/sample_spec.rb"], nil])
       end
     end
   end
