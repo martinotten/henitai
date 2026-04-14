@@ -314,15 +314,15 @@ RSpec.describe Henitai::EquivalenceDetector do
     expect(mutant.status).to eq(:equivalent)
   end
 
-  it "marks `42 == 42` mutated to `42.equal?(42)` as equivalent" do
+  it "keeps a large integer equality swap pending" do
     mutant = build_mutant(
-      original_node: binary_send(int(42), :==, int(42)),
-      mutated_node: binary_send(int(42), :equal?, int(42))
+      original_node: binary_send(int(10**100), :==, int(10**100)),
+      mutated_node: binary_send(int(10**100), :equal?, int(10**100))
     )
 
     described_class.new.analyze(mutant)
 
-    expect(mutant.status).to eq(:equivalent)
+    expect(mutant.status).to eq(:pending)
   end
 
   it "keeps `lhs == :sym` mutated to `lhs.equal?(:sym)` pending when receiver is a variable" do

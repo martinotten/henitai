@@ -151,7 +151,6 @@ module Henitai
     # Singleton types accepted on both receiver and RHS:
     #   Symbol  – interned; only one instance of :foo ever exists in a process.
     #   nil/true/false – singletons by language specification.
-    #   Integer – immediate values in MRI/YARV; `1.equal?(1)` is always true.
     def equivalent_singleton_equality_mutation?(mutant)
       original = mutant.original_node
       mutated  = mutant.mutated_node
@@ -184,13 +183,13 @@ module Henitai
     end
 
     # Returns true for AST nodes that represent Ruby singleton values:
-    # symbols, nil, true, false, and integer literals.
+    # symbols, nil, true, and false.
     def singleton_literal?(node)
       return false unless node.is_a?(Parser::AST::Node)
 
       # rubocop:disable Lint/BooleanSymbol
       case node.type
-      when :sym, :nil, :true, :false, :int then true
+      when :sym, :nil, :true, :false then true
       else false
       end
       # rubocop:enable Lint/BooleanSymbol
