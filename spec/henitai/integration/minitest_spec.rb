@@ -128,6 +128,14 @@ RSpec.describe Henitai::Integration::Minitest do
     allow(Kernel).to receive(:require).and_return(true)
   end
 
+  def build_log_paths(name)
+    {
+      stdout_path: "reports/mutation-logs/#{name}.stdout.log",
+      stderr_path: "reports/mutation-logs/#{name}.stderr.log",
+      log_path: "reports/mutation-logs/#{name}.log"
+    }
+  end
+
   it "selects minitest files by subject prefix" do
     with_temp_workspace do |dir|
       write_file(dir, "test/sample_test.rb", minitest_source)
@@ -285,6 +293,33 @@ RSpec.describe Henitai::Integration::Minitest do
     end
   end
 
+  it "sets up the load path before running a mutant" do
+    with_temp_workspace do |dir|
+      test_file = write_file(dir, "test/sample_test.rb", minitest_source)
+      mutant = Struct.new(:id).new("setup")
+      integration = described_class.new
+      order = []
+      log_paths = build_log_paths("mutant-setup")
+      log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
+
+      allow(integration).to receive(:setup_load_path) do
+        order << :setup_load_path
+      end
+      allow(integration).to receive(:scenario_log_support).and_return(log_support)
+      allow(log_support).to receive(:with_coverage_dir).with(mutant.id).and_yield
+      allow(log_support).to receive(:capture_child_output).with(log_paths).and_yield
+      stub_minitest_process_flow(order, test_file)
+
+      integration.run_mutant(
+        mutant:,
+        test_files: [test_file],
+        timeout: 4.0
+      )
+
+      expect(order.first).to eq(:setup_load_path)
+    end
+  end
+
   it "lists minitest test files and excludes system tests" do
     with_temp_workspace do |dir|
       write_file(dir, "test/models/sample_test.rb", "")
@@ -375,5 +410,81 @@ RSpec.describe Henitai::Integration::Minitest do
         ]
       )
     end
+  end
+
+  it "returns integer statuses from Minitest.run" do
+    integration = described_class.new
+    calls = []
+
+    allow(integration).to receive(:require) do |path|
+      calls << [:require, path]
+      true
+    end
+    allow(Minitest).to receive(:run) do |argv|
+      calls << [:minitest, argv]
+      3
+    end
+
+    sample_test_path = File.expand_path("test/sample_test.rb")
+
+    expect([integration.send(:run_tests, ["test/sample_test.rb"]), calls]).to eq(
+      [
+        3,
+        [
+          [:require, sample_test_path],
+          [:minitest, []]
+        ]
+      ]
+    )
+  end
+
+  it "returns zero when Minitest.run succeeds" do
+    integration = described_class.new
+
+    allow(integration).to receive(:require).and_return(true)
+    allow(Minitest).to receive(:run).and_return(true)
+
+    expect(integration.send(:run_tests, ["test/sample_test.rb"])).to eq(0)
+  end
+
+  it "returns one when Minitest.run reports failure" do
+    integration = described_class.new
+
+    allow(integration).to receive(:require).and_return(true)
+    allow(Minitest).to receive(:run).and_return(false)
+
+    expect(integration.send(:run_tests, ["test/sample_test.rb"])).to eq(1)
+  end
+
+  it "skips suite cleanup when the pid is nil" do
+    integration = described_class.new
+    calls = []
+
+    allow(integration).to receive(:cleanup_child_process) do |pid|
+      calls << [:cleanup, pid]
+    end
+    allow(integration).to receive(:reap_child) do |pid|
+      calls << [:reap, pid]
+    end
+
+    integration.send(:cleanup_suite_process, nil, nil)
+
+    expect(calls).to eq([])
+  end
+
+  it "cleans up and reaps a suite child when cleanup is needed" do
+    integration = described_class.new
+    calls = []
+
+    allow(integration).to receive(:cleanup_child_process) do |pid|
+      calls << [:cleanup, pid]
+    end
+    allow(integration).to receive(:reap_child) do |pid|
+      calls << [:reap, pid]
+    end
+
+    integration.send(:cleanup_suite_process, 4321, nil)
+
+    expect(calls).to eq([[:cleanup, 4321], [:reap, 4321]])
   end
 end
