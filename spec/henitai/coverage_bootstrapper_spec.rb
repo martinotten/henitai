@@ -9,6 +9,30 @@ RSpec.describe Henitai::CoverageBootstrapper do
     Struct.new(:reports_dir).new("reports")
   end
 
+  def setup_partial_coverage_workspace(dir)
+    source_a = File.join(dir, "lib/a.rb")
+    source_b = File.join(dir, "lib/b.rb")
+    spec     = File.join(dir, "test/sample_test.rb")
+
+    FileUtils.mkdir_p(File.dirname(source_a))
+    FileUtils.mkdir_p(File.dirname(spec))
+
+    File.write(source_a, "class A; end\n")
+    File.write(source_b, "class B; end\n")
+    File.write(spec, "# test\n")
+
+    [source_a, source_b, spec]
+  end
+
+  def write_partial_coverage_report(dir, source_a)
+    report = File.join(dir, "reports/coverage/.resultset.json")
+    FileUtils.mkdir_p(File.dirname(report))
+    sleep 0.01
+    File.write(report, {
+      "Minitest" => { "coverage" => { File.expand_path(source_a) => { "lines" => [nil, 1] } } }
+    }.to_json)
+  end
+
   def build_bootstrapper(static_filter:, per_test_coverage_available: true)
     described_class.new(static_filter:).tap do |bootstrapper|
       allow(bootstrapper).to receive(:per_test_coverage_available?).and_return(
@@ -188,31 +212,8 @@ RSpec.describe Henitai::CoverageBootstrapper do
 
   it "accepts a fresh report that only covers part of the configured sources" do
     Dir.mktmpdir do |dir|
-      source_a = File.join(dir, "lib/a.rb")
-      source_b = File.join(dir, "lib/b.rb")
-      spec = File.join(dir, "test/sample_test.rb")
-      report = File.join(dir, "reports/coverage/.resultset.json")
-
-      FileUtils.mkdir_p(File.dirname(source_a))
-      FileUtils.mkdir_p(File.dirname(spec))
-      FileUtils.mkdir_p(File.dirname(report))
-
-      File.write(source_a, "class A; end\n")
-      File.write(source_b, "class B; end\n")
-      File.write(spec, "# test\n")
-      sleep 0.01
-      File.write(
-        report,
-        {
-          "Minitest" => {
-            "coverage" => {
-              File.expand_path(source_a) => {
-                "lines" => [nil, 1]
-              }
-            }
-          }
-        }.to_json
-      )
+      source_a, source_b, spec = setup_partial_coverage_workspace(dir)
+      write_partial_coverage_report(dir, source_a)
 
       config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
       static_filter = instance_double(Henitai::StaticFilter)
@@ -228,11 +229,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
       )
       allow(integration).to receive(:run_suite).and_return(:survived)
 
-      bootstrapper.ensure!(
-        source_files: [source_a, source_b],
-        config:,
-        integration:
-      )
+      bootstrapper.ensure!(source_files: [source_a, source_b], config:, integration:)
 
       expect(integration).not_to have_received(:run_suite)
     end
@@ -588,7 +585,6 @@ RSpec.describe Henitai::CoverageBootstrapper do
         expect(integration).to have_received(:run_suite)
       end
     end
-
   end
 
   # ---------------------------------------------------------------------------

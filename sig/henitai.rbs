@@ -613,13 +613,9 @@ module Henitai
 
     def build_result: (Array[Mutant], Time, Time) -> Result
     def persist_history: (Result, Time) -> void
-    def refresh_coverage_for_targeted_run: (Array[Mutant], Array[String]) -> Array[Mutant]
     def bootstrap_coverage: (Array[String], ?Array[String]?) -> void
-    def bootstrap_mutants: (Array[String], Array[Subject]) -> Thread
+    def bootstrap_mutants: (Array[String]) -> Thread
     def mutants_for: (Array[Subject], Array[String]) -> Array[Mutant]
-    def scoped_bootstrap_test_files: (Array[Subject]) -> Array[String]?
-    def targeted_run?: () -> bool
-    def retry_full_bootstrap?: (Array[Mutant]) -> bool
     def with_reports_dir: () { () -> untyped } -> untyped
     def result_thresholds: () -> Hash[Symbol, Integer]?
   end
