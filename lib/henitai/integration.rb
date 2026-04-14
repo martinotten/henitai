@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "fileutils"
-require "minitest"
 require_relative "integration/rspec_process_runner"
 
 module Henitai

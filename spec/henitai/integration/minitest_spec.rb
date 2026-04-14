@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "minitest"
 require "open3"
 require "spec_helper"
 require "tmpdir"
