@@ -140,10 +140,15 @@ module Henitai
     end
 
     # Detects `lhs == <singleton>` mutated to `lhs.equal?(<singleton>)` (or the
-    # reverse).  The two forms are semantically identical whenever the RHS is a
-    # Ruby singleton: a Symbol, nil, true, false, or an Integer literal.
+    # reverse), but only when the receiver is itself a singleton literal.
     #
-    # Rationale by type:
+    # Both sides must be singleton literals so that we can prove, without
+    # runtime type information, that `==` reduces to identity comparison.
+    # A variable or arbitrary expression as the receiver is unsafe: for example
+    # `1.0 == 1` is true while `1.0.equal?(1)` is false, and any object with a
+    # custom `#==` can exhibit the same divergence.
+    #
+    # Singleton types accepted on both receiver and RHS:
     #   Symbol  – interned; only one instance of :foo ever exists in a process.
     #   nil/true/false – singletons by language specification.
     #   Integer – immediate values in MRI/YARV; `1.equal?(1)` is always true.
@@ -153,6 +158,7 @@ module Henitai
 
       equality_send?(original) && equality_send?(mutated) &&
         same_receiver?(original, mutated) &&
+        singleton_literal?(original.children[0]) &&
         singleton_rhs_match?(original, mutated) &&
         equality_operators?(original.children[1], mutated.children[1])
     end

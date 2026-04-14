@@ -259,10 +259,10 @@ RSpec.describe Henitai::EquivalenceDetector do
     Parser::AST::Node.new(:nil, [])
   end
 
-  it "marks `lhs == :sym` mutated to `lhs.equal?(:sym)` as equivalent" do
+  it "marks `:sym == :sym` mutated to `:sym.equal?(:sym)` as equivalent" do
     mutant = build_mutant(
-      original_node: binary_send(lvar(:result), :==, sym(:timeout)),
-      mutated_node: binary_send(lvar(:result), :equal?, sym(:timeout))
+      original_node: binary_send(sym(:ok), :==, sym(:ok)),
+      mutated_node: binary_send(sym(:ok), :equal?, sym(:ok))
     )
 
     described_class.new.analyze(mutant)
@@ -270,10 +270,10 @@ RSpec.describe Henitai::EquivalenceDetector do
     expect(mutant.status).to eq(:equivalent)
   end
 
-  it "marks `lhs.equal?(:sym)` mutated to `lhs == :sym` as equivalent" do
+  it "marks `:sym.equal?(:sym)` mutated to `:sym == :sym` as equivalent" do
     mutant = build_mutant(
-      original_node: binary_send(lvar(:result), :equal?, sym(:timeout)),
-      mutated_node: binary_send(lvar(:result), :==, sym(:timeout))
+      original_node: binary_send(sym(:ok), :equal?, sym(:ok)),
+      mutated_node: binary_send(sym(:ok), :==, sym(:ok))
     )
 
     described_class.new.analyze(mutant)
@@ -281,10 +281,10 @@ RSpec.describe Henitai::EquivalenceDetector do
     expect(mutant.status).to eq(:equivalent)
   end
 
-  it "marks `lhs == nil` mutated to `lhs.equal?(nil)` as equivalent" do
+  it "marks `nil == nil` mutated to `nil.equal?(nil)` as equivalent" do
     mutant = build_mutant(
-      original_node: binary_send(lvar(:x), :==, nil_node),
-      mutated_node: binary_send(lvar(:x), :equal?, nil_node)
+      original_node: binary_send(nil_node, :==, nil_node),
+      mutated_node: binary_send(nil_node, :equal?, nil_node)
     )
 
     described_class.new.analyze(mutant)
@@ -292,10 +292,10 @@ RSpec.describe Henitai::EquivalenceDetector do
     expect(mutant.status).to eq(:equivalent)
   end
 
-  it "marks `lhs == true` mutated to `lhs.equal?(true)` as equivalent" do
+  it "marks `true == true` mutated to `true.equal?(true)` as equivalent" do
     mutant = build_mutant(
-      original_node: binary_send(lvar(:flag), :==, boolean(true)),
-      mutated_node: binary_send(lvar(:flag), :equal?, boolean(true))
+      original_node: binary_send(boolean(true), :==, boolean(true)),
+      mutated_node: binary_send(boolean(true), :equal?, boolean(true))
     )
 
     described_class.new.analyze(mutant)
@@ -303,10 +303,10 @@ RSpec.describe Henitai::EquivalenceDetector do
     expect(mutant.status).to eq(:equivalent)
   end
 
-  it "marks `lhs == false` mutated to `lhs.equal?(false)` as equivalent" do
+  it "marks `false == false` mutated to `false.equal?(false)` as equivalent" do
     mutant = build_mutant(
-      original_node: binary_send(lvar(:flag), :==, boolean(false)),
-      mutated_node: binary_send(lvar(:flag), :equal?, boolean(false))
+      original_node: binary_send(boolean(false), :==, boolean(false)),
+      mutated_node: binary_send(boolean(false), :equal?, boolean(false))
     )
 
     described_class.new.analyze(mutant)
@@ -314,15 +314,26 @@ RSpec.describe Henitai::EquivalenceDetector do
     expect(mutant.status).to eq(:equivalent)
   end
 
-  it "marks `lhs == 42` mutated to `lhs.equal?(42)` as equivalent" do
+  it "marks `42 == 42` mutated to `42.equal?(42)` as equivalent" do
     mutant = build_mutant(
-      original_node: binary_send(lvar(:code), :==, int(42)),
-      mutated_node: binary_send(lvar(:code), :equal?, int(42))
+      original_node: binary_send(int(42), :==, int(42)),
+      mutated_node: binary_send(int(42), :equal?, int(42))
     )
 
     described_class.new.analyze(mutant)
 
     expect(mutant.status).to eq(:equivalent)
+  end
+
+  it "keeps `lhs == :sym` mutated to `lhs.equal?(:sym)` pending when receiver is a variable" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:result), :==, sym(:ok)),
+      mutated_node: binary_send(lvar(:result), :equal?, sym(:ok))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
   end
 
   it "keeps `lhs == rhs` mutated to `lhs.equal?(rhs)` pending when rhs is a string literal" do
