@@ -7,12 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.4] - 2026-04-13
+## [0.1.4] - 2026-04-14
 
 ### Fixed
+- `StringLiteral` operator no longer generates no-op mutations where the
+  replacement equals the original value (e.g. the spurious `"" → ""` mutant
+  that was emitted for methods already returning an empty string literal)
+- Terminal diff output now uses `display_unparse` for string literal nodes,
+  making whitespace-only mutations unambiguous in the report
+  (e.g. `""`, `" "`, and `"\n"` are now visually distinct)
+- Targeted coverage bootstrap (`--since` / explicit subjects) now correctly
+  retriggers a full suite run when the scoped bootstrap does not produce
+  coverage for all configured source files; previously the run could raise
+  `CoverageError` even though a fallback was available
 - Coverage formatter specs now honor `HENITAI_REPORTS_DIR`, so the baseline
   coverage bootstrap no longer fails when the suite runs under the mutation
   runner's configured reports directory
+
+### Changed
+- `ScenarioExecutionResult.build` factory method consolidates status and
+  exit-status derivation that was previously spread across `Integration`,
+  reducing the mutation surface of the value object
 
 ## [0.1.3] - 2026-04-13
 
