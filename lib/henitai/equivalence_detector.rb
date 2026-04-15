@@ -21,7 +21,8 @@ module Henitai
     def equivalent_mutation?(mutant)
       equivalent_arithmetic_mutation?(mutant) ||
         equivalent_logical_mutation?(mutant) ||
-        equivalent_singleton_equality_mutation?(mutant)
+        equivalent_singleton_equality_mutation?(mutant) ||
+        equivalent_string_eql_mutation?(mutant)
     end
 
     def equivalent_arithmetic_mutation?(mutant)
@@ -160,6 +161,59 @@ module Henitai
         singleton_literal?(original.children[0]) &&
         singleton_rhs_match?(original, mutated) &&
         equality_operators?(original.children[1], mutated.children[1])
+    end
+
+    # Detects `lhs == rhs` mutated to `lhs.eql?(rhs)` (or the reverse) when at
+    # least one operand is a string literal.
+    #
+    # String#eql? is documented to compare both type and value. Since String#==
+    # also compares type and value (it returns false for any non-String argument
+    # without invoking the other object's #==), the two methods are equivalent
+    # for all possible inputs whenever at least one operand is statically known
+    # to be a String — proven here by the presence of a :str literal on the
+    # receiver or the argument side.
+    #
+    # When no operand is a string literal we conservatively leave the mutant
+    # pending: the receiver could be any object whose custom #== diverges from
+    # its #eql?.
+    def equivalent_string_eql_mutation?(mutant)
+      original = mutant.original_node
+      mutated  = mutant.mutated_node
+
+      string_eql_send?(original) && string_eql_send?(mutated) &&
+        same_receiver?(original, mutated) &&
+        string_eql_operators?(original.children[1], mutated.children[1]) &&
+        same_rhs?(original, mutated) &&
+        string_operand?(original)
+    end
+
+    def string_eql_send?(node)
+      node.is_a?(Parser::AST::Node) &&
+        node.type == :send &&
+        node.children.size == 3 &&
+        string_eql_operator?(node.children[1])
+    end
+
+    def string_eql_operator?(operator)
+      %i[== eql?].include?(operator)
+    end
+
+    def string_eql_operators?(op_a, op_b)
+      string_eql_operator?(op_a) && string_eql_operator?(op_b) && op_a != op_b
+    end
+
+    def same_rhs?(original, mutated)
+      same_node?(original.children[2], mutated.children[2])
+    end
+
+    # Returns true when at least one operand is a string literal, giving static
+    # proof that the comparison is string-typed on at least one side.
+    def string_operand?(node)
+      string_literal?(node.children[0]) || string_literal?(node.children[2])
+    end
+
+    def string_literal?(node)
+      node.is_a?(Parser::AST::Node) && node.type == :str
     end
 
     def singleton_rhs_match?(original, mutated)

@@ -559,4 +559,123 @@ RSpec.describe Henitai::EquivalenceDetector do
 
     expect(mutant.status).to eq(:pending)
   end
+
+  # ---------------------------------------------------------------------------
+  # String eql? equivalence: == <-> eql? when at least one operand is a
+  # string literal
+  # ---------------------------------------------------------------------------
+
+  def str(value)
+    Parser::AST::Node.new(:str, [value])
+  end
+
+  it "marks `x == \"str\"` mutated to `x.eql?(\"str\")` as equivalent" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:x), :==, str("hello")),
+      mutated_node: binary_send(lvar(:x), :eql?, str("hello"))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:equivalent)
+  end
+
+  it "marks `x.eql?(\"str\")` mutated to `x == \"str\"` as equivalent" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:x), :eql?, str("hello")),
+      mutated_node: binary_send(lvar(:x), :==, str("hello"))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:equivalent)
+  end
+
+  it "marks `\"str\" == x` mutated to `\"str\".eql?(x)` as equivalent" do
+    mutant = build_mutant(
+      original_node: binary_send(str("hello"), :==, lvar(:x)),
+      mutated_node: binary_send(str("hello"), :eql?, lvar(:x))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:equivalent)
+  end
+
+  it "marks `\"str\".eql?(x)` mutated to `\"str\" == x` as equivalent" do
+    mutant = build_mutant(
+      original_node: binary_send(str("hello"), :eql?, lvar(:x)),
+      mutated_node: binary_send(str("hello"), :==, lvar(:x))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:equivalent)
+  end
+
+  it "marks `\"a\" == \"b\"` mutated to `\"a\".eql?(\"b\")` as equivalent" do
+    mutant = build_mutant(
+      original_node: binary_send(str("a"), :==, str("b")),
+      mutated_node: binary_send(str("a"), :eql?, str("b"))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:equivalent)
+  end
+
+  it "keeps `x == y` mutated to `x.eql?(y)` pending when neither operand is a string literal" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:x), :==, lvar(:y)),
+      mutated_node: binary_send(lvar(:x), :eql?, lvar(:y))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps `x == \"str\"` mutated to `x.eql?(\"other\")` pending when the RHS differs" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:x), :==, str("hello")),
+      mutated_node: binary_send(lvar(:x), :eql?, str("other"))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps `x == \"str\"` mutated to `y.eql?(\"str\")` pending when the receiver differs" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:x), :==, str("hello")),
+      mutated_node: binary_send(lvar(:y), :eql?, str("hello"))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps `x == \"str\"` mutated to `x == \"str\"` pending when the operator is unchanged" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:x), :==, str("hello")),
+      mutated_node: binary_send(lvar(:x), :==, str("hello"))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "does not conflate string eql? equivalence with equal? (identity) on string literals" do
+    mutant = build_mutant(
+      original_node: binary_send(lvar(:x), :==, str("hello")),
+      mutated_node: binary_send(lvar(:x), :equal?, str("hello"))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
 end
