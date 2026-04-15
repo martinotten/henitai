@@ -588,6 +588,19 @@ RSpec.describe Henitai::Integration::Rspec do
     expect(integration.test_files).to eq(["spec/a_spec.rb"])
   end
 
+  it "excludes fixture specs listed in .rspec from test discovery" do
+    with_temp_workspace do |dir|
+      write_file(dir, ".rspec", <<~TEXT)
+        --pattern spec/**/*_spec.rb
+        --exclude-pattern spec/fixtures/**/*_spec.rb
+      TEXT
+      write_file(dir, "spec/unit/sample_spec.rb", "")
+      write_file(dir, "spec/fixtures/integration_smoke/rspec/spec/greeting_spec.rb", "")
+
+      expect(described_class.new.send(:spec_files)).to eq(["spec/unit/sample_spec.rb"])
+    end
+  end
+
   it "forks a child, sets the mutant id, and waits with timeout" do
     mutant = Struct.new(:id).new("mutant-1")
     integration = described_class.new

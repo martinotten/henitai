@@ -326,7 +326,8 @@ module Henitai
       end
 
       def spec_files
-        Dir.glob("spec/**/*_spec.rb")
+        paths = Dir.glob("spec/**/*_spec.rb")
+        paths - excluded_spec_files
       end
 
       def fallback_spec_files(subject)
@@ -339,6 +340,26 @@ module Henitai
         end
 
         matches.empty? ? spec_files : matches
+      end
+
+      def excluded_spec_files
+        rspec_exclude_patterns.flat_map { |pattern| Dir.glob(pattern) }.uniq
+      end
+
+      def rspec_exclude_patterns
+        rspec_config_lines.filter_map do |line|
+          line[%r{\A--exclude-pattern\s+(.+)\z}, 1]
+        end
+      end
+
+      def rspec_config_lines
+        return [] unless File.exist?(rspec_config_path)
+
+        File.readlines(rspec_config_path, chomp: true).map(&:strip)
+      end
+
+      def rspec_config_path
+        ".rspec"
       end
 
       def selection_patterns(subject)
