@@ -172,6 +172,10 @@ Framework integration smoke projects live under `spec/fixtures/integration_smoke
 and exercise `henitai` against small RSpec and Minitest apps via the local path
 dependency.
 
+Git hook support is tracked in [`.githooks/pre-commit`](/Users/martinotten/projects/mo/henitai/.githooks/pre-commit).
+Enable it with `git config core.hooksPath .githooks` so commits run RuboCop,
+RSpec, and the integration smoke suite before they are created.
+
 A Dev Container configuration is included (`.devcontainer/`) for VS Code with the official `ruby:4`
 image, the Codex CLI, and RTK preinstalled. Codex support is bootstrapped with
 `rtk init -g --codex --auto-patch` during container creation.

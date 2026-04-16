@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+bundle exec rubocop --parallel
+bundle exec rspec
+bundle exec rake smoke:integration:all
