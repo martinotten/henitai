@@ -2,10 +2,15 @@
 
 require "spec_helper"
 require "tmpdir"
+require "fileutils"
 
 RSpec.describe Henitai::Configuration do
-  def load_configuration(yaml)
+  def load_configuration(yaml, fixtures: [])
     Dir.mktmpdir do |dir|
+      fixtures.each do |entry|
+        target = File.join(dir, entry)
+        entry.end_with?("/") ? FileUtils.mkdir_p(target) : FileUtils.touch(target)
+      end
       path = File.join(dir, ".henitai.yml")
       File.write(path, yaml)
       described_class.load(path:)
@@ -104,6 +109,33 @@ RSpec.describe Henitai::Configuration do
     YAML
 
     expect(config.integration).to eq("rspec")
+  end
+
+  context "when no integration is configured" do
+    it "detects minitest when a test/ directory is present" do
+      config = load_configuration("", fixtures: ["test/"])
+      expect(config.integration).to eq("minitest")
+    end
+
+    it "detects rspec when a spec/ directory is present" do
+      config = load_configuration("", fixtures: ["spec/"])
+      expect(config.integration).to eq("rspec")
+    end
+
+    it "detects rspec when a .rspec file is present" do
+      config = load_configuration("", fixtures: [".rspec"])
+      expect(config.integration).to eq("rspec")
+    end
+
+    it "prefers .rspec over test/ when both are present" do
+      config = load_configuration("", fixtures: [".rspec", "test/"])
+      expect(config.integration).to eq("rspec")
+    end
+
+    it "defaults to rspec when no detection signals are present" do
+      config = load_configuration("")
+      expect(config.integration).to eq("rspec")
+    end
   end
 
   it "applies CLI overrides after YAML values" do

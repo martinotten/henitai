@@ -106,6 +106,7 @@ module Henitai
     private
 
     def load_raw_configuration: (String) -> Hash[Symbol, untyped]
+    def detect_integration: () -> String
     def apply_defaults: (Hash[Symbol, untyped]) -> void
     def apply_general_defaults: (Hash[Symbol, untyped]) -> void
     def apply_mutation_defaults: (Hash[Symbol, untyped]) -> void

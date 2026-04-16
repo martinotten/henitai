@@ -35,6 +35,7 @@ module Henitai
     end
 
     def initialize(path: CONFIG_FILE, overrides: {})
+      @config_dir = File.dirname(File.expand_path(path))
       raw = load_raw_configuration(path)
       unless raw.is_a?(Hash)
         raise Henitai::ConfigurationError,
@@ -54,6 +55,14 @@ module Henitai
       raw || {}
     end
 
+    def detect_integration
+      return "rspec"    if File.exist?(File.join(@config_dir, ".rspec"))
+      return "minitest" if File.directory?(File.join(@config_dir, "test"))
+      return "rspec"    if File.directory?(File.join(@config_dir, "spec"))
+
+      "rspec"
+    end
+
     def apply_defaults(raw)
       apply_general_defaults(raw)
       apply_mutation_defaults(raw)
@@ -63,9 +72,9 @@ module Henitai
     def apply_general_defaults(raw)
       integration = raw[:integration]
       @integration = if integration.is_a?(Hash)
-                       integration[:name] || "rspec"
+                       integration[:name] || detect_integration
                      elsif integration.nil?
-                       "rspec"
+                       detect_integration
                      else
                        integration
                      end
