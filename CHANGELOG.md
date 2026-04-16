@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-04-16
+
+### Added
+- Minitest integration now supports per-test coverage: a `MinitestCoverageReporter`
+  snapshots `Coverage.peek_result` after each test and writes `henitai_per_test.json`,
+  enabling targeted mutation runs that only execute the tests covering the mutated lines —
+  the same efficiency that was previously available only to RSpec projects
+
+### Fixed
+- RSpec integration now respects `--exclude-pattern` entries in `.rspec` so excluded
+  spec files are not passed to the runner during mutation runs
+- Per-test source file filter corrected to check only the project-relative path prefix
+  rather than scanning the full absolute path, preventing false exclusions when the
+  project lives under a directory whose path contains `/spec/` or `/test/`
+
 ## [0.1.7] - 2026-04-14
 
 ### Added
@@ -181,7 +196,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI critical path: `henitai run` now executes the full pipeline, supports `--since`, returns CI-friendly exit codes, and `henitai version` prints `Henitai::VERSION`
 - RSpec per-test coverage output: `henitai/coverage_formatter` now writes `coverage/henitai_per_test.json`
 
-[Unreleased]: https://github.com/martinotten/henitai/compare/v0.1.7...HEAD
+[Unreleased]: https://github.com/martinotten/henitai/compare/v0.1.8...HEAD
+[0.1.8]: https://github.com/martinotten/henitai/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/martinotten/henitai/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/martinotten/henitai/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/martinotten/henitai/compare/v0.1.4...v0.1.5
