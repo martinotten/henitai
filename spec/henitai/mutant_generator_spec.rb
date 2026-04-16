@@ -633,6 +633,28 @@ RSpec.describe Henitai::MutantGenerator do
       end
     end
 
+    it "does not generate standalone mutations for str segments embedded in dstr nodes" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "lib/sample.rb", <<~RUBY)
+          class Sample
+            def greet(name)
+              "Hello, \#{name}!"
+            end
+          end
+        RUBY
+
+        subject = make_subject_for(path, "Sample#greet")
+        visitor = new_visitor(subject, [Henitai::Operators::StringLiteral.new])
+        visitor.process(Henitai::SourceParser.parse_file(path))
+
+        # The dstr node as a whole must be mutated (removing the interpolation),
+        # but the embedded str segment "Hello, " must not produce a standalone
+        # mutation — that would insert a quoted literal into raw-text position
+        # and generate a SyntaxError when the mutant is activated.
+        expect(visitor.mutants.map { |m| m.original_node.type }).to all(eq(:dstr))
+      end
+    end
+
     it "pre-computes subject source_range once during initialization" do
       subject = instance_double(
         Henitai::Subject,

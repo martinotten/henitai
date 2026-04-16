@@ -68,13 +68,32 @@ module Henitai
 
       private
 
-      def walk(node)
+      def walk(node, parent: nil)
         return unless node.is_a?(Parser::AST::Node)
+
+        # Str children of a non-heredoc dstr are raw text segments embedded
+        # inside a quoted interpolated string. They have no surrounding quotes
+        # in the source, so replacing them via source-fragment substitution
+        # would insert a quoted literal into the raw-text position and produce
+        # a SyntaxError when the mutant is activated.
+        # Heredoc dstr children are exempt: the heredoc body is plain text, so
+        # inserting "" there stays valid Ruby.
+        return if embedded_non_heredoc_dstr_str?(node, parent)
 
         apply_operators(node) if node_within_subject_range?(node)
         node.children.each do |child|
-          walk(child)
+          walk(child, parent: node)
         end
+      end
+
+      def embedded_non_heredoc_dstr_str?(node, parent)
+        node.type == :str &&
+          parent&.type == :dstr &&
+          !heredoc_node?(parent)
+      end
+
+      def heredoc_node?(node)
+        node.location.respond_to?(:heredoc_body) && node.location.heredoc_body
       end
 
       def apply_operators(node)
