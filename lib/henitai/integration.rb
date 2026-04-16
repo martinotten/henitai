@@ -348,7 +348,7 @@ module Henitai
 
       def rspec_exclude_patterns
         rspec_config_lines.filter_map do |line|
-          line[%r{\A--exclude-pattern\s+(.+)\z}, 1]
+          line[/\A--exclude-pattern\s+(.+)\z/, 1]
         end
       end
 
@@ -498,7 +498,7 @@ module Henitai
     # coverage collection is not yet wired into this path.
     class Minitest < Rspec
       def per_test_coverage_supported?
-        false
+        true
       end
 
       def run_mutant(mutant:, test_files:, timeout:)
@@ -526,6 +526,7 @@ module Henitai
       def suite_command(test_files)
         ["bundle", "exec", "ruby", "-I", "test",
          "-r", "henitai/minitest_simplecov",
+         "-r", "henitai/minitest_coverage_hook",
          "-e", "ARGV.each { |f| require File.expand_path(f) }",
          *test_files]
       end

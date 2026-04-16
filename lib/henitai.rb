@@ -41,6 +41,8 @@ module Henitai
   autoload :StillbornFilter, "henitai/stillborn_filter"
   autoload :ScenarioExecutionResult, "henitai/scenario_execution_result"
   autoload :CoverageFormatter, "henitai/coverage_formatter"
+  autoload :MinitestCoverageReporter, "henitai/minitest_coverage_reporter"
+  autoload :PerTestCoverageCollector, "henitai/per_test_coverage_collector"
   autoload :SyntaxValidator, "henitai/syntax_validator"
   autoload :SamplingStrategy, "henitai/sampling_strategy"
   autoload :TestPrioritizer, "henitai/test_prioritizer"

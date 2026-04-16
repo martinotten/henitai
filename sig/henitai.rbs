@@ -39,6 +39,15 @@ end
 
 module ::Minitest
   def self.run: (Array[String]) -> bool
+  def self.extensions: () -> Array[String]
+  def self.reporter: () -> untyped
+  def self.plugin_henitai_coverage_init: (untyped) -> void
+
+  class Reporter
+    def initialize: (?IO, ?Hash[untyped, untyped]) -> void
+    def record: (untyped) -> void
+    def report: () -> void
+  end
 end
 
 module ::RSpec::Core::Formatters
@@ -177,6 +186,28 @@ module Henitai
     def valid?: (Mutant) -> bool
   end
 
+  class PerTestCoverageCollector
+    REPORT_DIR_ENV: String
+    REPORT_FILE_NAME: String
+
+    def initialize: () -> void
+    def record_test: (String) -> void
+    def write_report: () -> void
+
+    private
+
+    def report_path: () -> String
+    def reports_dir: () -> String
+    def current_snapshot: () -> untyped
+    def warn_missing_coverage: () -> void
+    def new_lines: (untyped) -> Hash[String, Array[Integer]]
+    def new_line_numbers: (untyped, untyped) -> Array[Integer]
+    def previous_line_counts: (String) -> Array[untyped]
+    def line_counts_for: (untyped) -> Array[untyped]
+    def source_file?: (String) -> bool
+    def serializable_report: () -> Hash[String, Hash[String, Array[Integer]]]
+  end
+
   class CoverageFormatter
     REPORT_DIR_ENV: String
     REPORT_FILE_NAME: String
@@ -184,18 +215,16 @@ module Henitai
     def initialize: (untyped) -> void
     def example_finished: (untyped) -> void
     def dump_summary: (untyped) -> void
+  end
+
+  class MinitestCoverageReporter < ::Minitest::Reporter
+    def initialize: (?IO, ?Hash[untyped, untyped]) -> void
+    def record: (untyped) -> void
+    def report: () -> void
 
     private
 
-    def report_path: () -> String
-    def reports_dir: () -> String
-    def current_snapshot: () -> untyped
-    def new_lines: (untyped) -> untyped
-    def new_line_numbers: (untyped, untyped) -> untyped
-    def previous_line_counts: (String) -> untyped
-    def line_counts_for: (untyped) -> Array[untyped]
-    def source_file?: (String) -> bool
-    def serializable_report: () -> untyped
+    def relative_to_pwd: (String) -> String
   end
 
   class SamplingStrategy
@@ -301,6 +330,10 @@ module Henitai
       def with_subprocess_env: () { () -> untyped } -> untyped
       def spec_files: () -> Array[String]
       def fallback_spec_files: (Subject) -> Array[String]
+      def excluded_spec_files: () -> Array[String]
+      def rspec_exclude_patterns: () -> Array[String]
+      def rspec_config_lines: () -> Array[String]
+      def rspec_config_path: () -> String
       def selection_patterns: (Subject) -> Array[String]
       def requires_source_file?: (String, String) -> bool
       def requires_source_file_transitively?: (String, String, ?Array[String]) -> bool

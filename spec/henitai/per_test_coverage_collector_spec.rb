@@ -1,17 +1,10 @@
 # frozen_string_literal: true
 
 require "json"
-require "open3"
 require "spec_helper"
-require "stringio"
 require "tmpdir"
 
-RSpec.describe Henitai::CoverageFormatter do
-  def build_notification(file_path)
-    example = Struct.new(:metadata).new({ file_path: file_path })
-    Struct.new(:example).new(example)
-  end
-
+RSpec.describe Henitai::PerTestCoverageCollector do
   def report_path
     File.join(ENV.fetch("HENITAI_REPORTS_DIR", "coverage"), "henitai_per_test.json")
   end
@@ -39,18 +32,17 @@ RSpec.describe Henitai::CoverageFormatter do
   it "writes nested per-test coverage data to the report path" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
-        formatter = described_class.new(StringIO.new)
-        notification = build_notification("spec/models/sample_spec.rb")
+        collector = described_class.new
 
         allow(Coverage).to receive(:peek_result).and_return(
           coverage_snapshot(source_lines: [nil, 1, 0, 3])
         )
 
-        formatter.example_finished(notification)
-        formatter.dump_summary(nil)
+        collector.record_test("test/sample_test.rb")
+        collector.write_report
 
         expect(JSON.parse(File.read(report_path))).to eq(
-          "spec/models/sample_spec.rb" => {
+          "test/sample_test.rb" => {
             File.expand_path("lib/sample.rb") => [2, 4]
           }
         )
@@ -61,26 +53,24 @@ RSpec.describe Henitai::CoverageFormatter do
   it "creates the output directory when needed" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
-        formatter = described_class.new(StringIO.new)
-        notification = build_notification("spec/models/sample_spec.rb")
+        collector = described_class.new
 
         allow(Coverage).to receive(:peek_result).and_return(
           coverage_snapshot(source_lines: [nil, 1, 0])
         )
 
-        formatter.example_finished(notification)
-        formatter.dump_summary(nil)
+        collector.record_test("test/sample_test.rb")
+        collector.write_report
 
         expect(File).to exist(report_path)
       end
     end
   end
 
-  it "writes the report under ENV-configured output dir" do
+  it "writes the report under the ENV-configured output dir" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
-        formatter = described_class.new(StringIO.new)
-        notification = build_notification("spec/models/sample_spec.rb")
+        collector = described_class.new
         reports_dir = File.join(dir, "custom-reports")
 
         with_env("HENITAI_REPORTS_DIR", reports_dir) do
@@ -88,8 +78,8 @@ RSpec.describe Henitai::CoverageFormatter do
             coverage_snapshot(source_lines: [nil, 1, 0])
           )
 
-          formatter.example_finished(notification)
-          formatter.dump_summary(nil)
+          collector.record_test("test/sample_test.rb")
+          collector.write_report
         end
 
         expect(File).to exist(File.join(reports_dir, "henitai_per_test.json"))
@@ -97,11 +87,10 @@ RSpec.describe Henitai::CoverageFormatter do
     end
   end
 
-  it "handles the real Coverage.peek_result shape with symbol-keyed hashes" do
+  it "handles symbol-keyed coverage hashes from Coverage.peek_result" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
-        formatter = described_class.new(StringIO.new)
-        notification = build_notification("spec/models/sample_spec.rb")
+        collector = described_class.new
 
         allow(Coverage).to receive(:peek_result).and_return(
           File.expand_path("lib/sample.rb") => {
@@ -111,11 +100,11 @@ RSpec.describe Henitai::CoverageFormatter do
           }
         )
 
-        formatter.example_finished(notification)
-        formatter.dump_summary(nil)
+        collector.record_test("test/sample_test.rb")
+        collector.write_report
 
         expect(JSON.parse(File.read(report_path))).to eq(
-          "spec/models/sample_spec.rb" => {
+          "test/sample_test.rb" => {
             File.expand_path("lib/sample.rb") => [2, 4]
           }
         )
@@ -126,18 +115,17 @@ RSpec.describe Henitai::CoverageFormatter do
   it "canonicalizes relative source file keys when writing the report" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
-        formatter = described_class.new(StringIO.new)
-        notification = build_notification("spec/models/sample_spec.rb")
+        collector = described_class.new
 
         allow(Coverage).to receive(:peek_result).and_return(
           "lib/sample.rb" => [nil, 1, 0, 3]
         )
 
-        formatter.example_finished(notification)
-        formatter.dump_summary(nil)
+        collector.record_test("test/sample_test.rb")
+        collector.write_report
 
         expect(JSON.parse(File.read(report_path))).to eq(
-          "spec/models/sample_spec.rb" => {
+          "test/sample_test.rb" => {
             File.expand_path("lib/sample.rb") => [2, 4]
           }
         )
@@ -145,18 +133,17 @@ RSpec.describe Henitai::CoverageFormatter do
     end
   end
 
-  it "warns once and skips the report when coverage is unavailable" do
+  it "emits a warning to stderr once when coverage is unavailable" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
-        formatter = described_class.new(StringIO.new)
-        notification = build_notification("spec/models/sample_spec.rb")
+        collector = described_class.new
 
         allow(Coverage).to receive(:peek_result).and_raise(StandardError)
 
         expect do
-          formatter.example_finished(notification)
-          formatter.example_finished(notification)
-          formatter.dump_summary(nil)
+          collector.record_test("test/sample_test.rb")
+          collector.record_test("test/sample_test.rb")
+          collector.write_report
         end.to output(
           "Per-test coverage unavailable; skipping coverage formatter output\n"
         ).to_stderr
@@ -166,34 +153,43 @@ RSpec.describe Henitai::CoverageFormatter do
     end
   end
 
-  it "can be required without rspec/core being available" do
-    script = <<~RUBY
-      module Kernel
-        alias __henitai_original_require__ require
+  it "excludes test/ files from source coverage tracking" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        collector = described_class.new
 
-        def require(path)
-          raise LoadError, "blocked rspec/core" if path == "rspec/core"
+        allow(Coverage).to receive(:peek_result).and_return(
+          File.expand_path("lib/sample.rb") => [nil, 1, 0],
+          File.expand_path("test/sample_test.rb") => [nil, 1, 1]
+        )
 
-          __henitai_original_require__(path)
-        end
+        collector.record_test("test/sample_test.rb")
+        collector.write_report
+
+        report = JSON.parse(File.read(report_path))
+        source_files = report.values.flat_map(&:keys)
+        expect(source_files).not_to include(match(%r{/test/}))
       end
+    end
+  end
 
-      require "henitai/coverage_formatter"
-      puts "ok"
-    RUBY
+  it "excludes spec/ files from source coverage tracking" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        collector = described_class.new
 
-    stdout, stderr, status = Open3.capture3(
-      "ruby",
-      "-I",
-      "lib",
-      "-e",
-      script,
-      chdir: Dir.pwd
-    )
+        allow(Coverage).to receive(:peek_result).and_return(
+          File.expand_path("lib/sample.rb") => [nil, 1, 0],
+          File.expand_path("spec/sample_spec.rb") => [nil, 1, 1]
+        )
 
-    aggregate_failures do
-      expect(status.success?).to be(true), stderr
-      expect(stdout).to eq("ok\n")
+        collector.record_test("test/sample_test.rb")
+        collector.write_report
+
+        report = JSON.parse(File.read(report_path))
+        source_files = report.values.flat_map(&:keys)
+        expect(source_files).not_to include(match(%r{/spec/}))
+      end
     end
   end
 end

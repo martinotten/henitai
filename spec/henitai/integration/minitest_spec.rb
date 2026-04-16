@@ -178,6 +178,8 @@ RSpec.describe Henitai::Integration::Minitest do
         "test",
         "-r",
         "henitai/minitest_simplecov",
+        "-r",
+        "henitai/minitest_coverage_hook",
         "-e",
         "ARGV.each { |f| require File.expand_path(f) }",
         "test/sample_test.rb"
@@ -185,8 +187,8 @@ RSpec.describe Henitai::Integration::Minitest do
     )
   end
 
-  it "does not advertise per-test coverage support" do
-    expect(described_class.new.per_test_coverage_supported?).to be(false)
+  it "advertises per-test coverage support" do
+    expect(described_class.new.per_test_coverage_supported?).to be(true)
   end
 
   it "spawns the baseline suite with the minitest subprocess environment" do
