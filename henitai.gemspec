@@ -30,7 +30,7 @@ Gem::Specification.new do |spec|
     "changelog_uri" => "https://github.com/martinotten/henitai/blob/main/CHANGELOG.md",
     "documentation_uri" => "https://github.com/martinotten/henitai/blob/main/README.md",
     "homepage_uri" => spec.homepage,
-    "source_code_uri" => "https://github.com/martinotten/henitai/tree/v0.1.9",
+    "source_code_uri" => "https://github.com/martinotten/henitai/tree/v0.1.10",
     "rubygems_mfa_required" => "true"
   }
 

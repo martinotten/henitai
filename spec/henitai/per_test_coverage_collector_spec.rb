@@ -147,6 +147,19 @@ RSpec.describe Henitai::PerTestCoverageCollector do
         end.to output(
           "Per-test coverage unavailable; skipping coverage formatter output\n"
         ).to_stderr
+      end
+    end
+  end
+
+  it "does not write a report when coverage is unavailable" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        collector = described_class.new
+
+        allow(Coverage).to receive(:peek_result).and_raise(StandardError)
+
+        collector.record_test("test/sample_test.rb")
+        collector.write_report
 
         expect(File.exist?("coverage/henitai_per_test.json")).to be(false)
       end
