@@ -491,6 +491,12 @@ module Henitai
       end
     end
 
+    # Prepended onto SimpleCov's singleton class to turn start into a no-op
+    # during mutant child runs. Using prepend avoids "method redefined" warnings.
+    module SimpleCovStartSuppressor
+      def start(*_args) = nil
+    end
+
     # Minitest integration adapter.
     #
     # Coverage formatter injection remains implemented in the RSpec child
@@ -532,6 +538,7 @@ module Henitai
       end
 
       def run_tests(test_files)
+        suppress_simplecov!
         test_files.each { |file| require File.expand_path(file) }
         # @type var empty_args: Array[String]
         empty_args = []
@@ -549,6 +556,16 @@ module Henitai
       def setup_load_path
         test_dir = File.expand_path("test")
         $LOAD_PATH.unshift(test_dir) unless $LOAD_PATH.include?(test_dir)
+      end
+
+      def suppress_simplecov!
+        require "simplecov"
+        sc = Object.const_get(:SimpleCov) # steep:ignore Ruby::UnknownConstant
+        return if sc.singleton_class.ancestors.include?(SimpleCovStartSuppressor)
+
+        sc.singleton_class.prepend(SimpleCovStartSuppressor)
+      rescue LoadError, NameError
+        nil
       end
 
       def subprocess_env

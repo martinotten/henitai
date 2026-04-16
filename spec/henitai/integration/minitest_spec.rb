@@ -438,6 +438,7 @@ RSpec.describe Henitai::Integration::Minitest do
       [
         3,
         [
+          [:require, "simplecov"],
           [:require, sample_test_path],
           [:minitest, []]
         ]

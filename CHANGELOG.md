@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-04-16
+
+### Fixed
+- SimpleCov is now suppressed during Minitest mutant child runs: `SimpleCov.start`
+  is turned into a no-op before test files are required, eliminating the
+  "Stopped processing SimpleCov as a previous error has been detected" warning
+  and avoiding unnecessary coverage instrumentation overhead in every mutant fork
+
 ## [0.1.8] - 2026-04-16
 
 ### Added
@@ -196,7 +204,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI critical path: `henitai run` now executes the full pipeline, supports `--since`, returns CI-friendly exit codes, and `henitai version` prints `Henitai::VERSION`
 - RSpec per-test coverage output: `henitai/coverage_formatter` now writes `coverage/henitai_per_test.json`
 
-[Unreleased]: https://github.com/martinotten/henitai/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/martinotten/henitai/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/martinotten/henitai/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/martinotten/henitai/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/martinotten/henitai/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/martinotten/henitai/compare/v0.1.5...v0.1.6

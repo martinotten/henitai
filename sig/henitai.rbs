@@ -344,6 +344,10 @@ module Henitai
       def expand_candidates: (String, String) -> Array[String]
     end
 
+    module SimpleCovStartSuppressor
+      def start: (*untyped) -> nil
+    end
+
     class Minitest < Rspec
       def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
       def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
@@ -354,6 +358,7 @@ module Henitai
       def run_tests: (Array[String]) -> Integer
       def preload_environment: () -> void
       def setup_load_path: () -> void
+      def suppress_simplecov!: () -> void
       def subprocess_env: () -> Hash[String, String]
       def cleanup_suite_process: (Integer?, untyped) -> void
       def spec_files: () -> Array[String]
