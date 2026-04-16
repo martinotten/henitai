@@ -70,22 +70,13 @@ module Henitai
     end
 
     def apply_general_defaults(raw)
-      integration = raw[:integration]
-      @integration = if integration.is_a?(Hash)
-                       integration[:name] || detect_integration
-                     elsif integration.nil?
-                       detect_integration
-                     else
-                       integration
-                     end
+      @integration = resolve_integration_default(raw[:integration])
       @includes = raw[:includes] || ["lib"]
       @jobs = raw.fetch(:jobs, DEFAULT_JOBS)
       @reporters = raw[:reporters] || ["terminal"]
       @reports_dir = raw[:reports_dir] || DEFAULT_REPORTS_DIR
       @all_logs = raw[:all_logs] == true
-      # @type var empty_dashboard: Hash[Symbol, untyped]
-      empty_dashboard = {}
-      @dashboard = merge_defaults(empty_dashboard, raw[:dashboard])
+      @dashboard = default_dashboard(raw[:dashboard])
     end
 
     def apply_mutation_defaults(raw)
@@ -118,6 +109,19 @@ module Henitai
           override_value
         end
       end
+    end
+
+    def resolve_integration_default(integration)
+      return integration[:name] || detect_integration if integration.is_a?(Hash)
+      return detect_integration if integration.nil?
+
+      integration
+    end
+
+    def default_dashboard(overrides)
+      # @type var empty_dashboard: Hash[Symbol, untyped]
+      empty_dashboard = {}
+      merge_defaults(empty_dashboard, overrides)
     end
 
     def symbolize_keys(value)

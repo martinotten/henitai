@@ -112,6 +112,8 @@ module Henitai
     def apply_mutation_defaults: (Hash[Symbol, untyped]) -> void
     def apply_analysis_defaults: (Hash[Symbol, untyped]) -> void
     def merge_defaults: (Hash[Symbol, untyped], Hash[Symbol, untyped]?) -> Hash[Symbol, untyped]
+    def resolve_integration_default: (untyped) -> untyped
+    def default_dashboard: (Hash[Symbol, untyped]?) -> Hash[Symbol, untyped]
     def symbolize_keys: (untyped) -> untyped
   end
 
