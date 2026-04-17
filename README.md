@@ -15,10 +15,9 @@ A Ruby mutation testing framework
 ## Maturaty
 
 - This is alpha software, there will be bugs
-- Henitai tests itself
-- Stryker Dashboard support is untested
-- Minitest support is untested
-- Lots of code has been carefully crafted by AI agents, not everything has been reviewed by humans (yet)
+- Henitai tests itself and other projects
+- It might break with a release
+- If you need a mature solution for mutation testing in ruby, take a look at the [https://github.com/mbj/mutant](Mutant gem)
 
 ## What is mutation testing?
 
@@ -27,6 +26,8 @@ Mutation testing answers the question that code coverage cannot: **does your tes
 A mutation testing tool makes small, systematic changes — *mutants* — to your source code (e.g. replacing `>` with `>=`, removing a `return` statement, flipping a boolean) and then runs your tests. A mutant that causes at least one test to fail is *killed*. A mutant that passes all tests is *survived* — evidence that your tests are not covering that behaviour.
 
 The ratio of killed mutants to total mutants is the **Mutation Score** (MS). A high mutation score is a strong quality signal.
+
+As mutation testing modifies your code you make sure that your tests cannot have any unintended side-effects.
 
 ## Installation
 
