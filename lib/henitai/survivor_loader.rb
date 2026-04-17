@@ -5,6 +5,9 @@ require "json"
 module Henitai
   # Reads a Stryker-compatible mutation report and extracts the stable IDs
   # of mutants whose status is "Survived".
+  #
+  # Scope validation is intentionally shallow: it only checks that the report
+  # looks like a Henitai/Stryker report and shares at least one included path.
   class SurvivorLoader
     class FileNotFoundError < StandardError
     end
@@ -50,7 +53,7 @@ module Henitai
       end
       return if @include_paths.empty?
 
-      report_files = report.fetch("files", {}).keys
+      report_files = (report.fetch("files", {}) || {}).keys
       overlap = report_files.any? do |file|
         @include_paths.any? { |inc| file.start_with?(inc) }
       end
@@ -72,8 +75,8 @@ module Henitai
     end
 
     def all_mutants(report)
-      files = report.fetch("files", {})
-      files.values.flat_map { |file_data| file_data.fetch("mutants", []) }
+      files = report.fetch("files", {}) || {}
+      files.values.compact.flat_map { |file_data| file_data.fetch("mutants", []) }
     end
   end
 end

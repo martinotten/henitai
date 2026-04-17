@@ -178,6 +178,7 @@ The system is organized into the following main parts:
 | Subject resolution | Turn file changes and subject patterns into runnable subjects | `lib/henitai/subject.rb`, pipeline subject resolver |
 | Mutant generation | Walk the AST and create candidate mutants | `lib/henitai/operator.rb`, `lib/henitai/operators/*` |
 | Coverage validation | Ensure baseline coverage exists before mutation | `lib/henitai/coverage_bootstrapper.rb`, `lib/henitai/static_filter.rb` |
+| Survivor selection | Load prior survivor reports and filter the current mutants to a rerun subset | `lib/henitai/survivor_loader.rb`, `lib/henitai/survivor_selector.rb` |
 | Execution engine | Run the relevant tests in isolated processes | pipeline execution engine, integration adapters |
 | Result analysis | Classify outcomes, compute scores, preserve statuses | `lib/henitai/result.rb`, result collector |
 | Reporters | Emit terminal, JSON, HTML, and dashboard outputs; keep live progress separate from captured child logs | `lib/henitai/reporter/*` |
@@ -190,6 +191,7 @@ The most important interfaces are:
 - the `.henitai.yml` configuration schema
 - the CLI subject syntax, including longest-prefix selection for RSpec-style names
 - the Stryker-compatible JSON report schema
+- the `stableId` vendor extension and `partialRerun` marker used by survivor reruns
 - the reporter interface for terminal, HTML, JSON, and dashboard output
 - the output contract for child process logs, which are captured as artifacts
 - the worker isolation contract based on process-level execution
@@ -226,6 +228,7 @@ Representative report contract:
 - `files`
 - `mutants`
 - each mutant must include a stable id, operator name, replacement, location, status, and optional `coveredBy`/`killedBy` links
+- survivor reruns add `partialRerun` and `unmatchedSurvivorIds` as vendor-extension fields
 
 ### 5.3 Level 2 Decomposition
 
@@ -260,6 +263,7 @@ The implementation maps onto the following module layout:
 5. Arid nodes, stillborn mutants, and irrelevant subjects are filtered early.
 6. A small mutant subset is executed in isolated worker processes.
 7. The terminal report highlights only the meaningful survivors.
+8. If the developer provides `--survivors-from`, Henitai loads a prior JSON report, filters the current mutants to the survivor subset, and labels the run as partial so threshold checks and trend analytics are not treated as full-run results.
 
 ### 6.2 Pull Request Run
 

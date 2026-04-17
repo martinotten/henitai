@@ -515,7 +515,7 @@ RSpec.describe Henitai::Reporter::Terminal do
       reporter = described_class.new(config: build_config)
       result = build_partial_result
       with_no_color do
-        expect { reporter.report(result) }.to output(/Partial rerun/).to_stdout
+        expect { reporter.report(result) }.to output(/Partial survivor rerun/).to_stdout
       end
     end
 
@@ -523,8 +523,16 @@ RSpec.describe Henitai::Reporter::Terminal do
       reporter = described_class.new(config: build_config)
       stats = { matched: 3, unmatched_count: 1, unmatched_ids: ["abc"], drift_warning: false }
       result = build_partial_result(survivor_stats: stats)
+      expected_output = <<~OUTPUT
+        Partial survivor rerun
+        #{summary_row('Survived', 0)}
+        #{summary_row('Duration', '0.50s')}
+        #{summary_row('Matched', 3)}
+        #{summary_row('Unmatched', 1)}
+        #{summary_row('Drift warning', 'no')}
+      OUTPUT
       with_no_color do
-        expect { reporter.report(result) }.to output(/Matched.*3/).to_stdout
+        expect { reporter.report(result) }.to output(expected_output).to_stdout
       end
     end
   end

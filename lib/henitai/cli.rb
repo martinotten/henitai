@@ -218,7 +218,10 @@ module Henitai
     end
 
     def add_survivors_from_option(opts, options)
-      opts.on("--survivors-from PATH", "Re-run only mutants that survived a prior report") do |path|
+      opts.on(
+        "--survivors-from PATH",
+        "Re-run only survivors from a prior report (partial rerun; threshold checks are skipped)"
+      ) do |path|
         options[:survivors_from] = path
       end
     end
@@ -253,6 +256,7 @@ module Henitai
           bundle exec henitai run --since origin/main
           bundle exec henitai run 'Foo::Bar#my_method'
           bundle exec henitai run 'MyNamespace*' --operators full
+          bundle exec henitai run --survivors-from reports/mutation-report.json
           bundle exec henitai clean
           bundle exec henitai init
           bundle exec henitai operator list
@@ -310,7 +314,10 @@ module Henitai
     end
 
     def exit_status_for(result, config)
-      return 0 if result.respond_to?(:partial_rerun?) && result.partial_rerun?
+      if result.respond_to?(:partial_rerun?) && result.partial_rerun?
+        warn "henitai: partial rerun - mutation score threshold not evaluated"
+        return 0
+      end
 
       result.mutation_score.to_i >= config.thresholds.fetch(:low, 60) ? 0 : 1
     end

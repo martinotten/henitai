@@ -76,6 +76,10 @@ RSpec.describe Henitai::CLI do
     it "documents the --all-logs flag" do
       expect(help_output).to match(/--all-logs/)
     end
+
+    it "documents the --survivors-from flag" do
+      expect(help_output).to match(/--survivors-from/)
+    end
   end
 
   def capture_stdout
@@ -720,17 +724,16 @@ RSpec.describe Henitai::CLI do
   it "exits zero for a partial rerun regardless of score" do
     Dir.mktmpdir do |dir|
       config_path = write_configuration(dir)
-      exit_status = nil
       result = instance_double(Henitai::Result, mutation_score: 0, partial_rerun?: true)
       runner = build_runner(result:)
 
       allow(Henitai::Runner).to receive(:new).and_return(runner)
 
       cli = described_class.new(["run", "--config", config_path])
-      cli.define_singleton_method(:exit) { |status = nil| exit_status = status }
-      cli.run
-
-      expect(exit_status).to eq(0)
+      cli.define_singleton_method(:exit) do |status = nil|
+        raise "expected exit status 0, got #{status.inspect}" unless status == 0
+      end
+      expect { cli.run }.to output(/partial rerun - mutation score threshold not evaluated/).to_stderr
     end
   end
 end

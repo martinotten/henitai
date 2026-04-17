@@ -224,7 +224,7 @@ module Henitai
 
     def warn_survivor_drift(selector)
       warn "henitai: WARNING: #{selector.unmatched_ids.size} prior survivors " \
-           "could not be matched — consider a full run"
+           "could not be matched; the source may have drifted - consider a full run"
     end
 
     def build_survivor_stats(selector, selected)

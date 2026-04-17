@@ -57,6 +57,9 @@ bundle exec henitai run --since origin/main
 # Run on a specific subject pattern
 bundle exec henitai run 'MyClass#my_method'
 bundle exec henitai run 'MyNamespace*'
+
+# Re-run only survivors from a prior mutation report
+bundle exec henitai run --survivors-from reports/mutation-report.json
 ```
 
 Configuration lives in `.henitai.yml`:
@@ -112,6 +115,10 @@ and the terminal only shows progress plus a concise summary. Pass
 `henitai version` prints the installed version. `henitai run` exits with `0`
 when the mutation score meets the low threshold, `1` when it does not, and `2`
 for framework errors.
+
+`henitai run --survivors-from ...` performs a partial rerun: it reports only
+the selected survivors, skips threshold-based exit checks, and does not update
+the run trend history.
 
 The repository ships a JSON Schema at [`assets/schema/henitai.schema.json`](/workspaces/henitai/assets/schema/henitai.schema.json) for editor autocompletion.
 

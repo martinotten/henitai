@@ -111,7 +111,7 @@ module Henitai
 
       def partial_summary_lines(result)
         lines = [
-          "Partial rerun summary",
+          "Partial survivor rerun",
           format_row("Survived", count_status(result, :survived)),
           format_row("Duration", format_duration(result.duration))
         ]
@@ -126,6 +126,8 @@ module Henitai
         return unless stats
 
         lines << format_row("Matched", stats.fetch(:matched))
+        lines << format_row("Unmatched", stats.fetch(:unmatched_count))
+        lines << format_row("Drift warning", stats.fetch(:drift_warning) ? "yes" : "no")
       end
 
       def survived_detail_lines(result)

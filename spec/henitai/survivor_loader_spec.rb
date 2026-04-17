@@ -89,4 +89,20 @@ RSpec.describe Henitai::SurvivorLoader do
       expect { described_class.new(path).load }.not_to raise_error
     end
   end
+
+  it "ignores nil file entries when collecting mutants" do
+    Dir.mktmpdir do |dir|
+      path = write_report(
+        dir,
+        {
+          "schemaVersion" => "1.0",
+          "files" => {
+            "lib/sample.rb" => nil
+          }
+        }
+      )
+
+      expect(described_class.new(path).load).to eq([])
+    end
+  end
 end

@@ -210,10 +210,6 @@ RSpec.describe Henitai::MutantHistoryStore do
           mutant.operator,
           mutant.description,
           mutant.location[:file],
-          mutant.location[:start_line],
-          mutant.location[:end_line],
-          mutant.location[:start_col],
-          mutant.location[:end_col],
           Unparser.unparse(mutant.mutated_node)
         ].join("\0")
       )

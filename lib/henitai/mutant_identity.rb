@@ -6,8 +6,8 @@ require "unparser"
 module Henitai
   # Computes a stable, run-independent SHA256 identity for a mutant.
   #
-  # The identity is derived from the mutant's semantic content — not its
-  # session UUID — so it survives across runs even when line numbers shift.
+  # The identity is derived from the mutant's semantic content, not the
+  # session UUID or source coordinates, so it survives ordinary line shifts.
   module MutantIdentity
     def self.stable_id(mutant)
       Digest::SHA256.hexdigest(identity_components(mutant).join("\0"))
@@ -19,10 +19,6 @@ module Henitai
         mutant.operator,
         mutant.description,
         mutant.location[:file],
-        mutant.location[:start_line],
-        mutant.location[:end_line],
-        mutant.location[:start_col],
-        mutant.location[:end_col],
         mutation_signature(mutant)
       ]
     end
