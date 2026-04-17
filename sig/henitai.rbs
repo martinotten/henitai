@@ -176,6 +176,7 @@ module Henitai
     attr_accessor tests_completed: Integer?
 
     def initialize: (subject: Subject, operator: String, nodes: Hash[Symbol, untyped], description: String, location: Hash[Symbol, untyped]) -> void
+    def stable_id: () -> String
     def killed?: () -> bool
     def survived?: () -> bool
     def pending?: () -> bool
@@ -381,9 +382,13 @@ module Henitai
     def generate: (Array[Subject], Array[untyped], ?config: untyped) -> Array[Mutant]
   end
 
+  module MutantIdentity
+    def self.stable_id: (Mutant) -> String
+  end
+
   class MutantHistoryStore
     def initialize: (path: String) -> void
-    def record: (Result, version: String, ?recorded_at: Time) -> void
+    def record: (untyped, version: String, ?recorded_at: Time) -> void
     def trend_report: () -> Hash[Symbol, untyped]
   end
 
@@ -515,7 +520,10 @@ module Henitai
       private
 
       def report_lines: (Result) -> Array[String]
-      def summary_lines: (Result) -> Array[String]
+      def summary_lines: (untyped) -> Array[String]
+      def full_summary_lines: (untyped) -> Array[String]
+      def partial_summary_lines: (untyped) -> Array[String]
+      def append_survivor_stats: (Array[String], untyped) -> void
       def survived_detail_lines: (Result) -> Array[String]
       def survived_mutant_lines: (Mutant) -> Array[String]
       def survived_mutant_header: (Mutant) -> String
@@ -598,8 +606,10 @@ module Henitai
     attr_reader started_at: Time
     attr_reader finished_at: Time
     attr_reader thresholds: Hash[Symbol, Integer]
+    attr_reader survivor_stats: Hash[Symbol, untyped]?
 
-    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time, ?thresholds: Hash[Symbol, Integer]?) -> void
+    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time, ?thresholds: Hash[Symbol, Integer]?, ?partial_rerun: bool, ?survivor_stats: Hash[Symbol, untyped]?) -> void
+    def partial_rerun?: () -> bool
     def killed: () -> Integer
     def survived: () -> Integer
     def equivalent: () -> Integer
@@ -612,6 +622,8 @@ module Henitai
 
     private
 
+    def base_schema: () -> Hash[Symbol, untyped]
+    def unmatched_survivor_ids: () -> Array[String]
     def build_files_section: () -> Hash[Symbol, untyped]
     def mutant_to_schema: (Mutant) -> Hash[Symbol, untyped]
     def coverage_schema: (Mutant) -> Hash[Symbol, untyped]
@@ -623,11 +635,29 @@ module Henitai
     def stryker_status: (Symbol) -> String
   end
 
+  class SurvivorLoader
+    FileNotFoundError: singleton(StandardError)
+    InvalidReportError: singleton(StandardError)
+    ScopeMismatchError: singleton(StandardError)
+
+    def initialize: (String, ?include_paths: Array[String]) -> void
+    def load: () -> Array[String]
+  end
+
+  class SurvivorSelector
+    DRIFT_THRESHOLD: Float
+
+    def initialize: (survivor_ids: Array[String]) -> void
+    def select: (Array[Mutant]) -> Array[Mutant]
+    def unmatched_ids: () -> Array[String]
+    def drift_warning?: () -> bool
+  end
+
   class Runner
     attr_reader config: Configuration
     attr_reader result: untyped
 
-    def initialize: (?config: Configuration, ?subjects: Array[Subject], ?since: String) -> void
+    def initialize: (?config: Configuration, ?subjects: Array[Subject], ?since: String, ?survivors_from: String?) -> void
     def run: () -> Result
     def resolve_subjects: (?Array[String]) -> untyped
     def generate_mutants: (untyped) -> untyped
@@ -659,6 +689,10 @@ module Henitai
     def mutants_for: (Array[Subject], Array[String]) -> Array[Mutant]
     def with_reports_dir: () { () -> untyped } -> untyped
     def result_thresholds: () -> Hash[Symbol, Integer]?
+    def survivor_rerun?: () -> bool
+    def apply_survivor_selection: (Array[Mutant]) -> Array[Mutant]
+    def warn_survivor_drift: (SurvivorSelector) -> void
+    def build_survivor_stats: (SurvivorSelector, Array[Mutant]) -> Hash[Symbol, untyped]
   end
 
   class CoverageBootstrapper

@@ -3,6 +3,7 @@
 # rubocop:disable RSpec/ExampleLength
 
 require "fileutils"
+require "json"
 require "spec_helper"
 require "tmpdir"
 
@@ -651,6 +652,76 @@ RSpec.describe Henitai::Runner do
             config
           ]]
         )
+      end
+    end
+  end
+
+  describe "survivors_from:" do
+    # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
+    def setup_runner_doubles(runner, _config, result)
+      subject_resolver = instance_double(Henitai::SubjectResolver)
+      mutant_generator = instance_double(Henitai::MutantGenerator)
+      static_filter    = instance_double(Henitai::StaticFilter)
+      execution_engine = instance_double(Henitai::ExecutionEngine)
+      integration      = instance_double(Henitai::Integration::Rspec)
+      history_store    = build_history_store
+
+      allow(runner).to receive_messages(
+        subject_resolver:, mutant_generator:, static_filter:,
+        execution_engine:, integration:, history_store:
+      )
+      allow(subject_resolver).to receive(:resolve_from_files).and_return([])
+      allow(mutant_generator).to receive(:generate).and_return([])
+      allow(static_filter).to receive(:apply) { |m, _| m }
+      allow(execution_engine).to receive(:run).and_return([])
+      allow(Henitai::Result).to receive(:new).and_return(result)
+      allow(Henitai::Reporter).to receive(:run_all)
+    end
+    # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
+
+    it "marks the result as a partial rerun when survivors_from is given" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "lib"))
+        File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+        report_path = File.join(dir, "mutation-report.json")
+        File.write(report_path, JSON.generate(
+                                  "schemaVersion" => "1.0",
+                                  "files" => { "lib/sample.rb" => { "language" => "ruby", "source" => "",
+                                                                    "mutants" => [] } }
+                                ))
+
+        Dir.chdir(dir) do
+          config = build_config(reporters: [])
+          result = instance_double(Henitai::Result, partial_rerun?: true)
+          runner = described_class.new(config:, survivors_from: report_path)
+          setup_runner_doubles(runner, config, result)
+
+          runner.run
+
+          expect(Henitai::Result).to have_received(:new).with(
+            hash_including(partial_rerun: true)
+          )
+        end
+      end
+    end
+
+    it "does not mark the result as partial rerun for normal runs" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "lib"))
+        File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+        Dir.chdir(dir) do
+          config = build_config(reporters: [])
+          result = instance_double(Henitai::Result, partial_rerun?: false)
+          runner = described_class.new(config:)
+          setup_runner_doubles(runner, config, result)
+
+          runner.run
+
+          expect(Henitai::Result).to have_received(:new).with(
+            hash_including(partial_rerun: false)
+          )
+        end
       end
     end
   end

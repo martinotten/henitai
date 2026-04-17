@@ -30,7 +30,10 @@ RSpec.describe Henitai::Reporter::Terminal do
   end
 
   def build_result(mutants:, scoring_summary:, duration:)
-    Struct.new(:mutants, :scoring_summary, :duration).new(
+    Struct.new(:mutants, :scoring_summary, :duration) do
+      def partial_rerun? = false
+      def survivor_stats = nil
+    end.new(
       mutants,
       scoring_summary,
       duration
@@ -491,5 +494,38 @@ RSpec.describe Henitai::Reporter::Terminal do
     allow($stdout).to receive(:flush)
     reporter.send(:flush)
     expect($stdout).to have_received(:flush)
+  end
+
+  describe "partial rerun" do
+    def build_partial_result(survivor_stats: nil)
+      klass = Struct.new(:mutants, :scoring_summary, :duration) do
+        def partial_rerun? = true
+        def survivor_stats = nil
+      end
+      instance = klass.new(
+        [],
+        { mutation_score: nil, mutation_score_indicator: nil, equivalence_uncertainty: nil },
+        0.5
+      )
+      instance.define_singleton_method(:survivor_stats) { survivor_stats }
+      instance
+    end
+
+    it "prints a partial rerun summary header" do
+      reporter = described_class.new(config: build_config)
+      result = build_partial_result
+      with_no_color do
+        expect { reporter.report(result) }.to output(/Partial rerun/).to_stdout
+      end
+    end
+
+    it "includes survivor match stats when survivor_stats is present" do
+      reporter = described_class.new(config: build_config)
+      stats = { matched: 3, unmatched_count: 1, unmatched_ids: ["abc"], drift_warning: false }
+      result = build_partial_result(survivor_stats: stats)
+      with_no_color do
+        expect { reporter.report(result) }.to output(/Matched.*3/).to_stdout
+      end
+    end
   end
 end

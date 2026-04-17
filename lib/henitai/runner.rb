@@ -28,10 +28,11 @@ module Henitai
   class Runner
     attr_reader :config, :result
 
-    def initialize(config: Configuration.load, subjects: nil, since: nil)
-      @config   = config
-      @subjects = subjects
-      @since    = since
+    def initialize(config: Configuration.load, subjects: nil, since: nil, survivors_from: nil)
+      @config         = config
+      @subjects       = subjects
+      @since          = since
+      @survivors_from = survivors_from
     end
 
     # Entry point — runs the full pipeline and returns a Result.
@@ -75,8 +76,8 @@ module Henitai
       bootstrap_thread = bootstrap_mutants(source_files)
       mutants = generate_mutants(subjects)
       bootstrap_thread.value
-
-      filter_mutants(mutants)
+      filtered = filter_mutants(mutants)
+      apply_survivor_selection(filtered)
     end
 
     def bootstrap_mutants(source_files)
@@ -109,7 +110,9 @@ module Henitai
         mutants:,
         started_at:,
         finished_at:,
-        thresholds: result_thresholds
+        thresholds: result_thresholds,
+        partial_rerun: survivor_rerun?,
+        survivor_stats: @survivor_stats
       )
       persist_history(@result, finished_at)
       report(@result)
@@ -199,6 +202,38 @@ module Henitai
       return nil unless config.respond_to?(:thresholds)
 
       config.thresholds
+    end
+
+    def survivor_rerun?
+      !@survivors_from.nil?
+    end
+
+    def apply_survivor_selection(mutants)
+      return mutants unless survivor_rerun?
+
+      survivor_ids = SurvivorLoader.new(
+        @survivors_from,
+        include_paths: Array(config.includes)
+      ).load
+      selector = SurvivorSelector.new(survivor_ids:)
+      selected = selector.select(mutants)
+      @survivor_stats = build_survivor_stats(selector, selected)
+      warn_survivor_drift(selector) if selector.drift_warning?
+      selected
+    end
+
+    def warn_survivor_drift(selector)
+      warn "henitai: WARNING: #{selector.unmatched_ids.size} prior survivors " \
+           "could not be matched — consider a full run"
+    end
+
+    def build_survivor_stats(selector, selected)
+      {
+        matched: selected.size,
+        unmatched_count: selector.unmatched_ids.size,
+        unmatched_ids: selector.unmatched_ids,
+        drift_warning: selector.drift_warning?
+      }
     end
   end
 end

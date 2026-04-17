@@ -160,6 +160,7 @@ module Henitai
         add_operator_option(opts, options)
         add_jobs_option(opts, options)
         add_output_option(opts, options)
+        add_survivors_from_option(opts, options)
         add_help_option(opts)
         add_version_option(opts)
       end
@@ -216,6 +217,12 @@ module Henitai
       end
     end
 
+    def add_survivors_from_option(opts, options)
+      opts.on("--survivors-from PATH", "Re-run only mutants that survived a prior report") do |path|
+        options[:survivors_from] = path
+      end
+    end
+
     def add_help_option(opts)
       opts.on("-h", "--help", "Show this help") do
         puts opts
@@ -258,7 +265,8 @@ module Henitai
       runner = Runner.new(
         config:,
         subjects: subjects_from_argv,
-        since: options[:since]
+        since: options[:since],
+        survivors_from: options[:survivors_from]
       )
       runner.run
     end
@@ -302,6 +310,8 @@ module Henitai
     end
 
     def exit_status_for(result, config)
+      return 0 if result.respond_to?(:partial_rerun?) && result.partial_rerun?
+
       result.mutation_score.to_i >= config.thresholds.fetch(:low, 60) ? 0 : 1
     end
 

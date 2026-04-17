@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "securerandom"
+require_relative "mutant_identity"
 
 module Henitai
   # Represents a single syntactic mutation applied to a Subject.
@@ -55,6 +56,10 @@ module Henitai
       @duration      = nil
       @covered_by    = nil
       @tests_completed = nil
+    end
+
+    def stable_id
+      @stable_id ||= MutantIdentity.stable_id(self)
     end
 
     def killed?      = @status == :killed

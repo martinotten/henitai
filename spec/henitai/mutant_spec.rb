@@ -51,6 +51,22 @@ RSpec.describe Henitai::Mutant do
     expect(mutant.equivalent?).to be(true)
   end
 
+  describe "#stable_id" do
+    it "returns a 64-character hex string" do
+      expect(build_mutant.stable_id).to match(/\A[0-9a-f]{64}\z/)
+    end
+
+    it "delegates to MutantIdentity" do
+      mutant = build_mutant
+      expect(mutant.stable_id).to eq(Henitai::MutantIdentity.stable_id(mutant))
+    end
+
+    it "memoizes the result" do
+      mutant = build_mutant
+      expect(mutant.stable_id).to equal(mutant.stable_id)
+    end
+  end
+
   it "formats itself with operator, location, and description" do
     mutant = described_class.new(
       subject: Henitai::Subject.new(namespace: "Sample", method_name: "alpha"),

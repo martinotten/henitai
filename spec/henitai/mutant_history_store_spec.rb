@@ -2,6 +2,7 @@
 
 require "digest"
 require "spec_helper"
+require "sqlite3"
 require "tmpdir"
 require "parser/current"
 
@@ -53,7 +54,9 @@ RSpec.describe Henitai::MutantHistoryStore do
   # rubocop:enable Metrics/MethodLength
 
   def build_result(mutants, summary)
-    Struct.new(:mutants, :scoring_summary).new(mutants, summary)
+    Struct.new(:mutants, :scoring_summary) do
+      def partial_rerun? = false
+    end.new(mutants, summary)
   end
 
   def record_run(store, mutant:, summary:, version:, recorded_at:)
@@ -246,6 +249,46 @@ RSpec.describe Henitai::MutantHistoryStore do
 
       record_history_chain(store, mutant)
       expect_mutant_history(store.trend_report[:mutants].first)
+    end
+  end
+
+  describe "partial rerun result" do
+    def partial_result(mutants)
+      result = build_result(
+        mutants,
+        { mutation_score: 80.0, mutation_score_indicator: 40.0, equivalence_uncertainty: nil }
+      )
+      allow(result).to receive(:partial_rerun?).and_return(true)
+      result
+    end
+
+    it "does not insert a runs row for a partial rerun" do
+      Dir.mktmpdir do |dir|
+        store = described_class.new(path: File.join(dir, "mutation-history.sqlite3"))
+        store.record(partial_result([build_mutant(status: :survived)]), version: "0.1.0")
+
+        db = SQLite3::Database.new(File.join(dir, "mutation-history.sqlite3"))
+        db.results_as_hash = true
+        count = db.get_first_value("SELECT COUNT(*) FROM runs")
+        db.close
+
+        expect(count).to eq(0)
+      end
+    end
+
+    it "still upserts mutant rows for a partial rerun" do
+      Dir.mktmpdir do |dir|
+        store = described_class.new(path: File.join(dir, "mutation-history.sqlite3"))
+        mutants = [build_mutant(status: :survived)]
+        store.record(partial_result(mutants), version: "0.1.0")
+
+        db = SQLite3::Database.new(File.join(dir, "mutation-history.sqlite3"))
+        db.results_as_hash = true
+        count = db.get_first_value("SELECT COUNT(*) FROM mutants")
+        db.close
+
+        expect(count).to eq(1)
+      end
     end
   end
 end

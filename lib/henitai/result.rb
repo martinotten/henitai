@@ -13,14 +13,21 @@ module Henitai
     SCHEMA_VERSION = "1.0"
     DEFAULT_THRESHOLDS = { high: 80, low: 60 }.freeze
 
-    attr_reader :mutants, :started_at, :finished_at, :thresholds
+    attr_reader :mutants, :started_at, :finished_at, :thresholds, :survivor_stats
 
-    def initialize(mutants:, started_at:, finished_at:, thresholds: nil)
-      @mutants     = mutants
-      @started_at  = started_at
-      @finished_at = finished_at
-      @thresholds  = DEFAULT_THRESHOLDS.merge(thresholds || {})
+    # rubocop:disable Metrics/ParameterLists
+    def initialize(mutants:, started_at:, finished_at:, thresholds: nil,
+                   partial_rerun: false, survivor_stats: nil)
+      @mutants        = mutants
+      @started_at     = started_at
+      @finished_at    = finished_at
+      @thresholds     = DEFAULT_THRESHOLDS.merge(thresholds || {})
+      @partial_rerun  = partial_rerun
+      @survivor_stats = survivor_stats
     end
+    # rubocop:enable Metrics/ParameterLists
+
+    def partial_rerun? = @partial_rerun
 
     # @return [Integer] number of killed mutants
     def killed   = mutants.count(&:killed?)
@@ -88,14 +95,29 @@ module Henitai
     # Serialise to Stryker mutation-testing-report-schema JSON (schema 1.0).
     # @return [Hash]
     def to_stryker_schema
-      {
+      base_schema.tap do |s|
+        next unless partial_rerun?
+
+        s[:partialRerun] = true
+        s[:unmatchedSurvivorIds] = unmatched_survivor_ids
+      end
+    end
+
+    private
+
+    def base_schema
+      { # : Hash[Symbol, untyped]
         schemaVersion: SCHEMA_VERSION,
         thresholds: thresholds,
         files: build_files_section
       }
     end
 
-    private
+    def unmatched_survivor_ids
+      return survivor_stats.fetch(:unmatched_ids) if survivor_stats
+
+      [] # : Array[String]
+    end
 
     def build_files_section
       mutants.group_by { |m| m.location[:file] }.transform_values do |file_mutants|
@@ -115,6 +137,7 @@ module Henitai
     def mutant_to_schema(mutant)
       {
         id: mutant.id,
+        stableId: mutant.stable_id,
         mutatorName: mutant.operator,
         replacement: replacement_for(mutant),
         location: location_for(mutant),

@@ -1,12 +1,11 @@
 # frozen_string_literal: true
 
 require "date"
-require "digest"
 require "fileutils"
 require "json"
 require "sqlite3"
 require "time"
-require "unparser"
+require_relative "mutant_identity"
 
 module Henitai
   # Persists mutant outcomes across runs in a lightweight SQLite database.
@@ -87,7 +86,7 @@ module Henitai
       with_database do |db|
         ensure_schema(db)
         db.transaction do
-          insert_run(db, result, version, recorded_at)
+          insert_run(db, result, version, recorded_at) unless partial_rerun?(result)
           Array(result.mutants).each do |mutant|
             upsert_mutant(db, mutant, version, recorded_at)
           end
@@ -107,6 +106,10 @@ module Henitai
     end
 
     private
+
+    def partial_rerun?(result)
+      result.respond_to?(:partial_rerun?) && result.partial_rerun?
+    end
 
     def with_database
       db = SQLite3::Database.new(path)
@@ -140,25 +143,7 @@ module Henitai
     end
 
     def stable_mutant_id(mutant)
-      Digest::SHA256.hexdigest(
-        [
-          mutant.subject.expression,
-          mutant.operator,
-          mutant.description,
-          mutant.location[:file],
-          mutant.location[:start_line],
-          mutant.location[:end_line],
-          mutant.location[:start_col],
-          mutant.location[:end_col],
-          mutation_signature(mutant)
-        ].join("\0")
-      )
-    end
-
-    def mutation_signature(mutant)
-      Unparser.unparse(mutant.mutated_node)
-    rescue StandardError
-      mutant.mutated_node.class.name
+      MutantIdentity.stable_id(mutant)
     end
 
     def mutation_history_entry(mutant, version, recorded_at)

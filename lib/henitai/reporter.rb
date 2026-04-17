@@ -90,6 +90,14 @@ module Henitai
       end
 
       def summary_lines(result)
+        if result.respond_to?(:partial_rerun?) && result.partial_rerun?
+          partial_summary_lines(result)
+        else
+          full_summary_lines(result)
+        end
+      end
+
+      def full_summary_lines(result)
         [
           "Mutation testing summary",
           score_line(result),
@@ -99,6 +107,25 @@ module Henitai
           format_row("No coverage", count_status(result, :no_coverage)),
           format_row("Duration", format_duration(result.duration))
         ]
+      end
+
+      def partial_summary_lines(result)
+        lines = [
+          "Partial rerun summary",
+          format_row("Survived", count_status(result, :survived)),
+          format_row("Duration", format_duration(result.duration))
+        ]
+        append_survivor_stats(lines, result)
+        lines
+      end
+
+      def append_survivor_stats(lines, result)
+        return unless result.respond_to?(:survivor_stats)
+
+        stats = result.survivor_stats # : Hash[Symbol, untyped]?
+        return unless stats
+
+        lines << format_row("Matched", stats.fetch(:matched))
       end
 
       def survived_detail_lines(result)
