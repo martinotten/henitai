@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "json"
 require "optparse"
 module Henitai
   # Command-line interface entry point.
@@ -100,7 +101,7 @@ module Henitai
 
       config = load_config(options)
       result = run_pipeline(options, config)
-      exit(exit_status_for(result, config))
+      exit(exit_status_for(result, config, fail_on_survivors: options[:fail_on_survivors]))
     rescue StandardError => e
       handle_run_error(e)
     end
@@ -161,6 +162,7 @@ module Henitai
         add_jobs_option(opts, options)
         add_output_option(opts, options)
         add_survivors_from_option(opts, options)
+        add_fail_on_survivors_option(opts, options)
         add_help_option(opts)
         add_version_option(opts)
       end
@@ -226,6 +228,15 @@ module Henitai
       end
     end
 
+    def add_fail_on_survivors_option(opts, options)
+      opts.on(
+        "--fail-on-survivors",
+        "Exit 1 for partial reruns when any survivors remain (otherwise exits 0)"
+      ) do
+        options[:fail_on_survivors] = true
+      end
+    end
+
     def add_help_option(opts)
       opts.on("-h", "--help", "Show this help") do
         puts opts
@@ -266,13 +277,42 @@ module Henitai
     end
 
     def run_pipeline(options, config)
+      resolved_survivors_from = resolve_survivors_from(options[:survivors_from])
       runner = Runner.new(
         config:,
         subjects: subjects_from_argv,
         since: options[:since],
-        survivors_from: options[:survivors_from]
+        survivors_from: resolved_survivors_from
       )
       runner.run
+    end
+
+    def resolve_survivors_from(survivors_from)
+      return nil if survivors_from.nil?
+
+      # Fast path: if the path already points into reports/sessions/<session_id>/,
+      # keep it as-is so activation-recipes.json can be found by the runner.
+      report_dir = File.dirname(survivors_from)
+      parent_dir = File.dirname(report_dir)
+      return survivors_from if File.basename(parent_dir) == "sessions"
+
+      session_id = session_id_from_report(survivors_from)
+      return survivors_from if session_id.nil?
+
+      snapshot_path = File.join(report_dir, "sessions", session_id, "mutation-report.json")
+      recipe_path = File.join(report_dir, "sessions", session_id, "activation-recipes.json")
+      return snapshot_path if File.exist?(recipe_path)
+
+      survivors_from
+    rescue StandardError
+      survivors_from
+    end
+
+    def session_id_from_report(path)
+      parsed = JSON.parse(File.read(path))
+      parsed["sessionId"]
+    rescue JSON::ParserError, Errno::ENOENT
+      nil
     end
 
     def load_config(options)
@@ -313,9 +353,11 @@ module Henitai
       end
     end
 
-    def exit_status_for(result, config)
+    def exit_status_for(result, config, fail_on_survivors: false)
       if result.respond_to?(:partial_rerun?) && result.partial_rerun?
         warn "henitai: partial rerun - mutation score threshold not evaluated"
+        return result.survived.positive? ? 1 : 0 if fail_on_survivors
+
         return 0
       end
 

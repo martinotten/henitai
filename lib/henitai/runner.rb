@@ -25,6 +25,7 @@ module Henitai
   #   Gate 5 — Reporting
   #     Write results to configured reporters (terminal, html, json, dashboard).
   #
+  # rubocop:disable Metrics/ClassLength
   class Runner
     attr_reader :config, :result
 
@@ -37,17 +38,26 @@ module Henitai
 
     # Entry point — runs the full pipeline and returns a Result.
     #
-    # Coverage bootstrap (Gate 0) runs in a background thread so that Gate 1
-    # (subject resolution) and Gate 2 (mutant generation) proceed concurrently.
-    # The thread is joined before Gate 3 (static filtering), which is the first
-    # phase that requires coverage data.
+    # Fast path (recipe rerun): when +--survivors-from+ is given and an
+    # +activation-recipes.json+ file exists beside the report with entries for
+    # all survivor IDs, stub Mutants are built from the recipes and the full
+    # source-parse / mutant-generation pipeline is skipped entirely.
+    #
+    # Normal path: Coverage bootstrap (Gate 0) runs in a background thread so
+    # that Gate 1 (subject resolution) and Gate 2 (mutant generation) proceed
+    # concurrently. The thread is joined before Gate 3 (static filtering).
     #
     # @return [Result]
     def run
       started_at = Time.now
-      source_files = self.source_files
-      subjects = resolve_subjects(source_files)
-      mutants = execute_mutants(mutants_for(subjects, source_files))
+
+      mutants = if survivor_rerun? && (fast_mutants = try_recipe_run)
+                  execute_mutants(fast_mutants)
+                else
+                  source_files = self.source_files
+                  subjects = resolve_subjects(source_files)
+                  execute_mutants(mutants_for(subjects, source_files))
+                end
 
       build_result(mutants, started_at, Time.now)
     end
@@ -112,11 +122,18 @@ module Henitai
         finished_at:,
         thresholds: result_thresholds,
         partial_rerun: survivor_rerun?,
-        survivor_stats: @survivor_stats
+        survivor_stats: @survivor_stats,
+        git_sha: safe_head_sha
       )
       persist_history(@result, finished_at)
       report(@result)
       @result
+    end
+
+    def safe_head_sha
+      git_diff_analyzer.head_sha
+    rescue StandardError
+      nil
     end
 
     def bootstrap_coverage(source_files, test_files = nil)
@@ -211,15 +228,94 @@ module Henitai
     def apply_survivor_selection(mutants)
       return mutants unless survivor_rerun?
 
-      survivor_ids = SurvivorLoader.new(
-        @survivors_from,
-        include_paths: Array(config.includes)
-      ).load
-      selector = SurvivorSelector.new(survivor_ids:)
+      loaded   = SurvivorLoader.new(@survivors_from, include_paths: Array(config.includes)).load
+      selector = SurvivorSelector.new(survivor_ids: loaded.survivor_ids)
       selected = selector.select(mutants)
-      @survivor_stats = build_survivor_stats(selector, selected)
+      finalize_survivor_split(selector, selected, test_filter(loaded).apply(selected))
+    end
+
+    # Attempts to run survivors directly from pre-computed activation recipes,
+    # bypassing source parsing and mutant generation entirely.
+    # Returns the mutant array on success, or nil if recipes are unavailable.
+    def try_recipe_run
+      loaded  = SurvivorLoader.new(@survivors_from, include_paths: Array(config.includes)).load
+      recipes = load_activation_recipes(loaded.survivor_ids)
+      return nil if recipes.nil?
+
+      selector, stubs = recipe_selector_and_stubs(loaded.survivor_ids, recipes)
+      split = test_filter(loaded).apply(stubs)
+      finalize_survivor_split(selector, stubs, split)
+    end
+
+    # Builds stub Mutants from recipes and a SurvivorSelector primed with the
+    # survivor ID set. The selector is given a synthetic #select call so that
+    # #drift_warning? / #unmatched_ids are available (all IDs will be matched).
+    def recipe_selector_and_stubs(survivor_ids, recipes)
+      stubs    = survivor_ids.map { |id| build_stub_mutant(id, recipes[id]) }
+      selector = SurvivorSelector.new(survivor_ids:)
+      selector.select(stubs)
+      [selector, stubs]
+    end
+
+    # Returns the recipe hash if the file exists and covers every survivor ID;
+    # otherwise returns nil to trigger the normal generation path.
+    def load_activation_recipes(survivor_ids)
+      path    = File.join(File.dirname(@survivors_from), SurvivorActivationCache::FILENAME)
+      recipes = SurvivorActivationCache.load(path)
+      return nil if recipes.nil?
+      return nil unless survivor_ids.all? { |id| recipes.key?(id) }
+
+      recipes
+    end
+
+    def build_stub_mutant(stable_id, recipe)
+      mutant = Mutant.new(
+        subject: stub_subject_from_recipe(recipe),
+        operator: recipe.fetch("operator"),
+        nodes: { original: nil, mutated: nil },
+        description: recipe.fetch("description"),
+        location: recipe_location(recipe["location"])
+      )
+      mutant.precomputed_stable_id         = stable_id
+      mutant.precomputed_activation_source = recipe.fetch("activationSource")
+      mutant.covered_by                    = recipe["coveredBy"]
+      mutant
+    end
+
+    def stub_subject_from_recipe(recipe)
+      Subject.new(
+        namespace: recipe["namespace"],
+        method_name: recipe["methodName"],
+        method_type: (recipe["methodType"] || "instance").to_sym,
+        source_location: { file: recipe["sourceFile"], range: nil }
+      )
+    end
+
+    def recipe_location(loc)
+      return {} unless loc.is_a?(Hash)
+
+      {
+        file: loc["file"],
+        start_line: loc["startLine"],
+        end_line: loc["endLine"],
+        start_col: loc["startCol"],
+        end_col: loc["endCol"]
+      }.compact
+    end
+
+    def finalize_survivor_split(selector, selected, split)
+      split[:stable].each { |m| m.status = :survived }
       warn_survivor_drift(selector) if selector.drift_warning?
-      selected
+      @survivor_stats = build_survivor_stats(selector, selected, split)
+      split[:stable] + split[:pending]
+    end
+
+    def test_filter(loaded)
+      SurvivorTestFilter.new(
+        coverage_map: loaded.coverage_map,
+        git_sha: loaded.git_sha,
+        diff_analyzer: git_diff_analyzer
+      )
     end
 
     def warn_survivor_drift(selector)
@@ -227,13 +323,15 @@ module Henitai
            "could not be matched; the source may have drifted - consider a full run"
     end
 
-    def build_survivor_stats(selector, selected)
+    def build_survivor_stats(selector, selected, split)
       {
         matched: selected.size,
         unmatched_count: selector.unmatched_ids.size,
         unmatched_ids: selector.unmatched_ids,
+        skipped_count: split[:stable].size,
         drift_warning: selector.drift_warning?
       }
     end
   end
+  # rubocop:enable Metrics/ClassLength
 end

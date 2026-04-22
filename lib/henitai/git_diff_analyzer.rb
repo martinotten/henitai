@@ -19,6 +19,14 @@ module Henitai
       stdout.split("\n").reject(&:empty?)
     end
 
+    def head_sha(dir: Dir.pwd)
+      command = ["git", "-C", dir, "rev-parse", "HEAD"]
+      stdout, _, status = Open3.capture3(*command)
+      stdout.strip if status.success? && !stdout.strip.empty?
+    rescue Errno::ENOENT
+      nil
+    end
+
     def changed_methods(from:, to:, dir: Dir.pwd)
       changed_files(from:, to:, dir:).flat_map do |path|
         changed_methods_in_file(path, from:, to:, dir:)

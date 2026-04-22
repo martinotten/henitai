@@ -6,6 +6,16 @@ require "spec_helper"
 require "tmpdir"
 
 RSpec.describe Henitai::MinitestCoverageReporter do
+  # CoverageBootstrapper sets HENITAI_REPORTS_DIR when running the baseline
+  # suite, which redirects the collector's output away from the tmpdir used by
+  # these tests. Clear it so write_report uses the default "coverage/" path.
+  around do |example|
+    original = ENV.delete("HENITAI_REPORTS_DIR")
+    example.run
+  ensure
+    ENV["HENITAI_REPORTS_DIR"] = original if original
+  end
+
   def build_result(absolute_path)
     Struct.new(:source_location).new([absolute_path, 5])
   end

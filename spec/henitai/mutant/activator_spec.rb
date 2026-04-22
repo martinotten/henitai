@@ -740,6 +740,64 @@ RSpec.describe Henitai::Mutant::Activator do
     end
   end
 
+  describe ".activation_source_for" do
+    it "includes define_method(:value) in the returned source" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, <<~RUBY)
+          class ActivationSourceSample
+            def value
+              1 + 1
+            end
+          end
+        RUBY
+
+        subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+        mutant = Henitai::MutantGenerator.new.generate(
+          [subject],
+          [Henitai::Operators::ArithmeticOperator.new]
+        ).first
+
+        source = described_class.activation_source_for(mutant)
+
+        expect(source).to include("define_method(:value)")
+      end
+    end
+
+    it "returns nil when the source cannot be computed" do
+      mutant = instance_double(Henitai::Mutant)
+      allow(mutant).to receive(:subject).and_raise(RuntimeError, "boom")
+
+      expect(described_class.activation_source_for(mutant)).to be_nil
+    end
+  end
+
+  describe "#activate! with precomputed_activation_source" do
+    it "uses the precomputed source instead of recomputing from AST" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, <<~RUBY)
+          class PrecomputedActivationSample
+            def value
+              1 + 1
+            end
+          end
+        RUBY
+
+        subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+        mutant = Henitai::MutantGenerator.new.generate(
+          [subject],
+          [Henitai::Operators::ArithmeticOperator.new]
+        ).first
+
+        precomputed = "define_method(:value) do\n  42\nend\n"
+        mutant.precomputed_activation_source = precomputed
+
+        described_class.activate!(mutant)
+
+        expect(PrecomputedActivationSample.new.value).to eq(42)
+      end
+    end
+  end
+
   it "does not suppress warn calls emitted by the loaded source file" do
     Dir.mktmpdir do |dir|
       path = write_source(dir, <<~RUBY)

@@ -174,6 +174,8 @@ module Henitai
     attr_accessor duration: Float?
     attr_accessor covered_by: Array[String]?
     attr_accessor tests_completed: Integer?
+    attr_accessor precomputed_stable_id: String?
+    attr_accessor precomputed_activation_source: String?
 
     def initialize: (subject: Subject, operator: String, nodes: Hash[Symbol, untyped], description: String, location: Hash[Symbol, untyped]) -> void
     def stable_id: () -> String
@@ -376,6 +378,7 @@ module Henitai
 
   class GitDiffAnalyzer
     def changed_files: (from: String, to: String, ?dir: String) -> Array[String]
+    def head_sha: (?dir: String) -> String?
   end
 
   class MutantGenerator
@@ -465,6 +468,7 @@ module Henitai
     SERIALIZER_METHODS: Hash[Symbol, Symbol]
 
     def self.activate!: (untyped) -> Symbol?
+    def self.activation_source_for: (Mutant) -> String?
     def initialize: () -> void
     def activate!: (untyped) -> Symbol?
 
@@ -547,6 +551,13 @@ module Henitai
 
       private
 
+      def write_canonical: (Hash[Symbol, untyped]) -> void
+      def write_session_snapshot: (Hash[Symbol, untyped]) -> void
+      def write_activation_recipes: (untyped) -> void
+      def survived_mutants_for: (untyped) -> Array[Mutant]
+      def session_snapshot_path: (String) -> String
+      def session_recipe_path: (String) -> String
+      def canonical_path: () -> String
       def report_path: () -> String
       def write_history_report: () -> void
       def history_store_path: () -> String
@@ -607,8 +618,10 @@ module Henitai
     attr_reader finished_at: Time
     attr_reader thresholds: Hash[Symbol, Integer]
     attr_reader survivor_stats: Hash[Symbol, untyped]?
+    attr_reader session_id: String
+    attr_reader git_sha: String?
 
-    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time, ?thresholds: Hash[Symbol, Integer]?, ?partial_rerun: bool, ?survivor_stats: Hash[Symbol, untyped]?) -> void
+    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time, ?thresholds: Hash[Symbol, Integer]?, ?partial_rerun: bool, ?survivor_stats: Hash[Symbol, untyped]?, ?session_id: String, ?git_sha: String?) -> void
     def partial_rerun?: () -> bool
     def killed: () -> Integer
     def survived: () -> Integer
@@ -640,8 +653,21 @@ module Henitai
     InvalidReportError: singleton(StandardError)
     ScopeMismatchError: singleton(StandardError)
 
+    class Report
+      attr_reader survivor_ids: Array[String]
+      attr_reader coverage_map: Hash[String, Array[String]]
+      attr_reader git_sha: String?
+
+      def initialize: (survivor_ids: Array[String], coverage_map: Hash[String, Array[String]], git_sha: String?) -> void
+    end
+
     def initialize: (String, ?include_paths: Array[String]) -> void
-    def load: () -> Array[String]
+    def load: () -> Report
+  end
+
+  class SurvivorTestFilter
+    def initialize: (coverage_map: Hash[String, Array[String]], git_sha: String?, ?diff_analyzer: GitDiffAnalyzer) -> void
+    def apply: (Array[Mutant]) -> Hash[Symbol, Array[Mutant]]
   end
 
   class SurvivorSelector
@@ -651,6 +677,14 @@ module Henitai
     def select: (Array[Mutant]) -> Array[Mutant]
     def unmatched_ids: () -> Array[String]
     def drift_warning?: () -> bool
+  end
+
+  class SurvivorActivationCache
+    FILENAME: String
+
+    def self.compute: (Array[Mutant]) -> Hash[String, Hash[String, untyped]]
+    def self.load: (String) -> Hash[String, Hash[String, untyped]]?
+    def self.write: (String, Hash[String, Hash[String, untyped]]) -> void
   end
 
   class Runner
@@ -691,8 +725,17 @@ module Henitai
     def result_thresholds: () -> Hash[Symbol, Integer]?
     def survivor_rerun?: () -> bool
     def apply_survivor_selection: (Array[Mutant]) -> Array[Mutant]
+    def try_recipe_run: () -> Array[Mutant]?
+    def recipe_selector_and_stubs: (Array[String], Hash[String, Hash[String, untyped]]) -> [SurvivorSelector, Array[Mutant]]
+    def load_activation_recipes: (Array[String]) -> Hash[String, Hash[String, untyped]]?
+    def build_stub_mutant: (String, Hash[String, untyped]) -> Mutant
+    def stub_subject_from_recipe: (Hash[String, untyped]) -> Subject
+    def recipe_location: (Hash[String, untyped]?) -> Hash[Symbol, untyped]
+    def finalize_survivor_split: (SurvivorSelector, Array[Mutant], Hash[Symbol, Array[Mutant]]) -> Array[Mutant]
     def warn_survivor_drift: (SurvivorSelector) -> void
-    def build_survivor_stats: (SurvivorSelector, Array[Mutant]) -> Hash[Symbol, untyped]
+    def build_survivor_stats: (SurvivorSelector, Array[Mutant], Hash[Symbol, Array[Mutant]]) -> Hash[Symbol, untyped]
+    def test_filter: (SurvivorLoader::Report) -> SurvivorTestFilter
+    def safe_head_sha: () -> String?
   end
 
   class CoverageBootstrapper

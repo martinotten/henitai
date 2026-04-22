@@ -521,13 +521,15 @@ RSpec.describe Henitai::Reporter::Terminal do
 
     it "includes survivor match stats when survivor_stats is present" do
       reporter = described_class.new(config: build_config)
-      stats = { matched: 3, unmatched_count: 1, unmatched_ids: ["abc"], drift_warning: false }
+      stats = { matched: 3, unmatched_count: 1, unmatched_ids: ["abc"],
+                skipped_count: 0, drift_warning: false }
       result = build_partial_result(survivor_stats: stats)
       expected_output = <<~OUTPUT
         Partial survivor rerun
         #{summary_row('Survived', 0)}
         #{summary_row('Duration', '0.50s')}
         #{summary_row('Matched', 3)}
+        #{summary_row('Skipped', 0)}
         #{summary_row('Unmatched', 1)}
         #{summary_row('Drift warning', 'no')}
       OUTPUT

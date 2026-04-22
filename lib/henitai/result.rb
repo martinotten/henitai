@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "securerandom"
 require_relative "unparse_helper"
 
 module Henitai
@@ -13,17 +14,21 @@ module Henitai
     SCHEMA_VERSION = "1.0"
     DEFAULT_THRESHOLDS = { high: 80, low: 60 }.freeze
 
-    attr_reader :mutants, :started_at, :finished_at, :thresholds, :survivor_stats
+    attr_reader :mutants, :started_at, :finished_at, :thresholds, :survivor_stats,
+                :session_id, :git_sha
 
     # rubocop:disable Metrics/ParameterLists
     def initialize(mutants:, started_at:, finished_at:, thresholds: nil,
-                   partial_rerun: false, survivor_stats: nil)
+                   partial_rerun: false, survivor_stats: nil,
+                   session_id: SecureRandom.uuid, git_sha: nil)
       @mutants        = mutants
       @started_at     = started_at
       @finished_at    = finished_at
       @thresholds     = DEFAULT_THRESHOLDS.merge(thresholds || {})
       @partial_rerun  = partial_rerun
       @survivor_stats = survivor_stats
+      @session_id     = session_id
+      @git_sha        = git_sha
     end
     # rubocop:enable Metrics/ParameterLists
 
@@ -96,6 +101,8 @@ module Henitai
     # @return [Hash]
     def to_stryker_schema
       base_schema.tap do |s|
+        sha = @git_sha
+        s[:gitSha] = sha if sha
         next unless partial_rerun?
 
         s[:partialRerun] = true
@@ -108,6 +115,7 @@ module Henitai
     def base_schema
       { # : Hash[Symbol, untyped]
         schemaVersion: SCHEMA_VERSION,
+        sessionId: @session_id,
         thresholds: thresholds,
         files: build_files_section
       }

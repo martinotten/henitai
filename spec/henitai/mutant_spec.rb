@@ -65,6 +65,24 @@ RSpec.describe Henitai::Mutant do
       mutant = build_mutant
       expect(mutant.stable_id).to equal(mutant.stable_id)
     end
+
+    it "returns precomputed_stable_id when set, skipping MutantIdentity" do
+      mutant = build_mutant
+      mutant.precomputed_stable_id = "precomputed-hex"
+      expect(mutant.stable_id).to eq("precomputed-hex")
+    end
+  end
+
+  describe "#precomputed_activation_source" do
+    it "is nil by default" do
+      expect(build_mutant.precomputed_activation_source).to be_nil
+    end
+
+    it "can be set and read back" do
+      mutant = build_mutant
+      mutant.precomputed_activation_source = "define_method(:foo) do\n  nil\nend\n"
+      expect(mutant.precomputed_activation_source).to eq("define_method(:foo) do\n  nil\nend\n")
+    end
   end
 
   it "formats itself with operator, location, and description" do

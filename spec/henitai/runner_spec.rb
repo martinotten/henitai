@@ -575,6 +575,7 @@ RSpec.describe Henitai::Runner do
           calls << kwargs
           ["lib/sample.rb", "spec/other_spec.rb"]
         end
+        allow(diff_analyzer).to receive(:head_sha).and_return(nil)
         allow(subject_resolver).to receive(:resolve_from_files) do |paths|
           calls << paths
           []
@@ -652,6 +653,126 @@ RSpec.describe Henitai::Runner do
             config
           ]]
         )
+      end
+    end
+  end
+
+  describe "recipe fast path" do
+    it "skips mutant generation when all survivors have cached activation recipes" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "lib"))
+        File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+        report_path = File.join(dir, "mutation-report.json")
+        stable_id   = "deadbeef" * 8
+
+        File.write(report_path, JSON.generate(
+                                  "schemaVersion" => "1.0",
+                                  "files" => {
+                                    "lib/sample.rb" => {
+                                      "language" => "ruby", "source" => "",
+                                      "mutants" => [{
+                                        "stableId" => stable_id,
+                                        "status" => "Survived"
+                                      }]
+                                    }
+                                  }
+                                ))
+
+        recipe = {
+          "activationSource" => "define_method(:value) do\n  nil\nend\n",
+          "namespace" => "Sample",
+          "methodName" => "value",
+          "methodType" => "instance",
+          "sourceFile" => "lib/sample.rb",
+          "operator" => "ArithmeticOperator",
+          "description" => "+ to -",
+          "location" => { "file" => "lib/sample.rb", "startLine" => 1,
+                          "endLine" => 1, "startCol" => 0, "endCol" => 5 },
+          "coveredBy" => []
+        }
+        recipe_path = File.join(dir, Henitai::SurvivorActivationCache::FILENAME)
+        File.write(recipe_path, JSON.generate({ stable_id => recipe }))
+
+        Dir.chdir(dir) do
+          config          = build_config(reporters: [])
+          result          = build_result([])
+          execution_engine = instance_double(Henitai::ExecutionEngine)
+          integration      = instance_double(Henitai::Integration::Rspec)
+          history_store    = build_history_store
+          mutant_generator = instance_spy(Henitai::MutantGenerator)
+          diff_analyzer    = instance_double(Henitai::GitDiffAnalyzer)
+
+          runner = described_class.new(config:, survivors_from: report_path)
+          allow(runner).to receive_messages(
+            execution_engine:,
+            integration:,
+            history_store:,
+            git_diff_analyzer: diff_analyzer
+          )
+          allow(diff_analyzer).to receive_messages(changed_files: [], head_sha: nil)
+          allow(execution_engine).to receive(:run).and_return([])
+          allow(Henitai::Result).to receive(:new).and_return(result)
+          allow(Henitai::Reporter).to receive(:run_all)
+
+          runner.run
+
+          # The mutant generator must NOT have been called (fast path taken)
+          expect(mutant_generator).not_to have_received(:generate)
+        end
+      end
+    end
+
+    it "falls back to the normal generation path when the recipe file is absent" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "lib"))
+        File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+        report_path = File.join(dir, "mutation-report.json")
+        File.write(report_path, JSON.generate(
+                                  "schemaVersion" => "1.0",
+                                  "files" => {
+                                    "lib/sample.rb" => {
+                                      "language" => "ruby", "source" => "",
+                                      "mutants" => []
+                                    }
+                                  }
+                                ))
+
+        Dir.chdir(dir) do
+          config           = build_config(reporters: [])
+          result           = build_result([])
+          execution_engine = instance_double(Henitai::ExecutionEngine)
+          integration      = instance_double(Henitai::Integration::Rspec)
+          history_store    = build_history_store
+          mutant_generator = instance_double(Henitai::MutantGenerator)
+          static_filter    = instance_double(Henitai::StaticFilter)
+          subject_resolver = instance_double(Henitai::SubjectResolver)
+          diff_analyzer    = instance_double(Henitai::GitDiffAnalyzer)
+
+          runner = described_class.new(config:, survivors_from: report_path)
+          allow(runner).to receive_messages(
+            execution_engine:,
+            integration:,
+            history_store:,
+            mutant_generator:,
+            static_filter:,
+            subject_resolver:,
+            git_diff_analyzer: diff_analyzer
+          )
+          allow(diff_analyzer).to receive(:head_sha).and_return(nil)
+          allow(subject_resolver).to receive(:resolve_from_files).and_return([])
+          allow(mutant_generator).to receive(:generate).and_return([])
+          allow(static_filter).to receive(:apply) { |m, _| m }
+          allow(execution_engine).to receive(:run).and_return([])
+          allow(Henitai::Result).to receive(:new).and_return(result)
+          allow(Henitai::Reporter).to receive(:run_all)
+
+          runner.run
+
+          # The normal generation pipeline was invoked
+          expect(mutant_generator).to have_received(:generate)
+        end
       end
     end
   end

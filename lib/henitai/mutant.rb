@@ -36,7 +36,8 @@ module Henitai
 
     attr_reader :id, :subject, :operator, :original_node, :mutated_node,
                 :mutation_type, :description, :location
-    attr_accessor :status, :killing_test, :duration, :covered_by, :tests_completed
+    attr_accessor :status, :killing_test, :duration, :covered_by, :tests_completed,
+                  :precomputed_stable_id, :precomputed_activation_source
 
     # @param subject [Subject] the subject being mutated
     # @param operator [Symbol] operator name, e.g. :ArithmeticOperator
@@ -59,7 +60,7 @@ module Henitai
     end
 
     def stable_id
-      @stable_id ||= MutantIdentity.stable_id(self)
+      @stable_id ||= @precomputed_stable_id || MutantIdentity.stable_id(self)
     end
 
     def killed?      = @status == :killed

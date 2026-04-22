@@ -126,6 +126,7 @@ module Henitai
         return unless stats
 
         lines << format_row("Matched", stats.fetch(:matched))
+        lines << format_row("Skipped", stats.fetch(:skipped_count, 0))
         lines << format_row("Unmatched", stats.fetch(:unmatched_count))
         lines << format_row("Drift warning", stats.fetch(:drift_warning) ? "yes" : "no")
       end
@@ -241,15 +242,62 @@ module Henitai
     # JSON reporter.
     class Json < Base
       def report(result)
-        FileUtils.mkdir_p(File.dirname(report_path))
-        File.write(report_path, JSON.pretty_generate(result.to_stryker_schema))
+        schema = result.to_stryker_schema
+        write_canonical(schema)
+        write_session_snapshot(schema)
+        write_activation_recipes(result)
         write_history_report
       end
 
       private
 
-      def report_path
+      def write_canonical(schema)
+        FileUtils.mkdir_p(File.dirname(canonical_path))
+        File.write(canonical_path, JSON.pretty_generate(schema))
+      end
+
+      def write_session_snapshot(schema)
+        session_id = schema[:sessionId]
+        return unless session_id
+
+        path = session_snapshot_path(session_id)
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, JSON.pretty_generate(schema))
+      end
+
+      def write_activation_recipes(result)
+        session_id = result.session_id if result.respond_to?(:session_id)
+        return unless session_id
+
+        survived = survived_mutants_for(result)
+        return if survived.empty?
+
+        recipes = SurvivorActivationCache.compute(survived)
+        return if recipes.empty?
+
+        SurvivorActivationCache.write(session_recipe_path(session_id), recipes)
+      end
+
+      def survived_mutants_for(result)
+        return [] unless result.respond_to?(:mutants)
+
+        result.mutants.select(&:survived?)
+      end
+
+      def session_snapshot_path(session_id)
+        File.join(config.reports_dir, "sessions", session_id, "mutation-report.json")
+      end
+
+      def session_recipe_path(session_id)
+        File.join(config.reports_dir, "sessions", session_id, SurvivorActivationCache::FILENAME)
+      end
+
+      def canonical_path
         File.join(config.reports_dir, "mutation-report.json")
+      end
+
+      def report_path
+        canonical_path
       end
 
       def write_history_report

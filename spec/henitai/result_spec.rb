@@ -358,4 +358,35 @@ RSpec.describe Henitai::Result do
       expect(schema[:unmatchedSurvivorIds]).to eq([])
     end
   end
+
+  describe "session identity" do
+    it "has a session_id that is a UUID" do
+      expect(result([]).session_id).to match(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/)
+    end
+
+    it "accepts a caller-supplied session_id" do
+      r = described_class.new(
+        mutants: [], started_at: Time.at(0), finished_at: Time.at(1),
+        session_id: "fixed-id"
+      )
+      expect(r.session_id).to eq("fixed-id")
+    end
+
+    it "includes sessionId in the schema" do
+      schema = result([]).to_stryker_schema
+      expect(schema[:sessionId]).to match(/\A[0-9a-f]{8}-/)
+    end
+
+    it "includes gitSha in the schema when set" do
+      r = described_class.new(
+        mutants: [], started_at: Time.at(0), finished_at: Time.at(1),
+        git_sha: "abc123def"
+      )
+      expect(r.to_stryker_schema[:gitSha]).to eq("abc123def")
+    end
+
+    it "omits gitSha from the schema when nil" do
+      expect(result([]).to_stryker_schema).not_to have_key(:gitSha)
+    end
+  end
 end

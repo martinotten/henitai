@@ -202,4 +202,23 @@ RSpec.describe Henitai::GitDiffAnalyzer do
       end.to raise_error(Henitai::GitDiffError, /fatal/i)
     end
   end
+
+  describe "#head_sha" do
+    it "returns the HEAD SHA in a git repo" do
+      Dir.mktmpdir do |dir|
+        git!(dir, "init")
+        configure_git_identity(dir)
+        write_file(dir, "lib/sample.rb", "class Sample; end\n")
+        sha = commit_all(dir, "Initial commit")
+
+        expect(described_class.new.head_sha(dir:)).to eq(sha)
+      end
+    end
+
+    it "returns nil when git is unavailable" do
+      analyzer = described_class.new
+      allow(Open3).to receive(:capture3).and_raise(Errno::ENOENT)
+      expect(analyzer.head_sha).to be_nil
+    end
+  end
 end
