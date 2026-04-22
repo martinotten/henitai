@@ -294,6 +294,8 @@ module Henitai
       # keep it as-is so activation-recipes.json can be found by the runner.
       report_dir = File.dirname(survivors_from)
       parent_dir = File.dirname(report_dir)
+      # Heuristic: treat any path under a directory named "sessions" as already
+      # being a snapshot path; this keeps activation-recipes lookup correct.
       return survivors_from if File.basename(parent_dir) == "sessions"
 
       session_id = session_id_from_report(survivors_from)
@@ -301,7 +303,11 @@ module Henitai
 
       snapshot_path = File.join(report_dir, "sessions", session_id, "mutation-report.json")
       recipe_path = File.join(report_dir, "sessions", session_id, "activation-recipes.json")
-      return snapshot_path if File.exist?(recipe_path)
+      return snapshot_path if File.exist?(recipe_path) && File.exist?(snapshot_path)
+
+      # If the recipes exist but the snapshot doesn't (e.g. partial cleanup),
+      # fall back to the path the user provided so the error message points
+      # at what they actually passed.
 
       survivors_from
     rescue StandardError

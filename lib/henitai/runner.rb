@@ -133,6 +133,8 @@ module Henitai
     def safe_head_sha
       git_diff_analyzer.head_sha
     rescue StandardError
+      # `head_sha` rescues Errno::ENOENT. This extra rescue is defensive for
+      # unexpected Open3/git runtime errors; conservative fallback is `nil`.
       nil
     end
 

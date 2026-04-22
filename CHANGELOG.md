@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- JSON mutation report vendor extension now always includes `sessionId`
+  (and `gitSha` when available) to support survivor-only reruns.
+
 ## [0.1.10] - 2026-04-16
 
 ### Fixed

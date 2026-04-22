@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "set"
+
 module Henitai
   # Filters a mutant list to those that match a set of prior survivor stable IDs.
   #

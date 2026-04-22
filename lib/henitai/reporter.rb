@@ -296,10 +296,6 @@ module Henitai
         File.join(config.reports_dir, "mutation-report.json")
       end
 
-      def report_path
-        canonical_path
-      end
-
       def write_history_report
         path = File.join(config.reports_dir, Henitai::HISTORY_STORE_FILENAME)
         history_store = MutantHistoryStore.new(path:)
