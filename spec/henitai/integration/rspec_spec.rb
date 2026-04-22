@@ -567,9 +567,8 @@ RSpec.describe Henitai::Integration::Rspec do
       [
         "bundle", "exec", "ruby",
         "-r", "henitai/rspec_coverage_formatter",
-        "-S", "rspec", "spec/foo_spec.rb",
-        "--format", "progress",
-        "--format", "Henitai::CoverageFormatter"
+        "-e", integration.send(:rspec_suite_runner_script),
+        "spec/foo_spec.rb"
       ]
     )
   end

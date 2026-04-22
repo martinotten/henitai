@@ -288,10 +288,21 @@ module Henitai
         [
           "bundle", "exec", "ruby",
           "-r", "henitai/rspec_coverage_formatter",
-          "-S", "rspec", *test_files,
-          "--format", "progress",
-          "--format", "Henitai::CoverageFormatter"
+          "-e", rspec_suite_runner_script,
+          *test_files
         ]
+      end
+
+      def rspec_suite_runner_script
+        <<~'RUBY'
+          require "rspec/core"
+
+          test_files = ARGV.dup
+          rspec_args = test_files + ["--format", "progress", "--format", "Henitai::CoverageFormatter"]
+
+          status = RSpec::Core::Runner.run(rspec_args)
+          exit(status.is_a?(Integer) ? status : (status == true ? 0 : 1))
+        RUBY
       end
 
       def run_tests(test_files)

@@ -325,6 +325,7 @@ module Henitai
 
       def run_in_child: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
       def suite_command: (Array[String]) -> Array[String]
+      def rspec_suite_runner_script: () -> String
       def build_result: (untyped, Hash[Symbol, String]) -> ScenarioExecutionResult
       def scenario_status: (untyped) -> Symbol
       def exit_status_for: (untyped) -> Integer?
