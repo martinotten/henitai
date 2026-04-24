@@ -4,13 +4,22 @@ module Henitai
   module Integration
     # Runs RSpec child and suite processes on behalf of the integration.
     class RspecProcessRunner
+      # Carries the OS pid and log file paths for a spawned mutant child.
+      # The scheduler owns everything else.
+      ChildHandle = Struct.new(:pid, :log_paths)
+
+      def spawn_mutant(integration, mutant:, test_files:, log_paths:)
+        pid = fork_mutant_process(integration, mutant, test_files, log_paths)
+        ChildHandle.new(pid:, log_paths:)
+      end
+
       def run_mutant(integration, mutant:, test_files:, timeout:)
         log_paths = integration.scenario_log_paths(mutant_log_name(mutant))
-        pid = fork_mutant_process(integration, mutant, test_files, log_paths)
-        wait_result = integration.wait_with_timeout(pid, timeout)
-        integration.build_result(wait_result, log_paths)
+        handle = spawn_mutant(integration, mutant:, test_files:, log_paths:)
+        wait_result = integration.method(:wait_with_timeout).call(handle.pid, timeout)
+        integration.build_result(wait_result, handle.log_paths)
       ensure
-        finalize_mutant_run(integration, pid, wait_result)
+        finalize_mutant_run(integration, handle&.pid, wait_result)
       end
 
       def run_suite(integration, test_files, timeout:)
