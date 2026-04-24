@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "set"
-
 module Henitai
   # Splits a matched survivor set into stable and pending subsets by consulting
   # a git diff against the covering tests from the prior report.

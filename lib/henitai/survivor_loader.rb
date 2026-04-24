@@ -82,29 +82,48 @@ module Henitai
     end
 
     def validate_scope(report)
-      unless report.key?("schemaVersion")
-        raise ScopeMismatchError,
-              "Survivor report #{@path} is missing schemaVersion — is this a Henitai report?"
-      end
+      validate_schema_version!(report)
       return if @include_paths.empty?
 
-      report_files = (report.fetch("files", {}) || {}).keys
-      include_dirs_raw = @include_paths.map { |p| p.to_s.sub(%r{/\z}, "") }.uniq
-      include_dirs_abs = include_dirs_raw.map { |p| File.expand_path(p) }.uniq
+      report_files = normalized_report_files(report)
+      include_dirs_raw = normalized_include_dirs_raw
+      include_dirs_abs = normalized_include_dirs_abs(include_dirs_raw)
 
-      report_files_raw = report_files.map { |p| p.to_s.sub(%r{/\z}, "") }
-
-      overlap = report_files_raw.any? do |file|
-        include_dirs_raw.any? { |inc| path_prefix_match?(file, inc) } ||
-          include_dirs_abs.any? do |inc_abs|
-            path_prefix_match?(File.expand_path(file), inc_abs)
-          end
-      end
-      return if overlap
+      return if any_report_file_overlaps?(report_files, include_dirs_raw, include_dirs_abs)
 
       raise ScopeMismatchError,
             "Survivor report #{@path} has no file overlap with configured includes — " \
             "did you pass a report from a different project?"
+    end
+
+    def validate_schema_version!(report)
+      return if report.key?("schemaVersion")
+
+      raise ScopeMismatchError,
+            "Survivor report #{@path} is missing schemaVersion — is this a Henitai report?"
+    end
+
+    def normalized_report_files(report)
+      (report.fetch("files", {}) || {}).keys.map { |p| strip_trailing_slash(p.to_s) }
+    end
+
+    def normalized_include_dirs_raw
+      @include_paths.map { |p| strip_trailing_slash(p.to_s) }.uniq
+    end
+
+    def normalized_include_dirs_abs(dirs_raw)
+      dirs_raw.map { |p| File.expand_path(p) }.uniq
+    end
+
+    def strip_trailing_slash(path)
+      path.sub(%r{/\z}, "")
+    end
+
+    def any_report_file_overlaps?(report_files, include_dirs_raw, include_dirs_abs)
+      report_files.any? do |file|
+        include_dirs_raw.any? { |inc| path_prefix_match?(file, inc) } ||
+          include_dirs_abs.any? { |inc_abs| path_prefix_match?(File.expand_path(file), inc_abs) }
+      end
     end
 
     def path_prefix_match?(path, dir)

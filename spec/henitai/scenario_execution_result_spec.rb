@@ -120,6 +120,40 @@ RSpec.describe Henitai::ScenarioExecutionResult do
     )
   end
 
+  it "builds a compile error result when RSpec reports no examples found" do
+    result = described_class.build(
+      wait_result: build_wait_result(success: false, exitstatus: 1),
+      stdout: "No examples found.\n",
+      stderr: "",
+      log_path: "/tmp/run.log"
+    )
+
+    expect(result).to have_attributes(
+      status: :compile_error,
+      exit_status: 1,
+      stdout: "No examples found.\n",
+      stderr: "",
+      log_path: "/tmp/run.log"
+    )
+  end
+
+  it "builds a compile error result when RSpec exits 1 with zero examples" do
+    result = described_class.build(
+      wait_result: build_wait_result(success: false, exitstatus: 1),
+      stdout: "\nFinished in 0.01 seconds\n0 examples, 0 failures\n",
+      stderr: "",
+      log_path: "/tmp/run.log"
+    )
+
+    expect(result).to have_attributes(
+      status: :compile_error,
+      exit_status: 1,
+      stdout: "\nFinished in 0.01 seconds\n0 examples, 0 failures\n",
+      stderr: "",
+      log_path: "/tmp/run.log"
+    )
+  end
+
   it "builds a killed result from a failing wait result" do
     result = described_class.build(
       wait_result: build_wait_result(success: false, exitstatus: 1),
@@ -269,6 +303,10 @@ RSpec.describe Henitai::ScenarioExecutionResult do
 
   it "shows logs without arguments when status is timeout" do
     expect(build_result(:timeout).should_show_logs?).to be(true)
+  end
+
+  it "shows logs without arguments when status is compile_error" do
+    expect(build_result(:compile_error).should_show_logs?).to be(true)
   end
 
   it "shows logs when all_logs is enabled" do

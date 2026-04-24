@@ -49,6 +49,21 @@ RSpec.describe Henitai::CLI do
     runner
   end
 
+  def write_survivors_from_fixture(report_dir:, session_id:)
+    report_path = File.join(report_dir, "mutation-report.json")
+    canonical_report = JSON.generate("schemaVersion" => "1.0", "sessionId" => session_id, "files" => {})
+
+    File.write(report_path, canonical_report)
+
+    sessions_dir = File.join(report_dir, "sessions", session_id)
+    FileUtils.mkdir_p(sessions_dir)
+
+    File.write(File.join(sessions_dir, "activation-recipes.json"), JSON.generate({}))
+    snapshot_path = File.join(sessions_dir, "mutation-report.json")
+    File.write(snapshot_path, canonical_report)
+    [report_path, snapshot_path]
+  end
+
   # L125 — OptionParser-Banner ("Usage: henitai run …")
   # L137, L167, L174 — Optionsbeschreibungen werden nie auf Inhalt geprüft
   describe "run --help output" do
@@ -706,31 +721,11 @@ RSpec.describe Henitai::CLI do
       config_path = write_configuration(dir)
       report_dir = File.join(dir, "reports")
       FileUtils.mkdir_p(report_dir)
-      report_path = File.join(report_dir, "mutation-report.json")
 
       session_id = "01234567-89ab-cdef-0123-456789abcdef"
-      File.write(
-        report_path,
-        JSON.generate(
-          "schemaVersion" => "1.0",
-          "sessionId" => session_id,
-          "files" => {}
-        )
-      )
-
-      sessions_dir = File.join(report_dir, "sessions", session_id)
-      FileUtils.mkdir_p(sessions_dir)
-      File.write(
-        File.join(sessions_dir, "activation-recipes.json"),
-        JSON.generate({})
-      )
-      File.write(
-        File.join(sessions_dir, "mutation-report.json"),
-        JSON.generate(
-          "schemaVersion" => "1.0",
-          "sessionId" => session_id,
-          "files" => {}
-        )
+      report_path, expected_snapshot_path = write_survivors_from_fixture(
+        report_dir: report_dir,
+        session_id: session_id
       )
 
       captured_survivors_from = :not_set
@@ -747,11 +742,6 @@ RSpec.describe Henitai::CLI do
       )
       cli.define_singleton_method(:exit) { |_status = nil| nil }
       cli.run
-
-      expected_snapshot_path = File.join(
-        sessions_dir,
-        "mutation-report.json"
-      )
 
       expect(captured_survivors_from).to eq(expected_snapshot_path)
     end

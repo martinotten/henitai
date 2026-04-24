@@ -2,6 +2,7 @@ PATH
   remote: ../../../..
   specs:
     henitai (0.1.10)
+      minitest (~> 5.25)
       prism (~> 1.5)
       simplecov (~> 0.22)
       sqlite3 (~> 1.7)
@@ -14,6 +15,7 @@ GEM
     diff-lcs (1.6.2)
     docile (1.4.1)
     mini_portile2 (2.8.9)
+    minitest (5.27.0)
     parser (3.3.11.1)
       ast (~> 2.4.1)
       racc
@@ -61,6 +63,7 @@ CHECKSUMS
   docile (1.4.1) sha256=96159be799bfa73cdb721b840e9802126e4e03dfc26863db73647204c727f21e
   henitai (0.1.10)
   mini_portile2 (2.8.9) sha256=0cd7c7f824e010c072e33f68bc02d85a00aeb6fce05bb4819c03dfd3c140c289
+  minitest (5.27.0)
   parser (3.3.11.1) sha256=d17ace7aabe3e72c3cc94043714be27cc6f852f104d81aa284c2281aecc65d54
   prism (1.9.0) sha256=7b530c6a9f92c24300014919c9dcbc055bf4cdf51ec30aed099b06cd6674ef85
   racc (1.8.1) sha256=4a7f6929691dbec8b5209a0b373bc2614882b55fc5d2e447a21aaa691303d62f

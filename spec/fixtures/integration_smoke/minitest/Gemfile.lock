@@ -2,6 +2,7 @@ PATH
   remote: ../../../..
   specs:
     henitai (0.1.10)
+      minitest (~> 5.25)
       prism (~> 1.5)
       simplecov (~> 0.22)
       sqlite3 (~> 1.7)
