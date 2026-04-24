@@ -299,6 +299,7 @@ module Henitai
       def select_tests: (Subject) -> Array[String]
       def test_files: () -> Array[String]
       def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
+      def spawn_mutant: (mutant: Mutant, test_files: Array[String]) -> RspecProcessRunner::ChildHandle
       def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
       def per_test_coverage_supported?: () -> bool
       def wait_with_timeout: (Integer, Float) -> untyped
@@ -357,6 +358,14 @@ module Henitai
     end
 
     class RspecProcessRunner
+      class ChildHandle
+        attr_reader pid: Integer
+        attr_reader log_paths: Hash[Symbol, String]
+
+        def initialize: (pid: Integer, log_paths: Hash[Symbol, String]) -> void
+      end
+
+      def spawn_mutant: (Rspec, mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> ChildHandle
       def run_mutant: (Rspec, mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
       def run_suite: (Rspec, Array[String], timeout: Float) -> ScenarioExecutionResult
     end
@@ -368,6 +377,7 @@ module Henitai
       def select_tests: (Subject) -> Array[String]
       def test_files: () -> Array[String]
       def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
+      def spawn_mutant: (mutant: Mutant, test_files: Array[String]) -> RspecProcessRunner::ChildHandle
       def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
       def per_test_coverage_supported?: () -> bool
 
@@ -423,6 +433,7 @@ module Henitai
 
     class Minitest < Rspec
       def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
+      def spawn_mutant: (mutant: Mutant, test_files: Array[String]) -> RspecProcessRunner::ChildHandle
       def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
 
       private

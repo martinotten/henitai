@@ -349,6 +349,17 @@ module Henitai
         raise NotImplementedError
       end
 
+      # Fork a child process for the mutant without waiting for it to finish.
+      # Returns a ChildHandle carrying the OS pid and log file paths.
+      # The caller is responsible for waiting and cleanup.
+      #
+      # @param mutant [Mutant]
+      # @param test_files [Array<String>]
+      # @return [RspecProcessRunner::ChildHandle]
+      def spawn_mutant(mutant:, test_files:)
+        raise NotImplementedError
+      end
+
       def per_test_coverage_supported?
         false
       end
@@ -508,6 +519,11 @@ module Henitai
 
       def run_mutant(mutant:, test_files:, timeout:)
         RspecProcessRunner.new.run_mutant(self, mutant:, test_files:, timeout:)
+      end
+
+      def spawn_mutant(mutant:, test_files:)
+        log_paths = scenario_log_paths("mutant-#{mutant.id}")
+        RspecProcessRunner.new.spawn_mutant(self, mutant:, test_files:, log_paths:)
       end
 
       def per_test_coverage_supported?
@@ -785,6 +801,11 @@ module Henitai
       end
 
       def run_mutant(mutant:, test_files:, timeout:)
+        setup_load_path
+        super
+      end
+
+      def spawn_mutant(mutant:, test_files:)
         setup_load_path
         super
       end

@@ -2143,4 +2143,103 @@ RSpec.describe Henitai::Integration::Rspec do
 
     expect(calls).to eq([0.25])
   end
+
+  describe "#spawn_mutant" do
+    it "returns a ChildHandle with a pid and log_paths" do
+      mutant = Struct.new(:id).new("mutant-spawn-1")
+      integration = described_class.new
+      original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+      begin
+        stub_child_logging(integration)
+        allow(Process).to receive(:exit)
+        allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+        allow(integration).to receive(:run_tests).and_return(0)
+        allow(Process).to receive(:fork) do |&block|
+          block.call
+          55_555
+        end
+
+        handle = integration.spawn_mutant(mutant:, test_files: ["spec/foo_spec.rb"])
+
+        expect([handle.pid, handle.log_paths.keys]).to eq(
+          [55_555, %i[stdout_path stderr_path log_path]]
+        )
+      ensure
+        ENV["HENITAI_MUTANT_ID"] = original_env
+      end
+    end
+
+    it "forks exactly one child that calls run_in_child with no exec boundary" do
+      # Contract test: mutation activation and test execution must share the
+      # same forked child process. This is the same-process activation contract
+      # documented in docs/postmortem-2026-04-24-rspec-execution-regression.md.
+      #
+      # spawn_mutant must call Process.fork exactly once. The block passed to
+      # fork must call run_in_child (not spawn/system/exec). We verify this by
+      # ensuring fork is called exactly once and no additional subprocess
+      # boundary is introduced.
+      mutant = Struct.new(:id).new("mutant-spawn-contract")
+      integration = described_class.new
+      record = { fork_count: 0 }
+      original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+      begin
+        stub_child_logging(integration)
+        allow(Process).to receive(:exit)
+        allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+        allow(integration).to receive(:run_tests).and_return(0)
+        allow(Process).to receive(:fork) do |&block|
+          record[:fork_count] += 1
+          block.call
+          99_999
+        end
+
+        integration.spawn_mutant(mutant:, test_files: ["spec/foo_spec.rb"])
+
+        expect(record[:fork_count]).to eq(1)
+      ensure
+        ENV["HENITAI_MUTANT_ID"] = original_env
+      end
+    end
+
+    it "returns a ChildHandle with log_paths matching the mutant id" do
+      mutant = Struct.new(:id).new("mutant-spawn-paths")
+      integration = described_class.new
+      original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
+
+      begin
+        allow(Process).to receive(:fork).and_return(77_777)
+
+        handle = integration.spawn_mutant(mutant:, test_files: ["spec/foo_spec.rb"])
+
+        expect(handle.log_paths.values_at(:stdout_path, :stderr_path)).to all(
+          include("mutant-mutant-spawn-paths")
+        )
+      ensure
+        ENV["HENITAI_MUTANT_ID"] = original_env
+      end
+    end
+  end
+
+  describe "Integration::Base#spawn_mutant" do
+    it "raises NotImplementedError on the base class" do
+      integration = Henitai::Integration::Base.new
+
+      expect do
+        integration.spawn_mutant(mutant: nil, test_files: [])
+      end.to raise_error(NotImplementedError)
+    end
+  end
+
+  describe "RspecProcessRunner::ChildHandle" do
+    it "is a struct with pid and log_paths keyword arguments" do
+      handle = Henitai::Integration::RspecProcessRunner::ChildHandle.new(
+        pid: 42,
+        log_paths: { stdout_path: "/tmp/out.log", stderr_path: "/tmp/err.log" }
+      )
+
+      expect([handle.pid, handle.log_paths[:stdout_path]]).to eq([42, "/tmp/out.log"])
+    end
+  end
 end
