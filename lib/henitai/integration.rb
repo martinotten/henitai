@@ -517,6 +517,11 @@ module Henitai
         spec_files
       end
 
+      def spawn_mutant(mutant:, test_files:)
+        log_paths = scenario_log_paths(mutant_log_name(mutant))
+        RspecProcessRunner.new.spawn_mutant(self, mutant:, test_files:, log_paths:)
+      end
+
       def run_mutant(mutant:, test_files:, timeout:)
         RspecProcessRunner.new.run_mutant(self, mutant:, test_files:, timeout:)
       end
@@ -710,6 +715,10 @@ module Henitai
             run_child_activation_and_tests(mutant:, test_files:, log_paths:)
           end
         end
+      end
+
+      def mutant_log_name(mutant)
+        "mutant-#{mutant.id}"
       end
 
       def read_log_file(path)

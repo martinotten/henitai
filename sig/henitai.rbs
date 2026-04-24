@@ -357,17 +357,25 @@ module Henitai
       def stderr_stream: () -> IO
     end
 
+    module SchedulerDiagnostics
+      def self.enabled?: () -> bool
+      def self.child_started: (Integer?) -> void
+      def self.child_ended: (Integer?) -> void
+      def self.summary: () -> Hash[Symbol, untyped]
+      def self.reset!: () -> void
+    end
+
     class RspecProcessRunner
       class ChildHandle
-        attr_reader pid: Integer
-        attr_reader log_paths: Hash[Symbol, String]
+        attr_accessor pid: Integer?
+        attr_accessor log_paths: Hash[Symbol, String]
 
-        def initialize: (pid: Integer, log_paths: Hash[Symbol, String]) -> void
+        def initialize: (pid: Integer?, log_paths: Hash[Symbol, String]) -> void
       end
 
-      def spawn_mutant: (Rspec, mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> ChildHandle
       def run_mutant: (Rspec, mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
       def run_suite: (Rspec, Array[String], timeout: Float) -> ScenarioExecutionResult
+      def spawn_mutant: (Rspec, mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> ChildHandle
     end
 
     class Rspec < Base
@@ -380,9 +388,11 @@ module Henitai
       def spawn_mutant: (mutant: Mutant, test_files: Array[String]) -> RspecProcessRunner::ChildHandle
       def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
       def per_test_coverage_supported?: () -> bool
+      def spawn_mutant: (mutant: Mutant, test_files: Array[String]) -> RspecProcessRunner::ChildHandle
 
       private
 
+      def mutant_log_name: (Mutant) -> String
       def run_in_child: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
       def suppress_simplecov!: () -> void
       def suppress_coverage!: () -> void
