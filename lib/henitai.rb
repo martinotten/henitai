@@ -52,6 +52,7 @@ module Henitai
   autoload :SamplingStrategy, "henitai/sampling_strategy"
   autoload :TestPrioritizer, "henitai/test_prioritizer"
   autoload :ExecutionEngine, "henitai/execution_engine"
+  autoload :ParallelExecutionRunner, "henitai/parallel_execution_runner"
   autoload :Runner, "henitai/runner"
   autoload :Reporter, "henitai/reporter"
   autoload :Integration, "henitai/integration"
