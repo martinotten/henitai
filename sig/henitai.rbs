@@ -388,7 +388,6 @@ module Henitai
       def spawn_mutant: (mutant: Mutant, test_files: Array[String]) -> RspecProcessRunner::ChildHandle
       def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
       def per_test_coverage_supported?: () -> bool
-      def spawn_mutant: (mutant: Mutant, test_files: Array[String]) -> RspecProcessRunner::ChildHandle
 
       private
 
@@ -517,6 +516,16 @@ module Henitai
   class ParallelExecutionRunner
     def initialize: (worker_count: Integer) -> void
     def run: (Array[Mutant], untyped, untyped, untyped, ?Hash[Symbol, untyped]) -> void
+  end
+
+  class ProcessWorkerRunner
+    SCHEDULER_POLL_INTERVAL: Float
+    PROCESS_DRAIN_WINDOW: Float
+
+    Slot: untyped
+
+    def initialize: (worker_count: Integer) -> void
+    def run: (Array[Mutant], untyped, untyped, untyped?, ?Hash[Symbol, untyped]) -> Array[ScenarioExecutionResult]
   end
 
   class StaticFilter

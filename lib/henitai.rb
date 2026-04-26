@@ -53,6 +53,7 @@ module Henitai
   autoload :TestPrioritizer, "henitai/test_prioritizer"
   autoload :ExecutionEngine, "henitai/execution_engine"
   autoload :ParallelExecutionRunner, "henitai/parallel_execution_runner"
+  autoload :ProcessWorkerRunner, "henitai/process_worker_runner"
   autoload :Runner, "henitai/runner"
   autoload :Reporter, "henitai/reporter"
   autoload :Integration, "henitai/integration"

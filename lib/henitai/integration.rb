@@ -526,11 +526,6 @@ module Henitai
         RspecProcessRunner.new.run_mutant(self, mutant:, test_files:, timeout:)
       end
 
-      def spawn_mutant(mutant:, test_files:)
-        log_paths = scenario_log_paths("mutant-#{mutant.id}")
-        RspecProcessRunner.new.spawn_mutant(self, mutant:, test_files:, log_paths:)
-      end
-
       def per_test_coverage_supported?
         true
       end
