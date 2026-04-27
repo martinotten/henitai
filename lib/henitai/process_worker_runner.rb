@@ -55,6 +55,8 @@ module Henitai
         fill_idle_slots
         IO.select(nil, nil, nil, SCHEDULER_POLL_INTERVAL)
         reap_all_completed_children
+        check_timeouts
+        drain_draining_slots if draining_slots?
       end
     end
 
@@ -109,6 +111,82 @@ module Henitai
       return unless slot
 
       result = integration.build_result(wait_result, slot.log_paths)
+      results << result
+      progress_reporter&.progress(slot.mutant, scenario_result: result)
+    end
+
+    # Per-slot timeout check. Must be called after reap_all_completed_children
+    # so that naturally-exited processes are already removed from slots.
+    def check_timeouts
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      slots.each_value do |slot|
+        next if slot.draining
+        next unless now >= slot.started_at_monotonic + slot.timeout
+
+        # Final targeted reap: if the child already exited, classify it normally.
+        pid, status = Process.wait2(slot.pid, Process::WNOHANG)
+        if pid
+          complete_slot(pid, status)
+        else
+          slot.forced_outcome = :timeout
+          slot.draining = true
+        end
+      end
+    end
+
+    def draining_slots?
+      slots.any? { |_, slot| slot.draining }
+    end
+
+    # Two-phase broadcast cleanup for all slots that are in draining state.
+    def drain_draining_slots
+      draining = slots.select { |_, slot| slot.draining }
+      return if draining.empty?
+
+      broadcast_term(draining)
+      IO.select(nil, nil, nil, PROCESS_DRAIN_WINDOW)
+      draining.each_value { |slot| signal_process_group(slot.pid, :SIGKILL) }
+      reap_and_remove_draining(draining)
+    end
+
+    def broadcast_term(draining)
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      draining.each_value do |slot|
+        slot.term_sent_at_monotonic = now
+        signal_process_group(slot.pid, :SIGTERM)
+      end
+    end
+
+    def reap_and_remove_draining(draining)
+      draining.each_value do |slot|
+        reap_pid(slot.pid)
+        build_forced_result(slot)
+        pid_to_slot.delete(slot.pid)
+        slots.delete(slot.slot_id)
+      end
+    end
+
+    def signal_process_group(pid, signal)
+      Process.kill(signal, -pid)
+    rescue Errno::ESRCH
+      nil
+    rescue Errno::EPERM
+      # Process group not yet established; fall back to signalling the pid.
+      begin
+        Process.kill(signal, pid)
+      rescue Errno::ESRCH
+        nil
+      end
+    end
+
+    def reap_pid(pid)
+      Process.wait(pid)
+    rescue Errno::ECHILD, Errno::ESRCH
+      nil
+    end
+
+    def build_forced_result(slot)
+      result = integration.build_result(:timeout, slot.log_paths)
       results << result
       progress_reporter&.progress(slot.mutant, scenario_result: result)
     end

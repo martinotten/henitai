@@ -12,6 +12,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
   end
 
   # An integration stub that forks a real child process and returns results
+  # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
   def build_integration(results_map)
     integration = instance_double(Henitai::Integration::Rspec)
 
@@ -19,7 +20,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       ["spec/#{subject.expression}_spec.rb"]
     }
 
-    allow(integration).to receive(:spawn_mutant) do |mutant:, test_files:|
+    allow(integration).to receive(:spawn_mutant) do |mutant:, **|
       log_paths = {
         stdout_path: "/dev/null",
         stderr_path: "/dev/null",
@@ -45,6 +46,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
 
     integration
   end
+  # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
 
   describe "empty queue" do
     it "returns empty array immediately when given zero mutants" do
@@ -59,7 +61,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
   end
 
   describe "basic dispatch" do
-    it "runs all mutants to completion and returns results" do
+    it "runs all mutants to completion and returns results" do # rubocop:disable RSpec/MultipleExpectations
       mutant_a = build_mutant("a")
       mutant_b = build_mutant("b")
       integration = build_integration("a" => { exit_code: 1 }, "b" => { exit_code: 0 })
@@ -75,14 +77,14 @@ RSpec.describe Henitai::ProcessWorkerRunner do
   end
 
   describe "slot count" do
-    it "runs mutants one at a time with jobs:1" do
+    it "runs mutants one at a time with jobs:1" do # rubocop:disable RSpec/MultipleExpectations
       mutant_a = build_mutant("a")
       mutant_b = build_mutant("b")
       started_at = {}
 
       integration = instance_double(Henitai::Integration::Rspec)
-      allow(integration).to receive(:select_tests) { [] }
-      allow(integration).to receive(:spawn_mutant) do |mutant:, test_files:|
+      allow(integration).to receive(:select_tests).and_return([])
+      allow(integration).to receive(:spawn_mutant) do |mutant:, **|
         log_paths = { stdout_path: "/dev/null", stderr_path: "/dev/null",
                       log_path: "/dev/null" }
         started_at[mutant.id] = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -111,12 +113,61 @@ RSpec.describe Henitai::ProcessWorkerRunner do
     end
   end
 
-  describe "concurrency proof", pending: "PR 5 — timeout and concurrency metrics" do
-    it "runs 4 mutants concurrently and observes pid overlap > 1"
+  describe "concurrency proof" do
+    it "runs 4 mutants concurrently and completes faster than serial would" do # rubocop:disable RSpec/MultipleExpectations
+      mutants = (1..4).map { |i| build_mutant("m#{i}") }
+      # Each mutant sleeps 0.3s; serial would take 1.2s; concurrent < 0.7s
+      results_map = (1..4).to_h { |i| ["m#{i}", { sleep: 0.3, exit_code: 0 }] }
+      integration = build_integration(results_map)
+      config = Struct.new(:timeout).new(5.0)
+      runner = described_class.new(worker_count: 4)
+
+      t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      results = runner.run(mutants, integration, config, nil)
+      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
+
+      expect(results.size).to eq(4)
+      expect(elapsed).to be < 0.7
+    end
   end
 
-  describe "timeout isolation", pending: "PR 5 — timeout handling" do
-    it "cleans up slots after timeout and leaves no active slots"
+  describe "timeout isolation" do
+    it "cleans up slots after timeout and leaves no active slots" do # rubocop:disable RSpec/MultipleExpectations
+      mutant = build_mutant("slow")
+      # Integration spawns a real child sleeping 10s but timeout is 0.1s
+      integration = instance_double(Henitai::Integration::Rspec)
+      allow(integration).to receive(:select_tests).and_return([])
+      allow(integration).to receive(:spawn_mutant) do |**|
+        log_paths = {
+          stdout_path: "/dev/null",
+          stderr_path: "/dev/null",
+          log_path: "/dev/null"
+        }
+        pid = Process.fork do
+          Process.setpgid(0, 0)
+          sleep(10)
+          Process.exit(0)
+        end
+        Henitai::Integration::ChildHandle.new(pid, log_paths)
+      end
+      allow(integration).to receive(:build_result) do |wait_result, log_paths|
+        Henitai::ScenarioExecutionResult.build(
+          wait_result: wait_result,
+          stdout: "",
+          stderr: "",
+          log_path: log_paths[:log_path]
+        )
+      end
+      config = Struct.new(:timeout).new(0.1)
+      runner = described_class.new(worker_count: 1)
+
+      results = runner.run([mutant], integration, config, nil)
+
+      # Run must not hang and all children must be reaped
+      expect(results.size).to eq(1)
+      expect(results.first.status).to eq(:timeout)
+      expect { Process.wait(-1, Process::WNOHANG) }.to raise_error(Errno::ECHILD)
+    end
   end
 
   describe "interrupt semantics", pending: "PR 6 — interrupt handling" do

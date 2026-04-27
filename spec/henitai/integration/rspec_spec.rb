@@ -2232,9 +2232,9 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
-  describe "RspecProcessRunner::ChildHandle" do
+  describe "Integration::ChildHandle" do
     it "is a struct with pid and log_paths keyword arguments" do
-      handle = Henitai::Integration::RspecProcessRunner::ChildHandle.new(
+      handle = Henitai::Integration::ChildHandle.new(
         pid: 42,
         log_paths: { stdout_path: "/tmp/out.log", stderr_path: "/tmp/err.log" }
       )

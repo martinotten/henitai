@@ -43,7 +43,7 @@ RSpec.describe Henitai::Integration::RspecProcessRunner do
   end
 
   def stub_mutant_run(calls, integration, log_paths, pid:, wait_result:, build_result:)
-    child_handle = Henitai::Integration::RspecProcessRunner::ChildHandle.new(
+    child_handle = Henitai::Integration::ChildHandle.new(
       pid:,
       log_paths:
     )
@@ -193,7 +193,7 @@ RSpec.describe Henitai::Integration::RspecProcessRunner do
     log_paths = mutant_log_paths
     calls = []
 
-    child_handle = Henitai::Integration::RspecProcessRunner::ChildHandle.new(
+    child_handle = Henitai::Integration::ChildHandle.new(
       pid: nil,
       log_paths:
     )

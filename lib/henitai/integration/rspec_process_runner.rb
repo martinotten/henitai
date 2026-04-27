@@ -51,10 +51,11 @@ module Henitai
       end
     end
 
+    # Captures the PID and log paths for a spawned mutant child process.
+    ChildHandle = Struct.new(:pid, :log_paths)
+
     # Runs RSpec child and suite processes on behalf of the integration.
     class RspecProcessRunner
-      ChildHandle = Struct.new(:pid, :log_paths)
-
       def run_mutant(integration, mutant:, test_files:, timeout:)
         handle = integration.spawn_mutant(mutant:, test_files:)
         SchedulerDiagnostics.child_started(handle.pid)
