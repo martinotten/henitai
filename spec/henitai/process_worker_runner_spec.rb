@@ -52,7 +52,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
     it "returns empty array immediately when given zero mutants" do
       runner = described_class.new(worker_count: 2)
       integration = instance_double(Henitai::Integration::Rspec)
-      config = Struct.new(:timeout).new(10.0)
+      config = Struct.new(:timeout, :max_flaky_retries).new(10.0, 0)
 
       results = runner.run([], integration, config, nil)
 
@@ -65,7 +65,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       mutant_a = build_mutant("a")
       mutant_b = build_mutant("b")
       integration = build_integration("a" => { exit_code: 1 }, "b" => { exit_code: 0 })
-      config = Struct.new(:timeout).new(10.0)
+      config = Struct.new(:timeout, :max_flaky_retries).new(10.0, 0)
       runner = described_class.new(worker_count: 2)
 
       results = runner.run([mutant_a, mutant_b], integration, config, nil)
@@ -101,7 +101,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
         )
       end
 
-      config = Struct.new(:timeout).new(10.0)
+      config = Struct.new(:timeout, :max_flaky_retries).new(10.0, 0)
       runner = described_class.new(worker_count: 1)
 
       results = runner.run([mutant_a, mutant_b], integration, config, nil)
@@ -114,29 +114,34 @@ RSpec.describe Henitai::ProcessWorkerRunner do
   end
 
   describe "concurrency proof" do
-    it "runs 4 mutants concurrently with real PID overlap" do # rubocop:disable RSpec/MultipleExpectations
+    it "runs 4 mutants concurrently with real PID overlap and sub-serial wall time" do # rubocop:disable RSpec/MultipleExpectations
       allow(ENV).to receive(:[]).and_call_original
       allow(ENV).to receive(:[]).with("HENITAI_DEBUG_SCHEDULER").and_return("1")
       Henitai::Integration::SchedulerDiagnostics.reset!
 
       mutants = (1..4).map { |i| build_mutant("m#{i}") }
-      # Each mutant sleeps 0.3s; serial would take 1.2s
+      # Each mutant sleeps 0.3s; serial would take ~1.2s
       results_map = (1..4).to_h { |i| ["m#{i}", { sleep: 0.3, exit_code: 0 }] }
       integration = build_integration(results_map)
-      config = Struct.new(:timeout).new(5.0)
+      config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 0)
       runner = described_class.new(worker_count: 4)
 
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       results = runner.run(mutants, integration, config, nil)
+      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
 
       expect(results.size).to eq(4)
       # Verify real OS-PID overlap: at least 2 children were live simultaneously
       expect(Henitai::Integration::SchedulerDiagnostics.summary[:max_concurrent]).to be >= 2
+      # Wall time must be materially below serial (1.2s); 0.9s is a safe threshold
+      expect(elapsed).to be < 0.9
     end
   end
 
   describe "timeout isolation" do
     it "cleans up slots after timeout and leaves no active slots" do # rubocop:disable RSpec/MultipleExpectations
       mutant = build_mutant("slow")
+      spawned_pid = nil
       # Integration spawns a real child sleeping 10s but timeout is 0.1s
       integration = instance_double(Henitai::Integration::Rspec)
       allow(integration).to receive(:select_tests).and_return([])
@@ -151,6 +156,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
           sleep(10)
           Process.exit(0)
         end
+        spawned_pid = pid
         Henitai::Integration::ChildHandle.new(pid, log_paths)
       end
       allow(integration).to receive(:build_result) do |wait_result, log_paths|
@@ -161,7 +167,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
           log_path: log_paths[:log_path]
         )
       end
-      config = Struct.new(:timeout).new(0.1)
+      config = Struct.new(:timeout, :max_flaky_retries).new(0.1, 0)
       runner = described_class.new(worker_count: 1)
 
       results = runner.run([mutant], integration, config, nil)
@@ -169,19 +175,116 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       # Run must not hang and all children must be reaped
       expect(results.size).to eq(1)
       expect(results.first.status).to eq(:timeout)
-      expect { Process.wait(-1, Process::WNOHANG) }.to raise_error(Errno::ECHILD)
+      # Verify the specific spawned pid was reaped (not a global wait that could
+      # consume unrelated children from other specs or helpers)
+      expect { Process.wait(spawned_pid, Process::WNOHANG) }.to raise_error(Errno::ECHILD)
     end
   end
 
-  describe "interrupt semantics", pending: "PR 6 — interrupt handling" do
-    it "marks active slots as :interrupted and raises Interrupt after cleanup"
+  describe "interrupt semantics" do
+    it "raises Interrupt, reaps all children, and emits no result for in-flight mutants" do # rubocop:disable RSpec/MultipleExpectations
+      spawned_pid = nil
+      mutant = build_mutant("slow")
+      integration = instance_double(Henitai::Integration::Rspec)
+      allow(integration).to receive(:select_tests).and_return([])
+      allow(integration).to receive(:spawn_mutant) do |**|
+        log_paths = { stdout_path: "/dev/null", stderr_path: "/dev/null",
+                      log_path: "/dev/null" }
+        pid = Process.fork do
+          Process.setpgid(0, 0)
+          sleep(10)
+          Process.exit(0)
+        end
+        spawned_pid = pid
+        Henitai::Integration::ChildHandle.new(pid, log_paths)
+      end
+      allow(integration).to receive(:build_result) do |wait_result, log_paths|
+        Henitai::ScenarioExecutionResult.build(
+          wait_result: wait_result, stdout: "", stderr: "",
+          log_path: log_paths[:log_path]
+        )
+      end
+      config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 0)
+      runner = described_class.new(worker_count: 1)
+
+      # Trigger shutdown via the public API rather than OS signals to avoid
+      # signal interference with other specs running in the same process.
+      Thread.new do
+        sleep 0.05
+        runner.request_shutdown
+      end
+
+      expect { runner.run([mutant], integration, config, nil) }.to raise_error(Interrupt)
+      # Interrupted slot must not produce a verdict
+      expect(mutant.status).to eq(:pending)
+      # Child process must be reaped
+      expect { Process.wait(spawned_pid, Process::WNOHANG) }.to raise_error(Errno::ECHILD)
+    end
   end
 
-  describe "spawn failure isolation", pending: "PR 6 — fault isolation" do
-    it "does not crash other slots when one fork fails"
+  describe "spawn failure isolation" do
+    it "does not crash other slots when one spawn raises" do # rubocop:disable RSpec/MultipleExpectations
+      mutant_a = build_mutant("ok_a")
+      mutant_b = build_mutant("fail")
+      mutant_c = build_mutant("ok_c")
+
+      integration = instance_double(Henitai::Integration::Rspec)
+      allow(integration).to receive(:select_tests).and_return([])
+      allow(integration).to receive(:spawn_mutant) do |mutant:, **|
+        raise "simulated fork failure" if mutant.id == "fail"
+
+        log_paths = { stdout_path: "/dev/null", stderr_path: "/dev/null",
+                      log_path: "/dev/null" }
+        pid = Process.fork { Process.exit(1) }
+        Henitai::Integration::ChildHandle.new(pid, log_paths)
+      end
+      allow(integration).to receive(:build_result) do |wait_result, log_paths|
+        Henitai::ScenarioExecutionResult.build(
+          wait_result: wait_result, stdout: "", stderr: "",
+          log_path: log_paths[:log_path]
+        )
+      end
+
+      config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 0)
+      runner = described_class.new(worker_count: 3)
+
+      results = runner.run([mutant_a, mutant_b, mutant_c], integration, config, nil)
+
+      expect(results.size).to eq(3)
+      expect(mutant_b.status).to eq(:killed)
+    end
   end
 
-  describe "retry correctness", pending: "PR 6 — in-slot retry" do
-    it "retries within the same slot when retries remain"
+  describe "retry correctness" do
+    it "retries within the same slot when retries remain and returns the final outcome" do # rubocop:disable RSpec/MultipleExpectations
+      mutant = build_mutant("flaky")
+      call_count = 0
+
+      integration = instance_double(Henitai::Integration::Rspec)
+      allow(integration).to receive(:select_tests).and_return([])
+      allow(integration).to receive(:spawn_mutant) do |**|
+        log_paths = { stdout_path: "/dev/null", stderr_path: "/dev/null",
+                      log_path: "/dev/null" }
+        call_count += 1
+        exit_code = call_count == 1 ? 0 : 1 # survived first run, killed on retry
+        pid = Process.fork { Process.exit(exit_code) }
+        Henitai::Integration::ChildHandle.new(pid, log_paths)
+      end
+      allow(integration).to receive(:build_result) do |wait_result, log_paths|
+        Henitai::ScenarioExecutionResult.build(
+          wait_result: wait_result, stdout: "", stderr: "",
+          log_path: log_paths[:log_path]
+        )
+      end
+
+      config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 1)
+      runner = described_class.new(worker_count: 1)
+
+      results = runner.run([mutant], integration, config, nil)
+
+      expect(results.size).to eq(1)
+      expect(results.first.status).to eq(:killed)
+      expect(call_count).to eq(2)
+    end
   end
 end

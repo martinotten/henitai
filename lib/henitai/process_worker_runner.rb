@@ -5,7 +5,7 @@ module Henitai
   #
   # Owns the process table: it is the sole caller of Process.wait* so there
   # are no race conditions between threads reaping the same child.
-  class ProcessWorkerRunner
+  class ProcessWorkerRunner # rubocop:disable Metrics/ClassLength
     SCHEDULER_POLL_INTERVAL = 0.01
     PROCESS_DRAIN_WINDOW = 0.2
 
@@ -18,6 +18,13 @@ module Henitai
 
     def initialize(worker_count:)
       @worker_count = worker_count
+      @shutdown_requested = false
+    end
+
+    # Trigger a graceful shutdown from outside the event loop.
+    # Safe to call from any thread. The loop observes the flag on its next tick.
+    def request_shutdown
+      @shutdown_requested = true
     end
 
     # Runs all mutants and returns an array of ScenarioExecutionResult.
@@ -50,15 +57,26 @@ module Henitai
                 :integration, :config, :progress_reporter
 
     def event_loop
+      saved_traps = install_signal_traps
       loop do
         break if done?
 
-        fill_idle_slots
+        fill_idle_slots unless @shutdown_requested
         IO.select(nil, nil, nil, SCHEDULER_POLL_INTERVAL)
         reap_all_completed_children
         check_timeouts
+        break handle_shutdown if @shutdown_requested
+
         drain_draining_slots if draining_slots?
       end
+    ensure
+      restore_signal_traps(saved_traps)
+      raise Interrupt if @shutdown_requested
+    end
+
+    def handle_shutdown
+      interrupt_active_slots
+      drain_draining_slots
     end
 
     def done?
@@ -78,6 +96,8 @@ module Henitai
       mutant.tests_completed = test_files.size if mutant.respond_to?(:tests_completed=)
       handle = integration.spawn_mutant(mutant: mutant, test_files: test_files)
       register_slot(handle, mutant)
+    rescue StandardError => e
+      record_spawn_failure(mutant, e)
     end
 
     def register_slot(handle, mutant)
@@ -111,14 +131,23 @@ module Henitai
       slot_id = pid_to_slot.delete(pid)
       return unless slot_id
 
-      slot = slots.delete(slot_id)
+      slot = slots[slot_id]
       return unless slot
 
       Integration::SchedulerDiagnostics.child_ended(pid)
       result = integration.build_result(wait_result, slot.log_paths)
-      slot.mutant.status = result.status
-      results << result
-      progress_reporter&.progress(slot.mutant, scenario_result: result)
+      dispatch_slot_result(slot, result)
+    end
+
+    def dispatch_slot_result(slot, result)
+      if should_retry?(slot, result)
+        retry_slot(slot)
+      else
+        slots.delete(slot.slot_id)
+        slot.mutant.status = result.status
+        results << result
+        progress_reporter&.progress(slot.mutant, scenario_result: result)
+      end
     end
 
     # Per-slot timeout check. Must be called after reap_all_completed_children
@@ -180,8 +209,14 @@ module Henitai
     end
 
     # After SIGKILL window: blocking reap each slot, then build its result.
-    # Use real exit status only if the process exited naturally (not via signal);
-    # otherwise honour forced_outcome.
+    #
+    # Interrupted slots are cleaned up but produce no result — the scheduler
+    # is shutting down and does not emit verdicts for in-flight mutants.
+    #
+    # For timeout slots: a real exit status only wins if observed before any
+    # parent signal was sent. Once SIGTERM has been dispatched, the forced
+    # outcome is authoritative — a child handling SIGTERM and exiting 0 must
+    # not be misclassified as :survived.
     def reap_and_remove_draining(draining) # rubocop:disable Metrics/AbcSize
       draining.each_value do |slot|
         # One last WNOHANG before blocking: catches processes that exited
@@ -193,6 +228,8 @@ module Henitai
         slots.delete(slot.slot_id)
         Integration::SchedulerDiagnostics.child_ended(slot.pid)
 
+        next if slot.forced_outcome == :interrupted
+
         result = build_drain_result(slot, final_status)
         slot.mutant.status = result.status
         results << result
@@ -200,14 +237,69 @@ module Henitai
       end
     end
 
-    # Choose result: use real exit status when the process exited on its own
-    # (not killed by a signal); otherwise force the recorded outcome.
+    # Choose result: use real exit status only if observed before any parent
+    # signal was sent. After SIGTERM, the forced outcome is authoritative.
     def build_drain_result(slot, final_status)
-      if final_status&.exited?
+      if final_status&.exited? && slot.term_sent_at_monotonic.nil?
         integration.build_result(final_status, slot.log_paths)
       else
         integration.build_result(slot.forced_outcome || :timeout, slot.log_paths)
       end
+    end
+
+    def install_signal_traps
+      saved = {}
+      %w[INT TERM HUP].each do |sig|
+        saved[sig] = trap(sig) { @shutdown_requested = true }
+      end
+      saved
+    end
+
+    def restore_signal_traps(saved)
+      saved&.each { |sig, handler| trap(sig, handler) }
+    end
+
+    def interrupt_active_slots
+      slots.each_value do |slot|
+        next if slot.draining
+
+        slot.forced_outcome = :interrupted
+        slot.draining = true
+      end
+    end
+
+    def should_retry?(slot, result)
+      !@shutdown_requested && result.survived? && slot.retry_count < config.max_flaky_retries.to_i
+    end
+
+    def retry_slot(slot) # rubocop:disable Metrics/AbcSize
+      slot.retry_count += 1
+      test_files = resolve_test_files(slot.mutant)
+      handle = integration.spawn_mutant(mutant: slot.mutant, test_files: test_files)
+      slot.pid = handle.pid
+      slot.log_paths = handle.log_paths
+      slot.started_at_monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      slot.draining = false
+      slot.term_sent_at_monotonic = nil
+      slot.forced_outcome = nil
+      pid_to_slot[handle.pid] = slot.slot_id
+      Integration::SchedulerDiagnostics.child_started(handle.pid)
+    rescue StandardError => e
+      slots.delete(slot.slot_id)
+      record_spawn_failure(slot.mutant, e)
+    end
+
+    def record_spawn_failure(mutant, error)
+      result = ScenarioExecutionResult.new(
+        status: :killed,
+        stdout: "",
+        stderr: "spawn failed: #{error.message}",
+        log_path: "/dev/null",
+        exit_status: nil
+      )
+      mutant.status = result.status
+      results << result
+      progress_reporter&.progress(mutant, scenario_result: result)
     end
 
     def wnohang_reap(pid)
