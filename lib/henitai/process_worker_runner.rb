@@ -29,6 +29,7 @@ module Henitai
     # @param options [Hash]
     # @return [Array<ScenarioExecutionResult>]
     def run(mutants, integration, config, progress_reporter, options = {})
+      Integration::SchedulerDiagnostics.reset! if Integration::SchedulerDiagnostics.enabled?
       @pending = mutants.dup
       @slots = {}
       @pid_to_slot = {}
@@ -73,6 +74,8 @@ module Henitai
 
     def spawn_into_slot(mutant)
       test_files = resolve_test_files(mutant)
+      mutant.covered_by = test_files if mutant.respond_to?(:covered_by=)
+      mutant.tests_completed = test_files.size if mutant.respond_to?(:tests_completed=)
       handle = integration.spawn_mutant(mutant: mutant, test_files: test_files)
       register_slot(handle, mutant)
     end
@@ -82,6 +85,7 @@ module Henitai
       slot = build_slot(slot_id, mutant, handle)
       slots[slot_id] = slot
       pid_to_slot[handle.pid] = slot_id
+      Integration::SchedulerDiagnostics.child_started(handle.pid)
     end
 
     def build_slot(slot_id, mutant, handle)
@@ -110,7 +114,9 @@ module Henitai
       slot = slots.delete(slot_id)
       return unless slot
 
+      Integration::SchedulerDiagnostics.child_ended(pid)
       result = integration.build_result(wait_result, slot.log_paths)
+      slot.mutant.status = result.status
       results << result
       progress_reporter&.progress(slot.mutant, scenario_result: result)
     end
@@ -139,8 +145,24 @@ module Henitai
     end
 
     # Two-phase broadcast cleanup for all slots that are in draining state.
-    def drain_draining_slots
+    #
+    # Precision rule: before signalling, do one final WNOHANG pass to catch
+    # processes that exited naturally in the window between check_timeouts and
+    # now. If SIGTERM gets ESRCH, the process is already gone — we must not
+    # force-label those as :timeout.
+    def drain_draining_slots # rubocop:disable Metrics/AbcSize
       draining = slots.select { |_, slot| slot.draining }
+      return if draining.empty?
+
+      # Final WNOHANG pass before SIGTERM to catch race-window exits.
+      draining.reject! do |_, slot|
+        pid, status = wnohang_reap(slot.pid)
+        next false unless pid
+
+        complete_slot(pid, status)
+        true
+      end
+
       return if draining.empty?
 
       broadcast_term(draining)
@@ -157,13 +179,41 @@ module Henitai
       end
     end
 
-    def reap_and_remove_draining(draining)
+    # After SIGKILL window: blocking reap each slot, then build its result.
+    # Use real exit status only if the process exited naturally (not via signal);
+    # otherwise honour forced_outcome.
+    def reap_and_remove_draining(draining) # rubocop:disable Metrics/AbcSize
       draining.each_value do |slot|
-        reap_pid(slot.pid)
-        build_forced_result(slot)
+        # One last WNOHANG before blocking: catches processes that exited
+        # between SIGKILL and here.
+        _, final_status = wnohang_reap(slot.pid)
+        reap_pid(slot.pid) unless final_status
+
         pid_to_slot.delete(slot.pid)
         slots.delete(slot.slot_id)
+        Integration::SchedulerDiagnostics.child_ended(slot.pid)
+
+        result = build_drain_result(slot, final_status)
+        slot.mutant.status = result.status
+        results << result
+        progress_reporter&.progress(slot.mutant, scenario_result: result)
       end
+    end
+
+    # Choose result: use real exit status when the process exited on its own
+    # (not killed by a signal); otherwise force the recorded outcome.
+    def build_drain_result(slot, final_status)
+      if final_status&.exited?
+        integration.build_result(final_status, slot.log_paths)
+      else
+        integration.build_result(slot.forced_outcome || :timeout, slot.log_paths)
+      end
+    end
+
+    def wnohang_reap(pid)
+      Process.wait2(pid, Process::WNOHANG)
+    rescue Errno::ECHILD, Errno::ESRCH
+      nil
     end
 
     def signal_process_group(pid, signal)
@@ -183,12 +233,6 @@ module Henitai
       Process.wait(pid)
     rescue Errno::ECHILD, Errno::ESRCH
       nil
-    end
-
-    def build_forced_result(slot)
-      result = integration.build_result(:timeout, slot.log_paths)
-      results << result
-      progress_reporter&.progress(slot.mutant, scenario_result: result)
     end
 
     def resolve_test_files(mutant)

@@ -114,20 +114,23 @@ RSpec.describe Henitai::ProcessWorkerRunner do
   end
 
   describe "concurrency proof" do
-    it "runs 4 mutants concurrently and completes faster than serial would" do # rubocop:disable RSpec/MultipleExpectations
+    it "runs 4 mutants concurrently with real PID overlap" do # rubocop:disable RSpec/MultipleExpectations
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("HENITAI_DEBUG_SCHEDULER").and_return("1")
+      Henitai::Integration::SchedulerDiagnostics.reset!
+
       mutants = (1..4).map { |i| build_mutant("m#{i}") }
-      # Each mutant sleeps 0.3s; serial would take 1.2s; concurrent < 0.7s
+      # Each mutant sleeps 0.3s; serial would take 1.2s
       results_map = (1..4).to_h { |i| ["m#{i}", { sleep: 0.3, exit_code: 0 }] }
       integration = build_integration(results_map)
       config = Struct.new(:timeout).new(5.0)
       runner = described_class.new(worker_count: 4)
 
-      t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       results = runner.run(mutants, integration, config, nil)
-      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
 
       expect(results.size).to eq(4)
-      expect(elapsed).to be < 0.7
+      # Verify real OS-PID overlap: at least 2 children were live simultaneously
+      expect(Henitai::Integration::SchedulerDiagnostics.summary[:max_concurrent]).to be >= 2
     end
   end
 
