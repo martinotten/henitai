@@ -64,6 +64,44 @@ RSpec.describe Henitai::Mutant::Activator do
     end
   end
 
+  it "passes the activator file and line to class_eval" do
+    activator = described_class.new
+    target = Class.new
+    subject = Henitai::Subject.new(
+      namespace: "Sample",
+      method_name: "value",
+      method_type: :instance
+    )
+    mutant = build_mutant(
+      subject:,
+      original_node: Parser::AST::Node.new(:int, [1]),
+      mutated_node: Parser::AST::Node.new(:int, [2]),
+      location: {
+        file: "sample.rb",
+        start_line: 1,
+        end_line: 1,
+        start_col: 0,
+        end_col: 1
+      }
+    )
+    mutant.precomputed_activation_source = "define_method(:value) do\n  2\nend\n"
+
+    allow(activator).to receive(:target_for).and_return(target)
+
+    activator_file, activate_line = described_class.instance_method(:activate!).source_location
+    expected_line = activate_line + 8
+
+    allow(target).to receive(:class_eval).and_return(nil)
+
+    activator.activate!(mutant)
+
+    expect(target).to have_received(:class_eval).with(
+      mutant.precomputed_activation_source,
+      activator_file,
+      expected_line
+    )
+  end
+
   it "patches a class method" do
     Dir.mktmpdir do |dir|
       path = write_source(dir, <<~RUBY)
@@ -144,6 +182,34 @@ RSpec.describe Henitai::Mutant::Activator do
 
       expect(Gate4NestedSample.new.value).to eq(-10)
     end
+  end
+
+  it "selects the singleton class for class methods" do
+    activator = described_class.new
+    target = Class.new
+    method_type = Object.new
+
+    def method_type.==(other)
+      other == :class
+    end
+
+    def method_type.eql?(_other)
+      false
+    end
+
+    def method_type.equal?(_other)
+      false
+    end
+
+    subject = instance_double(
+      Henitai::Subject,
+      namespace: "Sample",
+      method_type: method_type
+    )
+
+    allow(activator).to receive(:load_target).and_return(target)
+
+    expect(activator.send(:target_for, subject)).to eq(target.singleton_class)
   end
 
   it "preserves method parameters when activating a mutant" do
@@ -325,6 +391,25 @@ RSpec.describe Henitai::Mutant::Activator do
     expect(activator.send(:heredoc_body_source, location, :range, "replacement")).to be_nil
   end
 
+  it "falls back to source_body when heredoc replacement is unavailable" do
+    activator = described_class.new
+    location = Struct.new(:expression, :heredoc_body, :heredoc_end).new(
+      Struct.new(:source).new("<<~HTML"),
+      Struct.new(:source).new("<body>hello</body>"),
+      Struct.new(:source).new("HTML")
+    )
+    body = Parser::AST::Node.new(:str, ["hello"])
+
+    allow(activator).to receive(:heredoc_location?).with(location).and_return(true)
+    allow(activator).to receive(:heredoc_body_source).with(location, :range, "replacement")
+                                                     .and_return(nil)
+    allow(activator).to receive(:source_body).with(location, body).and_return("fallback")
+
+    expect(
+      activator.send(:body_source_for_location, location, :range, "replacement", body)
+    ).to eq("fallback")
+  end
+
   it "falls back to compile_safe_unparse when the location is missing" do
     activator = described_class.new
     body = Object.new
@@ -348,6 +433,55 @@ RSpec.describe Henitai::Mutant::Activator do
     location = Struct.new(:expression).new(nil)
 
     expect(activator.send(:expression_source, location, :range, "replacement")).to be_nil
+  end
+
+  it "uses a nil body when the method body is missing" do
+    activator = described_class.new
+    subject_node = Parser::CurrentRuby.parse(<<~RUBY)
+      def value
+      end
+    RUBY
+    subject = Henitai::Subject.new(
+      namespace: "Sample",
+      method_name: "value",
+      ast_node: subject_node
+    )
+    mutant = build_mutant(
+      subject:,
+      original_node: Parser::AST::Node.new(:int, [1]),
+      mutated_node: Parser::AST::Node.new(:int, [2]),
+      location: {
+        file: "sample.rb",
+        start_line: 1,
+        end_line: 1,
+        start_col: 0,
+        end_col: 1
+      }
+    )
+
+    expect(activator.send(:body_source, mutant)).to eq("nil")
+  end
+
+  it "falls back to source_body when the body location is missing" do
+    activator = described_class.new
+    body = Parser::AST::Node.new(:int, [1])
+    original_node = Parser::CurrentRuby.parse("1")
+    mutant = build_mutant(
+      subject: Henitai::Subject.new(namespace: "Sample", method_name: "value"),
+      original_node:,
+      mutated_node: Parser::AST::Node.new(:int, [2]),
+      location: {
+        file: "sample.rb",
+        start_line: 1,
+        end_line: 1,
+        start_col: 0,
+        end_col: 1
+      }
+    )
+
+    allow(activator).to receive(:source_body).with(nil, body).and_return("source body")
+
+    expect(activator.send(:body_source_for_mutant, body, mutant)).to eq("source body")
   end
 
   it "strips leading namespace separators before looking up target constants" do
