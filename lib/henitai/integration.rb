@@ -863,7 +863,8 @@ module Henitai
 
       def suppress_minitest_autorun!
         require "minitest"
-        ::Minitest.class_variable_set(:@@installed_at_exit, true)
+        ::Minitest.singleton_class.instance_variable_set(:@installed_at_exit, true)
+        nil
       rescue LoadError, NameError
         nil
       end
