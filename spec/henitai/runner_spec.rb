@@ -731,7 +731,6 @@ RSpec.describe Henitai::Runner do
       allow(Henitai::SurvivorLoader).to receive(:new).and_return(loader)
       allow(Henitai::SurvivorSelector).to receive(:new).and_return(selector)
       allow(runner).to receive(:test_filter).and_return(filter)
-      allow(runner).to receive(:warn)
       allow(selector).to receive(:select).and_return(selected)
 
       warned = false
@@ -740,151 +739,89 @@ RSpec.describe Henitai::Runner do
       result = runner.send(:apply_survivor_selection, [build_mutant_status])
       stats = runner.instance_variable_get(:@survivor_stats)
 
-      expect(
-        result:,
-        stable_status: stable.status,
-        warned:,
-        stats:
-      ).to eq(
-        result: [stable, pending],
-        stable_status: :survived,
-        warned: true,
-        stats: {
-          matched: 1,
-          unmatched_count: 1,
-          unmatched_ids: ["missing-id"],
-          skipped_count: 1,
-          drift_warning: true
-        }
+      expect(result).to eq([stable, pending])
+      expect(stable.status).to eq(:survived)
+      expect(warned).to be(true)
+      expect(stats).to eq(
+        matched: 1,
+        unmatched_count: 1,
+        unmatched_ids: ["missing-id"],
+        skipped_count: 1,
+        drift_warning: true
       )
     end
   end
 
-  it "uses cached activation recipes when the recipe data includes methodType" do
-    Dir.mktmpdir do |dir|
-      report_path = File.join(dir, "mutation-report.json")
-      File.write(report_path, JSON.generate(
-                                "schemaVersion" => "1.0",
-                                "files" => {
-                                  "lib/sample.rb" => {
-                                    "language" => "ruby",
-                                    "source" => "",
-                                    "mutants" => []
-                                  }
-                                }
-                              ))
+  describe "cached activation recipes" do
+    let(:tmpdir) { Dir.mktmpdir }
+    after { FileUtils.rm_rf(tmpdir) }
 
-      runner = described_class.new(config: build_config(reporters: []), survivors_from: report_path)
-      loaded = build_loaded_survivors(["deadbeef"], coverage_map: { "lib/sample.rb" => [1] })
-      recipe = {
-        "activationSource" => "define_method(:value) do\n  2\nend\n",
-        "namespace" => "Sample",
-        "methodName" => "value",
-        "methodType" => "class",
-        "sourceFile" => "lib/sample.rb",
-        "operator" => "ArithmeticOperator",
-        "description" => "+ to -",
-        "location" => {
-          "file" => "lib/sample.rb",
-          "startLine" => 1,
-          "endLine" => 1,
-          "startCol" => 0,
-          "endCol" => 5
-        },
-        "coveredBy" => ["spec/sample_spec.rb"]
-      }
-      selector = instance_double(Henitai::SurvivorSelector, drift_warning?: false, unmatched_ids: [])
-      stable = build_mutant_status
-      filter_result = { stable: [stable], pending: [] }
-      filter = instance_double(Henitai::SurvivorTestFilter, apply: filter_result)
-      loader = instance_double(Henitai::SurvivorLoader, load: loaded)
-      selected_stubs = nil
-
-      allow(Henitai::SurvivorLoader).to receive(:new).and_return(loader)
-      allow(Henitai::SurvivorActivationCache).to receive(:load).and_return(
-        "deadbeef" => recipe
-      )
-      allow(Henitai::SurvivorSelector).to receive(:new).and_return(selector)
-      allow(selector).to receive(:select) do |stubs|
-        selected_stubs = stubs
-        stubs
-      end
-      allow(runner).to receive(:test_filter).and_return(filter)
-
-      result = runner.send(:try_recipe_run)
-      stub = selected_stubs.first
-
-      expect(
-        result:,
-        method_type: stub.subject.method_type,
-        covered_by: stub.covered_by,
-        location: stub.location
-      ).to eq(
-        result: [stable],
-        method_type: :class,
-        covered_by: ["spec/sample_spec.rb"],
-        location: {
-          file: "lib/sample.rb",
-          start_line: 1,
-          end_line: 1,
-          start_col: 0,
-          end_col: 5
-        }
-      )
+    let(:report_path) do
+      path = File.join(tmpdir, "mutation-report.json")
+      File.write(path, JSON.generate(
+        "schemaVersion" => "1.0",
+        "files" => { "lib/sample.rb" => { "language" => "ruby", "source" => "", "mutants" => [] } }
+      ))
+      path
     end
-  end
 
-  it "defaults cached activation recipes to instance methods" do
-    Dir.mktmpdir do |dir|
-      report_path = File.join(dir, "mutation-report.json")
-      File.write(report_path, JSON.generate(
-                                "schemaVersion" => "1.0",
-                                "files" => {
-                                  "lib/sample.rb" => {
-                                    "language" => "ruby",
-                                    "source" => "",
-                                    "mutants" => []
-                                  }
-                                }
-                              ))
-
-      runner = described_class.new(config: build_config(reporters: []), survivors_from: report_path)
-      loaded = build_loaded_survivors(["deadbeef"], coverage_map: { "lib/sample.rb" => [1] })
-      recipe = {
+    let(:runner)   { described_class.new(config: build_config(reporters: []), survivors_from: report_path) }
+    let(:loaded)   { build_loaded_survivors(["deadbeef"], coverage_map: { "lib/sample.rb" => [1] }) }
+    let(:selector) { instance_double(Henitai::SurvivorSelector, drift_warning?: false, unmatched_ids: []) }
+    let(:loader)   { instance_double(Henitai::SurvivorLoader, load: loaded) }
+    let(:base_recipe) do
+      {
         "activationSource" => "define_method(:value) do\n  2\nend\n",
-        "namespace" => "Sample",
-        "methodName" => "value",
-        "sourceFile" => "lib/sample.rb",
-        "operator" => "ArithmeticOperator",
-        "description" => "+ to -",
-        "location" => {
-          "file" => "lib/sample.rb",
-          "startLine" => 1,
-          "endLine" => 1,
-          "startCol" => 0,
-          "endCol" => 5
+        "namespace"        => "Sample",
+        "methodName"       => "value",
+        "sourceFile"       => "lib/sample.rb",
+        "operator"         => "ArithmeticOperator",
+        "description"      => "+ to -",
+        "location"         => {
+          "file" => "lib/sample.rb", "startLine" => 1, "endLine" => 1, "startCol" => 0, "endCol" => 5
         }
       }
-      selector = instance_double(Henitai::SurvivorSelector, drift_warning?: false, unmatched_ids: [])
-      filter = instance_double(Henitai::SurvivorTestFilter, apply: { stable: [build_mutant_status], pending: [] })
-      loader = instance_double(Henitai::SurvivorLoader, load: loaded)
-      selected_stubs = nil
+    end
 
+    # Override recipe and filter per context
+    let(:recipe) { base_recipe }
+    let(:filter) { instance_double(Henitai::SurvivorTestFilter, apply: { stable: [build_mutant_status], pending: [] }) }
+
+    before do
+      @selected_stubs = nil
       allow(Henitai::SurvivorLoader).to receive(:new).and_return(loader)
-      allow(Henitai::SurvivorActivationCache).to receive(:load).and_return(
-        "deadbeef" => recipe
-      )
+      allow(Henitai::SurvivorActivationCache).to receive(:load).and_return("deadbeef" => recipe)
       allow(Henitai::SurvivorSelector).to receive(:new).and_return(selector)
       allow(selector).to receive(:select) do |stubs|
-        selected_stubs = stubs
+        @selected_stubs = stubs
         stubs
       end
       allow(runner).to receive(:test_filter).and_return(filter)
+    end
 
-      runner.send(:try_recipe_run)
-      stub = selected_stubs.first
+    context "when recipe includes methodType" do
+      let(:stable) { build_mutant_status }
+      let(:recipe) { base_recipe.merge("methodType" => "class", "coveredBy" => ["spec/sample_spec.rb"]) }
+      let(:filter) { instance_double(Henitai::SurvivorTestFilter, apply: { stable: [stable], pending: [] }) }
 
-      expect(stub.subject.method_type).to eq(:instance)
+      it "maps methodType to symbol on the stub subject" do
+        result = runner.send(:try_recipe_run)
+        stub = @selected_stubs.first
+
+        expect(result).to eq([stable])
+        expect(stub.subject.method_type).to eq(:class)
+        expect(stub.covered_by).to eq(["spec/sample_spec.rb"])
+        expect(stub.location).to eq(
+          file: "lib/sample.rb", start_line: 1, end_line: 1, start_col: 0, end_col: 5
+        )
+      end
+    end
+
+    context "when recipe omits methodType" do
+      it "defaults method_type to :instance" do
+        runner.send(:try_recipe_run)
+        expect(@selected_stubs.first.subject.method_type).to eq(:instance)
+      end
     end
   end
 
