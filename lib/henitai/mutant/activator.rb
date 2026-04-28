@@ -58,7 +58,7 @@ module Henitai
           target.class_eval(source, __FILE__, __LINE__ + 1)
           nil
         end
-      rescue Unparser::UnsupportedNodeError
+      rescue Unparser::UnsupportedNodeError, SyntaxError
         :compile_error
       end
 
