@@ -2,6 +2,7 @@
 
 require "fileutils"
 require "stringio"
+require_relative "process_wakeup"
 require_relative "integration/rspec_process_runner"
 
 module Henitai
@@ -19,8 +20,6 @@ module Henitai
   # Built-in integrations:
   #   rspec  — RSpec 3.x
   module Integration
-    PROCESS_CLEANUP_GRACE_PERIOD = 2.0
-
     # Shared helpers for capturing stdout/stderr from child test processes.
     class ScenarioLogSupport
       def capture_child_output(log_paths)
@@ -367,9 +366,17 @@ module Henitai
       end
 
       def wait_with_timeout(pid, timeout)
-        return Process.last_status if wait_for_child_exit(pid, timeout)
+        wakeup = Henitai.const_get(:ProcessWakeup).new.install
+        return Process.last_status if Process.wait(pid, Process::WNOHANG)
+
+        wakeup.wait(timeout)
+        wakeup.drain
+        return Process.last_status if Process.wait(pid, Process::WNOHANG)
+        return Process.last_status if Process.wait(pid, Process::WNOHANG)
 
         handle_timeout(pid)
+      ensure
+        wakeup&.close
       end
 
       def reap_child(pid)
@@ -379,39 +386,28 @@ module Henitai
       end
 
       def cleanup_process_group(pid)
+        grace_period = 2.0
+        wakeup = Henitai.const_get(:ProcessWakeup).new.install
         Process.kill(:SIGTERM, -pid)
-        return if wait_for_child_exit(pid, PROCESS_CLEANUP_GRACE_PERIOD)
+        return if Process.wait(pid, Process::WNOHANG)
+
+        wakeup.wait(grace_period)
+        wakeup.drain
+        return if Process.wait(pid, Process::WNOHANG)
 
         Process.kill(:SIGKILL, -pid)
       rescue Errno::EPERM
         cleanup_child_process(pid)
       rescue Errno::ESRCH
         nil
+      ensure
+        wakeup&.close
       end
 
       private
 
       def pause(seconds)
         sleep(seconds)
-      end
-
-      def wait_for_child_exit(pid, timeout)
-        with_process_wakeup do |wakeup|
-          return true if Process.wait(pid, Process::WNOHANG)
-
-          wakeup.wait(timeout)
-          wakeup.drain
-          Process.wait(pid, Process::WNOHANG)
-        rescue Errno::ECHILD, Errno::ESRCH
-          true
-        end
-      end
-
-      def with_process_wakeup
-        wakeup = Henitai::ProcessWakeup.new.install
-        yield wakeup
-      ensure
-        wakeup&.close
       end
 
       def handle_timeout(pid)
@@ -425,12 +421,20 @@ module Henitai
       end
 
       def cleanup_child_process(pid)
+        grace_period = 2.0
+        wakeup = Henitai.const_get(:ProcessWakeup).new.install
         Process.kill(:SIGTERM, pid)
-        return if wait_for_child_exit(pid, PROCESS_CLEANUP_GRACE_PERIOD)
+        return if Process.wait(pid, Process::WNOHANG)
+
+        wakeup.wait(grace_period)
+        wakeup.drain
+        return if Process.wait(pid, Process::WNOHANG)
 
         Process.kill(:SIGKILL, pid)
       rescue Errno::EPERM, Errno::ESRCH
         nil
+      ensure
+        wakeup&.close
       end
 
       def subprocess_env

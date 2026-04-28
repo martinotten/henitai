@@ -418,8 +418,11 @@ RSpec.describe Henitai::Integration::Rspec do
     allow(integration).to receive(:run_tests).and_return(0)
   end
 
-  def stub_timeout_boundary_pause(integration, record)
-    allow(integration).to receive(:pause) { |seconds| record[:pauses] << seconds }
+  def stub_timeout_boundary_pause(_integration, record)
+    allow(IO).to receive(:select) do
+      record[:selects] += 1
+      [[], nil, nil]
+    end
   end
 
   def stub_timeout_boundary_wait(record)
@@ -1455,7 +1458,7 @@ RSpec.describe Henitai::Integration::Rspec do
   it "keeps waiting when the child has not exited yet" do
     mutant = Struct.new(:id).new("mutant-loop")
     integration = described_class.new
-    record = { pauses: [] }
+    record = { selects: 0 }
     original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
 
     begin
@@ -1467,12 +1470,12 @@ RSpec.describe Henitai::Integration::Rspec do
       end
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
       allow(integration).to receive(:run_tests).and_return(0)
-      allow(integration).to receive(:pause) do |seconds|
-        record[:pauses] << seconds
-      end
       allow(integration).to receive(:cleanup_process_group)
       allow(Process).to receive(:wait).and_return(nil, 24_603)
-      allow(Process).to receive(:clock_gettime).and_return(0.0, 0.05, 0.05)
+      allow(IO).to receive(:select) do
+        record[:selects] += 1
+        [[], nil, nil]
+      end
       allow(Process).to receive_messages(
         last_status: Struct.new(:success?, :exitstatus).new(true, 0)
       )
@@ -1484,7 +1487,7 @@ RSpec.describe Henitai::Integration::Rspec do
       )
 
       expect(record).to include(
-        pauses: [0.01],
+        selects: 1,
         child_status: 0
       )
     ensure
@@ -1554,7 +1557,7 @@ RSpec.describe Henitai::Integration::Rspec do
   it "returns the child status when the child exits at the timeout boundary" do
     mutant = Struct.new(:id).new("mutant-3c")
     integration = described_class.new
-    record = { waits: 0, pauses: [] }
+    record = { waits: 0, selects: 0 }
     original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
 
     begin
@@ -1571,7 +1574,7 @@ RSpec.describe Henitai::Integration::Rspec do
           :survived,
           {
             waits: 3,
-            pauses: [0.01],
+            selects: 1,
             child_status: 0
           }
         ]

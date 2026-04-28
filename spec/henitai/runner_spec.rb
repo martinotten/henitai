@@ -72,6 +72,18 @@ RSpec.describe Henitai::Runner do
     Struct.new(:mutants).new(mutants)
   end
 
+  def build_loaded_survivors(survivor_ids, coverage_map: {}, git_sha: "deadbeef")
+    Struct.new(:survivor_ids, :coverage_map, :git_sha).new(
+      survivor_ids,
+      coverage_map,
+      git_sha
+    )
+  end
+
+  def build_mutant_status(status = :pending)
+    Struct.new(:status).new(status)
+  end
+
   def build_history_store(calls = nil)
     history_store = instance_double(Henitai::MutantHistoryStore)
     allow(history_store).to receive(:record) do |_result, **_kwargs|
@@ -657,6 +669,225 @@ RSpec.describe Henitai::Runner do
     end
   end
 
+  it "expands normalized paths" do
+    runner = described_class.new(config: build_config(reporters: []))
+
+    expect(runner.send(:normalize_path, "lib/sample.rb")).to eq(File.expand_path("lib/sample.rb"))
+  end
+
+  it "returns configured thresholds when available" do
+    runner = described_class.new(config: build_config(reporters: []))
+
+    expect(runner.send(:result_thresholds)).to eq(low: 60, high: 80)
+  end
+
+  it "treats missing dirty worktree files as dirty source files" do
+    runner = described_class.new(config: build_config(reporters: []))
+
+    expect(runner.send(:dirty_source_files?, nil)).to be(true)
+  end
+
+  it "builds a survivor test filter with the default dirty_source_files flag" do
+    runner = described_class.new(config: build_config(reporters: []))
+    loaded = build_loaded_survivors([])
+    filter = instance_double(Henitai::SurvivorTestFilter)
+    diff_analyzer = instance_double(Henitai::GitDiffAnalyzer)
+
+    allow(runner).to receive_messages(
+      git_diff_analyzer: diff_analyzer,
+      dirty_worktree_changed_files: []
+    )
+    allow(Henitai::SurvivorTestFilter).to receive(:new).and_return(filter)
+
+    runner.send(:test_filter, loaded)
+
+    expect(Henitai::SurvivorTestFilter).to have_received(:new).with(
+      coverage_map: {},
+      git_sha: "deadbeef",
+      dirty_source_files: false,
+      worktree_changed_files: [],
+      diff_analyzer: diff_analyzer
+    )
+  end
+
+  it "finalizes rerun survivors and records drift stats" do
+    Dir.mktmpdir do |dir|
+      report_path = File.join(dir, "mutation-report.json")
+      File.write(report_path, "{}")
+
+      runner = described_class.new(config: build_config(reporters: []), survivors_from: report_path)
+      loaded = build_loaded_survivors(["stable-id"], coverage_map: { "lib/sample.rb" => [1] })
+      selector = instance_double(
+        Henitai::SurvivorSelector,
+        drift_warning?: true,
+        unmatched_ids: ["missing-id"]
+      )
+      selected = [build_mutant_status]
+      stable = build_mutant_status
+      pending = build_mutant_status
+      filter = instance_double(Henitai::SurvivorTestFilter, apply: { stable: [stable], pending: [pending] })
+      loader = instance_double(Henitai::SurvivorLoader, load: loaded)
+
+      allow(Henitai::SurvivorLoader).to receive(:new).and_return(loader)
+      allow(Henitai::SurvivorSelector).to receive(:new).and_return(selector)
+      allow(runner).to receive(:test_filter).and_return(filter)
+      allow(runner).to receive(:warn)
+      allow(selector).to receive(:select).and_return(selected)
+
+      warned = false
+      allow(runner).to receive(:warn) { warned = true }
+
+      result = runner.send(:apply_survivor_selection, [build_mutant_status])
+      stats = runner.instance_variable_get(:@survivor_stats)
+
+      expect(
+        result:,
+        stable_status: stable.status,
+        warned:,
+        stats:
+      ).to eq(
+        result: [stable, pending],
+        stable_status: :survived,
+        warned: true,
+        stats: {
+          matched: 1,
+          unmatched_count: 1,
+          unmatched_ids: ["missing-id"],
+          skipped_count: 1,
+          drift_warning: true
+        }
+      )
+    end
+  end
+
+  it "uses cached activation recipes when the recipe data includes methodType" do
+    Dir.mktmpdir do |dir|
+      report_path = File.join(dir, "mutation-report.json")
+      File.write(report_path, JSON.generate(
+                                "schemaVersion" => "1.0",
+                                "files" => {
+                                  "lib/sample.rb" => {
+                                    "language" => "ruby",
+                                    "source" => "",
+                                    "mutants" => []
+                                  }
+                                }
+                              ))
+
+      runner = described_class.new(config: build_config(reporters: []), survivors_from: report_path)
+      loaded = build_loaded_survivors(["deadbeef"], coverage_map: { "lib/sample.rb" => [1] })
+      recipe = {
+        "activationSource" => "define_method(:value) do\n  2\nend\n",
+        "namespace" => "Sample",
+        "methodName" => "value",
+        "methodType" => "class",
+        "sourceFile" => "lib/sample.rb",
+        "operator" => "ArithmeticOperator",
+        "description" => "+ to -",
+        "location" => {
+          "file" => "lib/sample.rb",
+          "startLine" => 1,
+          "endLine" => 1,
+          "startCol" => 0,
+          "endCol" => 5
+        },
+        "coveredBy" => ["spec/sample_spec.rb"]
+      }
+      selector = instance_double(Henitai::SurvivorSelector, drift_warning?: false, unmatched_ids: [])
+      stable = build_mutant_status
+      filter_result = { stable: [stable], pending: [] }
+      filter = instance_double(Henitai::SurvivorTestFilter, apply: filter_result)
+      loader = instance_double(Henitai::SurvivorLoader, load: loaded)
+      selected_stubs = nil
+
+      allow(Henitai::SurvivorLoader).to receive(:new).and_return(loader)
+      allow(Henitai::SurvivorActivationCache).to receive(:load).and_return(
+        "deadbeef" => recipe
+      )
+      allow(Henitai::SurvivorSelector).to receive(:new).and_return(selector)
+      allow(selector).to receive(:select) do |stubs|
+        selected_stubs = stubs
+        stubs
+      end
+      allow(runner).to receive(:test_filter).and_return(filter)
+
+      result = runner.send(:try_recipe_run)
+      stub = selected_stubs.first
+
+      expect(
+        result:,
+        method_type: stub.subject.method_type,
+        covered_by: stub.covered_by,
+        location: stub.location
+      ).to eq(
+        result: [stable],
+        method_type: :class,
+        covered_by: ["spec/sample_spec.rb"],
+        location: {
+          file: "lib/sample.rb",
+          start_line: 1,
+          end_line: 1,
+          start_col: 0,
+          end_col: 5
+        }
+      )
+    end
+  end
+
+  it "defaults cached activation recipes to instance methods" do
+    Dir.mktmpdir do |dir|
+      report_path = File.join(dir, "mutation-report.json")
+      File.write(report_path, JSON.generate(
+                                "schemaVersion" => "1.0",
+                                "files" => {
+                                  "lib/sample.rb" => {
+                                    "language" => "ruby",
+                                    "source" => "",
+                                    "mutants" => []
+                                  }
+                                }
+                              ))
+
+      runner = described_class.new(config: build_config(reporters: []), survivors_from: report_path)
+      loaded = build_loaded_survivors(["deadbeef"], coverage_map: { "lib/sample.rb" => [1] })
+      recipe = {
+        "activationSource" => "define_method(:value) do\n  2\nend\n",
+        "namespace" => "Sample",
+        "methodName" => "value",
+        "sourceFile" => "lib/sample.rb",
+        "operator" => "ArithmeticOperator",
+        "description" => "+ to -",
+        "location" => {
+          "file" => "lib/sample.rb",
+          "startLine" => 1,
+          "endLine" => 1,
+          "startCol" => 0,
+          "endCol" => 5
+        }
+      }
+      selector = instance_double(Henitai::SurvivorSelector, drift_warning?: false, unmatched_ids: [])
+      filter = instance_double(Henitai::SurvivorTestFilter, apply: { stable: [build_mutant_status], pending: [] })
+      loader = instance_double(Henitai::SurvivorLoader, load: loaded)
+      selected_stubs = nil
+
+      allow(Henitai::SurvivorLoader).to receive(:new).and_return(loader)
+      allow(Henitai::SurvivorActivationCache).to receive(:load).and_return(
+        "deadbeef" => recipe
+      )
+      allow(Henitai::SurvivorSelector).to receive(:new).and_return(selector)
+      allow(selector).to receive(:select) do |stubs|
+        selected_stubs = stubs
+        stubs
+      end
+      allow(runner).to receive(:test_filter).and_return(filter)
+
+      runner.send(:try_recipe_run)
+      stub = selected_stubs.first
+
+      expect(stub.subject.method_type).to eq(:instance)
+    end
+  end
+
   describe "recipe fast path" do
     it "skips mutant generation when all survivors have cached activation recipes" do
       Dir.mktmpdir do |dir|
@@ -764,8 +995,10 @@ RSpec.describe Henitai::Runner do
             subject_resolver:,
             git_diff_analyzer: diff_analyzer
           )
-          allow(diff_analyzer).to receive(:head_sha).and_return(nil)
-          allow(diff_analyzer).to receive(:working_tree_changed_files).and_return([])
+          allow(diff_analyzer).to receive_messages(
+            head_sha: nil,
+            working_tree_changed_files: []
+          )
           allow(subject_resolver).to receive(:resolve_from_files).and_return([])
           allow(mutant_generator).to receive(:generate).and_return([])
           allow(static_filter).to receive(:apply) { |m, _| m }
