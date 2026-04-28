@@ -230,22 +230,34 @@ module Henitai
     def apply_survivor_selection(mutants)
       return mutants unless survivor_rerun?
 
+      dirty_worktree_files = dirty_worktree_changed_files
       loaded   = SurvivorLoader.new(@survivors_from, include_paths: Array(config.includes)).load
       selector = SurvivorSelector.new(survivor_ids: loaded.survivor_ids)
       selected = selector.select(mutants)
-      finalize_survivor_split(selector, selected, test_filter(loaded).apply(selected))
+      finalize_survivor_split(
+        selector,
+        selected,
+        test_filter(
+          loaded,
+          dirty_source_files: dirty_source_files?(dirty_worktree_files)
+        ).apply(selected)
+      )
     end
 
     # Attempts to run survivors directly from pre-computed activation recipes,
     # bypassing source parsing and mutant generation entirely.
     # Returns the mutant array on success, or nil if recipes are unavailable.
     def try_recipe_run
+      dirty_worktree_files = dirty_worktree_changed_files
       loaded  = SurvivorLoader.new(@survivors_from, include_paths: Array(config.includes)).load
       recipes = load_activation_recipes(loaded.survivor_ids)
       return nil if recipes.nil?
 
       selector, stubs = recipe_selector_and_stubs(loaded.survivor_ids, recipes)
-      split = test_filter(loaded).apply(stubs)
+      split = test_filter(
+        loaded,
+        dirty_source_files: dirty_source_files?(dirty_worktree_files)
+      ).apply(stubs)
       finalize_survivor_split(selector, stubs, split)
     end
 
@@ -312,12 +324,29 @@ module Henitai
       split[:stable] + split[:pending]
     end
 
-    def test_filter(loaded)
+    def test_filter(loaded, dirty_source_files: false)
       SurvivorTestFilter.new(
         coverage_map: loaded.coverage_map,
         git_sha: loaded.git_sha,
+        dirty_source_files:,
+        worktree_changed_files: Array(dirty_worktree_changed_files),
         diff_analyzer: git_diff_analyzer
       )
+    end
+
+    def dirty_worktree_changed_files
+      @dirty_worktree_changed_files ||= git_diff_analyzer.working_tree_changed_files
+    rescue StandardError
+      nil
+    end
+
+    def dirty_source_files?(dirty_worktree_files)
+      return true if dirty_worktree_files.nil?
+
+      source_file_set = source_files.map { |path| normalize_path(path) }
+      dirty_worktree_files.map { |path| normalize_path(path) }.any? do |path|
+        source_file_set.include?(path)
+      end
     end
 
     def warn_survivor_drift(selector)

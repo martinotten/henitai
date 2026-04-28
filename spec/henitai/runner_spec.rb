@@ -710,7 +710,11 @@ RSpec.describe Henitai::Runner do
             history_store:,
             git_diff_analyzer: diff_analyzer
           )
-          allow(diff_analyzer).to receive_messages(changed_files: [], head_sha: nil)
+          allow(diff_analyzer).to receive_messages(
+            changed_files: [],
+            head_sha: nil,
+            working_tree_changed_files: []
+          )
           allow(execution_engine).to receive(:run).and_return([])
           allow(Henitai::Result).to receive(:new).and_return(result)
           allow(Henitai::Reporter).to receive(:run_all)
@@ -761,6 +765,7 @@ RSpec.describe Henitai::Runner do
             git_diff_analyzer: diff_analyzer
           )
           allow(diff_analyzer).to receive(:head_sha).and_return(nil)
+          allow(diff_analyzer).to receive(:working_tree_changed_files).and_return([])
           allow(subject_resolver).to receive(:resolve_from_files).and_return([])
           allow(mutant_generator).to receive(:generate).and_return([])
           allow(static_filter).to receive(:apply) { |m, _| m }

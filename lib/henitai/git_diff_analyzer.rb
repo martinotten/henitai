@@ -19,6 +19,13 @@ module Henitai
       stdout.split("\n").reject(&:empty?)
     end
 
+    def working_tree_changed_files(dir: Dir.pwd)
+      tracked = working_tree_tracked_files(dir)
+      untracked = untracked_files(dir)
+
+      (tracked + untracked).uniq
+    end
+
     def head_sha(dir: Dir.pwd)
       command = ["git", "-C", dir, "rev-parse", "HEAD"]
       stdout, _, status = Open3.capture3(*command)
@@ -85,6 +92,25 @@ module Henitai
       command.concat(git_args)
 
       Open3.capture3(*command)
+    end
+
+    def working_tree_tracked_files(dir)
+      stdout, stderr, status = git_diff(dir, "--name-only", "HEAD")
+
+      raise GitDiffError, stderr.strip unless status.success?
+
+      stdout.split("\n").reject(&:empty?)
+    end
+
+    def untracked_files(dir)
+      command = ["git"]
+      command += ["-C", dir] if dir
+      command += ["ls-files", "--others", "--exclude-standard"]
+      stdout, stderr, status = Open3.capture3(*command)
+
+      raise GitDiffError, stderr.strip unless status.success?
+
+      stdout.split("\n").reject(&:empty?)
     end
   end
 end

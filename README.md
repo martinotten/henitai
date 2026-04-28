@@ -118,7 +118,9 @@ for framework errors.
 
 `henitai run --survivors-from ...` performs a partial rerun: it reports only
 the selected survivors, skips threshold-based exit checks, and does not update
-the run trend history.
+the run trend history. Dirty worktree changes are included, so you can edit
+tests locally without committing first; if source files under `includes` are
+dirty, Henitai reruns the matched survivors conservatively.
 
 The repository ships a JSON Schema at [`assets/schema/henitai.schema.json`](/workspaces/henitai/assets/schema/henitai.schema.json) for editor autocompletion.
 

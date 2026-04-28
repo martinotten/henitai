@@ -18,16 +18,28 @@ module Henitai
   class SurvivorTestFilter
     # @param coverage_map  [Hash<String, Array<String>>] stableId → [test_files]
     # @param git_sha       [String, nil] git SHA from the prior report
+    # @param dirty_source_files [Boolean] true when the current worktree has
+    #   dirty source files and the survivor shortcut must be disabled
+    # @param worktree_changed_files [Array<String>] dirty tracked/untracked files
     # @param diff_analyzer [GitDiffAnalyzer]
-    def initialize(coverage_map:, git_sha:, diff_analyzer: GitDiffAnalyzer.new)
+    def initialize(
+      coverage_map:,
+      git_sha:,
+      dirty_source_files: false,
+      worktree_changed_files: [],
+      diff_analyzer: GitDiffAnalyzer.new
+    )
       @coverage_map  = coverage_map
       @git_sha       = git_sha
+      @dirty_source_files = dirty_source_files
+      @worktree_changed_files = Array(worktree_changed_files)
       @diff_analyzer = diff_analyzer
     end
 
     # @param mutants [Array<Mutant>]
     # @return [Hash<Symbol, Array<Mutant>>] { stable: [...], pending: [...] }
     def apply(mutants)
+      return { stable: [], pending: mutants } if @dirty_source_files
       return { stable: [], pending: mutants } if @git_sha.nil?
 
       changed = changed_test_files
@@ -51,7 +63,8 @@ module Henitai
     # Returns a Set of changed test file paths, or nil on any git error
     # (nil triggers conservative fallback in #apply — all survivors pending).
     def changed_test_files
-      @diff_analyzer.changed_files(from: @git_sha, to: "HEAD").to_set
+      committed = @diff_analyzer.changed_files(from: @git_sha, to: "HEAD")
+      (committed + @worktree_changed_files).to_set
     rescue StandardError
       nil
     end

@@ -222,7 +222,8 @@ module Henitai
     def add_survivors_from_option(opts, options)
       opts.on(
         "--survivors-from PATH",
-        "Re-run only survivors from a prior report (partial rerun; threshold checks are skipped)"
+        "Re-run only survivors from a prior report " \
+        "(partial rerun; threshold checks are skipped; dirty worktrees are included)"
       ) do |path|
         options[:survivors_from] = path
       end

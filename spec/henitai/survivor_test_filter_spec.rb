@@ -7,18 +7,21 @@ RSpec.describe Henitai::SurvivorTestFilter do
     instance_double(Henitai::Mutant, stable_id:)
   end
 
-  def diff_analyzer_for(changed_files)
+  def diff_analyzer_for(changed_files, worktree_changed_files: [])
     analyzer = instance_double(Henitai::GitDiffAnalyzer)
     allow(analyzer).to receive(:changed_files).with(from: anything, to: "HEAD")
                                               .and_return(changed_files)
+    allow(analyzer).to receive(:working_tree_changed_files).and_return(worktree_changed_files)
     analyzer
   end
 
-  def filter(coverage_map:, git_sha:, changed_files: [])
+  def filter(coverage_map:, git_sha:, changed_files: [], worktree_changed_files: [], dirty_source_files: false)
     described_class.new(
       coverage_map:,
       git_sha:,
-      diff_analyzer: diff_analyzer_for(changed_files)
+      dirty_source_files:,
+      worktree_changed_files:,
+      diff_analyzer: diff_analyzer_for(changed_files, worktree_changed_files:)
     )
   end
 
@@ -44,12 +47,37 @@ RSpec.describe Henitai::SurvivorTestFilter do
     expect(result).to eq(stable: [], pending: [mutant])
   end
 
+  it "marks mutants as pending when a covering test file is dirty in the worktree" do
+    mutant = build_mutant(stable_id: "abc")
+    result = filter(
+      coverage_map: { "abc" => ["spec/foo_spec.rb"] },
+      git_sha: "deadbeef",
+      changed_files: [],
+      worktree_changed_files: ["spec/foo_spec.rb"]
+    ).apply([mutant])
+
+    expect(result).to eq(stable: [], pending: [mutant])
+  end
+
   it "marks mutant as pending when only one of multiple covering tests changed" do
     mutant = build_mutant(stable_id: "abc")
     result = filter(
       coverage_map: { "abc" => ["spec/foo_spec.rb", "spec/bar_spec.rb"] },
       git_sha: "deadbeef",
       changed_files: ["spec/bar_spec.rb"]
+    ).apply([mutant])
+
+    expect(result).to eq(stable: [], pending: [mutant])
+  end
+
+  it "marks all mutants as pending when a source file is dirty in the worktree" do
+    mutant = build_mutant(stable_id: "abc")
+    result = filter(
+      coverage_map: { "abc" => ["spec/foo_spec.rb"] },
+      git_sha: "deadbeef",
+      changed_files: [],
+      worktree_changed_files: ["lib/sample.rb"],
+      dirty_source_files: true
     ).apply([mutant])
 
     expect(result).to eq(stable: [], pending: [mutant])

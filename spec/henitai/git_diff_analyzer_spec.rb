@@ -99,6 +99,23 @@ RSpec.describe Henitai::GitDiffAnalyzer do
     end
   end
 
+  it "returns dirty working tree files including untracked ones" do
+    Dir.mktmpdir do |dir|
+      git!(dir, "init")
+      configure_git_identity(dir)
+
+      write_file(dir, "lib/sample.rb", "class Sample; end\n")
+      commit_all(dir, "Initial commit")
+
+      write_file(dir, "lib/sample.rb", "class Sample\n  def answer = 42\nend\n")
+      write_file(dir, "spec/sample_spec.rb", "RSpec.describe Sample do; end\n")
+
+      changed_files = described_class.new.working_tree_changed_files(dir:)
+
+      expect(changed_files).to contain_exactly("lib/sample.rb", "spec/sample_spec.rb")
+    end
+  end
+
   it "returns changed methods between two refs" do
     Dir.mktmpdir do |dir|
       git!(dir, "init")
