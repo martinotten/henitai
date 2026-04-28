@@ -855,6 +855,30 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  it "memoizes spec file discovery across repeated selection calls" do
+    with_temp_workspace do |dir|
+      write_file(dir, "spec/sample_spec.rb", sample_spec_source)
+
+      subject = Henitai::Subject.new(
+        namespace: "Sample",
+        method_name: "value",
+        source_location: {
+          file: File.join(dir, "lib/sample.rb"),
+          range: 1..4
+        }
+      )
+      integration = described_class.new
+
+      allow(Dir).to receive(:glob).and_call_original
+
+      2.times do
+        integration.select_tests(subject)
+      end
+
+      expect(Dir).to have_received(:glob).with("spec/**/*_spec.rb").once
+    end
+  end
+
   it "forks a child, sets the mutant id, and waits with timeout" do
     mutant = Struct.new(:id).new("mutant-1")
     integration = described_class.new

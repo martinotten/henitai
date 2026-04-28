@@ -18,16 +18,18 @@ module Henitai
     def ensure!(source_files:, config:, integration:, test_files: nil)
       return if source_files.empty?
 
+      resolved_test_files = resolve_test_files(integration, test_files)
+
       # Skip the bootstrap only when the coverage artifacts are both newer than
       # all watched files and actually cover the configured sources. A fresh
       # but irrelevant report (e.g. from a different working directory) must
       # still trigger a re-bootstrap rather than silently proceeding with no
       # usable coverage.
-      unless coverage_ready?(source_files, config, integration, test_files)
-        bootstrap_coverage(integration, config, test_files)
+      unless coverage_ready?(source_files, config, integration, resolved_test_files)
+        bootstrap_coverage(integration, config, resolved_test_files)
       end
 
-      return if coverage_available?(source_files, config, test_files)
+      return if coverage_available?(source_files, config)
 
       raise CoverageError,
             "Coverage data is unavailable for the configured source files"
@@ -37,20 +39,16 @@ module Henitai
 
     attr_reader :static_filter
 
-    def coverage_available?(source_files, config, test_files)
+    def coverage_available?(source_files, config)
       coverage_lines = static_filter.coverage_lines_for(config)
       covered_sources = covered_source_files(source_files, coverage_lines)
-      existing_sources = existing_source_file_paths(source_files)
-
-      return covered_sources.any? if existing_sources.empty?
-      return covered_sources.any? if test_files
 
       covered_sources.any?
     end
 
     def coverage_ready?(source_files, config, integration, test_files)
-      coverage_fresh?(source_files, config, integration, test_files) &&
-        coverage_available?(source_files, config, test_files) &&
+      coverage_fresh?(source_files, config, test_files) &&
+        coverage_available?(source_files, config) &&
         per_test_coverage_ready?(source_files, config, integration, test_files)
     end
 
@@ -64,17 +62,12 @@ module Henitai
       Array(source_files).map { |path| File.expand_path(path) }
     end
 
-    def existing_source_file_paths(source_files)
-      source_file_paths(source_files).select { |path| File.exist?(path) }
-    end
-
     # Returns true when a coverage report already exists and is newer than
     # every watched source and test file. Stale or absent reports return false.
-    def coverage_fresh?(source_files, config, integration, test_files)
+    def coverage_fresh?(source_files, config, test_files)
       watched_files_fresh?(
         coverage_report_path(config),
         source_files,
-        integration,
         test_files
       )
     end
@@ -88,9 +81,11 @@ module Henitai
     end
 
     def bootstrap_coverage(integration, config, test_files = nil)
+      test_files ||= integration.test_files
+
       with_reports_dir(config) do
         with_coverage_dir(config) do
-          result = integration.run_suite(test_files || integration.test_files)
+          result = integration.run_suite(test_files)
           return if result == :survived
 
           raise CoverageError, build_bootstrap_error(result)
@@ -139,11 +134,10 @@ module Henitai
       File.join(reports_dir, "coverage")
     end
 
-    def per_test_coverage_fresh?(source_files, config, integration, test_files)
+    def per_test_coverage_fresh?(source_files, config, test_files)
       watched_files_fresh?(
         per_test_coverage_report_path(config),
         source_files,
-        integration,
         test_files
       )
     end
@@ -155,7 +149,7 @@ module Henitai
     def per_test_coverage_ready?(source_files, config, integration, test_files)
       return true unless per_test_coverage_supported?(integration)
 
-      per_test_coverage_fresh?(source_files, config, integration, test_files) &&
+      per_test_coverage_fresh?(source_files, config, test_files) &&
         per_test_coverage_available?(config)
     end
 
@@ -165,21 +159,27 @@ module Henitai
       integration.per_test_coverage_supported?
     end
 
-    def watched_files_fresh?(report_path, source_files, integration, test_files)
+    def watched_files_fresh?(report_path, source_files, test_files)
       # This check assumes a single writer owns the coverage artifacts for the
       # workspace. It is intentionally not an atomic snapshot-and-validate step.
       return false unless File.exist?(report_path)
 
       report_mtime = File.mtime(report_path)
-      watched_files(source_files, integration, test_files).all? do |path|
+      watched_files(source_files, test_files).all? do |path|
         File.mtime(path) <= report_mtime
       rescue Errno::ENOENT
         false
       end
     end
 
-    def watched_files(source_files, integration, test_files)
-      Array(source_files) + Array(test_files || integration.test_files)
+    def watched_files(source_files, test_files)
+      Array(source_files) + Array(test_files)
+    end
+
+    def resolve_test_files(integration, test_files)
+      return test_files unless test_files.nil?
+
+      integration.test_files
     end
 
     def reports_dir(config)

@@ -347,15 +347,10 @@ RSpec.describe Henitai::CoverageBootstrapper do
       File.write(per_test_report, "{}")
 
       static_filter = instance_double(Henitai::StaticFilter)
-      integration = instance_double(
-        Henitai::Integration::Rspec,
-        test_files: [spec],
-        per_test_coverage_supported?: true
-      )
       bootstrapper = build_bootstrapper(static_filter:)
 
       expect(
-        bootstrapper.send(:watched_files_fresh?, coverage_report, [source], integration, nil)
+        bootstrapper.send(:watched_files_fresh?, coverage_report, [source], nil)
       ).to be(true)
     end
   end
@@ -378,11 +373,6 @@ RSpec.describe Henitai::CoverageBootstrapper do
       File.write(per_test_report, "{}")
 
       static_filter = instance_double(Henitai::StaticFilter)
-      integration = instance_double(
-        Henitai::Integration::Rspec,
-        test_files: [spec],
-        per_test_coverage_supported?: true
-      )
       bootstrapper = build_bootstrapper(static_filter:)
 
       expect(
@@ -390,7 +380,6 @@ RSpec.describe Henitai::CoverageBootstrapper do
           :watched_files_fresh?,
           per_test_report,
           [source],
-          integration,
           nil
         )
       ).to be(true)
@@ -613,6 +602,43 @@ RSpec.describe Henitai::CoverageBootstrapper do
       )
 
       expect(integration).to have_received(:run_suite).with(["spec/sample_spec.rb"])
+    end
+
+    it "discovers integration.test_files once when test_files are omitted" do
+      Dir.mktmpdir do |dir|
+        source = File.join(dir, "lib/sample.rb")
+        spec = File.join(dir, "spec/sample_spec.rb")
+
+        FileUtils.mkdir_p(File.dirname(source))
+        FileUtils.mkdir_p(File.dirname(spec))
+
+        File.write(source, "class Sample; end\n")
+        File.write(spec, "# spec\n")
+
+        config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
+        static_filter = instance_double(Henitai::StaticFilter)
+        integration = instance_double(
+          Henitai::Integration::Rspec,
+          per_test_coverage_supported?: false
+        )
+        bootstrapper = build_bootstrapper(static_filter:)
+
+        allow(static_filter).to receive(:coverage_lines_for).and_return(
+          { File.expand_path(source) => [1] }
+        )
+        allow(integration).to receive_messages(
+          test_files: [spec],
+          run_suite: :survived
+        )
+
+        bootstrapper.ensure!(
+          source_files: [source],
+          config:,
+          integration:
+        )
+
+        expect(integration).to have_received(:test_files).once
+      end
     end
 
     it "uses integration.test_files when test_files is nil" do

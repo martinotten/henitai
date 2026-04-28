@@ -513,9 +513,7 @@ module Henitai
         fallback_spec_files(subject)
       end
 
-      def test_files
-        spec_files
-      end
+      def test_files = spec_files
 
       def spawn_mutant(mutant:, test_files:)
         log_paths = scenario_log_paths(mutant_log_name(mutant))
@@ -588,8 +586,10 @@ module Henitai
       end
 
       def spec_files
-        paths = Dir.glob("spec/**/*_spec.rb")
-        paths - excluded_spec_files
+        @spec_files ||= begin
+          paths = Dir.glob("spec/**/*_spec.rb")
+          paths - excluded_spec_files
+        end
       end
 
       def fallback_spec_files(subject)
@@ -605,7 +605,7 @@ module Henitai
       end
 
       def excluded_spec_files
-        rspec_exclude_patterns.flat_map { |pattern| Dir.glob(pattern) }.uniq
+        @excluded_spec_files ||= rspec_exclude_patterns.flat_map { |pattern| Dir.glob(pattern) }.uniq
       end
 
       def rspec_exclude_patterns
