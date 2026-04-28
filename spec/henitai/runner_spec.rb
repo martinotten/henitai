@@ -234,7 +234,7 @@ RSpec.describe Henitai::Runner do
         )
         allow(subject_resolver).to receive(:resolve_from_files).and_return([])
         allow(coverage_bootstrapper).to receive(:ensure!) do |**|
-          sleep 0.04 # hold the bootstrap thread open long enough for generate to run
+          sleep 0.001 # hold the bootstrap thread open long enough for generate to run
           mu.synchronize { events << :bootstrap_end }
         end
         allow(mutant_generator).to receive(:generate) do |*|

@@ -262,7 +262,7 @@ RSpec.describe Henitai::ExecutionEngine do
 
     allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
       thread_ids << Thread.current.object_id
-      sleep 0.01
+      sleep 0.001
       mutant.status = :killed
     end
 
@@ -322,7 +322,7 @@ RSpec.describe Henitai::ExecutionEngine do
 
     allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
       thread_ids << Thread.current.object_id
-      sleep 0.01
+      sleep 0.001
       mutant.status = :killed
     end
 
@@ -340,7 +340,7 @@ RSpec.describe Henitai::ExecutionEngine do
 
     allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
       thread_ids << Thread.current.object_id
-      sleep 0.01
+      sleep 0.001
       mutant.status = :killed
     end
 
@@ -527,7 +527,7 @@ RSpec.describe Henitai::ExecutionEngine do
 
     allow(integration = build_integration).to receive(:run_mutant) do |mutant:, **_|
       ran << mutant.subject.expression
-      sleep 0.05
+      sleep 0.005
       mutant.status = :killed
     end
 
@@ -546,7 +546,7 @@ RSpec.describe Henitai::ExecutionEngine do
     end
 
     # Let workers start, then simulate docker exec disconnect
-    sleep 0.01
+    sleep 0.001
     fake_stdin_w.close
 
     t.join(2)
@@ -563,7 +563,7 @@ RSpec.describe Henitai::ExecutionEngine do
     fake_stdin_r, fake_stdin_w = IO.pipe
 
     allow(integration = build_integration).to receive(:run_mutant) do |mutant:, **_|
-      sleep 0.05
+      sleep 0.005
       mutant.status = :killed
     end
 
@@ -580,7 +580,7 @@ RSpec.describe Henitai::ExecutionEngine do
         fake_stdin_r.close unless fake_stdin_r.closed?
       end
 
-      sleep 0.01
+      sleep 0.001
       fake_stdin_w.close
 
       t.join(2)

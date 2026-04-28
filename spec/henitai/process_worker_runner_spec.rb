@@ -3,6 +3,15 @@
 require "spec_helper"
 
 RSpec.describe Henitai::ProcessWorkerRunner do
+  after do
+    loop do
+      pid = Process.wait(-1, Process::WNOHANG)
+      break unless pid
+    end
+  rescue Errno::ECHILD
+    nil
+  end
+
   # Minimal mutant-like double
   def build_mutant(id)
     subject = Struct.new(:expression).new("Foo##{id}")
@@ -89,7 +98,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
                       log_path: "/dev/null" }
         started_at[mutant.id] = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         pid = Process.fork do
-          sleep(0.05)
+          sleep(0.01)
           Process.exit(0)
         end
         Henitai::Integration::ChildHandle.new(pid, log_paths)
@@ -108,8 +117,8 @@ RSpec.describe Henitai::ProcessWorkerRunner do
 
       expect(results.size).to eq(2)
       # With 1 slot, the second mutant starts after the first finishes.
-      # started_at[b] must be >= started_at[a] + ~0.05s gap
-      expect(started_at["b"]).to be >= started_at["a"] + 0.04
+      # started_at[b] must be >= started_at[a] + ~0.01s gap
+      expect(started_at["b"]).to be >= started_at["a"] + 0.008
     end
   end
 
@@ -120,8 +129,8 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       Henitai::Integration::SchedulerDiagnostics.reset!
 
       mutants = (1..4).map { |i| build_mutant("m#{i}") }
-      # Each mutant sleeps 0.3s; serial would take ~1.2s
-      results_map = (1..4).to_h { |i| ["m#{i}", { sleep: 0.3, exit_code: 0 }] }
+      # Each mutant sleeps 0.05s; serial would take ~0.2s
+      results_map = (1..4).to_h { |i| ["m#{i}", { sleep: 0.05, exit_code: 0 }] }
       integration = build_integration(results_map)
       config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 0)
       runner = described_class.new(worker_count: 4)
@@ -133,15 +142,15 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       expect(results.size).to eq(4)
       # Verify real OS-PID overlap: at least 2 children were live simultaneously
       expect(Henitai::Integration::SchedulerDiagnostics.summary[:max_concurrent]).to be >= 2
-      # Wall time must be materially below serial (1.2s); 0.9s is a safe threshold
-      expect(elapsed).to be < 0.9
+      # Wall time must be materially below serial (0.2s); 0.15s is a safe threshold
+      expect(elapsed).to be < 0.15
     end
   end
 
   describe "wakeup loop" do
     it "waits on a wakeup io while children are active" do
       mutant = build_mutant("wakeup")
-      integration = build_integration("wakeup" => { sleep: 0.02, exit_code: 0 })
+      integration = build_integration("wakeup" => { sleep: 0.005, exit_code: 0 })
       config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 0)
       runner = described_class.new(worker_count: 1)
 
@@ -162,7 +171,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
     it "cleans up slots after timeout and leaves no active slots" do # rubocop:disable RSpec/MultipleExpectations
       mutant = build_mutant("slow")
       spawned_pid = nil
-      # Integration spawns a real child sleeping 10s but timeout is 0.1s
+      # Integration spawns a real child that outlives the timeout.
       integration = instance_double(Henitai::Integration::Rspec)
       allow(integration).to receive(:select_tests).and_return([])
       allow(integration).to receive(:spawn_mutant) do |**|
@@ -173,7 +182,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
         }
         pid = Process.fork do
           Process.setpgid(0, 0)
-          sleep(10)
+          sleep(0.2)
           Process.exit(0)
         end
         spawned_pid = pid
@@ -212,7 +221,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
                       log_path: "/dev/null" }
         pid = Process.fork do
           Process.setpgid(0, 0)
-          sleep(10)
+          sleep(0.2)
           Process.exit(0)
         end
         spawned_pid = pid
@@ -229,8 +238,8 @@ RSpec.describe Henitai::ProcessWorkerRunner do
 
       # Trigger shutdown via the public API rather than OS signals to avoid
       # signal interference with other specs running in the same process.
-      Thread.new do
-        sleep 0.05
+      shutdown_thread = Thread.new do
+        sleep 0.001
         runner.request_shutdown
       end
 
@@ -239,6 +248,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       expect(mutant.status).to eq(:pending)
       # Child process must be reaped
       expect { Process.wait(spawned_pid, Process::WNOHANG) }.to raise_error(Errno::ECHILD)
+      shutdown_thread.join
     end
   end
 

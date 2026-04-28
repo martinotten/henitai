@@ -265,6 +265,18 @@ RSpec.describe Henitai::Integration::Rspec do
     stub_mutant_runtime(integration)
   end
 
+  def stub_process_wakeup
+    wakeup = instance_double(Henitai::ProcessWakeup)
+
+    allow(Henitai::ProcessWakeup).to receive(:new).and_return(wakeup)
+    allow(wakeup).to receive_messages(
+      install: wakeup,
+      wait: [[], nil, nil],
+      drain: nil,
+      close: nil
+    )
+  end
+
   def stub_child_logging(integration)
     log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
 
@@ -309,7 +321,8 @@ RSpec.describe Henitai::Integration::Rspec do
 
   def stub_mutant_runtime(integration)
     allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-    allow(integration).to receive_messages(run_tests: 0, pause: nil)
+    stub_process_wakeup
+    allow(integration).to receive_messages(run_tests: 0)
   end
 
   def stub_ordered_mutant_run(order, integration, child_pid:)
@@ -773,7 +786,6 @@ RSpec.describe Henitai::Integration::Rspec do
 
   it "dumps child threads when the runner times out in debug mode" do
     integration = described_class.new
-    allow(integration).to receive(:pause)
     allow(integration).to receive(:cleanup_process_group)
     allow(integration).to receive(:reap_child)
     allow(Process).to receive(:kill)
@@ -1016,8 +1028,11 @@ RSpec.describe Henitai::Integration::Rspec do
         4322
       end
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive(:run_tests).and_return(0)
-      allow(Process).to receive(:wait).and_return(4322)
+      allow(integration).to receive_messages(
+        run_tests: 0,
+        wait_with_timeout: Struct.new(:success?, :exitstatus).new(true, 0)
+      )
+      allow(Process).to receive(:wait).with(4322, Process::WNOHANG).and_return(nil, nil)
       allow(Process).to receive_messages(
         last_status: Struct.new(:success?, :exitstatus).new(true, 0)
       )
@@ -1215,7 +1230,7 @@ RSpec.describe Henitai::Integration::Rspec do
       record[:signals] << [signal, pid]
       raise Errno::EPERM if pid.negative?
     end
-    allow(integration).to receive(:pause)
+    stub_process_wakeup
 
     integration.cleanup_process_group(4322)
 
@@ -1371,7 +1386,7 @@ RSpec.describe Henitai::Integration::Rspec do
         24_601
       end
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive_messages(pause: nil, run_tests: 0)
+      allow(integration).to receive_messages(run_tests: 0)
       allow(Process).to receive(:wait).and_return(24_601)
       allow(Process).to receive_messages(last_status: Struct.new(:success?, :exitstatus).new(true, 0))
 
@@ -1401,7 +1416,7 @@ RSpec.describe Henitai::Integration::Rspec do
         24_602
       end
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive_messages(pause: nil, run_tests: 1)
+      allow(integration).to receive_messages(run_tests: 1)
       allow(Process).to receive(:wait).and_return(24_602)
       allow(Process).to receive_messages(last_status: Struct.new(:success?, :exitstatus).new(false, 1))
 
@@ -1503,9 +1518,6 @@ RSpec.describe Henitai::Integration::Rspec do
 
     begin
       stub_timeout_child(integration, record, child_pid: 2468)
-      allow(integration).to receive(:pause) do |seconds|
-        record[:pauses] << seconds
-      end
 
       integration.run_mutant(
         mutant:,
@@ -1602,7 +1614,7 @@ RSpec.describe Henitai::Integration::Rspec do
         last_status: Struct.new(:success?, :exitstatus).new(false, 1)
       )
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive(:pause).and_return(nil)
+      stub_process_wakeup
       allow(integration).to receive(:run_tests) do |files|
         record[:rspec_files] = files
         1
@@ -1639,7 +1651,7 @@ RSpec.describe Henitai::Integration::Rspec do
         24_605
       end
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(:compile_error)
-      allow(integration).to receive(:pause).and_return(nil)
+      stub_process_wakeup
       allow(Process).to receive(:wait).and_return(24_605)
       allow(Process).to receive_messages(
         last_status: Struct.new(:success?, :exitstatus).new(false, 2)

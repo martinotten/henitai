@@ -367,12 +367,12 @@ module Henitai
 
       def wait_with_timeout(pid, timeout)
         wakeup = Henitai.const_get(:ProcessWakeup).new.install
-        return Process.last_status if Process.wait(pid, Process::WNOHANG)
+        return Process.last_status if wait_nonblocking(pid)
 
         wakeup.wait(timeout)
         wakeup.drain
-        return Process.last_status if Process.wait(pid, Process::WNOHANG)
-        return Process.last_status if Process.wait(pid, Process::WNOHANG)
+        return Process.last_status if wait_nonblocking(pid)
+        return Process.last_status if wait_nonblocking(pid)
 
         handle_timeout(pid)
       ensure
@@ -389,11 +389,11 @@ module Henitai
         grace_period = 2.0
         wakeup = Henitai.const_get(:ProcessWakeup).new.install
         Process.kill(:SIGTERM, -pid)
-        return if Process.wait(pid, Process::WNOHANG)
+        return if wait_nonblocking(pid)
 
         wakeup.wait(grace_period)
         wakeup.drain
-        return if Process.wait(pid, Process::WNOHANG)
+        return if wait_nonblocking(pid)
 
         Process.kill(:SIGKILL, -pid)
       rescue Errno::EPERM
@@ -424,11 +424,11 @@ module Henitai
         grace_period = 2.0
         wakeup = Henitai.const_get(:ProcessWakeup).new.install
         Process.kill(:SIGTERM, pid)
-        return if Process.wait(pid, Process::WNOHANG)
+        return if wait_nonblocking(pid)
 
         wakeup.wait(grace_period)
         wakeup.drain
-        return if Process.wait(pid, Process::WNOHANG)
+        return if wait_nonblocking(pid)
 
         Process.kill(:SIGKILL, pid)
       rescue Errno::EPERM, Errno::ESRCH
@@ -439,6 +439,12 @@ module Henitai
 
       def subprocess_env
         { "PARALLEL_WORKERS" => "1" }
+      end
+
+      def wait_nonblocking(pid)
+        Process.wait(pid, Process::WNOHANG)
+      rescue Errno::ECHILD, Errno::ESRCH
+        nil
       end
 
       def scenario_log_support

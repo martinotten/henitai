@@ -67,9 +67,11 @@ module Henitai
       fill_idle_slots unless @shutdown_requested
       reap_all_completed_children
       check_timeouts
+      fill_idle_slots unless @shutdown_requested
       return handle_shutdown if @shutdown_requested
 
       drain_draining_slots if draining_slots?
+      fill_idle_slots unless @shutdown_requested
       return :done if done?
 
       wait_for_next_event

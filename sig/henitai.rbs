@@ -309,6 +309,7 @@ module Henitai
       private
 
       def pause: (Float) -> void
+      def wait_nonblocking: (Integer) -> untyped
       def handle_timeout: (Integer) -> Symbol
       def cleanup_child_process: (Integer) -> void
       def suppress_simplecov!: () -> void
