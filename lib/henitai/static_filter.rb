@@ -37,11 +37,18 @@ module Henitai
 
       coverage_lines = coverage_lines_by_file(coverage_report_path)
       coverage_lines = merge_method_coverage(coverage_lines, coverage_report_path)
-      return coverage_lines unless coverage_lines.empty?
-
-      coverage_lines_from_test_lines(
+      per_test_lines = coverage_lines_from_test_lines(
         test_lines_by_file(per_test_coverage_report_path)
       )
+
+      return per_test_lines if coverage_lines.empty?
+
+      # Merge per-test coverage for files absent from standard coverage.
+      # Standard coverage may be incomplete when child processes fork before
+      # all files are loaded; per-test fills the gaps.
+      per_test_lines.each_with_object(coverage_lines) do |(file, lines), merged|
+        merged[file] = ((merged[file] || []) + lines).uniq.sort
+      end
     end
 
     def coverage_lines_by_file(path = DEFAULT_COVERAGE_REPORT_PATH)
