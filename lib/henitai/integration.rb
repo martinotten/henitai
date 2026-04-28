@@ -841,6 +841,7 @@ module Henitai
 
       def run_tests(test_files)
         suppress_simplecov!
+        suppress_minitest_autorun!
         test_files.each { |file| require File.expand_path(file) }
         # @type var empty_args: Array[String]
         empty_args = []
@@ -858,6 +859,13 @@ module Henitai
       def setup_load_path
         test_dir = File.expand_path("test")
         $LOAD_PATH.unshift(test_dir) unless $LOAD_PATH.include?(test_dir)
+      end
+
+      def suppress_minitest_autorun!
+        require "minitest"
+        ::Minitest.class_variable_set(:@@installed_at_exit, true)
+      rescue LoadError, NameError
+        nil
       end
 
       def suppress_simplecov!

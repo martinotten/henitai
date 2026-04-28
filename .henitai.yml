@@ -10,14 +10,15 @@ includes:
 
 # Mutation operator configuration
 mutation:
-  operators: light          # light (default) | full
-  timeout: 5.0             # seconds per mutant
+  operators: light # light (default) | full
   ignore_patterns:
-    - "(send _ {:log :debug :info :warn :error} _)"  # Logger calls
-    - "(send _ :puts _)"                              # puts / debug output
+    - "(send _ {:log :debug :info :warn :error} _)" # Logger calls
+    - "(send _ :puts _)" # puts / debug output
+  timeout: 10.0
+  max_flaky_retries: 3
 
 # Parallelisation
-jobs: 4                     # null = auto-detect CPU count
+jobs: 8 # null = auto-detect CPU count
 
 # Coverage criteria
 coverage_criteria:
