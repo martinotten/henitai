@@ -447,33 +447,18 @@ RSpec.describe Henitai::Integration::Minitest do
     )
   end
 
-  it "marks minitest autorun as already installed without using a class variable" do
+  it "prepends a suppressor to minitest autorun" do
     integration = described_class.new
     singleton_class = Minitest.singleton_class
-    original = if singleton_class.instance_variable_defined?(:@installed_at_exit)
-                 singleton_class.instance_variable_get(:@installed_at_exit)
-               else
-                 :__undefined__
-               end
-
-    Minitest.remove_class_variable(:@@installed_at_exit) if Minitest.class_variable_defined?(:@@installed_at_exit)
+    prepended = []
+    allow(singleton_class).to receive(:ancestors).and_return([])
+    allow(singleton_class).to receive(:prepend) do |mod|
+      prepended << mod
+    end
 
     integration.send(:suppress_minitest_autorun!)
 
-    expect(
-      [
-        singleton_class.instance_variable_get(:@installed_at_exit),
-        Minitest.class_variable_defined?(:@@installed_at_exit)
-      ]
-    ).to eq([true, false])
-  ensure
-    if original == :__undefined__
-      if singleton_class.instance_variable_defined?(:@installed_at_exit)
-        singleton_class.remove_instance_variable(:@installed_at_exit)
-      end
-    else
-      singleton_class.instance_variable_set(:@installed_at_exit, original)
-    end
+    expect(prepended.first.instance_methods(false)).to eq([:autorun])
   end
 
   it "returns zero when Minitest.run succeeds" do

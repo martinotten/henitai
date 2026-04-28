@@ -863,7 +863,13 @@ module Henitai
 
       def suppress_minitest_autorun!
         require "minitest"
-        ::Minitest.singleton_class.instance_variable_set(:@installed_at_exit, true)
+        singleton_class = ::Minitest.singleton_class
+        suppressor = @minitest_autorun_suppressor ||= Module.new.tap do |mod|
+          mod.define_method(:autorun) { nil }
+        end
+        return if singleton_class.ancestors.include?(suppressor)
+
+        singleton_class.prepend(suppressor)
         nil
       rescue LoadError, NameError
         nil
