@@ -138,6 +138,26 @@ RSpec.describe Henitai::ProcessWorkerRunner do
     end
   end
 
+  describe "wakeup loop" do
+    it "waits on a wakeup io while children are active" do
+      mutant = build_mutant("wakeup")
+      integration = build_integration("wakeup" => { sleep: 0.02, exit_code: 0 })
+      config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 0)
+      runner = described_class.new(worker_count: 1)
+
+      allow(IO).to receive(:select).and_call_original
+
+      runner.run([mutant], integration, config, nil)
+
+      expect(IO).to have_received(:select).with(
+        array_including(instance_of(IO)),
+        nil,
+        nil,
+        kind_of(Numeric)
+      )
+    end
+  end
+
   describe "timeout isolation" do
     it "cleans up slots after timeout and leaves no active slots" do # rubocop:disable RSpec/MultipleExpectations
       mutant = build_mutant("slow")

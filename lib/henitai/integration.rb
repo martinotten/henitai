@@ -19,6 +19,8 @@ module Henitai
   # Built-in integrations:
   #   rspec  — RSpec 3.x
   module Integration
+    PROCESS_CLEANUP_GRACE_PERIOD = 2.0
+
     # Shared helpers for capturing stdout/stderr from child test processes.
     class ScenarioLogSupport
       def capture_child_output(log_paths)
@@ -365,21 +367,9 @@ module Henitai
       end
 
       def wait_with_timeout(pid, timeout)
-        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+        return Process.last_status if wait_for_child_exit(pid, timeout)
 
-        loop do
-          wait_result = Process.wait(pid, Process::WNOHANG)
-          return Process.last_status if wait_result
-
-          if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
-            final_wait_result = Process.wait(pid, Process::WNOHANG)
-            return Process.last_status if final_wait_result
-
-            return handle_timeout(pid)
-          end
-
-          pause(0.01)
-        end
+        handle_timeout(pid)
       end
 
       def reap_child(pid)
@@ -390,7 +380,8 @@ module Henitai
 
       def cleanup_process_group(pid)
         Process.kill(:SIGTERM, -pid)
-        pause(2.0)
+        return if wait_for_child_exit(pid, PROCESS_CLEANUP_GRACE_PERIOD)
+
         Process.kill(:SIGKILL, -pid)
       rescue Errno::EPERM
         cleanup_child_process(pid)
@@ -402,6 +393,25 @@ module Henitai
 
       def pause(seconds)
         sleep(seconds)
+      end
+
+      def wait_for_child_exit(pid, timeout)
+        with_process_wakeup do |wakeup|
+          return true if Process.wait(pid, Process::WNOHANG)
+
+          wakeup.wait(timeout)
+          wakeup.drain
+          Process.wait(pid, Process::WNOHANG)
+        rescue Errno::ECHILD, Errno::ESRCH
+          true
+        end
+      end
+
+      def with_process_wakeup
+        wakeup = Henitai::ProcessWakeup.new.install
+        yield wakeup
+      ensure
+        wakeup&.close
       end
 
       def handle_timeout(pid)
@@ -416,7 +426,8 @@ module Henitai
 
       def cleanup_child_process(pid)
         Process.kill(:SIGTERM, pid)
-        pause(2.0)
+        return if wait_for_child_exit(pid, PROCESS_CLEANUP_GRACE_PERIOD)
+
         Process.kill(:SIGKILL, pid)
       rescue Errno::EPERM, Errno::ESRCH
         nil

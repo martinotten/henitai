@@ -6,7 +6,6 @@ module Henitai
   # Owns the process table: it is the sole caller of Process.wait* so there
   # are no race conditions between threads reaping the same child.
   class ProcessWorkerRunner # rubocop:disable Metrics/ClassLength
-    SCHEDULER_POLL_INTERVAL = 0.01
     PROCESS_DRAIN_WINDOW = 0.2
 
     # Tracks one in-flight mutant child process.
@@ -25,6 +24,7 @@ module Henitai
     # Safe to call from any thread. The loop observes the flag on its next tick.
     def request_shutdown
       @shutdown_requested = true
+      @wakeup&.signal
     end
 
     # Runs all mutants and returns an array of ScenarioExecutionResult.
@@ -37,18 +37,13 @@ module Henitai
     # @return [Array<ScenarioExecutionResult>]
     def run(mutants, integration, config, progress_reporter, options = {})
       Integration::SchedulerDiagnostics.reset! if Integration::SchedulerDiagnostics.enabled?
-      @pending = mutants.dup
-      @slots = {}
-      @pid_to_slot = {}
-      @results = []
-      @next_slot_id = 0
-      @integration = integration
-      @config = config
-      @progress_reporter = progress_reporter
-      @options = options
+      prepare_run(mutants, integration, config, progress_reporter, options)
 
       event_loop
       @results
+    ensure
+      @wakeup&.close
+      @wakeup = nil
     end
 
     private
@@ -61,22 +56,30 @@ module Henitai
       loop do
         break if done?
 
-        fill_idle_slots unless @shutdown_requested
-        IO.select(nil, nil, nil, SCHEDULER_POLL_INTERVAL)
-        reap_all_completed_children
-        check_timeouts
-        break handle_shutdown if @shutdown_requested
-
-        drain_draining_slots if draining_slots?
+        break if process_cycle == :shutdown
       end
     ensure
       restore_signal_traps(saved_traps)
       raise Interrupt if @shutdown_requested
     end
 
+    def process_cycle
+      fill_idle_slots unless @shutdown_requested
+      reap_all_completed_children
+      check_timeouts
+      return handle_shutdown if @shutdown_requested
+
+      drain_draining_slots if draining_slots?
+      return :done if done?
+
+      wait_for_next_event
+      nil
+    end
+
     def handle_shutdown
       interrupt_active_slots
       drain_draining_slots
+      :shutdown
     end
 
     def done?
@@ -179,11 +182,25 @@ module Henitai
     # processes that exited naturally in the window between check_timeouts and
     # now. If SIGTERM gets ESRCH, the process is already gone — we must not
     # force-label those as :timeout.
-    def drain_draining_slots # rubocop:disable Metrics/AbcSize
-      draining = slots.select { |_, slot| slot.draining }
+    def drain_draining_slots
+      draining = draining_slots
       return if draining.empty?
 
-      # Final WNOHANG pass before SIGTERM to catch race-window exits.
+      prune_raced_draining_slots(draining)
+
+      return if draining.empty?
+
+      broadcast_term(draining)
+      wait_for_drain_window
+      signal_draining_slots(draining)
+      reap_and_remove_draining(draining)
+    end
+
+    def draining_slots
+      slots.select { |_, slot| slot.draining }
+    end
+
+    def prune_raced_draining_slots(draining)
       draining.reject! do |_, slot|
         pid, status = wnohang_reap(slot.pid)
         next false unless pid
@@ -191,13 +208,15 @@ module Henitai
         complete_slot(pid, status)
         true
       end
+    end
 
-      return if draining.empty?
+    def wait_for_drain_window
+      @wakeup&.wait(PROCESS_DRAIN_WINDOW)
+      @wakeup&.drain
+    end
 
-      broadcast_term(draining)
-      IO.select(nil, nil, nil, PROCESS_DRAIN_WINDOW)
+    def signal_draining_slots(draining)
       draining.each_value { |slot| signal_process_group(slot.pid, :SIGKILL) }
-      reap_and_remove_draining(draining)
     end
 
     def broadcast_term(draining)
@@ -270,6 +289,44 @@ module Henitai
 
     def should_retry?(slot, result)
       !@shutdown_requested && result.survived? && slot.retry_count < config.max_flaky_retries.to_i
+    end
+
+    def prepare_run(mutants, integration, config, progress_reporter, options)
+      @pending = mutants.dup
+      @slots = {}
+      @pid_to_slot = {}
+      @results = []
+      @next_slot_id = 0
+      @integration = integration
+      @config = config
+      @progress_reporter = progress_reporter
+      @options = options
+      @wakeup = Henitai::ProcessWakeup.new.install
+    end
+
+    def next_event_timeout
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      slot_timeouts = slots.each_value.filter_map do |slot|
+        remaining_slot_timeout(slot, now)
+      end
+
+      slot_timeouts.min
+    end
+
+    def remaining_slot_timeout(slot, now)
+      deadline =
+        if slot.draining
+          slot.term_sent_at_monotonic + PROCESS_DRAIN_WINDOW
+        else
+          slot.started_at_monotonic + slot.timeout
+        end
+      remaining = deadline - now
+      remaining.positive? ? remaining : 0.0
+    end
+
+    def wait_for_next_event
+      @wakeup&.wait(next_event_timeout)
+      @wakeup&.drain
     end
 
     def retry_slot(slot) # rubocop:disable Metrics/AbcSize

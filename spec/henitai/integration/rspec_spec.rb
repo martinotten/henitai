@@ -1221,6 +1221,42 @@ RSpec.describe Henitai::Integration::Rspec do
     )
   end
 
+  it "waits for child exit with a wakeup select" do
+    integration = described_class.new
+    wait_status = Struct.new(:success?, :exitstatus).new(true, 0)
+    select_calls = 0
+
+    allow(Process).to receive(:wait).with(4321, Process::WNOHANG).and_return(nil, 4321)
+    allow(Process).to receive(:last_status).and_return(wait_status)
+    allow(IO).to receive(:select) do
+      select_calls += 1
+      [[], nil, nil]
+    end
+
+    result = integration.send(:wait_with_timeout, 4321, 1.0)
+
+    expect([result, select_calls]).to eq([wait_status, 1])
+  end
+
+  it "skips SIGKILL when the child exits during cleanup" do
+    integration = described_class.new
+    record = { signals: [] }
+    select_calls = 0
+
+    allow(Process).to receive(:wait).with(4322, Process::WNOHANG).and_return(nil, 4322)
+    allow(Process).to receive(:kill) do |signal, pid|
+      record[:signals] << [signal, pid]
+    end
+    allow(IO).to receive(:select) do
+      select_calls += 1
+      [[], nil, nil]
+    end
+
+    integration.cleanup_process_group(4322)
+
+    expect([record[:signals], select_calls]).to eq([[[:SIGTERM, -4322]], 1])
+  end
+
   it "activates the mutant before running child tests" do
     mutant = Struct.new(:id).new("mutant-2")
     integration = described_class.new
