@@ -8,6 +8,29 @@ module Henitai
   class ProcessWorkerRunner # rubocop:disable Metrics/ClassLength
     PROCESS_DRAIN_WINDOW = 0.2
 
+    # Default bridge to process and signal primitives used by the scheduler.
+    class Runtime
+      def clock_gettime(clock_id)
+        Process.clock_gettime(clock_id)
+      end
+
+      def wait2(pid, flags = nil)
+        Process.wait2(pid, flags)
+      end
+
+      def kill(signal, pid)
+        Process.kill(signal, pid)
+      end
+
+      def wait(pid)
+        Process.wait(pid)
+      end
+
+      def trap(signal, handler = nil, &block)
+        Kernel.trap(signal, handler || block)
+      end
+    end
+
     # Tracks one in-flight mutant child process.
     Slot = Struct.new(
       :slot_id, :mutant, :pid, :started_at_monotonic, :timeout,
@@ -15,8 +38,10 @@ module Henitai
       :forced_outcome
     )
 
-    def initialize(worker_count:)
+    def initialize(worker_count:, runtime: Runtime.new, wakeup: nil)
       @worker_count = worker_count
+      @runtime = runtime
+      @wakeup = wakeup
       @shutdown_requested = false
     end
 
@@ -49,7 +74,7 @@ module Henitai
     private
 
     attr_reader :worker_count, :pending, :slots, :pid_to_slot, :results,
-                :integration, :config, :progress_reporter
+                :integration, :config, :progress_reporter, :runtime
 
     def event_loop
       saved_traps = install_signal_traps
@@ -116,14 +141,14 @@ module Henitai
     def build_slot(slot_id, mutant, handle)
       Slot.new(
         slot_id, mutant, handle.pid,
-        Process.clock_gettime(Process::CLOCK_MONOTONIC),
+        monotonic_time,
         config.timeout, handle.log_paths, 0, false, nil, nil
       )
     end
 
     def reap_all_completed_children
       loop do
-        pid, status = Process.wait2(-1, Process::WNOHANG)
+        pid, status = runtime.wait2(-1, Process::WNOHANG)
         break unless pid
 
         complete_slot(pid, status)
@@ -158,13 +183,13 @@ module Henitai
     # Per-slot timeout check. Must be called after reap_all_completed_children
     # so that naturally-exited processes are already removed from slots.
     def check_timeouts
-      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      now = monotonic_time
       slots.each_value do |slot|
         next if slot.draining
         next unless now >= slot.started_at_monotonic + slot.timeout
 
         # Final targeted reap: if the child already exited, classify it normally.
-        pid, status = Process.wait2(slot.pid, Process::WNOHANG)
+        pid, status = runtime.wait2(slot.pid, Process::WNOHANG)
         if pid
           complete_slot(pid, status)
         else
@@ -222,7 +247,7 @@ module Henitai
     end
 
     def broadcast_term(draining)
-      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      now = monotonic_time
       draining.each_value do |slot|
         slot.term_sent_at_monotonic = now
         signal_process_group(slot.pid, :SIGTERM)
@@ -271,13 +296,13 @@ module Henitai
     def install_signal_traps
       saved = {}
       %w[INT TERM HUP].each do |sig|
-        saved[sig] = trap(sig) { @shutdown_requested = true }
+        saved[sig] = runtime.trap(sig) { @shutdown_requested = true }
       end
       saved
     end
 
     def restore_signal_traps(saved)
-      saved&.each { |sig, handler| trap(sig, handler) }
+      saved&.each { |sig, handler| runtime.trap(sig, handler) }
     end
 
     def interrupt_active_slots
@@ -303,11 +328,11 @@ module Henitai
       @config = config
       @progress_reporter = progress_reporter
       @options = options
-      @wakeup = Henitai::ProcessWakeup.new.install
+      @wakeup = Henitai::ProcessWakeup.new.install if @wakeup.nil?
     end
 
     def next_event_timeout
-      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      now = monotonic_time
       slot_timeouts = slots.each_value.filter_map do |slot|
         remaining_slot_timeout(slot, now)
       end
@@ -337,7 +362,7 @@ module Henitai
       handle = integration.spawn_mutant(mutant: slot.mutant, test_files: test_files)
       slot.pid = handle.pid
       slot.log_paths = handle.log_paths
-      slot.started_at_monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      slot.started_at_monotonic = monotonic_time
       slot.draining = false
       slot.term_sent_at_monotonic = nil
       slot.forced_outcome = nil
@@ -362,28 +387,32 @@ module Henitai
     end
 
     def wnohang_reap(pid)
-      Process.wait2(pid, Process::WNOHANG)
+      runtime.wait2(pid, Process::WNOHANG)
     rescue Errno::ECHILD, Errno::ESRCH
       nil
     end
 
     def signal_process_group(pid, signal)
-      Process.kill(signal, -pid)
+      runtime.kill(signal, -pid)
     rescue Errno::ESRCH
       nil
     rescue Errno::EPERM
       # Process group not yet established; fall back to signalling the pid.
       begin
-        Process.kill(signal, pid)
+        runtime.kill(signal, pid)
       rescue Errno::ESRCH
         nil
       end
     end
 
     def reap_pid(pid)
-      Process.wait(pid)
+      runtime.wait(pid)
     rescue Errno::ECHILD, Errno::ESRCH
       nil
+    end
+
+    def monotonic_time
+      runtime.clock_gettime(Process::CLOCK_MONOTONIC)
     end
 
     def resolve_test_files(mutant)

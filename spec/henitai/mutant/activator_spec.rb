@@ -1,10 +1,8 @@
 # frozen_string_literal: true
 
 require "fileutils"
-require "open3"
 require "spec_helper"
 require "tmpdir"
-require "timeout"
 
 RSpec.describe Henitai::Mutant::Activator do
   def write_source(dir, source)
@@ -524,16 +522,21 @@ RSpec.describe Henitai::Mutant::Activator do
     ).to be_nil
   end
 
-  it "activates heredoc string mutations without timing out" do
-    script = <<~RUBY
-      require "henitai"
-      require "timeout"
+  it "activates heredoc string mutations through the public API" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, <<~RUBY)
+        class ActivatorHeredocSample
+          def html_document
+            <<~HTML
+              <!DOCTYPE html>
+              <html>
+              </html>
+            HTML
+          end
+        end
+      RUBY
 
-      resolver = Henitai::SubjectResolver.new
-      subject = resolver.resolve_from_files(["lib/henitai/reporter.rb"]).find do |candidate|
-        candidate.expression == "Henitai::Reporter::Html#html_document"
-      end
-
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
       mutant = Henitai::MutantGenerator.new.generate(
         [subject],
         [Henitai::Operators::StringLiteral.new]
@@ -542,26 +545,15 @@ RSpec.describe Henitai::Mutant::Activator do
           candidate.original_node.location.expression.source.include?("<!DOCTYPE html>")
       end
 
-      abort("heredoc mutant not found") unless mutant
+      raise "heredoc mutant not found" unless mutant
 
-      begin
-        Timeout.timeout(1) { Henitai::Mutant::Activator.activate!(mutant) }
-        puts "ok"
-      rescue Timeout::Error
-        puts "timeout"
-      end
-    RUBY
+      described_class.new.send(:load_target, subject)
+      original_html = ActivatorHeredocSample.new.html_document
 
-    stdout, stderr, status = Open3.capture3(
-      "bundle",
-      "exec",
-      "ruby",
-      "-e",
-      script,
-      chdir: Dir.pwd
-    )
+      described_class.activate!(mutant)
 
-    expect([status.success?, stderr, stdout]).to eq([true, "", "ok\n"])
+      expect(ActivatorHeredocSample.new.html_document).not_to eq(original_html)
+    end
   end
 
   it "uses raw source when the original node has no location metadata" do

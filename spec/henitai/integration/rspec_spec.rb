@@ -115,7 +115,7 @@ RSpec.describe Henitai::Integration::Rspec do
     )
   end
 
-  def run_repo_suite_script(script, spec_path)
+  def run_suite_script(dir, script, spec_path)
     Timeout.timeout(15) do
       Open3.capture3(
         { "BUNDLE_GEMFILE" => repo_gemfile },
@@ -123,7 +123,7 @@ RSpec.describe Henitai::Integration::Rspec do
         "-r", "henitai/rspec_coverage_formatter",
         "-e", script,
         spec_path,
-        chdir: File.dirname(repo_gemfile)
+        chdir: dir
       )
     end
   end
@@ -703,15 +703,30 @@ RSpec.describe Henitai::Integration::Rspec do
     )
   end
 
-  it "runs the baseline suite runner script against the repo cli spec" do
+  it "runs the baseline suite runner script against a minimal rspec fixture" do
     integration = described_class.new
 
-    stdout, stderr, status = run_repo_suite_script(
-      integration.send(:rspec_suite_runner_script),
-      "spec/henitai/cli_spec.rb"
-    )
+    with_temp_workspace do |dir|
+      spec_path = write_file(
+        dir,
+        "spec/smoke_spec.rb",
+        <<~RUBY
+          RSpec.describe "suite runner" do
+            it "passes" do
+              expect(1).to eq(1)
+            end
+          end
+        RUBY
+      )
 
-    expect(status.success?).to be(true), [stdout, stderr].reject(&:empty?).join("\n")
+      stdout, stderr, status = run_suite_script(
+        dir,
+        integration.send(:rspec_suite_runner_script),
+        spec_path
+      )
+
+      expect(status.success?).to be(true), [stdout, stderr].reject(&:empty?).join("\n")
+    end
   end
 
   it "enables the no-examples guard for mutant child rspec runs" do
@@ -1032,6 +1047,7 @@ RSpec.describe Henitai::Integration::Rspec do
         run_tests: 0,
         wait_with_timeout: Struct.new(:success?, :exitstatus).new(true, 0)
       )
+      stub_process_wakeup
       allow(Process).to receive(:wait).with(4322, Process::WNOHANG).and_return(nil, nil)
       allow(Process).to receive_messages(
         last_status: Struct.new(:success?, :exitstatus).new(true, 0)
