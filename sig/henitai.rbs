@@ -206,10 +206,10 @@ module Henitai
     attr_accessor duration: Float?
     attr_accessor covered_by: Array[String]?
     attr_accessor tests_completed: Integer?
-    attr_accessor precomputed_stable_id: String?
-    attr_accessor precomputed_activation_source: String?
+    attr_reader precomputed_stable_id: String?
+    attr_reader precomputed_activation_source: String?
 
-    def initialize: (subject: Subject, operator: String, nodes: Hash[Symbol, untyped], description: String, location: Hash[Symbol, untyped]) -> void
+    def initialize: (subject: Subject, operator: String, nodes: Hash[Symbol, untyped], description: String, location: Hash[Symbol, untyped], ?precomputed_stable_id: String?, ?precomputed_activation_source: String?) -> void
     def stable_id: () -> String
     def killed?: () -> bool
     def survived?: () -> bool

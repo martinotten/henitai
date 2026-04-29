@@ -100,14 +100,14 @@ module Henitai
     # Serialise to Stryker mutation-testing-report-schema JSON (schema 1.0).
     # @return [Hash]
     def to_stryker_schema
-      base_schema.tap do |s|
-        sha = @git_sha
-        s[:gitSha] = sha if sha
-        next unless partial_rerun?
+      schema = base_schema
+      sha = @git_sha
+      schema[:gitSha] = sha if sha
+      return schema unless partial_rerun?
 
-        s[:partialRerun] = true
-        s[:unmatchedSurvivorIds] = unmatched_survivor_ids
-      end
+      schema[:partialRerun] = true
+      schema[:unmatchedSurvivorIds] = unmatched_survivor_ids
+      schema
     end
 
     private

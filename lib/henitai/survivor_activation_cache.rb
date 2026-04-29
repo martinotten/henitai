@@ -39,7 +39,7 @@ module Henitai
       return nil unless File.exist?(path)
 
       JSON.parse(File.read(path))
-    rescue JSON::ParserError, Errno::ENOENT
+    rescue JSON::ParserError
       nil
     end
 

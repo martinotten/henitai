@@ -906,6 +906,9 @@ RSpec.describe Henitai::Runner do
             history_store:,
             git_diff_analyzer: diff_analyzer
           )
+          allow(runner).to receive(:source_files).and_raise(
+            "source_files should not be called on the recipe fast path"
+          )
           allow(diff_analyzer).to receive_messages(
             changed_files: [],
             head_sha: nil,

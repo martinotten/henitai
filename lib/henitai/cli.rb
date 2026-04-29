@@ -302,7 +302,7 @@ module Henitai
       session_id = session_id_from_report(survivors_from)
       return survivors_from if session_id.nil?
 
-      snapshot_path = File.join(report_dir, "sessions", session_id, "mutation-report.json")
+      snapshot_path = survivors_snapshot_path(report_dir, session_id)
       recipe_path = File.join(report_dir, "sessions", session_id, "activation-recipes.json")
       return snapshot_path if File.exist?(recipe_path) && File.exist?(snapshot_path)
 
@@ -311,8 +311,13 @@ module Henitai
       # at what they actually passed.
 
       survivors_from
-    rescue StandardError
+    rescue StandardError => e
+      warn_survivors_from_resolution_error(survivors_from, e)
       survivors_from
+    end
+
+    def survivors_snapshot_path(report_dir, session_id)
+      File.join(report_dir, "sessions", session_id, "mutation-report.json")
     end
 
     def session_id_from_report(path)
@@ -336,6 +341,13 @@ module Henitai
     def handle_run_error(error)
       warn "#{error.class}: #{error.message}"
       exit 2
+    end
+
+    def warn_survivors_from_resolution_error(survivors_from, error)
+      warn(
+        "henitai: warning: could not resolve survivors-from " \
+        "#{survivors_from}: #{error.class}: #{error.message}"
+      )
     end
 
     def clean_summary(removed_paths)

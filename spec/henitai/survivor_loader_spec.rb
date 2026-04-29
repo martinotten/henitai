@@ -111,11 +111,11 @@ RSpec.describe Henitai::SurvivorLoader do
     end
   end
 
-  it "raises ScopeMismatchError when schemaVersion is absent" do
+  it "raises InvalidReportError when schemaVersion is absent" do
     Dir.mktmpdir do |dir|
       path = write_report(dir, { "files" => {} })
       expect { described_class.new(path).load }
-        .to raise_error(Henitai::SurvivorLoader::ScopeMismatchError, /schemaVersion/)
+        .to raise_error(Henitai::SurvivorLoader::InvalidReportError, /schemaVersion/)
     end
   end
 

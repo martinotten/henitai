@@ -8,6 +8,7 @@ module Henitai
   # indicates that the source has drifted and a full run is recommended.
   class SurvivorSelector
     DRIFT_THRESHOLD = 0.5
+    class SelectionError < StandardError; end
 
     def initialize(survivor_ids:)
       @survivor_ids  = survivor_ids.to_set
@@ -21,7 +22,7 @@ module Henitai
     end
 
     def unmatched_ids
-      raise "Call #select before accessing #unmatched_ids" if @unmatched_ids.nil?
+      raise SelectionError, "Call #select before accessing #unmatched_ids" if @unmatched_ids.nil?
 
       @unmatched_ids
     end

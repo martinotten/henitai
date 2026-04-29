@@ -87,6 +87,30 @@ RSpec.describe Henitai::PerTestCoverageCollector do
     end
   end
 
+  it "tracks only new lines across successive snapshots for the same test" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        collector = described_class.new
+        snapshots = [
+          coverage_snapshot(source_lines: [nil, 1, 0, 3]),
+          coverage_snapshot(source_lines: [nil, 1, 2, 3, 4])
+        ]
+
+        allow(Coverage).to receive(:peek_result).and_return(*snapshots)
+
+        collector.record_test("test/sample_test.rb")
+        collector.record_test("test/sample_test.rb")
+        collector.write_report
+
+        expect(JSON.parse(File.read(report_path))).to eq(
+          "test/sample_test.rb" => {
+            File.expand_path("lib/sample.rb") => [2, 3, 4, 5]
+          }
+        )
+      end
+    end
+  end
+
   it "handles symbol-keyed coverage hashes from Coverage.peek_result" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
@@ -108,6 +132,16 @@ RSpec.describe Henitai::PerTestCoverageCollector do
             File.expand_path("lib/sample.rb") => [2, 4]
           }
         )
+      end
+    end
+  end
+
+  it "does not create a report when no test coverage was recorded" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        described_class.new.write_report
+
+        expect(File.exist?(report_path)).to be(false)
       end
     end
   end

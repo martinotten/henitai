@@ -24,7 +24,13 @@ RSpec.describe Henitai::Mutant::Activator do
     }
   end
 
-  def build_mutant(subject:, original_node:, mutated_node:, location:)
+  def build_mutant(
+    subject:,
+    original_node:,
+    mutated_node:,
+    location:,
+    precomputed_activation_source: nil
+  )
     Henitai::Mutant.new(
       subject:,
       operator: "FakeOperator",
@@ -33,7 +39,8 @@ RSpec.describe Henitai::Mutant::Activator do
         mutated: mutated_node
       },
       description: "replace node",
-      location:
+      location:,
+      precomputed_activation_source:
     )
   end
 
@@ -82,9 +89,9 @@ RSpec.describe Henitai::Mutant::Activator do
         end_line: 1,
         start_col: 0,
         end_col: 1
-      }
+      },
+      precomputed_activation_source: "define_method(:value) do\n  2\nend\n"
     )
-    mutant.precomputed_activation_source = "define_method(:value) do\n  2\nend\n"
 
     allow(activator).to receive(:target_for).and_return(target)
 
@@ -611,9 +618,9 @@ RSpec.describe Henitai::Mutant::Activator do
         subject: subject_obj,
         original_node:,
         mutated_node: original_node,
-        location: location_for(original_node)
+        location: location_for(original_node),
+        precomputed_activation_source: "define_method(:value) do ||\n"
       )
-      mutant.precomputed_activation_source = "define_method(:value) do ||\n"
 
       expect(described_class.activate!(mutant)).to eq(:compile_error)
     end
@@ -1025,7 +1032,13 @@ RSpec.describe Henitai::Mutant::Activator do
         ).first
 
         precomputed = "define_method(:value) do\n  42\nend\n"
-        mutant.precomputed_activation_source = precomputed
+        mutant = build_mutant(
+          subject: mutant.subject,
+          original_node: mutant.original_node,
+          mutated_node: mutant.mutated_node,
+          location: mutant.location,
+          precomputed_activation_source: precomputed
+        )
 
         described_class.activate!(mutant)
 

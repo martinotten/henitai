@@ -759,6 +759,27 @@ RSpec.describe Henitai::CLI do
     end
   end
 
+  it "returns the original survivors_from when resolution fails" do
+    cli = described_class.new(["run"])
+    allow(cli).to receive(:warn)
+    allow(cli).to receive(:session_id_from_report).and_raise(ArgumentError, "boom")
+
+    result = cli.send(:resolve_survivors_from, "reports/mutation-report.json")
+
+    expect(result).to eq("reports/mutation-report.json")
+  end
+
+  it "warns when survivors_from resolution fails" do
+    cli = described_class.new(["run"])
+    allow(cli).to receive(:session_id_from_report).and_raise(ArgumentError, "boom")
+
+    expect do
+      cli.send(:resolve_survivors_from, "reports/mutation-report.json")
+    end.to output(
+      %r{could not resolve survivors-from reports/mutation-report\.json: ArgumentError: boom}
+    ).to_stderr
+  end
+
   it "exits zero for a partial rerun regardless of score" do
     Dir.mktmpdir do |dir|
       config_path = write_configuration(dir)

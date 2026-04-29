@@ -288,11 +288,11 @@ module Henitai
         operator: recipe.fetch("operator"),
         nodes: { original: nil, mutated: nil },
         description: recipe.fetch("description"),
-        location: recipe_location(recipe["location"])
+        location: recipe_location(recipe["location"]),
+        precomputed_stable_id: stable_id,
+        precomputed_activation_source: recipe.fetch("activationSource")
       )
-      mutant.precomputed_stable_id         = stable_id
-      mutant.precomputed_activation_source = recipe.fetch("activationSource")
-      mutant.covered_by                    = recipe["coveredBy"]
+      mutant.covered_by = recipe["coveredBy"]
       mutant
     end
 
@@ -343,9 +343,9 @@ module Henitai
     def dirty_source_files?(dirty_worktree_files)
       return true if dirty_worktree_files.nil?
 
-      source_file_set = source_files.map { |path| normalize_path(path) }
+      include_roots = Array(config.includes).map { |path| normalize_path(path) }
       dirty_worktree_files.map { |path| normalize_path(path) }.any? do |path|
-        source_file_set.include?(path)
+        include_roots.any? { |root| path == root || path.start_with?("#{root}/") }
       end
     end
 

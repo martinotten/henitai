@@ -43,9 +43,9 @@ module Henitai
 
       return per_test_lines if coverage_lines.empty?
 
-      # Merge per-test coverage for files absent from standard coverage.
+      # Merge per-test coverage into the standard coverage map.
       # Standard coverage may be incomplete when child processes fork before
-      # all files are loaded; per-test fills the gaps.
+      # all files are loaded; per-test coverage widens the result set.
       per_test_lines.each_with_object(coverage_lines) do |(file, lines), merged|
         merged[file] = ((merged[file] || []) + lines).uniq.sort
       end

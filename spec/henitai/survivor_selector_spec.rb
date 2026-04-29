@@ -29,6 +29,13 @@ RSpec.describe Henitai::SurvivorSelector do
   end
 
   describe "#unmatched_ids" do
+    it "raises a typed error before select has been called" do
+      selector = described_class.new(survivor_ids: ["aaa"])
+
+      expect { selector.unmatched_ids }
+        .to raise_error(Henitai::SurvivorSelector::SelectionError, /#select/)
+    end
+
     it "tracks survivor ids that had no corresponding current mutant" do
       mutant   = build_mutant_double("aaa")
       selector = described_class.new(survivor_ids: %w[aaa bbb ccc])

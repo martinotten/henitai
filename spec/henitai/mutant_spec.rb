@@ -4,7 +4,7 @@ require "parser/current"
 require "spec_helper"
 
 RSpec.describe Henitai::Mutant do
-  def build_mutant
+  def build_mutant(precomputed_stable_id: nil, precomputed_activation_source: nil)
     described_class.new(
       subject: Henitai::Subject.new(namespace: "Sample", method_name: "alpha"),
       operator: "ArithmeticOperator",
@@ -13,7 +13,9 @@ RSpec.describe Henitai::Mutant do
         mutated: Parser::AST::Node.new(:int, [2])
       },
       description: "replaced 1 with 2",
-      location: {}
+      location: {},
+      precomputed_stable_id:,
+      precomputed_activation_source:
     )
   end
 
@@ -66,9 +68,8 @@ RSpec.describe Henitai::Mutant do
       expect(mutant.stable_id).to equal(mutant.stable_id)
     end
 
-    it "returns precomputed_stable_id when set, skipping MutantIdentity" do
-      mutant = build_mutant
-      mutant.precomputed_stable_id = "precomputed-hex"
+    it "returns precomputed_stable_id when provided, skipping MutantIdentity" do
+      mutant = build_mutant(precomputed_stable_id: "precomputed-hex")
       expect(mutant.stable_id).to eq("precomputed-hex")
     end
   end
@@ -78,9 +79,8 @@ RSpec.describe Henitai::Mutant do
       expect(build_mutant.precomputed_activation_source).to be_nil
     end
 
-    it "can be set and read back" do
-      mutant = build_mutant
-      mutant.precomputed_activation_source = "define_method(:foo) do\n  nil\nend\n"
+    it "can be provided and read back" do
+      mutant = build_mutant(precomputed_activation_source: "define_method(:foo) do\n  nil\nend\n")
       expect(mutant.precomputed_activation_source).to eq("define_method(:foo) do\n  nil\nend\n")
     end
   end

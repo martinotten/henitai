@@ -99,7 +99,7 @@ module Henitai
     def validate_schema_version!(report)
       return if report.key?("schemaVersion")
 
-      raise ScopeMismatchError,
+      raise InvalidReportError,
             "Survivor report #{@path} is missing schemaVersion — is this a Henitai report?"
     end
 

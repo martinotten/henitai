@@ -35,16 +35,18 @@ module Henitai
     ].freeze
 
     attr_reader :id, :subject, :operator, :original_node, :mutated_node,
-                :mutation_type, :description, :location
-    attr_accessor :status, :killing_test, :duration, :covered_by, :tests_completed,
-                  :precomputed_stable_id, :precomputed_activation_source
+                :mutation_type, :description, :location,
+                :precomputed_stable_id, :precomputed_activation_source
+    attr_accessor :status, :killing_test, :duration, :covered_by, :tests_completed
 
     # @param subject [Subject] the subject being mutated
     # @param operator [Symbol] operator name, e.g. :ArithmeticOperator
     # @param nodes [Hash] AST nodes with :original and :mutated entries
     # @param description [String] human-readable description of the mutation
     # @param location [Hash] { file:, start_line:, end_line:, start_col:, end_col: }
-    def initialize(subject:, operator:, nodes:, description:, location:)
+    # rubocop:disable Metrics/ParameterLists
+    def initialize(subject:, operator:, nodes:, description:, location:,
+                   precomputed_stable_id: nil, precomputed_activation_source: nil)
       @id            = SecureRandom.uuid
       @subject       = subject
       @operator      = operator
@@ -52,12 +54,15 @@ module Henitai
       @mutated_node  = nodes.fetch(:mutated)
       @description   = description
       @location      = location
+      @precomputed_stable_id = precomputed_stable_id
+      @precomputed_activation_source = precomputed_activation_source
       @status        = :pending
       @killing_test  = nil
       @duration      = nil
       @covered_by    = nil
       @tests_completed = nil
     end
+    # rubocop:enable Metrics/ParameterLists
 
     def stable_id
       @stable_id ||= @precomputed_stable_id || MutantIdentity.stable_id(self)
