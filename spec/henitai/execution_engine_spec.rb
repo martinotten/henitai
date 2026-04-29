@@ -65,11 +65,11 @@ RSpec.describe Henitai::ExecutionEngine do
     allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
       mutant.status = :killed
     end
-    allow(Henitai::ParallelExecutionRunner).to receive(:new)
+    allow(Henitai::ProcessWorkerRunner).to receive(:new)
 
     described_class.new.run([pending_a, pending_b], integration, config)
 
-    expect(Henitai::ParallelExecutionRunner).not_to have_received(:new)
+    expect(Henitai::ProcessWorkerRunner).not_to have_received(:new)
   end
 
   def with_env(key, value)
@@ -251,38 +251,6 @@ RSpec.describe Henitai::ExecutionEngine do
     expect do
       described_class.new.run(mutants, integration, build_config)
     end.not_to output(/Flaky-test mitigation:/).to_stderr
-  end
-
-  it "uses configured jobs when running mutants in parallel" do
-    first = build_mutant(:pending, "Foo#bar")
-    second = build_mutant(:pending, "Foo#baz")
-    integration = build_integration
-    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", 2)
-    thread_ids = []
-
-    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
-      thread_ids << Thread.current.object_id
-      sleep 0.001
-      mutant.status = :killed
-    end
-
-    described_class.new.run([first, second], integration, config)
-
-    expect(thread_ids.uniq.size).to be > 1
-  end
-
-  it "raises when a parallel worker fails" do
-    first = build_mutant(:pending, "Foo#bar")
-    second = build_mutant(:pending, "Foo#baz")
-    integration = build_integration
-    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", 2)
-
-    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
-    allow(integration).to receive(:run_mutant).and_raise(StandardError, "boom")
-
-    expect do
-      described_class.new.run([first, second], integration, config)
-    end.to raise_error(StandardError, "boom")
   end
 
   it "keeps a single pending mutant on the linear path even with parallel jobs configured" do
@@ -516,78 +484,5 @@ RSpec.describe Henitai::ExecutionEngine do
 
       expect(ENV.fetch("HENITAI_COVERAGE_DIR", nil)).to eq("preexisting")
     end
-  end
-
-  it "stops parallel execution when the stdin pipe is closed (docker exec disconnect)" do
-    first  = build_mutant(:pending, "Foo#bar")
-    second = build_mutant(:pending, "Foo#baz")
-    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", 2)
-    fake_stdin_r, fake_stdin_w = IO.pipe
-    ran = []
-
-    allow(integration = build_integration).to receive(:run_mutant) do |mutant:, **_|
-      ran << mutant.subject.expression
-      sleep 0.005
-      mutant.status = :killed
-    end
-
-    engine = described_class.new
-    allow(engine).to receive(:pipe_stdin?).and_return(true)
-
-    t = Thread.new do
-      original = $stdin
-      $stdin = fake_stdin_r
-      engine.run([first, second], integration, config)
-    rescue Interrupt
-      nil
-    ensure
-      $stdin = original
-      fake_stdin_r.close unless fake_stdin_r.closed?
-    end
-
-    # Let workers start, then simulate docker exec disconnect
-    sleep 0.001
-    fake_stdin_w.close
-
-    t.join(2)
-    expect(t.alive?).to be(false)
-  ensure
-    fake_stdin_w.close unless fake_stdin_w.closed?
-    fake_stdin_r.close unless fake_stdin_r.closed?
-  end
-
-  it "does not treat CI stdin as a disconnect signal" do
-    first  = build_mutant(:pending, "Foo#bar")
-    second = build_mutant(:pending, "Foo#baz")
-    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", 2)
-    fake_stdin_r, fake_stdin_w = IO.pipe
-
-    allow(integration = build_integration).to receive(:run_mutant) do |mutant:, **_|
-      sleep 0.005
-      mutant.status = :killed
-    end
-
-    engine = described_class.new
-    allow(engine).to receive(:pipe_stdin?).and_return(true)
-
-    with_env("CI", "true") do
-      t = Thread.new do
-        original = $stdin
-        $stdin = fake_stdin_r
-        engine.run([first, second], integration, config)
-      ensure
-        $stdin = original
-        fake_stdin_r.close unless fake_stdin_r.closed?
-      end
-
-      sleep 0.001
-      fake_stdin_w.close
-
-      t.join(2)
-      expect(t.alive?).to be(false)
-    end
-  ensure
-    fake_stdin_w.close unless fake_stdin_w.closed?
-    fake_stdin_r.close unless fake_stdin_r.closed?
   end
 end

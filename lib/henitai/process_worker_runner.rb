@@ -375,7 +375,7 @@ module Henitai
 
     def record_spawn_failure(mutant, error)
       result = ScenarioExecutionResult.new(
-        status: :killed,
+        status: :compile_error,
         stdout: "",
         stderr: "spawn failed: #{error.message}",
         log_path: "/dev/null",
@@ -416,7 +416,9 @@ module Henitai
     end
 
     def resolve_test_files(mutant)
-      if @options.key?(:test_files)
+      if @options.key?(:test_file_resolver)
+        @options[:test_file_resolver].call(mutant)
+      elsif @options.key?(:test_files)
         @options[:test_files]
       else
         integration.select_tests(mutant.subject)

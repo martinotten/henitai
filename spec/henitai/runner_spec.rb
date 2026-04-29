@@ -1052,5 +1052,66 @@ RSpec.describe Henitai::Runner do
       end
     end
   end
+
+  describe "#dirty_source_files? (private)" do
+    def runner_with_analyzer(analyzer, includes: ["lib"])
+      runner = described_class.new(config: build_config(includes:))
+      allow(runner).to receive(:git_diff_analyzer).and_return(analyzer)
+      runner
+    end
+
+    def stub_analyzer(committed: [])
+      analyzer = instance_double(Henitai::GitDiffAnalyzer)
+      allow(analyzer).to receive(:changed_files).with(from: anything, to: "HEAD").and_return(committed)
+      analyzer
+    end
+
+    it "returns true when a committed source file in includes changed since git_sha" do
+      Dir.mktmpdir do |dir|
+        Dir.chdir(dir) do
+          runner = runner_with_analyzer(stub_analyzer(committed: ["lib/henitai/foo.rb"]))
+          expect(runner.send(:dirty_source_files?, [], git_sha: "abc123")).to be(true)
+        end
+      end
+    end
+
+    it "returns false when only spec files changed since git_sha" do
+      Dir.mktmpdir do |dir|
+        Dir.chdir(dir) do
+          runner = runner_with_analyzer(stub_analyzer(committed: ["spec/henitai/foo_spec.rb"]))
+          expect(runner.send(:dirty_source_files?, [], git_sha: "abc123")).to be(false)
+        end
+      end
+    end
+
+    it "returns false when git_sha is nil and worktree is clean" do
+      Dir.mktmpdir do |dir|
+        Dir.chdir(dir) do
+          runner = described_class.new(config: build_config)
+          expect(runner.send(:dirty_source_files?, [], git_sha: nil)).to be(false)
+        end
+      end
+    end
+
+    it "returns true when git diff raises (conservative fallback)" do
+      Dir.mktmpdir do |dir|
+        Dir.chdir(dir) do
+          analyzer = instance_double(Henitai::GitDiffAnalyzer)
+          allow(analyzer).to receive(:changed_files).and_raise(Henitai::GitDiffError, "fatal")
+          runner = runner_with_analyzer(analyzer)
+          expect(runner.send(:dirty_source_files?, [], git_sha: "abc123")).to be(true)
+        end
+      end
+    end
+
+    it "returns true when dirty_worktree_files is nil regardless of git_sha" do
+      Dir.mktmpdir do |dir|
+        Dir.chdir(dir) do
+          runner = described_class.new(config: build_config)
+          expect(runner.send(:dirty_source_files?, nil, git_sha: "abc123")).to be(true)
+        end
+      end
+    end
+  end
 end
 # rubocop:enable RSpec/ExampleLength

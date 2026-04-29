@@ -414,7 +414,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       results = runner.run([mutant_a, mutant_b, mutant_c], integration, config, nil)
 
       expect(results.size).to eq(3)
-      expect(mutant_b.status).to eq(:killed)
+      expect(mutant_b.status).to eq(:compile_error)
     end
   end
 

@@ -239,7 +239,7 @@ module Henitai
         selected,
         test_filter(
           loaded,
-          dirty_source_files: dirty_source_files?(dirty_worktree_files)
+          dirty_source_files: dirty_source_files?(dirty_worktree_files, git_sha: loaded.git_sha)
         ).apply(selected)
       )
     end
@@ -256,7 +256,7 @@ module Henitai
       selector, stubs = recipe_selector_and_stubs(loaded.survivor_ids, recipes)
       split = test_filter(
         loaded,
-        dirty_source_files: dirty_source_files?(dirty_worktree_files)
+        dirty_source_files: dirty_source_files?(dirty_worktree_files, git_sha: loaded.git_sha)
       ).apply(stubs)
       finalize_survivor_split(selector, stubs, split)
     end
@@ -340,13 +340,21 @@ module Henitai
       nil
     end
 
-    def dirty_source_files?(dirty_worktree_files)
+    def dirty_source_files?(dirty_worktree_files, git_sha: nil)
       return true if dirty_worktree_files.nil?
 
+      all_changed = dirty_worktree_files.dup
+      if git_sha
+        committed = git_diff_analyzer.changed_files(from: git_sha, to: "HEAD")
+        all_changed += committed
+      end
+
       include_roots = Array(config.includes).map { |path| normalize_path(path) }
-      dirty_worktree_files.map { |path| normalize_path(path) }.any? do |path|
+      all_changed.map { |path| normalize_path(path) }.any? do |path|
         include_roots.any? { |root| path == root || path.start_with?("#{root}/") }
       end
+    rescue StandardError
+      true
     end
 
     def warn_survivor_drift(selector)

@@ -552,9 +552,7 @@ module Henitai
     def parallel_execution?: (untyped, Array[Mutant]) -> bool
     def worker_count: (untyped) -> Integer
     def run_linear: (Array[Mutant], untyped, untyped, untyped?, untyped) -> void
-    def run_parallel: (Array[Mutant], untyped, untyped, untyped?, untyped) -> void
-    def pipe_stdin?: () -> bool
-    def start_stdin_watcher: () { () -> void } -> Thread
+    def run_parallel: (Array[Mutant], untyped, untyped, untyped?) -> void
     def process_mutant: (Mutant, untyped, untyped, untyped?, ?untyped) -> void
     def prioritized_tests_for: (Mutant, untyped, untyped) -> Array[String]
     def test_prioritizer: () -> TestPrioritizer
@@ -839,7 +837,7 @@ module Henitai
     def recipe_location: (Hash[String, untyped]?) -> Hash[Symbol, untyped]
     def finalize_survivor_split: (SurvivorSelector, Array[Mutant], Hash[Symbol, Array[Mutant]]) -> Array[Mutant]
     def dirty_worktree_changed_files: () -> Array[String]?
-    def dirty_source_files?: (Array[String]?) -> bool
+    def dirty_source_files?: (Array[String]?, ?git_sha: String?) -> bool
     def warn_survivor_drift: (SurvivorSelector) -> void
     def build_survivor_stats: (SurvivorSelector, Array[Mutant], Hash[Symbol, Array[Mutant]]) -> Hash[Symbol, untyped]
     def test_filter: (SurvivorLoader::Report, ?dirty_source_files: bool) -> SurvivorTestFilter
