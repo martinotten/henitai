@@ -5,6 +5,12 @@ require "tmpdir"
 require "stringio"
 
 RSpec.describe Henitai::CLI do
+  around do |example|
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) { example.run }
+    end
+  end
+
   def write_configuration(dir, reports_dir: "reports")
     path = File.join(dir, ".henitai.yml")
     File.write(
@@ -109,6 +115,12 @@ RSpec.describe Henitai::CLI do
     stdout.string
   ensure
     $stdout = original_stdout
+  end
+
+  it "runs in an isolated working directory" do
+    repo_root = File.expand_path("../..", __dir__)
+
+    expect(Dir.pwd).not_to eq(repo_root)
   end
 
   it "applies CLI overrides after loading the YAML config" do

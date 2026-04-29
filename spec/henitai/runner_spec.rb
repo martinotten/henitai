@@ -739,80 +739,108 @@ RSpec.describe Henitai::Runner do
       result = runner.send(:apply_survivor_selection, [build_mutant_status])
       stats = runner.instance_variable_get(:@survivor_stats)
 
-      expect(result).to eq([stable, pending])
-      expect(stable.status).to eq(:survived)
-      expect(warned).to be(true)
-      expect(stats).to eq(
-        matched: 1,
-        unmatched_count: 1,
-        unmatched_ids: ["missing-id"],
-        skipped_count: 1,
-        drift_warning: true
+      expect(
+        result: result,
+        stable_status: stable.status,
+        warned: warned,
+        stats: stats
+      ).to eq(
+        result: [stable, pending],
+        stable_status: :survived,
+        warned: true,
+        stats: {
+          matched: 1,
+          unmatched_count: 1,
+          unmatched_ids: ["missing-id"],
+          skipped_count: 1,
+          drift_warning: true
+        }
       )
     end
   end
 
   describe "cached activation recipes" do
-    let(:tmpdir) { Dir.mktmpdir }
-    after { FileUtils.rm_rf(tmpdir) }
-
-    let(:report_path) do
-      path = File.join(tmpdir, "mutation-report.json")
-      File.write(path, JSON.generate(
-        "schemaVersion" => "1.0",
-        "files" => { "lib/sample.rb" => { "language" => "ruby", "source" => "", "mutants" => [] } }
-      ))
-      path
-    end
-
-    let(:runner)   { described_class.new(config: build_config(reporters: []), survivors_from: report_path) }
-    let(:loaded)   { build_loaded_survivors(["deadbeef"], coverage_map: { "lib/sample.rb" => [1] }) }
-    let(:selector) { instance_double(Henitai::SurvivorSelector, drift_warning?: false, unmatched_ids: []) }
-    let(:loader)   { instance_double(Henitai::SurvivorLoader, load: loaded) }
-    let(:base_recipe) do
+    def base_recipe
       {
         "activationSource" => "define_method(:value) do\n  2\nend\n",
-        "namespace"        => "Sample",
-        "methodName"       => "value",
-        "sourceFile"       => "lib/sample.rb",
-        "operator"         => "ArithmeticOperator",
-        "description"      => "+ to -",
-        "location"         => {
+        "namespace" => "Sample",
+        "methodName" => "value",
+        "sourceFile" => "lib/sample.rb",
+        "operator" => "ArithmeticOperator",
+        "description" => "+ to -",
+        "location" => {
           "file" => "lib/sample.rb", "startLine" => 1, "endLine" => 1, "startCol" => 0, "endCol" => 5
         }
       }
     end
 
-    # Override recipe and filter per context
+    let(:tmpdir) { Dir.mktmpdir }
+    let(:report_path) do
+      path = File.join(tmpdir, "mutation-report.json")
+      File.write(
+        path,
+        JSON.generate(
+          "schemaVersion" => "1.0",
+          "files" => {
+            "lib/sample.rb" => { "language" => "ruby", "source" => "", "mutants" => [] }
+          }
+        )
+      )
+      path
+    end
     let(:recipe) { base_recipe }
-    let(:filter) { instance_double(Henitai::SurvivorTestFilter, apply: { stable: [build_mutant_status], pending: [] }) }
+    let(:setup) do
+      loaded = build_loaded_survivors(["deadbeef"], coverage_map: { "lib/sample.rb" => [1] })
+      selector = instance_double(Henitai::SurvivorSelector, drift_warning?: false, unmatched_ids: [])
+      loader = instance_double(Henitai::SurvivorLoader, load: loaded)
+      stable = build_mutant_status
+      filter = instance_double(Henitai::SurvivorTestFilter, apply: { stable: [stable], pending: [] })
+      runner = described_class.new(config: build_config(reporters: []), survivors_from: report_path)
+      selected_stubs = nil
 
-    before do
-      @selected_stubs = nil
       allow(Henitai::SurvivorLoader).to receive(:new).and_return(loader)
-      allow(Henitai::SurvivorActivationCache).to receive(:load).and_return("deadbeef" => recipe)
+      allow(Henitai::SurvivorActivationCache).to receive(:load) { { "deadbeef" => recipe } }
       allow(Henitai::SurvivorSelector).to receive(:new).and_return(selector)
       allow(selector).to receive(:select) do |stubs|
-        @selected_stubs = stubs
+        selected_stubs = stubs
         stubs
       end
       allow(runner).to receive(:test_filter).and_return(filter)
+
+      {
+        runner: runner,
+        stable: stable,
+        selected_stubs: lambda {
+          selected_stubs
+        }
+      }
     end
 
+    after { FileUtils.rm_rf(tmpdir) }
+
+    def runner = setup.fetch(:runner)
+    def stable = setup.fetch(:stable)
+    def selected_stubs = setup.fetch(:selected_stubs).call
+
     context "when recipe includes methodType" do
-      let(:stable) { build_mutant_status }
       let(:recipe) { base_recipe.merge("methodType" => "class", "coveredBy" => ["spec/sample_spec.rb"]) }
-      let(:filter) { instance_double(Henitai::SurvivorTestFilter, apply: { stable: [stable], pending: [] }) }
 
       it "maps methodType to symbol on the stub subject" do
         result = runner.send(:try_recipe_run)
-        stub = @selected_stubs.first
+        stub = selected_stubs.first
 
-        expect(result).to eq([stable])
-        expect(stub.subject.method_type).to eq(:class)
-        expect(stub.covered_by).to eq(["spec/sample_spec.rb"])
-        expect(stub.location).to eq(
-          file: "lib/sample.rb", start_line: 1, end_line: 1, start_col: 0, end_col: 5
+        expect(
+          result: result,
+          method_type: stub.subject.method_type,
+          covered_by: stub.covered_by,
+          location: stub.location
+        ).to eq(
+          result: [stable],
+          method_type: :class,
+          covered_by: ["spec/sample_spec.rb"],
+          location: {
+            file: "lib/sample.rb", start_line: 1, end_line: 1, start_col: 0, end_col: 5
+          }
         )
       end
     end
@@ -820,7 +848,7 @@ RSpec.describe Henitai::Runner do
     context "when recipe omits methodType" do
       it "defaults method_type to :instance" do
         runner.send(:try_recipe_run)
-        expect(@selected_stubs.first.subject.method_type).to eq(:instance)
+        expect(selected_stubs.first.subject.method_type).to eq(:instance)
       end
     end
   end
