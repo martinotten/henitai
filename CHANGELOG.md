@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-30
+
 ### Added
 - `--survivors-from <path>` flag on `henitai run` for survivor-only reruns:
   re-execute only the mutants that survived a prior full run without re-running
