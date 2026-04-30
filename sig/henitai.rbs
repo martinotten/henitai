@@ -838,6 +838,8 @@ module Henitai
     def finalize_survivor_split: (SurvivorSelector, Array[Mutant], Hash[Symbol, Array[Mutant]]) -> Array[Mutant]
     def dirty_worktree_changed_files: () -> Array[String]?
     def dirty_source_files?: (Array[String]?, ?git_sha: String?) -> bool
+    def committed_changed_files: (String?) -> Array[String]
+    def in_include_root?: (String, Array[String]) -> bool
     def warn_survivor_drift: (SurvivorSelector) -> void
     def build_survivor_stats: (SurvivorSelector, Array[Mutant], Hash[Symbol, Array[Mutant]]) -> Hash[Symbol, untyped]
     def test_filter: (SurvivorLoader::Report, ?dirty_source_files: bool) -> SurvivorTestFilter

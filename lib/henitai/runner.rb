@@ -249,11 +249,12 @@ module Henitai
     # Returns the mutant array on success, or nil if recipes are unavailable.
     def try_recipe_run
       dirty_worktree_files = dirty_worktree_changed_files
-      loaded  = SurvivorLoader.new(@survivors_from, include_paths: Array(config.includes)).load
-      recipes = load_activation_recipes(loaded.survivor_ids)
+      loaded       = SurvivorLoader.new(@survivors_from, include_paths: Array(config.includes)).load
+      survivor_ids = loaded.survivor_ids
+      recipes      = load_activation_recipes(survivor_ids)
       return nil if recipes.nil?
 
-      selector, stubs = recipe_selector_and_stubs(loaded.survivor_ids, recipes)
+      selector, stubs = recipe_selector_and_stubs(survivor_ids, recipes)
       split = test_filter(
         loaded,
         dirty_source_files: dirty_source_files?(dirty_worktree_files, git_sha: loaded.git_sha)
@@ -343,18 +344,21 @@ module Henitai
     def dirty_source_files?(dirty_worktree_files, git_sha: nil)
       return true if dirty_worktree_files.nil?
 
-      all_changed = dirty_worktree_files.dup
-      if git_sha
-        committed = git_diff_analyzer.changed_files(from: git_sha, to: "HEAD")
-        all_changed += committed
-      end
-
+      all_changed = dirty_worktree_files + committed_changed_files(git_sha)
       include_roots = Array(config.includes).map { |path| normalize_path(path) }
-      all_changed.map { |path| normalize_path(path) }.any? do |path|
-        include_roots.any? { |root| path == root || path.start_with?("#{root}/") }
-      end
+      all_changed.any? { |path| in_include_root?(normalize_path(path), include_roots) }
     rescue StandardError
       true
+    end
+
+    def committed_changed_files(git_sha)
+      return [] unless git_sha
+
+      git_diff_analyzer.changed_files(from: git_sha, to: "HEAD")
+    end
+
+    def in_include_root?(path, include_roots)
+      include_roots.any? { |root| path == root || path.start_with?("#{root}/") }
     end
 
     def warn_survivor_drift(selector)
