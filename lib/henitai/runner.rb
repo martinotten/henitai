@@ -249,17 +249,30 @@ module Henitai
     # Returns the mutant array on success, or nil if recipes are unavailable.
     def try_recipe_run
       dirty_worktree_files = dirty_worktree_changed_files
-      loaded       = SurvivorLoader.new(@survivors_from, include_paths: Array(config.includes)).load
-      survivor_ids = loaded.survivor_ids
-      recipes      = load_activation_recipes(survivor_ids)
+      loaded = load_survivor_report
+      return nil unless recipe_fast_path_safe?(loaded, dirty_worktree_files)
+
+      run_from_recipes(loaded, dirty_worktree_files)
+    end
+
+    def load_survivor_report
+      SurvivorLoader.new(@survivors_from, include_paths: Array(config.includes)).load
+    end
+
+    def run_from_recipes(loaded, dirty_worktree_files)
+      recipes = load_activation_recipes(loaded.survivor_ids)
       return nil if recipes.nil?
 
-      selector, stubs = recipe_selector_and_stubs(survivor_ids, recipes)
+      selector, stubs = recipe_selector_and_stubs(loaded.survivor_ids, recipes)
       split = test_filter(
         loaded,
         dirty_source_files: dirty_source_files?(dirty_worktree_files, git_sha: loaded.git_sha)
       ).apply(stubs)
       finalize_survivor_split(selector, stubs, split)
+    end
+
+    def recipe_fast_path_safe?(loaded, dirty_worktree_files)
+      !dirty_source_files?(dirty_worktree_files, git_sha: loaded.git_sha)
     end
 
     # Builds stub Mutants from recipes and a SurvivorSelector primed with the

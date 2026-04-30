@@ -830,6 +830,9 @@ module Henitai
     def survivor_rerun?: () -> bool
     def apply_survivor_selection: (Array[Mutant]) -> Array[Mutant]
     def try_recipe_run: () -> Array[Mutant]?
+    def load_survivor_report: () -> SurvivorLoader::Report
+    def run_from_recipes: (SurvivorLoader::Report, Array[String]?) -> Array[Mutant]?
+    def recipe_fast_path_safe?: (SurvivorLoader::Report, Array[String]?) -> bool
     def recipe_selector_and_stubs: (Array[String], Hash[String, Hash[String, untyped]]) -> [SurvivorSelector, Array[Mutant]]
     def load_activation_recipes: (Array[String]) -> Hash[String, Hash[String, untyped]]?
     def build_stub_mutant: (String, Hash[String, untyped]) -> Mutant
