@@ -99,6 +99,23 @@ RSpec.describe Henitai::GitDiffAnalyzer do
     end
   end
 
+  it "returns dirty working tree files including untracked ones" do
+    Dir.mktmpdir do |dir|
+      git!(dir, "init")
+      configure_git_identity(dir)
+
+      write_file(dir, "lib/sample.rb", "class Sample; end\n")
+      commit_all(dir, "Initial commit")
+
+      write_file(dir, "lib/sample.rb", "class Sample\n  def answer = 42\nend\n")
+      write_file(dir, "spec/sample_spec.rb", "RSpec.describe Sample do; end\n")
+
+      changed_files = described_class.new.working_tree_changed_files(dir:)
+
+      expect(changed_files).to contain_exactly("lib/sample.rb", "spec/sample_spec.rb")
+    end
+  end
+
   it "returns changed methods between two refs" do
     Dir.mktmpdir do |dir|
       git!(dir, "init")
@@ -200,6 +217,25 @@ RSpec.describe Henitai::GitDiffAnalyzer do
       expect do
         described_class.new.changed_files(from: "HEAD", to: "missing-ref", dir:)
       end.to raise_error(Henitai::GitDiffError, /fatal/i)
+    end
+  end
+
+  describe "#head_sha" do
+    it "returns the HEAD SHA in a git repo" do
+      Dir.mktmpdir do |dir|
+        git!(dir, "init")
+        configure_git_identity(dir)
+        write_file(dir, "lib/sample.rb", "class Sample; end\n")
+        sha = commit_all(dir, "Initial commit")
+
+        expect(described_class.new.head_sha(dir:)).to eq(sha)
+      end
+    end
+
+    it "returns nil when git is unavailable" do
+      analyzer = described_class.new
+      allow(Open3).to receive(:capture3).and_raise(Errno::ENOENT)
+      expect(analyzer.head_sha).to be_nil
     end
   end
 end

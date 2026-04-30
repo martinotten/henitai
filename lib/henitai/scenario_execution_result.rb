@@ -7,7 +7,7 @@ module Henitai
 
     def self.build(wait_result:, stdout:, stderr:, log_path:)
       new(
-        status: status_for(wait_result),
+        status: status_for(wait_result, stdout:, stderr:),
         stdout: stdout,
         stderr: stderr,
         log_path: log_path,
@@ -62,7 +62,7 @@ module Henitai
     end
 
     def should_show_logs?(all_logs: nil)
-      all_logs || timeout?
+      all_logs || timeout? || status == :compile_error
     end
 
     def failure_tail(all_logs: nil, lines: 12)
@@ -77,8 +77,10 @@ module Henitai
     class << self
       private
 
-      def status_for(wait_result)
+      def status_for(wait_result, stdout:, stderr:)
         return :timeout if wait_result == :timeout
+        return :compile_error if no_examples_found?(stdout, stderr)
+        return :compile_error if zero_examples_failure?(wait_result, stdout, stderr)
         return :compile_error if exit_status_for(wait_result) == 2
         return :survived if wait_result.respond_to?(:success?) && wait_result.success?
 
@@ -90,6 +92,17 @@ module Henitai
         return nil unless wait_result.respond_to?(:exitstatus)
 
         wait_result.exitstatus
+      end
+
+      def no_examples_found?(stdout, stderr)
+        stdout.to_s.include?("No examples found.") || stderr.to_s.include?("No examples found.")
+      end
+
+      def zero_examples_failure?(wait_result, stdout, stderr)
+        return false unless exit_status_for(wait_result) == 1
+
+        output = [stdout.to_s, stderr.to_s].join("\n")
+        output.include?("0 examples, 0 failures")
       end
     end
 

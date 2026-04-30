@@ -13,6 +13,8 @@ Today, Henitai always regenerates the current mutant set for the selected subjec
 
 Henitai already persists mutant history for trend tracking, but that history is intentionally separate from the core pass/fail model. This feature would reuse that persisted data as input for a new, explicit rerun mode.
 
+As long as only the test cases change we can assume that the killed mutants want survive because of the changes amde to the tests and become survivors. As this could happen it would speed up killing mutants if we have the ability to re-run only survivors before doing a full run on the code before a commit for validation.
+
 ## Proposed Behavior
 
 A survivor-only rerun should:

@@ -296,6 +296,12 @@ RSpec.describe Henitai::Result do
     )
   end
 
+  it "includes stableId in each mutant entry in the schema" do
+    schema = result([build_mutant(status: :killed)]).to_stryker_schema
+    file_mutants = schema[:files].values.first[:mutants]
+    expect(file_mutants.first[:stableId]).to match(/\A[0-9a-f]{64}\z/)
+  end
+
   it "falls back to the node type when a replacement cannot be unparsed" do
     mutant = unsupported_mutant(status: :pending)
     allow(Unparser).to receive(:unparse).with(mutant.mutated_node).and_raise(StandardError, "boom")
@@ -303,5 +309,84 @@ RSpec.describe Henitai::Result do
     file = schema[:files].keys.first
 
     expect(schema[:files][file][:mutants].first[:replacement]).to eq("dstr")
+  end
+
+  describe "partial rerun" do
+    def partial_result(survivor_stats: nil)
+      described_class.new(
+        mutants: [],
+        started_at: Time.at(0),
+        finished_at: Time.at(1),
+        partial_rerun: true,
+        survivor_stats:
+      )
+    end
+
+    it "is not a partial rerun by default" do
+      expect(result([])).not_to be_partial_rerun
+    end
+
+    it "is a partial rerun when constructed with partial_rerun: true" do
+      expect(partial_result).to be_partial_rerun
+    end
+
+    it "returns nil survivor_stats by default" do
+      expect(result([]).survivor_stats).to be_nil
+    end
+
+    it "returns the provided survivor_stats" do
+      stats = { matched: 3, unmatched_count: 1, unmatched_ids: ["abc"], drift_warning: false }
+      expect(partial_result(survivor_stats: stats).survivor_stats).to eq(stats)
+    end
+
+    it "includes partialRerun: true in the Stryker schema" do
+      expect(partial_result.to_stryker_schema[:partialRerun]).to be(true)
+    end
+
+    it "omits partialRerun from the schema for full runs" do
+      expect(result([]).to_stryker_schema).not_to have_key(:partialRerun)
+    end
+
+    it "includes unmatchedSurvivorIds in the schema when partial" do
+      stats = { matched: 2, unmatched_count: 1, unmatched_ids: ["abc123"], drift_warning: false }
+      schema = partial_result(survivor_stats: stats).to_stryker_schema
+      expect(schema[:unmatchedSurvivorIds]).to eq(["abc123"])
+    end
+
+    it "emits an empty unmatchedSurvivorIds when survivor_stats is nil" do
+      schema = partial_result(survivor_stats: nil).to_stryker_schema
+      expect(schema[:unmatchedSurvivorIds]).to eq([])
+    end
+  end
+
+  describe "session identity" do
+    it "has a session_id that is a UUID" do
+      expect(result([]).session_id).to match(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/)
+    end
+
+    it "accepts a caller-supplied session_id" do
+      r = described_class.new(
+        mutants: [], started_at: Time.at(0), finished_at: Time.at(1),
+        session_id: "fixed-id"
+      )
+      expect(r.session_id).to eq("fixed-id")
+    end
+
+    it "includes sessionId in the schema" do
+      schema = result([]).to_stryker_schema
+      expect(schema[:sessionId]).to match(/\A[0-9a-f]{8}-/)
+    end
+
+    it "includes gitSha in the schema when set" do
+      r = described_class.new(
+        mutants: [], started_at: Time.at(0), finished_at: Time.at(1),
+        git_sha: "abc123def"
+      )
+      expect(r.to_stryker_schema[:gitSha]).to eq("abc123def")
+    end
+
+    it "omits gitSha from the schema when nil" do
+      expect(result([]).to_stryker_schema).not_to have_key(:gitSha)
+    end
   end
 end

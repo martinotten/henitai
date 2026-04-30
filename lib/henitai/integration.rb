@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "stringio"
+require_relative "process_wakeup"
 require_relative "integration/rspec_process_runner"
 
 module Henitai
@@ -108,6 +110,204 @@ module Henitai
       end
     end
 
+    # Shared debug helpers for child-run diagnostics.
+    # Debug helpers are intentionally grouped here so the child-run diagnostics
+    # stay isolated from the main integration flow.
+    # rubocop:disable Metrics/ModuleLength
+    module ChildDebugSupport
+      private
+
+      def run_rspec_runner(test_files)
+        debug_child_puts("[henitai-debug-child] build_rspec_runner_start")
+        runner = build_rspec_runner
+        debug_child_puts("[henitai-debug-child] build_rspec_runner_return")
+        debug_child_puts("[henitai-debug-child] configure_rspec_runner_start")
+        configure_rspec_runner(runner)
+        debug_child_puts("[henitai-debug-child] configure_rspec_runner_return")
+        load_rspec_spec_files(test_files)
+        run_rspec_specs(runner)
+      rescue SystemExit => e
+        debug_child_puts("[henitai-debug-child] runner_run_system_exit status=#{e.status.inspect}")
+        raise
+      ensure
+        debug_child_puts("[henitai-debug-child] runner_run_ensure")
+      end
+
+      def build_rspec_runner
+        # @type var empty_args: Array[String]
+        empty_args = []
+        configuration_options = ::RSpec::Core.const_get(:ConfigurationOptions).new(empty_args)
+        ::RSpec::Core::Runner.__send__(:new, configuration_options)
+      end
+
+      def configure_rspec_runner(runner)
+        debug_child_puts("[henitai-debug-child] trap_interrupt_start")
+        ::RSpec::Core::Runner.__send__(:trap_interrupt)
+        debug_child_puts("[henitai-debug-child] trap_interrupt_return")
+        debug_child_puts("[henitai-debug-child] runner_configure_start")
+        runner.send(:configure, $stderr, $stdout)
+        debug_child_puts("[henitai-debug-child] runner_configure_return")
+      end
+
+      def load_rspec_spec_files(test_files)
+        debug_child_puts("[henitai-debug-child] load_spec_files_start")
+        ::RSpec.__send__(:configuration).files_to_run = test_files.map do |file|
+          File.expand_path(file)
+        end
+        ::RSpec.__send__(:configuration).load_spec_files
+        debug_child_example_count("after_load")
+        debug_child_puts("[henitai-debug-child] load_spec_files_return")
+      end
+
+      def run_rspec_specs(runner)
+        debug_child_puts("[henitai-debug-child] run_specs_start")
+        result = runner.send(:run_specs, ::RSpec.__send__(:world).ordered_example_groups)
+        debug_child_puts("[henitai-debug-child] run_specs_return result=#{result.inspect}")
+        result
+      end
+
+      def debug_child? = ENV["HENITAI_DEBUG_CHILD"] == "1"
+
+      def debug_child_puts(message)
+        $stdout.puts(message)
+        $stdout.flush
+      end
+
+      def debug_child_rspec_trace(test_files:, rspec_options:, rspec_argv:)
+        return unless debug_child?
+
+        files_exist = test_files.map { |f| [f, File.exist?(f)] }.inspect
+        loaded_features = loaded_feature_map(test_files).inspect # steep:ignore Ruby::NoMethod
+
+        debug_child_puts(
+          "[henitai-debug-child] cwd=#{Dir.pwd}\n" \
+          "[henitai-debug-child] files_exist=#{files_exist}\n" \
+          "[henitai-debug-child] loaded_features_check=#{loaded_features}\n" \
+          "[henitai-debug-child] test_files=#{test_files.inspect}\n" \
+          "[henitai-debug-child] rspec_options=#{rspec_options.inspect}\n" \
+          "[henitai-debug-child] rspec_argv=#{rspec_argv.inspect}"
+        )
+      end
+
+      def debug_child_rspec_exit(status)
+        return unless debug_child?
+
+        debug_child_puts("[henitai-debug-child] RSpec result=#{status.inspect}")
+      end
+
+      def suppress_simplecov!
+        CoverageRuntimeSuppressors.suppress_simplecov!
+      end
+
+      def suppress_coverage!
+        CoverageRuntimeSuppressors.suppress_coverage!
+      end
+
+      def debug_child_example_count(stage) # steep:ignore Ruby::UndeclaredMethodDefinition
+        return unless debug_child?
+
+        count = rspec_world_example_count
+        debug_child_puts(
+          "[henitai-debug-child] rspec_world_example_count_#{stage}=#{count.inspect}"
+        )
+      end
+
+      def debug_child_activation_start(mutant_id)
+        return unless debug_child?
+
+        debug_child_puts("[henitai-debug-child] activate_start mutant=#{mutant_id}")
+      end
+
+      def debug_child_activation_end(activation_result, test_files:)
+        return unless debug_child?
+
+        debug_child_puts(
+          "[henitai-debug-child] activate_end result=#{activation_result.inspect}\n" \
+          "[henitai-debug-child] run_tests_start test_files=#{test_files.inspect}"
+        )
+      end
+
+      def debug_child_mutant_meta(mutant)
+        stable_id = mutant.respond_to?(:stable_id) ? mutant.stable_id : nil
+        operator = mutant.respond_to?(:operator) ? mutant.operator : nil
+        has_subject_expression =
+          mutant.respond_to?(:subject) && mutant.subject.respond_to?(:expression)
+        subject_expression = has_subject_expression ? mutant.subject.expression : nil
+        location = mutant.respond_to?(:location) ? mutant.location.inspect : nil
+
+        debug_child_puts(
+          "[henitai-debug-child] mutant_meta stableId=#{stable_id}\n" \
+          "[henitai-debug-child] mutant_meta operator=#{operator}\n" \
+          "[henitai-debug-child] mutant_meta subject=#{subject_expression}\n" \
+          "[henitai-debug-child] mutant_meta location=#{location}\n"
+        )
+      end
+
+      def debug_child_activation_check
+        location = begin
+          Henitai::Runner.instance_method(:resolve_subjects).source_location&.join(":")
+        rescue StandardError
+          nil
+        end
+
+        debug_child_puts(
+          "[henitai-debug-child] activation_check resolve_subjects_location=#{location}\n"
+        )
+      end
+
+      def loaded_feature_map(test_files) = test_files.map { |file| [file, loaded_feature?(file)] } # steep:ignore Ruby::UndeclaredMethodDefinition
+
+      def loaded_feature?(file) # steep:ignore Ruby::UndeclaredMethodDefinition
+        expanded = File.expand_path(file)
+        candidates = [expanded, "#{expanded}.rb", file, "#{file}.rb"].uniq
+        $LOADED_FEATURES.any? do |feature|
+          normalized = begin
+            File.expand_path(feature)
+          rescue StandardError
+            feature
+          end
+          candidates.include?(feature) || candidates.include?(normalized)
+        end
+      end
+
+      def rspec_world_example_count # steep:ignore Ruby::UndeclaredMethodDefinition
+        world = ::RSpec.__send__(:world)
+        world.example_count
+      rescue StandardError
+        nil
+      end
+
+      def debug_child_timeout_dump(pid)
+        return unless debug_child?
+
+        debug_child_puts("[henitai-debug-child] timeout_signal_sent pid=#{pid}")
+        Process.kill(:USR1, pid)
+        pause(0.2)
+      rescue Errno::ESRCH
+        nil
+      end
+
+      def install_debug_timeout_trap
+        Signal.trap("USR1") { debug_child_thread_dump("timeout") }
+      end
+
+      def debug_child_thread_dump(reason)
+        return unless debug_child?
+
+        debug_child_puts("[henitai-debug-child] thread_dump reason=#{reason}")
+        Thread.list.each_with_index do |thread, index|
+          debug_child_puts(
+            "[henitai-debug-child] thread index=#{index} id=#{thread.object_id} " \
+            "status=#{thread.status.inspect}"
+          )
+          Array(thread.backtrace).each do |line|
+            debug_child_puts("[henitai-debug-child]   #{line}")
+          end
+        end
+      end
+    end
+    # rubocop:enable Metrics/ModuleLength
+
     # Integration adapter for RSpec.
     #
     # This class exists as the stable public entry point for the RSpec
@@ -127,6 +327,8 @@ module Henitai
 
     # Base class for all integrations.
     class Base
+      include ChildDebugSupport
+
       # @param subject [Subject]
       # @return [Array<String>] paths to test files that cover this subject
       def select_tests(subject)
@@ -148,26 +350,33 @@ module Henitai
         raise NotImplementedError
       end
 
+      # Fork a child process for the mutant without waiting for it to finish.
+      # Returns a ChildHandle carrying the OS pid and log file paths.
+      # The caller is responsible for waiting and cleanup.
+      #
+      # @param mutant [Mutant]
+      # @param test_files [Array<String>]
+      # @return [RspecProcessRunner::ChildHandle]
+      def spawn_mutant(mutant:, test_files:)
+        raise NotImplementedError
+      end
+
       def per_test_coverage_supported?
         false
       end
 
       def wait_with_timeout(pid, timeout)
-        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+        wakeup = Henitai.const_get(:ProcessWakeup).new.install
+        return Process.last_status if wait_nonblocking(pid)
 
-        loop do
-          wait_result = Process.wait(pid, Process::WNOHANG)
-          return Process.last_status if wait_result
+        wakeup.wait(timeout)
+        wakeup.drain
+        return Process.last_status if wait_nonblocking(pid)
+        return Process.last_status if wait_nonblocking(pid)
 
-          if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
-            final_wait_result = Process.wait(pid, Process::WNOHANG)
-            return Process.last_status if final_wait_result
-
-            return handle_timeout(pid)
-          end
-
-          pause(0.01)
-        end
+        handle_timeout(pid)
+      ensure
+        wakeup&.close
       end
 
       def reap_child(pid)
@@ -177,13 +386,22 @@ module Henitai
       end
 
       def cleanup_process_group(pid)
+        grace_period = 2.0
+        wakeup = Henitai.const_get(:ProcessWakeup).new.install
         Process.kill(:SIGTERM, -pid)
-        pause(2.0)
+        return if wait_nonblocking(pid)
+
+        wakeup.wait(grace_period)
+        wakeup.drain
+        return if wait_nonblocking(pid)
+
         Process.kill(:SIGKILL, -pid)
       rescue Errno::EPERM
         cleanup_child_process(pid)
       rescue Errno::ESRCH
         nil
+      ensure
+        wakeup&.close
       end
 
       private
@@ -194,6 +412,7 @@ module Henitai
 
       def handle_timeout(pid)
         begin
+          debug_child_timeout_dump(pid)
           cleanup_process_group(pid)
         ensure
           reap_child(pid)
@@ -202,19 +421,30 @@ module Henitai
       end
 
       def cleanup_child_process(pid)
+        grace_period = 2.0
+        wakeup = Henitai.const_get(:ProcessWakeup).new.install
         Process.kill(:SIGTERM, pid)
-        pause(2.0)
+        return if wait_nonblocking(pid)
+
+        wakeup.wait(grace_period)
+        wakeup.drain
+        return if wait_nonblocking(pid)
+
         Process.kill(:SIGKILL, pid)
       rescue Errno::EPERM, Errno::ESRCH
         nil
-      end
-
-      def rspec_options
-        []
+      ensure
+        wakeup&.close
       end
 
       def subprocess_env
         { "PARALLEL_WORKERS" => "1" }
+      end
+
+      def wait_nonblocking(pid)
+        Process.wait(pid, Process::WNOHANG)
+      rescue Errno::ECHILD, Errno::ESRCH
+        nil
       end
 
       def scenario_log_support
@@ -238,6 +468,42 @@ module Henitai
             ENV.delete(key)
           else
             ENV[key] = value
+          end
+        end
+      end
+
+      def with_non_interactive_stdin
+        original_stdin = $stdin
+        $stdin = StringIO.new
+        yield
+      ensure
+        $stdin = original_stdin
+      end
+
+      def run_tests(test_files)
+        require "rspec/core"
+        ::RSpec.__send__(:configuration).fail_if_no_examples = true
+        debug_child_rspec_trace(test_files:, rspec_options: [], rspec_argv: test_files)
+        debug_child_example_count("before_run") # steep:ignore Ruby::NoMethod
+        debug_child_puts("[henitai-debug-child] runner_run_start")
+        status = run_rspec_runner(test_files)
+        debug_child_puts("[henitai-debug-child] runner_run_return status=#{status.inspect}")
+        debug_child_example_count("after_run") # steep:ignore Ruby::NoMethod
+        debug_child_rspec_exit(status)
+        return status if status.is_a?(Integer)
+
+        status == true ? 0 : 1
+      end
+
+      def run_child_activation_and_tests(mutant:, test_files:, log_paths:)
+        scenario_log_support.with_coverage_dir(mutant.id) do
+          scenario_log_support.capture_child_output(log_paths) do
+            debug_child_mutant_meta(mutant) if debug_child?
+            debug_child_activation_start(mutant.id)
+            activation_result = Mutant::Activator.activate!(mutant)
+            debug_child_activation_check if debug_child?
+            debug_child_activation_end(activation_result, test_files:)
+            activation_result == :compile_error ? 2 : run_tests(test_files)
           end
         end
       end
@@ -268,8 +534,11 @@ module Henitai
         fallback_spec_files(subject)
       end
 
-      def test_files
-        spec_files
+      def test_files = spec_files
+
+      def spawn_mutant(mutant:, test_files:)
+        log_paths = scenario_log_paths(mutant_log_name(mutant))
+        RspecProcessRunner.new.spawn_mutant(self, mutant:, test_files:, log_paths:)
       end
 
       def run_mutant(mutant:, test_files:, timeout:)
@@ -288,18 +557,30 @@ module Henitai
         [
           "bundle", "exec", "ruby",
           "-r", "henitai/rspec_coverage_formatter",
-          "-S", "rspec", *test_files,
-          "--format", "progress",
-          "--format", "Henitai::CoverageFormatter"
+          "-e", rspec_suite_runner_script,
+          *test_files
         ]
       end
 
-      def run_tests(test_files)
-        require "rspec/core"
-        status = RSpec::Core::Runner.run(test_files + rspec_options)
-        return status if status.is_a?(Integer)
+      def rspec_suite_runner_script
+        <<~RUBY
+          require "rspec/core"
 
-        status == true ? 0 : 1
+          test_files = ARGV.map { |file| File.expand_path(file) }
+          config = RSpec.configuration
+          options = RSpec::Core::ConfigurationOptions.new(
+            ["--format", "progress", "--format", "Henitai::CoverageFormatter"]
+          )
+          runner = RSpec::Core::Runner.send(:new, options)
+
+          RSpec::Core::Runner.send(:trap_interrupt)
+          runner.send(:configure, $stderr, $stdout)
+          config.files_to_run = test_files
+          config.load_spec_files
+
+          status = runner.send(:run_specs, RSpec.world.ordered_example_groups)
+          exit(status.is_a?(Integer) ? status : (status == true ? 0 : 1))
+        RUBY
       end
 
       def scenario_log_paths(name)
@@ -326,8 +607,10 @@ module Henitai
       end
 
       def spec_files
-        paths = Dir.glob("spec/**/*_spec.rb")
-        paths - excluded_spec_files
+        @spec_files ||= begin
+          paths = Dir.glob("spec/**/*_spec.rb")
+          paths - excluded_spec_files
+        end
       end
 
       def fallback_spec_files(subject)
@@ -343,7 +626,7 @@ module Henitai
       end
 
       def excluded_spec_files
-        rspec_exclude_patterns.flat_map { |pattern| Dir.glob(pattern) }.uniq
+        @excluded_spec_files ||= rspec_exclude_patterns.flat_map { |pattern| Dir.glob(pattern) }.uniq
       end
 
       def rspec_exclude_patterns
@@ -441,14 +724,17 @@ module Henitai
       def run_in_child(mutant:, test_files:, log_paths:)
         Thread.report_on_exception = false
         with_subprocess_env do
-          scenario_log_support.with_coverage_dir(mutant.id) do
-            scenario_log_support.capture_child_output(log_paths) do
-              return 2 if Mutant::Activator.activate!(mutant) == :compile_error
-
-              run_tests(test_files)
-            end
+          suppress_simplecov!
+          suppress_coverage!
+          install_debug_timeout_trap if debug_child?
+          with_non_interactive_stdin do
+            run_child_activation_and_tests(mutant:, test_files:, log_paths:)
           end
         end
+      end
+
+      def mutant_log_name(mutant)
+        "mutant-#{mutant.id}"
       end
 
       def read_log_file(path)
@@ -497,6 +783,38 @@ module Henitai
       def start(*_args) = nil
     end
 
+    # Suppresses expensive and irrelevant coverage startup/teardown during
+    # mutant child runs. Coverage artifacts are only required during the
+    # dedicated bootstrap phase.
+    module CoverageRuntimeSuppressors
+      def self.suppress_simplecov!
+        require "simplecov"
+        sc = Object.const_get(:SimpleCov) # steep:ignore Ruby::UnknownConstant
+        sc.external_at_exit = true if sc.respond_to?(:external_at_exit=)
+        return if sc.singleton_class.ancestors.include?(SimpleCovStartSuppressor)
+
+        sc.singleton_class.prepend(SimpleCovStartSuppressor)
+      rescue LoadError, NameError
+        nil
+      end
+
+      def self.suppress_coverage!
+        require "coverage"
+        cov = Object.const_get(:Coverage) # steep:ignore Ruby::UnknownConstant
+        return if cov.singleton_class.ancestors.include?(CoverageStartSuppressor)
+
+        cov.singleton_class.prepend(CoverageStartSuppressor)
+      rescue LoadError, NameError
+        nil
+      end
+    end
+
+    # Prepended onto the coverage gem's Coverage singleton to turn start
+    # into a no-op during mutant child runs.
+    module CoverageStartSuppressor
+      def start(*_args) = nil
+    end
+
     # Minitest integration adapter.
     #
     # Coverage formatter injection remains implemented in the RSpec child
@@ -508,6 +826,11 @@ module Henitai
       end
 
       def run_mutant(mutant:, test_files:, timeout:)
+        setup_load_path
+        super
+      end
+
+      def spawn_mutant(mutant:, test_files:)
         setup_load_path
         super
       end
@@ -539,6 +862,7 @@ module Henitai
 
       def run_tests(test_files)
         suppress_simplecov!
+        suppress_minitest_autorun!
         test_files.each { |file| require File.expand_path(file) }
         # @type var empty_args: Array[String]
         empty_args = []
@@ -558,12 +882,36 @@ module Henitai
         $LOAD_PATH.unshift(test_dir) unless $LOAD_PATH.include?(test_dir)
       end
 
+      def suppress_minitest_autorun!
+        require "minitest"
+        singleton_class = ::Minitest.singleton_class
+        suppressor = @minitest_autorun_suppressor ||= Module.new.tap do |mod|
+          mod.define_method(:autorun) { nil }
+        end
+        return if singleton_class.ancestors.include?(suppressor)
+
+        singleton_class.prepend(suppressor)
+        nil
+      rescue LoadError, NameError
+        nil
+      end
+
       def suppress_simplecov!
         require "simplecov"
         sc = Object.const_get(:SimpleCov) # steep:ignore Ruby::UnknownConstant
         return if sc.singleton_class.ancestors.include?(SimpleCovStartSuppressor)
 
         sc.singleton_class.prepend(SimpleCovStartSuppressor)
+      rescue LoadError, NameError
+        nil
+      end
+
+      def suppress_coverage!
+        require "coverage"
+        cov = Object.const_get(:Coverage) # steep:ignore Ruby::UnknownConstant
+        return if cov.singleton_class.ancestors.include?(CoverageStartSuppressor)
+
+        cov.singleton_class.prepend(CoverageStartSuppressor)
       rescue LoadError, NameError
         nil
       end

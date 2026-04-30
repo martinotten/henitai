@@ -17,6 +17,12 @@ RSpec.describe "Integration smoke projects" do
     expect(status.success?).to be(true), [stdout, stderr].reject(&:empty?).join("\n")
   end
 
+  it "runs the dogfood rspec smoke path through rake" do
+    stdout, stderr, status = run_task("smoke:integration:dogfood_rspec")
+
+    expect(status.success?).to be(true), [stdout, stderr].reject(&:empty?).join("\n")
+  end
+
   it "runs the minitest smoke project through rake" do
     stdout, stderr, status = run_task("smoke:integration:minitest")
 

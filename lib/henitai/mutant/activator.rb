@@ -6,6 +6,7 @@ require "unparser"
 module Henitai
   class Mutant
     # Activates a mutant inside the forked child process.
+    # rubocop:disable Metrics/ClassLength
     class Activator
       # Filters "already initialized constant" C-level warnings that fire when
       # a source file is loaded into a process that already has the constant
@@ -38,16 +39,26 @@ module Henitai
         new.activate!(mutant)
       end
 
+      # Returns the +define_method+ source string for +mutant+ without
+      # actually evaluating it. Used to pre-compute activation recipes.
+      # Returns nil if the source cannot be computed (e.g. unsupported AST node).
+      def self.activation_source_for(mutant)
+        new.send(:method_source, mutant)
+      rescue StandardError
+        nil
+      end
+
       def activate!(mutant)
         subject = mutant.subject
         raise ArgumentError, "Cannot activate wildcard subjects" if subject.method_name.nil?
 
+        source = mutant.precomputed_activation_source || method_source(mutant)
         target = target_for(subject)
         Henitai::WarningSilencer.silence do
-          target.class_eval(method_source(mutant), __FILE__, __LINE__ + 1)
+          target.class_eval(source, __FILE__, __LINE__ + 1)
           nil
         end
-      rescue Unparser::UnsupportedNodeError
+      rescue Unparser::UnsupportedNodeError, SyntaxError
         :compile_error
       end
 
@@ -266,5 +277,6 @@ module Henitai
         raise Unparser::UnsupportedNodeError, e.message
       end
     end
+    # rubocop:enable Metrics/ClassLength
   end
 end

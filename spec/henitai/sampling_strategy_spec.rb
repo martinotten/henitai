@@ -60,9 +60,23 @@ RSpec.describe Henitai::SamplingStrategy do
 
   it "rejects unsupported sampling strategies" do
     mutants = [mutant("Sample#alpha", "alpha-1", 1)]
+    unsupported_strategy = Class.new do
+      def to_s = "custom-strategy"
+    end.new
 
     expect do
-      described_class.new.sample(mutants, ratio: 0.5, strategy: :random)
-    end.to raise_error(ArgumentError, /Unsupported sampling strategy/)
+      described_class.new.sample(mutants, ratio: 0.5, strategy: unsupported_strategy)
+    end.to raise_error(ArgumentError, "Unsupported sampling strategy: custom-strategy")
+  end
+
+  it "accepts a string strategy name" do
+    mutants = [
+      mutant("Sample#alpha", "alpha-1", 1),
+      mutant("Sample#alpha", "alpha-2", 2)
+    ]
+
+    sampled = described_class.new.sample(mutants, ratio: 0.5, strategy: "stratified")
+
+    expect(sampled.map(&:description)).to eq(%w[alpha-1])
   end
 end

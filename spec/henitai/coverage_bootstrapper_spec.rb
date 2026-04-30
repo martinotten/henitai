@@ -27,10 +27,19 @@ RSpec.describe Henitai::CoverageBootstrapper do
   def write_partial_coverage_report(dir, source_a)
     report = File.join(dir, "reports/coverage/.resultset.json")
     FileUtils.mkdir_p(File.dirname(report))
-    sleep 0.01
     File.write(report, {
       "Minitest" => { "coverage" => { File.expand_path(source_a) => { "lines" => [nil, 1] } } }
     }.to_json)
+    bump_mtime(report)
+  end
+
+  def bump_mtime(path)
+    time = Time.now + 10
+    File.utime(time, time, path)
+  end
+
+  def set_mtime(path, time)
+    File.utime(time, time, path)
   end
 
   def build_bootstrapper(static_filter:, per_test_coverage_available: true)
@@ -99,9 +108,10 @@ RSpec.describe Henitai::CoverageBootstrapper do
   end
 
   def write_workspace_reports(paths)
-    sleep 0.01
     File.write(paths[:report], "{}")
     File.write(paths[:per_test_report], "{}")
+    bump_mtime(paths[:report])
+    bump_mtime(paths[:per_test_report])
   end
 
   def build_scoped_bootstrap_integration(scoped_spec, full_spec)
@@ -295,7 +305,6 @@ RSpec.describe Henitai::CoverageBootstrapper do
 
       File.write(source, "class Sample; end\n")
       File.write(spec, "# test\n")
-      sleep 0.01
       File.write(
         report,
         {
@@ -308,6 +317,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
           }
         }.to_json
       )
+      bump_mtime(report)
 
       config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
       static_filter = instance_double(Henitai::StaticFilter)
@@ -342,20 +352,16 @@ RSpec.describe Henitai::CoverageBootstrapper do
 
       File.write(source, "class Sample; end\n")
       File.write(spec, "# spec\n")
-      sleep 0.01
       File.write(coverage_report, "{}")
       File.write(per_test_report, "{}")
+      bump_mtime(coverage_report)
+      bump_mtime(per_test_report)
 
       static_filter = instance_double(Henitai::StaticFilter)
-      integration = instance_double(
-        Henitai::Integration::Rspec,
-        test_files: [spec],
-        per_test_coverage_supported?: true
-      )
       bootstrapper = build_bootstrapper(static_filter:)
 
       expect(
-        bootstrapper.send(:watched_files_fresh?, coverage_report, [source], integration, nil)
+        bootstrapper.send(:watched_files_fresh?, coverage_report, [source], nil)
       ).to be(true)
     end
   end
@@ -373,16 +379,12 @@ RSpec.describe Henitai::CoverageBootstrapper do
 
       File.write(source, "class Sample; end\n")
       File.write(spec, "# spec\n")
-      sleep 0.01
       File.write(coverage_report, "{}")
       File.write(per_test_report, "{}")
+      bump_mtime(coverage_report)
+      bump_mtime(per_test_report)
 
       static_filter = instance_double(Henitai::StaticFilter)
-      integration = instance_double(
-        Henitai::Integration::Rspec,
-        test_files: [spec],
-        per_test_coverage_supported?: true
-      )
       bootstrapper = build_bootstrapper(static_filter:)
 
       expect(
@@ -390,7 +392,6 @@ RSpec.describe Henitai::CoverageBootstrapper do
           :watched_files_fresh?,
           per_test_report,
           [source],
-          integration,
           nil
         )
       ).to be(true)
@@ -414,8 +415,8 @@ RSpec.describe Henitai::CoverageBootstrapper do
 
         File.write(source, "class Sample; end")
         File.write(spec,   "# spec")
-        sleep 0.01
         File.write(report, "{}")
+        bump_mtime(report)
 
         config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
         static_filter = instance_double(Henitai::StaticFilter)
@@ -448,8 +449,8 @@ RSpec.describe Henitai::CoverageBootstrapper do
 
         File.write(source, "class Sample; end")
         File.write(spec,   "# spec")
-        sleep 0.01
         File.write(report, "{}") # fresh but empty — no coverage for source
+        bump_mtime(report)
 
         config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
         static_filter = instance_double(Henitai::StaticFilter)
@@ -489,8 +490,9 @@ RSpec.describe Henitai::CoverageBootstrapper do
 
         # Write report before source so source is newer
         File.write(report, "{}")
-        sleep 0.01
         File.write(source, "class Sample; end")
+        set_mtime(report, Time.now - 10)
+        bump_mtime(source)
 
         config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
         static_filter = instance_double(Henitai::StaticFilter)
@@ -526,8 +528,9 @@ RSpec.describe Henitai::CoverageBootstrapper do
 
         # Write report before spec so spec is newer
         File.write(report, "{}")
-        sleep 0.01
         File.write(spec, "# updated spec")
+        set_mtime(report, Time.now - 10)
+        bump_mtime(spec)
 
         config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
         static_filter = instance_double(Henitai::StaticFilter)
@@ -562,8 +565,8 @@ RSpec.describe Henitai::CoverageBootstrapper do
 
         File.write(source, "class Sample; end")
         File.write(spec,   "# spec")
-        sleep 0.01
         File.write(report, "{}")
+        bump_mtime(report)
         # ghost is never created — simulates a deleted file in the watch list
 
         config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
@@ -615,6 +618,43 @@ RSpec.describe Henitai::CoverageBootstrapper do
       expect(integration).to have_received(:run_suite).with(["spec/sample_spec.rb"])
     end
 
+    it "discovers integration.test_files once when test_files are omitted" do
+      Dir.mktmpdir do |dir|
+        source = File.join(dir, "lib/sample.rb")
+        spec = File.join(dir, "spec/sample_spec.rb")
+
+        FileUtils.mkdir_p(File.dirname(source))
+        FileUtils.mkdir_p(File.dirname(spec))
+
+        File.write(source, "class Sample; end\n")
+        File.write(spec, "# spec\n")
+
+        config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
+        static_filter = instance_double(Henitai::StaticFilter)
+        integration = instance_double(
+          Henitai::Integration::Rspec,
+          per_test_coverage_supported?: false
+        )
+        bootstrapper = build_bootstrapper(static_filter:)
+
+        allow(static_filter).to receive(:coverage_lines_for).and_return(
+          { File.expand_path(source) => [1] }
+        )
+        allow(integration).to receive_messages(
+          test_files: [spec],
+          run_suite: :survived
+        )
+
+        bootstrapper.ensure!(
+          source_files: [source],
+          config:,
+          integration:
+        )
+
+        expect(integration).to have_received(:test_files).once
+      end
+    end
+
     it "uses integration.test_files when test_files is nil" do
       static_filter = instance_double(Henitai::StaticFilter)
       integration = build_integration(
@@ -651,11 +691,11 @@ RSpec.describe Henitai::CoverageBootstrapper do
 
         File.write(source,      "class Sample; end")
         File.write(scoped_spec, "# scoped spec")
-        sleep 0.01
         File.write(report, "{}")
         # unrelated spec is newer — written after the report
-        sleep 0.01
         File.write(unrelated, "# unrelated newer spec")
+        bump_mtime(report)
+        bump_mtime(unrelated)
 
         config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
         static_filter = instance_double(Henitai::StaticFilter)

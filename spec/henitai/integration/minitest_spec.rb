@@ -439,11 +439,26 @@ RSpec.describe Henitai::Integration::Minitest do
         3,
         [
           [:require, "simplecov"],
+          [:require, "minitest"],
           [:require, sample_test_path],
           [:minitest, []]
         ]
       ]
     )
+  end
+
+  it "prepends a suppressor to minitest autorun" do
+    integration = described_class.new
+    singleton_class = Minitest.singleton_class
+    prepended = []
+    allow(singleton_class).to receive(:ancestors).and_return([])
+    allow(singleton_class).to receive(:prepend) do |mod|
+      prepended << mod
+    end
+
+    integration.send(:suppress_minitest_autorun!)
+
+    expect(prepended.first.instance_methods(false)).to eq([:autorun])
   end
 
   it "returns zero when Minitest.run succeeds" do

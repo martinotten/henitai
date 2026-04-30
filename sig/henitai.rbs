@@ -73,6 +73,38 @@ module Henitai
   module Operators
   end
 
+  module Integration::ChildDebugSupport
+    private
+
+    def run_rspec_runner: (Array[String]) -> untyped
+    def build_rspec_runner: () -> untyped
+    def configure_rspec_runner: (untyped) -> void
+    def load_rspec_spec_files: (Array[String]) -> void
+    def run_rspec_specs: (untyped) -> untyped
+    def debug_child_timeout_dump: (Integer) -> void
+    def install_debug_timeout_trap: () -> void
+    def debug_child_thread_dump: (String) -> void
+    def debug_child_puts: (String) -> void
+    def debug_child?: () -> bool
+    def debug_child_rspec_trace: (
+      test_files: Array[String],
+      rspec_options: Array[String],
+      rspec_argv: Array[String]
+    ) -> void
+    def debug_child_rspec_exit: (untyped) -> void
+    def debug_child_example_count: (String) -> void
+    def debug_child_activation_start: (String) -> void
+    def debug_child_activation_end: (untyped, test_files: Array[String]) -> void
+    def debug_child_mutant_meta: (Mutant) -> void
+    def debug_child_activation_check: () -> void
+    def suppress_simplecov!: () -> void
+    def suppress_coverage!: () -> void
+    def loaded_feature_map: (Array[String]) -> Array[[String, bool]]
+    def loaded_feature?: (String) -> bool
+    def rspec_world_example_count: () -> Integer?
+    def pause: (Float) -> void
+  end
+
   class Configuration
     DEFAULT_TIMEOUT: Float
     DEFAULT_OPERATORS: Symbol
@@ -174,8 +206,11 @@ module Henitai
     attr_accessor duration: Float?
     attr_accessor covered_by: Array[String]?
     attr_accessor tests_completed: Integer?
+    attr_reader precomputed_stable_id: String?
+    attr_reader precomputed_activation_source: String?
 
-    def initialize: (subject: Subject, operator: String, nodes: Hash[Symbol, untyped], description: String, location: Hash[Symbol, untyped]) -> void
+    def initialize: (subject: Subject, operator: String, nodes: Hash[Symbol, untyped], description: String, location: Hash[Symbol, untyped], ?precomputed_stable_id: String?, ?precomputed_activation_source: String?) -> void
+    def stable_id: () -> String
     def killed?: () -> bool
     def survived?: () -> bool
     def pending?: () -> bool
@@ -259,9 +294,12 @@ module Henitai
     def self.for: (String) -> untyped
 
     class Base
+      include ChildDebugSupport
+
       def select_tests: (Subject) -> Array[String]
       def test_files: () -> Array[String]
       def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
+      def spawn_mutant: (mutant: Mutant, test_files: Array[String]) -> ChildHandle
       def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
       def per_test_coverage_supported?: () -> bool
       def wait_with_timeout: (Integer, Float) -> untyped
@@ -271,9 +309,26 @@ module Henitai
       private
 
       def pause: (Float) -> void
+      def wait_nonblocking: (Integer) -> untyped
       def handle_timeout: (Integer) -> Symbol
       def cleanup_child_process: (Integer) -> void
-      def rspec_options: () -> Array[String]
+      def suppress_simplecov!: () -> void
+      def suppress_coverage!: () -> void
+      def run_tests: (Array[String]) -> Integer
+      def debug_child?: () -> bool
+      def debug_child_puts: (String) -> void
+      def debug_child_rspec_trace: (test_files: Array[String], rspec_options: Array[String], rspec_argv: Array[String]) -> void
+      def debug_child_rspec_exit: (untyped status) -> void
+      def debug_child_activation_start: (String mutant_id) -> void
+      def debug_child_activation_end: (untyped activation_result, test_files: Array[String]) -> void
+      def debug_child_mutant_meta: (Mutant) -> void
+      def debug_child_activation_check: () -> void
+      def debug_child_example_count: (String) -> void
+      def loaded_feature_map: (Array[String]) -> Array[[String, bool]]
+      def loaded_feature?: (String) -> bool
+      def rspec_world_example_count: () -> Integer?
+      def run_child_activation_and_tests: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
+      def with_non_interactive_stdin: () { () -> untyped } -> untyped
       def subprocess_env: () -> Hash[String, String]
       def scenario_log_support: () -> ScenarioLogSupport
       def with_subprocess_env: () { () -> untyped } -> untyped
@@ -303,9 +358,25 @@ module Henitai
       def stderr_stream: () -> IO
     end
 
+    module SchedulerDiagnostics
+      def self.enabled?: () -> bool
+      def self.child_started: (Integer?) -> void
+      def self.child_ended: (Integer?) -> void
+      def self.summary: () -> Hash[Symbol, untyped]
+      def self.reset!: () -> void
+    end
+
+    class ChildHandle
+      attr_accessor pid: Integer?
+      attr_accessor log_paths: Hash[Symbol, String]
+
+      def initialize: (pid: Integer?, log_paths: Hash[Symbol, String]) -> void
+    end
+
     class RspecProcessRunner
       def run_mutant: (Rspec, mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
       def run_suite: (Rspec, Array[String], timeout: Float) -> ScenarioExecutionResult
+      def spawn_mutant: (Rspec, mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> ChildHandle
     end
 
     class Rspec < Base
@@ -315,13 +386,21 @@ module Henitai
       def select_tests: (Subject) -> Array[String]
       def test_files: () -> Array[String]
       def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
+      def spawn_mutant: (mutant: Mutant, test_files: Array[String]) -> ChildHandle
       def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
       def per_test_coverage_supported?: () -> bool
 
       private
 
+      def mutant_log_name: (Mutant) -> String
       def run_in_child: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
+      def suppress_simplecov!: () -> void
+      def suppress_coverage!: () -> void
+      def install_debug_timeout_trap: () -> void
+      def debug_child_thread_dump: (String) -> void
+      def debug_child_example_count: (String) -> void
       def suite_command: (Array[String]) -> Array[String]
+      def rspec_suite_runner_script: () -> String
       def build_result: (untyped, Hash[Symbol, String]) -> ScenarioExecutionResult
       def scenario_status: (untyped) -> Symbol
       def exit_status_for: (untyped) -> Integer?
@@ -342,17 +421,29 @@ module Henitai
       def requires_source_file_transitively?: (String, String, ?Array[String]) -> bool
       def required_files: (String) -> Array[String]
       def resolve_required_file: (String, String, String) -> String?
+      def loaded_feature_map: (Array[String]) -> Array[[String, bool]]
+      def loaded_feature?: (String) -> bool
       def relative_candidates: (String, String) -> Array[String]
       def require_candidates: (String, String) -> Array[String]
       def expand_candidates: (String, String) -> Array[String]
+    end
+
+    module CoverageRuntimeSuppressors
+      def self.suppress_simplecov!: () -> void
+      def self.suppress_coverage!: () -> void
     end
 
     module SimpleCovStartSuppressor
       def start: (*untyped) -> nil
     end
 
+    module CoverageStartSuppressor
+      def start: (*untyped) -> nil
+    end
+
     class Minitest < Rspec
       def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
+      def spawn_mutant: (mutant: Mutant, test_files: Array[String]) -> ChildHandle
       def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
 
       private
@@ -361,6 +452,7 @@ module Henitai
       def run_tests: (Array[String]) -> Integer
       def preload_environment: () -> void
       def setup_load_path: () -> void
+      def suppress_minitest_autorun!: () -> nil
       def suppress_simplecov!: () -> void
       def subprocess_env: () -> Hash[String, String]
       def cleanup_suite_process: (Integer?, untyped) -> void
@@ -375,15 +467,21 @@ module Henitai
 
   class GitDiffAnalyzer
     def changed_files: (from: String, to: String, ?dir: String) -> Array[String]
+    def working_tree_changed_files: (?dir: String) -> Array[String]
+    def head_sha: (?dir: String) -> String?
   end
 
   class MutantGenerator
     def generate: (Array[Subject], Array[untyped], ?config: untyped) -> Array[Mutant]
   end
 
+  module MutantIdentity
+    def self.stable_id: (Mutant) -> String
+  end
+
   class MutantHistoryStore
     def initialize: (path: String) -> void
-    def record: (Result, version: String, ?recorded_at: Time) -> void
+    def record: (untyped, version: String, ?recorded_at: Time) -> void
     def trend_report: () -> Hash[Symbol, untyped]
   end
 
@@ -423,6 +521,16 @@ module Henitai
     def run: (Array[Mutant], untyped, untyped, untyped, ?Hash[Symbol, untyped]) -> void
   end
 
+  class ProcessWorkerRunner
+    SCHEDULER_POLL_INTERVAL: Float
+    PROCESS_DRAIN_WINDOW: Float
+
+    Slot: untyped
+
+    def initialize: (worker_count: Integer) -> void
+    def run: (Array[Mutant], untyped, untyped, untyped?, ?Hash[Symbol, untyped]) -> Array[ScenarioExecutionResult]
+  end
+
   class StaticFilter
     def initialize: (?coverage_report_reader: CoverageReportReader) -> void
     def apply: (Array[Mutant], untyped) -> Array[Mutant]
@@ -444,9 +552,7 @@ module Henitai
     def parallel_execution?: (untyped, Array[Mutant]) -> bool
     def worker_count: (untyped) -> Integer
     def run_linear: (Array[Mutant], untyped, untyped, untyped?, untyped) -> void
-    def run_parallel: (Array[Mutant], untyped, untyped, untyped?, untyped) -> void
-    def pipe_stdin?: () -> bool
-    def start_stdin_watcher: () { () -> void } -> Thread
+    def run_parallel: (Array[Mutant], untyped, untyped, untyped?) -> void
     def process_mutant: (Mutant, untyped, untyped, untyped?, ?untyped) -> void
     def prioritized_tests_for: (Mutant, untyped, untyped) -> Array[String]
     def test_prioritizer: () -> TestPrioritizer
@@ -460,6 +566,7 @@ module Henitai
     SERIALIZER_METHODS: Hash[Symbol, Symbol]
 
     def self.activate!: (untyped) -> Symbol?
+    def self.activation_source_for: (Mutant) -> String?
     def initialize: () -> void
     def activate!: (untyped) -> Symbol?
 
@@ -515,7 +622,10 @@ module Henitai
       private
 
       def report_lines: (Result) -> Array[String]
-      def summary_lines: (Result) -> Array[String]
+      def summary_lines: (untyped) -> Array[String]
+      def full_summary_lines: (untyped) -> Array[String]
+      def partial_summary_lines: (untyped) -> Array[String]
+      def append_survivor_stats: (Array[String], untyped) -> void
       def survived_detail_lines: (Result) -> Array[String]
       def survived_mutant_lines: (Mutant) -> Array[String]
       def survived_mutant_header: (Mutant) -> String
@@ -539,6 +649,13 @@ module Henitai
 
       private
 
+      def write_canonical: (Hash[Symbol, untyped]) -> void
+      def write_session_snapshot: (Hash[Symbol, untyped]) -> void
+      def write_activation_recipes: (untyped) -> void
+      def survived_mutants_for: (untyped) -> Array[Mutant]
+      def session_snapshot_path: (String) -> String
+      def session_recipe_path: (String) -> String
+      def canonical_path: () -> String
       def report_path: () -> String
       def write_history_report: () -> void
       def history_store_path: () -> String
@@ -598,8 +715,12 @@ module Henitai
     attr_reader started_at: Time
     attr_reader finished_at: Time
     attr_reader thresholds: Hash[Symbol, Integer]
+    attr_reader survivor_stats: Hash[Symbol, untyped]?
+    attr_reader session_id: String
+    attr_reader git_sha: String?
 
-    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time, ?thresholds: Hash[Symbol, Integer]?) -> void
+    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time, ?thresholds: Hash[Symbol, Integer]?, ?partial_rerun: bool, ?survivor_stats: Hash[Symbol, untyped]?, ?session_id: String, ?git_sha: String?) -> void
+    def partial_rerun?: () -> bool
     def killed: () -> Integer
     def survived: () -> Integer
     def equivalent: () -> Integer
@@ -612,6 +733,8 @@ module Henitai
 
     private
 
+    def base_schema: () -> Hash[Symbol, untyped]
+    def unmatched_survivor_ids: () -> Array[String]
     def build_files_section: () -> Hash[Symbol, untyped]
     def mutant_to_schema: (Mutant) -> Hash[Symbol, untyped]
     def coverage_schema: (Mutant) -> Hash[Symbol, untyped]
@@ -623,11 +746,56 @@ module Henitai
     def stryker_status: (Symbol) -> String
   end
 
+  class SurvivorLoader
+    FileNotFoundError: singleton(StandardError)
+    InvalidReportError: singleton(StandardError)
+    ScopeMismatchError: singleton(StandardError)
+
+    class Report
+      attr_reader survivor_ids: Array[String]
+      attr_reader coverage_map: Hash[String, Array[String]]
+      attr_reader git_sha: String?
+
+      def initialize: (survivor_ids: Array[String], coverage_map: Hash[String, Array[String]], git_sha: String?) -> void
+    end
+
+    def initialize: (String, ?include_paths: Array[String]) -> void
+    def load: () -> Report
+  end
+
+  class SurvivorTestFilter
+    def initialize: (
+      coverage_map: Hash[String, Array[String]],
+      git_sha: String?,
+      ?dirty_source_files: bool,
+      ?worktree_changed_files: Array[String],
+      ?diff_analyzer: GitDiffAnalyzer
+    ) -> void
+    def apply: (Array[Mutant]) -> Hash[Symbol, Array[Mutant]]
+  end
+
+  class SurvivorSelector
+    DRIFT_THRESHOLD: Float
+
+    def initialize: (survivor_ids: Array[String]) -> void
+    def select: (Array[Mutant]) -> Array[Mutant]
+    def unmatched_ids: () -> Array[String]
+    def drift_warning?: () -> bool
+  end
+
+  class SurvivorActivationCache
+    FILENAME: String
+
+    def self.compute: (Array[Mutant]) -> Hash[String, Hash[String, untyped]]
+    def self.load: (String) -> Hash[String, Hash[String, untyped]]?
+    def self.write: (String, Hash[String, Hash[String, untyped]]) -> void
+  end
+
   class Runner
     attr_reader config: Configuration
     attr_reader result: untyped
 
-    def initialize: (?config: Configuration, ?subjects: Array[Subject], ?since: String) -> void
+    def initialize: (?config: Configuration, ?subjects: Array[Subject], ?since: String, ?survivors_from: String?) -> void
     def run: () -> Result
     def resolve_subjects: (?Array[String]) -> untyped
     def generate_mutants: (untyped) -> untyped
@@ -659,6 +827,26 @@ module Henitai
     def mutants_for: (Array[Subject], Array[String]) -> Array[Mutant]
     def with_reports_dir: () { () -> untyped } -> untyped
     def result_thresholds: () -> Hash[Symbol, Integer]?
+    def survivor_rerun?: () -> bool
+    def apply_survivor_selection: (Array[Mutant]) -> Array[Mutant]
+    def try_recipe_run: () -> Array[Mutant]?
+    def load_survivor_report: () -> SurvivorLoader::Report
+    def run_from_recipes: (SurvivorLoader::Report, Array[String]?) -> Array[Mutant]?
+    def recipe_fast_path_safe?: (SurvivorLoader::Report, Array[String]?) -> bool
+    def recipe_selector_and_stubs: (Array[String], Hash[String, Hash[String, untyped]]) -> [SurvivorSelector, Array[Mutant]]
+    def load_activation_recipes: (Array[String]) -> Hash[String, Hash[String, untyped]]?
+    def build_stub_mutant: (String, Hash[String, untyped]) -> Mutant
+    def stub_subject_from_recipe: (Hash[String, untyped]) -> Subject
+    def recipe_location: (Hash[String, untyped]?) -> Hash[Symbol, untyped]
+    def finalize_survivor_split: (SurvivorSelector, Array[Mutant], Hash[Symbol, Array[Mutant]]) -> Array[Mutant]
+    def dirty_worktree_changed_files: () -> Array[String]?
+    def dirty_source_files?: (Array[String]?, ?git_sha: String?) -> bool
+    def committed_changed_files: (String?) -> Array[String]
+    def in_include_root?: (String, Array[String]) -> bool
+    def warn_survivor_drift: (SurvivorSelector) -> void
+    def build_survivor_stats: (SurvivorSelector, Array[Mutant], Hash[Symbol, Array[Mutant]]) -> Hash[Symbol, untyped]
+    def test_filter: (SurvivorLoader::Report, ?dirty_source_files: bool) -> SurvivorTestFilter
+    def safe_head_sha: () -> String?
   end
 
   class CoverageBootstrapper

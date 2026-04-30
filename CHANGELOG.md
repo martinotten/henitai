@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `--survivors-from <path>` flag on `henitai run` for survivor-only reruns:
+  re-execute only the mutants that survived a prior full run without re-running
+  the whole suite
+- `SurvivorLoader` reads a Stryker-compatible JSON report and extracts survivor
+  IDs, per-survivor coverage maps (`coveredBy`), and the anchoring git SHA
+- `SurvivorSelector` filters the current mutant set to the survivor subset; emits
+  a drift warning when more than 50% of loaded survivors are unmatched (source
+  changed significantly since the prior run)
+- `SurvivorTestFilter` skips survivors whose covering tests are unchanged since
+  the prior report's git SHA, marking them `:survived` immediately without
+  execution — same safety logic as StrykerJS incremental mode
+- `MutantIdentity` module: stable SHA256 identity computed from expression,
+  operator, description, location, and mutation signature; shared by
+  `MutantHistoryStore` and `Mutant#stable_id`
+- `Mutant#stable_id` exposes the stable identity; emitted as `stableId` in the
+  JSON report so survivor reports remain useful across commits
+- `Result` carries `session_id` (UUID) and optional `git_sha` (HEAD SHA at
+  report time); both emitted in the Stryker-compatible JSON as `sessionId` /
+  `gitSha`
+- `Reporter::Json` writes an immutable per-session snapshot alongside the
+  canonical report at `reports/sessions/<session_id>/mutation-report.json`,
+  giving `--survivors-from` a stable reference path across runs
+- `GitDiffAnalyzer#head_sha` — returns the current HEAD SHA; `nil` when git is
+  unavailable (conservative fallback: all survivors are executed)
+- `ProcessWorkerRunner` — flat process-slot scheduler for parallel mutant
+  execution: each slot owns one OS process, slots are refilled as children
+  finish, no thread per child
+- Interrupt handling, spawn failure isolation, and in-slot retry added to
+  `ProcessWorkerRunner` (PR 6)
+- Timeout precision and two-phase process-group cleanup in
+  `ProcessWorkerRunner` (PR 5)
+- x86_64 platform added to gem platform list
+
+### Changed
+- JSON mutation report vendor extension now always includes `sessionId`
+  (and `gitSha` when available) to support survivor-only reruns
+- Terminal reporter labels partial reruns as "Partial survivor rerun" and
+  shows matched / unmatched / skipped-by-diff counts
+- History store skips `runs` row insertion for partial reruns to avoid
+  distorting trend analytics; per-mutant `current_status` upsert still runs
+- CLI exits 0 for partial reruns with a printed warning; threshold comparison
+  is skipped (applying a partial score to a CI gate is misleading)
+- `StaticFilter` merges per-test coverage into standard coverage so
+  `coveredBy` data is available to both RSpec and Minitest survivor reports
+- `.henitai.yml` default: operators set to `light`, timeout lowered to 10 s,
+  `max_flaky_retries: 3` added
+
+### Fixed
+- Minitest autorun hook suppressed in mutation child processes to prevent
+  spurious re-runs of the full suite inside each fork
+- Coverage bootstrap RSpec subprocess ARGV leakage resolved — child processes
+  no longer inherit the parent's `--format` / file arguments
+- Survivor rerun state preserved across RSpec execution (was reset on each
+  subprocess boot)
+- `--survivors-from` now respects dirty worktrees: coverage and source file
+  state are read from the working tree, not the index
+- Recipe fast path skipped when source files changed since the cached run,
+  preventing stale cache hits after edits
+
+### Performance
+- File discovery cached in the integration layer; repeated calls within one
+  run no longer re-scan the filesystem
+- Polling sleep removed from the scheduler hot loop; slots are refilled
+  event-driven on child exit
+
 ## [0.1.10] - 2026-04-16
 
 ### Fixed

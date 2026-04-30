@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "parallel_execution_runner"
+require_relative "process_worker_runner"
 
 module Henitai
   # Runs pending mutants through the selected integration.
@@ -46,22 +47,15 @@ module Henitai
     end
 
     def run_parallel(mutants, integration, config, progress_reporter)
-      ParallelExecutionRunner.new(
+      ProcessWorkerRunner.new(
         worker_count: worker_count(config)
       ).run(
         mutants,
         integration,
         config,
         progress_reporter,
-        stdin_pipe: pipe_stdin?,
-        process_mutant: method(:process_mutant)
+        test_file_resolver: ->(mutant) { prioritized_tests_for(mutant, integration, config) }
       )
-    end
-
-    def pipe_stdin?
-      $stdin.stat.pipe?
-    rescue Errno::EBADF
-      false
     end
 
     def process_mutant(mutant, integration, config, progress_reporter, mutex)

@@ -119,8 +119,9 @@ RSpec.describe Henitai::SourceParser do
         first = described_class.parse_file(path)
 
         # Advance mtime by touching the file content (guarantees a different mtime)
-        sleep 0.01
         File.write(path, "class A; def m = 2; end")
+        time = Time.now + 10
+        File.utime(time, time, path)
         second = described_class.parse_file(path)
 
         expect(second).not_to be(first)

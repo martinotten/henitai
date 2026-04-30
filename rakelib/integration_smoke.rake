@@ -3,10 +3,60 @@
 require "bundler"
 require "json"
 require "open3"
+require "timeout"
+require_relative "../lib/henitai"
 
 #
 # Helpers for running the committed framework smoke projects through rake.
 module IntegrationSmoke
+  # Runs the repo's own RSpec baseline suite subprocess against one real spec
+  # file to catch regressions in the dogfood execution path quickly.
+  class DogfoodRspec
+    TIMEOUT_SECONDS = 15
+
+    def initialize(root:)
+      @root = root
+    end
+
+    def run!
+      stdout, stderr, status = Timeout.timeout(TIMEOUT_SECONDS) do
+        capture(*command)
+      end
+
+      return announce_success if child_succeeded?(stdout, status)
+
+      details = [stdout, stderr].reject(&:empty?).join("\n")
+      raise "Dogfood RSpec smoke failed\n#{details}"
+    rescue Timeout::Error
+      raise "Dogfood RSpec smoke timed out after #{TIMEOUT_SECONDS}s"
+    end
+
+    private
+
+    attr_reader :root
+
+    def command
+      [
+        "bundle", "exec", "ruby",
+        "-r", "henitai/rspec_coverage_formatter",
+        "-e", Henitai::Integration::Rspec.new.send(:rspec_suite_runner_script),
+        "spec/henitai/cli_spec.rb"
+      ]
+    end
+
+    def announce_success
+      puts "smoke:dogfood_rspec ok (baseline suite script completed on spec/henitai/cli_spec.rb)"
+    end
+
+    def child_succeeded?(stdout, status)
+      status.success? || stdout.match?(/\b0 failures\b/)
+    end
+
+    def capture(*command)
+      Open3.capture3(*command, chdir: root)
+    end
+  end
+
   # Runs one committed smoke project and asserts that Henitai reports
   # at least one surviving mutant for it.
   class Project
@@ -88,12 +138,19 @@ namespace :smoke do
       IntegrationSmoke::Project.new("rspec", root: IntegrationSmoke::PROJECT_ROOTS[:rspec]).run!
     end
 
+    desc "Run the repo-level dogfood RSpec baseline smoke path"
+    task :dogfood_rspec do
+      IntegrationSmoke::DogfoodRspec.new(
+        root: File.expand_path(File.join(__dir__, ".."))
+      ).run!
+    end
+
     desc "Run the Minitest integration smoke project"
     task :minitest do
       IntegrationSmoke::Project.new("minitest", root: IntegrationSmoke::PROJECT_ROOTS[:minitest]).run!
     end
 
     desc "Run both integration smoke projects"
-    task all: %i[rspec minitest]
+    task all: %i[rspec dogfood_rspec minitest]
   end
 end

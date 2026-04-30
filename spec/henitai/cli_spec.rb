@@ -5,6 +5,12 @@ require "tmpdir"
 require "stringio"
 
 RSpec.describe Henitai::CLI do
+  around do |example|
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) { example.run }
+    end
+  end
+
   def write_configuration(dir, reports_dir: "reports")
     path = File.join(dir, ".henitai.yml")
     File.write(
@@ -49,6 +55,21 @@ RSpec.describe Henitai::CLI do
     runner
   end
 
+  def write_survivors_from_fixture(report_dir:, session_id:)
+    report_path = File.join(report_dir, "mutation-report.json")
+    canonical_report = JSON.generate("schemaVersion" => "1.0", "sessionId" => session_id, "files" => {})
+
+    File.write(report_path, canonical_report)
+
+    sessions_dir = File.join(report_dir, "sessions", session_id)
+    FileUtils.mkdir_p(sessions_dir)
+
+    File.write(File.join(sessions_dir, "activation-recipes.json"), JSON.generate({}))
+    snapshot_path = File.join(sessions_dir, "mutation-report.json")
+    File.write(snapshot_path, canonical_report)
+    [report_path, snapshot_path]
+  end
+
   # L125 — OptionParser-Banner ("Usage: henitai run …")
   # L137, L167, L174 — Optionsbeschreibungen werden nie auf Inhalt geprüft
   describe "run --help output" do
@@ -76,6 +97,30 @@ RSpec.describe Henitai::CLI do
     it "documents the --all-logs flag" do
       expect(help_output).to match(/--all-logs/)
     end
+
+    it "prints the exact run help text" do
+      expect(help_output).to eq(<<~HELP)
+        Usage: henitai run [options] [SUBJECT_PATTERN...]
+                --since GIT_REF              Only mutate subjects changed since GIT_REF
+                --use INTEGRATION            Test framework integration (rspec)
+                --config PATH                Path to .henitai.yml
+                --operators SET              Operator set: light | full
+                --jobs N                     Number of parallel workers (default: 1)
+                --all-logs, --verbose        Print all captured child logs
+                --survivors-from PATH        Re-run only survivors from a prior report (partial rerun; threshold checks are skipped; dirty worktrees are included)
+                --fail-on-survivors          Exit 1 for partial reruns when any survivors remain (otherwise exits 0)
+            -h, --help                       Show this help
+            -v, --version                    Show version
+      HELP
+    end
+
+    it "documents the --survivors-from flag" do
+      expect(help_output).to match(/--survivors-from/)
+    end
+
+    it "documents the --fail-on-survivors flag" do
+      expect(help_output).to match(/--fail-on-survivors/)
+    end
   end
 
   def capture_stdout
@@ -88,12 +133,18 @@ RSpec.describe Henitai::CLI do
     $stdout = original_stdout
   end
 
+  it "runs in an isolated working directory" do
+    repo_root = File.expand_path("../..", __dir__)
+
+    expect(Dir.pwd).not_to eq(repo_root)
+  end
+
   it "applies CLI overrides after loading the YAML config" do
     Dir.mktmpdir do |dir|
       config_path = write_configuration(dir)
       captured_config = nil
       runner = instance_double(Henitai::Runner)
-      result = instance_double(Henitai::Result, mutation_score: 100)
+      result = instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: false)
 
       allow(Henitai::Runner).to receive(:new) do |config:, **_kwargs|
         captured_config = config
@@ -205,7 +256,7 @@ RSpec.describe Henitai::CLI do
       config_path = write_configuration(dir, reports_dir:)
       cleanup_paths = write_minimal_report_artifacts(reports_dir)
       sentinel_path = File.join(reports_dir, "mutation-history.json")
-      runner = build_runner(result: instance_double(Henitai::Result, mutation_score: 100))
+      runner = build_runner(result: instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: false))
       runner_instantiated = false
 
       FileUtils.mkdir_p(reports_dir)
@@ -256,6 +307,31 @@ RSpec.describe Henitai::CLI do
     expect { described_class.new([]).run }.to output(/Hen'i-tai 変異体/).to_stdout
   end
 
+  it "prints the exact top-level help text when no command is given" do
+    expect { described_class.new([]).run }.to output(<<~HELP).to_stdout
+      Hen'i-tai 変異体 #{Henitai::VERSION} — Ruby 4 Mutation Testing
+
+      Usage:
+        henitai run [options] [SUBJECT_PATTERN...]
+        henitai clean [options]
+        henitai version
+        henitai init [PATH]
+        henitai operator list
+
+      Examples:
+        bundle exec henitai run
+        bundle exec henitai run --since origin/main
+        bundle exec henitai run 'Foo::Bar#my_method'
+        bundle exec henitai run 'MyNamespace*' --operators full
+        bundle exec henitai run --survivors-from reports/mutation-report.json
+        bundle exec henitai clean
+        bundle exec henitai init
+        bundle exec henitai operator list
+
+      Run `henitai run --help` for full option list.
+    HELP
+  end
+
   it "documents the clean command in the top-level help" do
     expect { described_class.new([]).run }.to output(/henitai clean \[options\]/).to_stdout
   end
@@ -265,6 +341,258 @@ RSpec.describe Henitai::CLI do
     expect { described_class.new([]).run }.to output(
       /Hen'i-tai 変異体 #{Regexp.escape(Henitai::VERSION)}/
     ).to_stdout
+  end
+
+  it "passes no subject patterns to the runner when none are given" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      captured_subjects = :not_set
+      result = instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: false)
+      runner = build_runner(result:)
+
+      allow(Henitai::Runner).to receive(:new) do |**kwargs|
+        captured_subjects = kwargs[:subjects]
+        runner
+      end
+
+      cli = described_class.new(["run", "--config", config_path])
+      cli.define_singleton_method(:exit) { |_status = nil| nil }
+      cli.run
+
+      expect(captured_subjects).to be_nil
+    end
+  end
+
+  it "passes nil survivors_from to the runner when none are given" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      captured_survivors_from = :not_set
+      result = instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: false)
+      runner = build_runner(result:)
+
+      allow(Henitai::Runner).to receive(:new) do |**kwargs|
+        captured_survivors_from = kwargs[:survivors_from]
+        runner
+      end
+
+      cli = described_class.new(["run", "--config", config_path])
+      cli.define_singleton_method(:exit) { |_status = nil| nil }
+      cli.run
+
+      expect(captured_survivors_from).to be_nil
+    end
+  end
+
+  it "does not warn when survivors_from is omitted" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      result = instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: false)
+      runner = build_runner(result:)
+
+      allow(Henitai::Runner).to receive(:new).and_return(runner)
+
+      cli = described_class.new(["run", "--config", config_path])
+      cli.define_singleton_method(:exit) { |_status = nil| nil }
+      allow(cli).to receive(:warn)
+      cli.run
+
+      expect(cli).not_to have_received(:warn)
+    end
+  end
+
+  it "keeps an already snapshot-shaped survivors-from path unchanged" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      report_dir = File.join(dir, "reports")
+      FileUtils.mkdir_p(report_dir)
+      embedded_session_id = "fedcba98-7654-3210-fedc-ba9876543210"
+      snapshot_path = File.join(report_dir, "sessions", embedded_session_id, "mutation-report.json")
+      FileUtils.mkdir_p(File.dirname(snapshot_path))
+      File.write(snapshot_path, "{not-json")
+      parent_dir = File.dirname(snapshot_path, 2)
+      sessions_marker = Object.new
+      sessions_marker.define_singleton_method(:==) { |other| other == "sessions" }
+      sessions_marker.define_singleton_method(:>=) { |_other| false }
+      sessions_marker.define_singleton_method(:>) { |_other| false }
+      captured_survivors_from = :not_set
+      result = instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: true)
+      runner = build_runner(result:)
+
+      allow(JSON).to receive(:parse).and_raise(ArgumentError, "boom")
+      allow(File).to receive(:basename).and_wrap_original do |original, path|
+        path == parent_dir ? sessions_marker : original.call(path)
+      end
+      cli = described_class.new(["run", "--config", config_path, "--survivors-from", snapshot_path])
+      cli.define_singleton_method(:exit) { |_status = nil| nil }
+      allow(cli).to receive(:warn)
+      allow(Henitai::Runner).to receive(:new) do |**kwargs|
+        captured_survivors_from = kwargs[:survivors_from]
+        runner
+      end
+
+      cli.run
+
+      expect(captured_survivors_from).to eq(snapshot_path)
+    end
+  end
+
+  it "does not warn about resolving an already snapshot-shaped survivors-from path" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      report_dir = File.join(dir, "reports")
+      FileUtils.mkdir_p(report_dir)
+      embedded_session_id = "fedcba98-7654-3210-fedc-ba9876543210"
+      snapshot_path = File.join(report_dir, "sessions", embedded_session_id, "mutation-report.json")
+      FileUtils.mkdir_p(File.dirname(snapshot_path))
+      File.write(snapshot_path, "{not-json")
+      parent_dir = File.dirname(snapshot_path, 2)
+      sessions_marker = Object.new
+      sessions_marker.define_singleton_method(:==) { |other| other == "sessions" }
+      sessions_marker.define_singleton_method(:>=) { |_other| false }
+      sessions_marker.define_singleton_method(:>) { |_other| false }
+      result = instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: true)
+      runner = build_runner(result:)
+
+      allow(JSON).to receive(:parse).and_raise(ArgumentError, "boom")
+      allow(File).to receive(:basename).and_wrap_original do |original, path|
+        path == parent_dir ? sessions_marker : original.call(path)
+      end
+      allow(Henitai::Runner).to receive(:new).and_return(runner)
+
+      cli = described_class.new(["run", "--config", config_path, "--survivors-from", snapshot_path])
+      cli.define_singleton_method(:exit) { |_status = nil| nil }
+      allow(cli).to receive(:warn)
+
+      cli.run
+
+      expect(cli).not_to have_received(:warn).with(/could not resolve survivors-from/)
+    end
+  end
+
+  it "falls back to the original survivors-from path when the report has no session id" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      report_path = File.join(dir, "mutation-report.json")
+      File.write(report_path, JSON.generate("schemaVersion" => "1.0", "files" => {}))
+      captured_survivors_from = :not_set
+      result = instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: true)
+      runner = build_runner(result:)
+
+      allow(Henitai::Runner).to receive(:new) do |**kwargs|
+        captured_survivors_from = kwargs[:survivors_from]
+        runner
+      end
+
+      cli = described_class.new(["run", "--config", config_path, "--survivors-from", report_path])
+      cli.define_singleton_method(:exit) { |_status = nil| nil }
+      cli.run
+
+      expect(captured_survivors_from).to eq(report_path)
+    end
+  end
+
+  it "falls back to the original survivors-from path when snapshot artifacts are missing" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      report_dir = File.join(dir, "reports")
+      FileUtils.mkdir_p(report_dir)
+      report_path, snapshot_path = write_survivors_from_fixture(
+        report_dir: report_dir,
+        session_id: "01234567-89ab-cdef-0123-456789abcdef"
+      )
+      FileUtils.rm_f(snapshot_path)
+      captured_survivors_from = :not_set
+      result = instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: true)
+      runner = build_runner(result:)
+
+      allow(Henitai::Runner).to receive(:new) do |**kwargs|
+        captured_survivors_from = kwargs[:survivors_from]
+        runner
+      end
+
+      cli = described_class.new(["run", "--config", config_path, "--survivors-from", report_path])
+      cli.define_singleton_method(:exit) { |_status = nil| nil }
+      cli.run
+
+      expect(captured_survivors_from).to eq(report_path)
+    end
+  end
+
+  it "falls back to the original survivors-from path when activation recipes are missing" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      report_dir = File.join(dir, "reports")
+      FileUtils.mkdir_p(report_dir)
+      report_path = File.join(report_dir, "mutation-report.json")
+      session_id = "01234567-89ab-cdef-0123-456789abcdef"
+      snapshot_path = File.join(report_dir, "sessions", session_id, "mutation-report.json")
+
+      File.write(report_path, JSON.generate("schemaVersion" => "1.0", "sessionId" => session_id, "files" => {}))
+      FileUtils.mkdir_p(File.dirname(snapshot_path))
+      File.write(snapshot_path, JSON.generate("schemaVersion" => "1.0", "sessionId" => session_id, "files" => {}))
+
+      captured_survivors_from = :not_set
+      result = instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: true)
+      runner = build_runner(result:)
+
+      allow(Henitai::Runner).to receive(:new) do |**kwargs|
+        captured_survivors_from = kwargs[:survivors_from]
+        runner
+      end
+
+      cli = described_class.new(["run", "--config", config_path, "--survivors-from", report_path])
+      cli.define_singleton_method(:exit) { |_status = nil| nil }
+      cli.run
+
+      expect(captured_survivors_from).to eq(report_path)
+    end
+  end
+
+  it "prints the no-artifacts clean summary when nothing is removed" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+
+      expect do
+        described_class.new(["clean", "--config", config_path]).run
+      end.to output("No generated report artifacts to clean\n").to_stdout
+    end
+  end
+
+  it "prints the singular clean summary when one artifact is removed" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        config_path = write_configuration(dir)
+        reports_dir = File.join(dir, "reports")
+        FileUtils.mkdir_p(reports_dir)
+        artifact_path = File.join(reports_dir, *Henitai::CLI::REPORT_CLEANUP_PATHS.first)
+        FileUtils.mkdir_p(File.dirname(artifact_path))
+        File.write(artifact_path, "stale")
+
+        expect do
+          described_class.new(["clean", "--config", config_path]).run
+        end.to output("Removed 1 generated report artifact\n").to_stdout
+      end
+    end
+  end
+
+  it "prints the plural clean summary when multiple artifacts are removed" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        config_path = write_configuration(dir)
+        reports_dir = File.join(dir, "reports")
+        FileUtils.mkdir_p(reports_dir)
+
+        Henitai::CLI::REPORT_CLEANUP_PATHS.first(2).each do |relative_path|
+          artifact_path = File.join(reports_dir, *relative_path)
+          FileUtils.mkdir_p(File.dirname(artifact_path))
+          File.write(artifact_path, "stale")
+        end
+
+        expect do
+          described_class.new(["clean", "--config", config_path]).run
+        end.to output("Removed 2 generated report artifacts\n").to_stdout
+      end
+    end
   end
 
   it "warns and exits for unknown commands" do
@@ -292,7 +620,7 @@ RSpec.describe Henitai::CLI do
     Dir.mktmpdir do |dir|
       config_path = write_configuration(dir)
       captured_subjects = nil
-      result = instance_double(Henitai::Result, mutation_score: 0)
+      result = instance_double(Henitai::Result, mutation_score: 0, partial_rerun?: false)
       runner = build_runner(result:)
 
       allow(Henitai::Runner).to receive(:new) do |**kwargs|
@@ -319,7 +647,7 @@ RSpec.describe Henitai::CLI do
     Dir.mktmpdir do |dir|
       config_path = write_configuration(dir)
       exit_status = nil
-      result = instance_double(Henitai::Result, mutation_score: 0)
+      result = instance_double(Henitai::Result, mutation_score: 0, partial_rerun?: false)
       runner = build_runner(result:)
 
       allow(Henitai::Runner).to receive(:new) do |**_kwargs|
@@ -345,7 +673,7 @@ RSpec.describe Henitai::CLI do
     Dir.mktmpdir do |dir|
       config_path = write_configuration(dir)
       exit_status = nil
-      result = instance_double(Henitai::Result, mutation_score: 100)
+      result = instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: false)
       runner = build_runner(result:)
 
       allow(Henitai::Runner).to receive(:new) do |**_kwargs|
@@ -360,6 +688,51 @@ RSpec.describe Henitai::CLI do
           "Foo#bar"
         ]
       )
+      cli.define_singleton_method(:exit) { |status = nil| exit_status = status }
+      cli.run
+
+      expect(exit_status).to eq(0)
+    end
+  end
+
+  it "exits zero when the score matches the low threshold" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      exit_status = nil
+      result = instance_double(Henitai::Result, mutation_score: 60, partial_rerun?: false)
+      runner = build_runner(result:)
+
+      allow(Henitai::Runner).to receive(:new) do |**_kwargs|
+        runner
+      end
+
+      cli = described_class.new(
+        [
+          "run",
+          "--config",
+          config_path,
+          "Foo#bar"
+        ]
+      )
+      cli.define_singleton_method(:exit) { |status = nil| exit_status = status }
+      cli.run
+
+      expect(exit_status).to eq(0)
+    end
+  end
+
+  it "treats results without partial_rerun? as a normal run" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      exit_status = nil
+      result = Struct.new(:mutation_score).new(100)
+      runner = build_runner(result:)
+
+      allow(Henitai::Runner).to receive(:new) do |**_kwargs|
+        runner
+      end
+
+      cli = described_class.new(["run", "--config", config_path])
       cli.define_singleton_method(:exit) { |status = nil| exit_status = status }
       cli.run
 
@@ -391,7 +764,7 @@ RSpec.describe Henitai::CLI do
     Dir.mktmpdir do |dir|
       config_path = write_configuration(dir)
       captured_overrides = nil
-      runner = build_runner(result: instance_double(Henitai::Result, mutation_score: 100))
+      runner = build_runner(result: instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: false))
       config = instance_double(Henitai::Configuration, thresholds: { low: 60 })
 
       allow(Henitai::Configuration).to receive(:load) do |**kwargs|
@@ -429,7 +802,7 @@ RSpec.describe Henitai::CLI do
         cli = described_class.new(["init"])
         allow($stdin).to receive_messages(tty?: false, gets: nil)
 
-        expect { cli.run }.to output(/Created \.henitai\.yml/).to_stdout
+        expect { cli.run }.to output("Created .henitai.yml\n").to_stdout
       end
     end
   end
@@ -524,6 +897,32 @@ RSpec.describe Henitai::CLI do
       Dir.chdir(dir) do
         cli = described_class.new(["init"])
         allow($stdin).to receive_messages(tty?: true, gets: "\n")
+
+        cli.run
+
+        expect(File.read(".henitai.yml")).to include("integration:\n  name: rspec")
+      end
+    end
+  end
+
+  it "does not include the integration block when the user types no" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        cli = described_class.new(["init"])
+        allow($stdin).to receive_messages(tty?: true, gets: "no\n")
+
+        cli.run
+
+        expect(File.read(".henitai.yml")).not_to include("integration:\n  name: rspec")
+      end
+    end
+  end
+
+  it "includes the integration block when stdin reaches EOF" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        cli = described_class.new(["init"])
+        allow($stdin).to receive_messages(tty?: true, gets: nil)
 
         cli.run
 
@@ -685,6 +1084,198 @@ RSpec.describe Henitai::CLI do
     cli = described_class.new(%w[operator list])
     allow(cli).to receive_messages(operator_metadata: {}, validate_operator_metadata!: nil)
 
-    expect { cli.run }.to output(/No metadata available/).to_stdout
+    expect { cli.run }.to output(%r{No metadata available \(n/a\)}).to_stdout
+  end
+
+  it "warns when multiple operators are missing metadata" do
+    stub_const(
+      "Henitai::Operator::FULL_SET",
+      Henitai::Operator::FULL_SET + %w[MissingOperatorA MissingOperatorB]
+    )
+
+    cli = described_class.new(%w[operator list])
+    cli.define_singleton_method(:exit) { |_status = nil| nil }
+    allow(cli).to receive(:warn)
+
+    cli.run
+
+    expect(cli).to have_received(:warn).with(
+      "Missing operator metadata for: MissingOperatorA, MissingOperatorB"
+    )
+  end
+
+  it "exits non-zero when multiple operators are missing metadata" do
+    stub_const(
+      "Henitai::Operator::FULL_SET",
+      Henitai::Operator::FULL_SET + %w[MissingOperatorA MissingOperatorB]
+    )
+
+    cli = described_class.new(%w[operator list])
+    exit_status = nil
+    cli.define_singleton_method(:exit) { |status = nil| exit_status = status }
+    allow(cli).to receive(:warn)
+
+    cli.run
+
+    expect(exit_status).to eq(1)
+  end
+
+  it "documents the --survivors-from option" do
+    cli = described_class.new(["run", "--help"])
+    expect { cli.run }.to output(/--survivors-from/).to_stdout
+  end
+
+  it "passes survivors_from to the runner" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      report_dir = File.join(dir, "reports")
+      FileUtils.mkdir_p(report_dir)
+
+      session_id = "01234567-89ab-cdef-0123-456789abcdef"
+      report_path, expected_snapshot_path = write_survivors_from_fixture(
+        report_dir: report_dir,
+        session_id: session_id
+      )
+
+      captured_survivors_from = :not_set
+      result = instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: true)
+      runner = build_runner(result:)
+
+      allow(Henitai::Runner).to receive(:new) do |**kwargs|
+        captured_survivors_from = kwargs[:survivors_from]
+        runner
+      end
+
+      cli = described_class.new(
+        ["run", "--config", config_path, "--survivors-from", report_path]
+      )
+      cli.define_singleton_method(:exit) { |_status = nil| nil }
+      cli.run
+
+      expect(captured_survivors_from).to eq(expected_snapshot_path)
+    end
+  end
+
+  it "warns and falls back when survivors_from resolution raises" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      report_path = File.join(dir, "mutation-report.json")
+      File.write(report_path, JSON.generate("schemaVersion" => "1.0", "files" => {}))
+      result = instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: true)
+      runner = build_runner(result:)
+
+      allow(JSON).to receive(:parse).and_raise(ArgumentError, "boom")
+      allow(Henitai::Runner).to receive(:new).and_return(runner)
+
+      cli = described_class.new(["run", "--config", config_path, "--survivors-from", report_path])
+      cli.define_singleton_method(:exit) { |_status = nil| nil }
+
+      expect { cli.run }.to output(
+        /could not resolve survivors-from #{Regexp.escape(report_path)}: ArgumentError: boom/
+      ).to_stderr
+    end
+  end
+
+  it "falls back to the original survivors_from path when resolution raises" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      report_path = File.join(dir, "mutation-report.json")
+      File.write(report_path, JSON.generate("schemaVersion" => "1.0", "files" => {}))
+      captured_survivors_from = :not_set
+      result = instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: true)
+      runner = build_runner(result:)
+
+      allow(JSON).to receive(:parse).and_raise(ArgumentError, "boom")
+      allow(Henitai::Runner).to receive(:new) do |**kwargs|
+        captured_survivors_from = kwargs[:survivors_from]
+        runner
+      end
+
+      cli = described_class.new(["run", "--config", config_path, "--survivors-from", report_path])
+      cli.define_singleton_method(:exit) { |_status = nil| nil }
+      allow(cli).to receive(:warn)
+
+      cli.run
+      expect(captured_survivors_from).to eq(report_path)
+    end
+  end
+
+  it "exits zero for a partial rerun regardless of score" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      result = instance_double(Henitai::Result, mutation_score: 0, partial_rerun?: true)
+      runner = build_runner(result:)
+
+      allow(Henitai::Runner).to receive(:new).and_return(runner)
+
+      cli = described_class.new(["run", "--config", config_path])
+      cli.define_singleton_method(:exit) do |status = nil|
+        raise "expected exit status 0, got #{status.inspect}" unless status == 0
+      end
+      expect { cli.run }.to output(/partial rerun - mutation score threshold not evaluated/).to_stderr
+    end
+  end
+
+  it "exits zero for a partial rerun with survivors when fail-on-survivors is not set" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      result = instance_double(
+        Henitai::Result,
+        mutation_score: 0,
+        partial_rerun?: true,
+        survived: 1
+      )
+      runner = build_runner(result:)
+
+      allow(Henitai::Runner).to receive(:new).and_return(runner)
+
+      cli = described_class.new(["run", "--config", config_path])
+      cli.define_singleton_method(:exit) do |status = nil|
+        raise "expected exit status 0, got #{status.inspect}" unless status == 0
+      end
+      expect { cli.run }.to output(/partial rerun - mutation score threshold not evaluated/).to_stderr
+    end
+  end
+
+  it "exits 1 for a partial rerun when any survivors remain and --fail-on-survivors is set" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      result = instance_double(
+        Henitai::Result,
+        mutation_score: 0,
+        partial_rerun?: true,
+        survived: 1
+      )
+      runner = build_runner(result:)
+
+      allow(Henitai::Runner).to receive(:new).and_return(runner)
+
+      cli = described_class.new(["run", "--config", config_path, "--fail-on-survivors"])
+      cli.define_singleton_method(:exit) do |status = nil|
+        raise "expected exit status 1, got #{status.inspect}" unless status == 1
+      end
+      expect { cli.run }.to output(/partial rerun - mutation score threshold not evaluated/).to_stderr
+    end
+  end
+
+  it "exits 0 for a partial rerun when no survivors remain and --fail-on-survivors is set" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      result = instance_double(
+        Henitai::Result,
+        mutation_score: 0,
+        partial_rerun?: true,
+        survived: 0
+      )
+      runner = build_runner(result:)
+
+      allow(Henitai::Runner).to receive(:new).and_return(runner)
+
+      cli = described_class.new(["run", "--config", config_path, "--fail-on-survivors"])
+      cli.define_singleton_method(:exit) do |status = nil|
+        raise "expected exit status 0, got #{status.inspect}" unless status == 0
+      end
+      expect { cli.run }.to output(/partial rerun - mutation score threshold not evaluated/).to_stderr
+    end
   end
 end

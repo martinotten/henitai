@@ -1,0 +1,770 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R 10 0 R 12 0 R 14 0 R] /Count 6 >>
+endobj
+3 0 obj
+<< /Length 3146 >>
+stream
+BT
+/F1 10 Tf
+11 TL
+54 786 Td
+(RSpec Execution Regression Post-Mortem) Tj
+T*
+() Tj
+T*
+(Date: 2026-04-24 Status: Resolved Scope: RSpec integration, mutation) Tj
+T*
+(child execution, baseline coverage bootstrap, smoke coverage) Tj
+T*
+() Tj
+T*
+(Summary) Tj
+T*
+() Tj
+T*
+(Henitai regressed in its own RSpec execution path and became unable to) Tj
+T*
+(run mutation testing reliably on the Henitai repository itself. The) Tj
+T*
+(visible symptoms were:) Tj
+T*
+() Tj
+T*
+(- mutant children timing out) Tj
+T*
+(- child logs showing No examples found. or stopping after) Tj
+T*
+(  runner_run_start) Tj
+T*
+(- baseline coverage bootstrap failing intermittently on repo-scale runs) Tj
+T*
+(- real zero-example runs being misclassified) Tj
+T*
+() Tj
+T*
+(The regression had two related technical causes:) Tj
+T*
+() Tj
+T*
+(1.  The mutant child path had drifted away from the documented execution) Tj
+T*
+(    model. Mutation activation is process-local in Henitai, so the) Tj
+T*
+(    activated mutant and the test run must stay in the same forked child) Tj
+T*
+(    process. Earlier work had introduced an additional execution) Tj
+T*
+(    boundary and weakened that contract.) Tj
+T*
+(2.  The RSpec boot path relied on RSpec::Core::Runner.run\(...\) and) Tj
+T*
+(    related default discovery behavior in places where Henitai already) Tj
+T*
+(    had an explicit file list. On the Henitai repository this triggered) Tj
+T*
+(    expensive repo-scale discovery through) Tj
+T*
+(    Configuration#get_files_to_run, which was cheap enough on tiny smoke) Tj
+T*
+(    fixtures to go unnoticed but pathological on the real codebase.) Tj
+T*
+() Tj
+T*
+(The failure was not caused by mutation activation itself. It was caused) Tj
+T*
+(by an invalid execution workflow around RSpec boot and discovery.) Tj
+T*
+() Tj
+T*
+(Impact) Tj
+T*
+() Tj
+T*
+(- bundle exec henitai run on the Henitai repository became unreliable or) Tj
+T*
+(  unusable.) Tj
+T*
+(- Mutation runs produced timeouts instead of actionable statuses.) Tj
+T*
+(- Diagnostic logs were initially too weak to separate real timeouts,) Tj
+T*
+(  discovery failures, and misclassification.) Tj
+T*
+(- Confidence in the basic RSpec integration dropped because toy smoke) Tj
+T*
+(  projects stayed green while the real repo failed.) Tj
+T*
+() Tj
+T*
+(User-Visible Symptoms) Tj
+T*
+() Tj
+T*
+(- Narrow dogfood runs like) Tj
+T*
+(  bundle exec henitai run 'Henitai::Integration' produced many T timeout) Tj
+T*
+(  results.) Tj
+T*
+(- Some mutant logs contained No examples found. even though the selected) Tj
+T*
+(  spec files existed and contained examples.) Tj
+T*
+(- Baseline coverage bootstrap failed with Henitai::CoverageError on the) Tj
+T*
+(  repo.) Tj
+T*
+(- The existing smoke suite reported:) Tj
+T*
+(  - smoke:rspec ok) Tj
+T*
+(  - smoke:minitest ok even while the real repository run was broken.) Tj
+T*
+() Tj
+T*
+(Detection) Tj
+T*
+() Tj
+T*
+(The issue was detected by dogfooding Henitai against its own repository,) Tj
+T*
+(not by CI or by the existing integration smoke suite.) Tj
+T*
+() Tj
+T*
+(That mattered. The existing smoke fixtures were real projects, but they) Tj
+T*
+(were too small to trigger the discovery cost and state problems that) Tj
+ET
+endstream
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 3 0 R >>
+endobj
+5 0 obj
+<< /Length 2672 >>
+stream
+BT
+/F1 10 Tf
+11 TL
+54 786 Td
+(appeared on the Henitai repository.) Tj
+T*
+() Tj
+T*
+(Timeline) Tj
+T*
+() Tj
+T*
+(1. Initial symptom characterization) Tj
+T*
+() Tj
+T*
+(- Reproduced the failure with narrow subjects and --jobs 1 --all-logs.) Tj
+T*
+(- Observed repeated timeouts and empty or unhelpful logs.) Tj
+T*
+(- Confirmed that No examples found. was not legitimate for the selected) Tj
+T*
+(  repo spec files.) Tj
+T*
+() Tj
+T*
+(2. Child-process instrumentation) Tj
+T*
+() Tj
+T*
+(- Added gated child diagnostics under HENITAI_DEBUG_CHILD=1.) Tj
+T*
+(- Logged selected files, loaded-feature state, RSpec world example) Tj
+T*
+(  counts, and runner lifecycle markers.) Tj
+T*
+(- Used timeout-triggered child thread dumps to identify where the child) Tj
+T*
+(  was actually stalling.) Tj
+T*
+() Tj
+T*
+(3. Root-cause isolation) Tj
+T*
+() Tj
+T*
+(- Confirmed that the execution problem was in RSpec boot and discovery,) Tj
+T*
+(  not in mutant activation.) Tj
+T*
+(- Reproduced the same stall in a direct subprocess outside the full) Tj
+T*
+(  mutation pipeline.) Tj
+T*
+(- Verified from thread dumps that) Tj
+T*
+(  RSpec::Core::Configuration#get_files_to_run and its directory scanning) Tj
+T*
+(  path were involved.) Tj
+T*
+() Tj
+T*
+(4. Architecture correction) Tj
+T*
+() Tj
+T*
+(- Restored the same-process mutant child contract for activated mutant) Tj
+T*
+(  execution.) Tj
+T*
+(- Reworked the baseline suite runner to use an explicit file list) Tj
+T*
+(  instead of plain Runner.run\(...\).) Tj
+T*
+(- Tightened classification for zero-example child runs.) Tj
+T*
+() Tj
+T*
+(5. Smoke and test hardening) Tj
+T*
+() Tj
+T*
+(- Added a repo-level dogfood RSpec smoke path.) Tj
+T*
+(- Updated integration specs to test the real current runner shape) Tj
+T*
+(  instead of the old Runner.run\(...\) assumptions.) Tj
+T*
+(- Fixed Steep surface declarations for the new debug helper methods.) Tj
+T*
+() Tj
+T*
+(Root Cause) Tj
+T*
+() Tj
+T*
+(Root Cause 1: Execution contract drift) Tj
+T*
+() Tj
+T*
+(Henitai mutates code by injecting an activated method definition into a) Tj
+T*
+(live Ruby process. That means mutation activation is process-local by) Tj
+T*
+(design. The mutant must be activated and the tests must execute in the) Tj
+T*
+(same forked child.) Tj
+T*
+() Tj
+T*
+(The RSpec integration had drifted away from that contract. Once that) Tj
+T*
+(happened, debugging the later symptoms became harder because:) Tj
+T*
+() Tj
+T*
+(- some failures looked like timeouts) Tj
+T*
+(- some looked like No examples found.) Tj
+T*
+(- some were misclassified) Tj
+T*
+() Tj
+T*
+(This was an architecture regression, not just a failing test.) Tj
+T*
+() Tj
+T*
+(Root Cause 2: Default RSpec discovery on a repo-scale codebase) Tj
+T*
+() Tj
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 5 0 R >>
+endobj
+7 0 obj
+<< /Length 2498 >>
+stream
+BT
+/F1 10 Tf
+11 TL
+54 786 Td
+(Henitai already knew which spec files it wanted to run. Despite that,) Tj
+T*
+(parts of the RSpec path still used default runner behavior that lets) Tj
+T*
+(RSpec discover files on its own.) Tj
+T*
+() Tj
+T*
+(On the tiny smoke fixtures this was cheap enough to pass. On the Henitai) Tj
+T*
+(repository it triggered the slower discovery path and caused the) Tj
+T*
+(observed stalls.) Tj
+T*
+() Tj
+T*
+(The correct model for Henitai is:) Tj
+T*
+() Tj
+T*
+(1.  decide the exact file list in Henitai) Tj
+T*
+(2.  seed RSpec with that file list explicitly) Tj
+T*
+(3.  load only those files) Tj
+T*
+(4.  run those example groups) Tj
+T*
+() Tj
+T*
+(Not:) Tj
+T*
+() Tj
+T*
+(1.  hand control back to Runner.run\(...\)) Tj
+T*
+(2.  let RSpec rediscover the suite from the current working directory) Tj
+T*
+() Tj
+T*
+(Contributing Factors) Tj
+T*
+() Tj
+T*
+(1. Smoke suite too small) Tj
+T*
+() Tj
+T*
+(The existing RSpec and Minitest smoke fixtures were real projects, but) Tj
+T*
+(they were toy-sized. They were good at checking that the end-to-end) Tj
+T*
+(pipeline was not completely broken. They were not good at exposing) Tj
+T*
+(repo-scale discovery cost or child-runner state problems.) Tj
+T*
+() Tj
+T*
+(2. Missing contract tests) Tj
+T*
+() Tj
+T*
+(Some integration specs mocked or stubbed the old runner boundary and) Tj
+T*
+(therefore did not protect the actual invariant:) Tj
+T*
+() Tj
+T*
+(- mutation activation and test execution must share the same forked) Tj
+T*
+(  child) Tj
+T*
+(- zero-example child runs must not degrade into :survived or :timeout) Tj
+T*
+() Tj
+T*
+(3. Weak initial diagnostics) Tj
+T*
+() Tj
+T*
+(The original logs did not expose enough of the child lifecycle to) Tj
+T*
+(distinguish:) Tj
+T*
+() Tj
+T*
+(- hang in discovery) Tj
+T*
+(- hang in setup) Tj
+T*
+(- zero-example result) Tj
+T*
+(- compile error) Tj
+T*
+(- true timeout) Tj
+T*
+() Tj
+T*
+(4. Test pollution in the spec suite) Tj
+T*
+() Tj
+T*
+(At least one updated RSpec unit example still invoked the real run_tests) Tj
+T*
+(path, which leaked behavior into later examples and caused unrelated) Tj
+T*
+(failures in integration specs for Minitest. That was fixed, but it) Tj
+T*
+(showed that the spec boundary itself had become too loose.) Tj
+T*
+() Tj
+T*
+(Why The Existing Smoke Tests Worked) Tj
+T*
+() Tj
+T*
+(They worked because they exercised the same code on much smaller) Tj
+T*
+(projects.) Tj
+T*
+() Tj
+T*
+(That difference was enough to hide the bug:) Tj
+T*
+() Tj
+T*
+(- small fixture repos do not stress repo-scale file discovery) Tj
+ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 7 0 R >>
+endobj
+9 0 obj
+<< /Length 2378 >>
+stream
+BT
+/F1 10 Tf
+11 TL
+54 786 Td
+(- their spec trees are tiny) Tj
+T*
+(- the cost of accidental default RSpec discovery stays low) Tj
+T*
+(- some child-runner state issues do not surface when the suite is) Tj
+T*
+(  trivial) Tj
+T*
+() Tj
+T*
+(So the smoke suite was not fake. It was simply not representative enough) Tj
+T*
+(for this failure mode.) Tj
+T*
+() Tj
+T*
+(Resolution) Tj
+T*
+() Tj
+T*
+(The fix set had four parts.) Tj
+T*
+() Tj
+T*
+(1. Restore the correct execution model) Tj
+T*
+() Tj
+T*
+(- keep mutation activation and RSpec execution in the same forked child) Tj
+T*
+(- remove reliance on the invalid extra execution boundary) Tj
+T*
+() Tj
+T*
+(2. Bypass default discovery when Henitai already knows the file list) Tj
+T*
+() Tj
+T*
+(- build and configure the RSpec runner directly) Tj
+T*
+(- set files_to_run explicitly) Tj
+T*
+(- call load_spec_files) Tj
+T*
+(- execute run_specs on the selected example groups) Tj
+T*
+() Tj
+T*
+(3. Classify zero-example failures conservatively) Tj
+T*
+() Tj
+T*
+(Zero-example child runs are now treated as :compile_error in the) Tj
+T*
+(relevant failure shapes instead of being allowed to drift into a) Tj
+T*
+(misleading status.) Tj
+T*
+() Tj
+T*
+(4. Strengthen regression coverage) Tj
+T*
+() Tj
+T*
+(- added repo-level dogfood smoke coverage for the baseline RSpec path) Tj
+T*
+(- updated integration specs to match the real runner structure) Tj
+T*
+(- updated type signatures for the added debug helper surface) Tj
+T*
+() Tj
+T*
+(What Changed) Tj
+T*
+() Tj
+T*
+(The principal corrective changes landed in:) Tj
+T*
+() Tj
+T*
+(- lib/henitai/integration.rb) Tj
+T*
+(- lib/henitai/scenario_execution_result.rb) Tj
+T*
+(- rakelib/integration_smoke.rake) Tj
+T*
+(- spec/henitai/integration/rspec_spec.rb) Tj
+T*
+(- spec/infra/integration_smoke_projects_spec.rb) Tj
+T*
+(- sig/henitai.rbs) Tj
+T*
+() Tj
+T*
+(Verification) Tj
+T*
+() Tj
+T*
+(The fix was verified with:) Tj
+T*
+() Tj
+T*
+(- focused RSpec regressions for:) Tj
+T*
+(  - zero-example child classification) Tj
+T*
+(  - runner lifecycle logging) Tj
+T*
+(  - file-list setup before spec loading) Tj
+T*
+(- repo-level baseline smoke through smoke:dogfood_rspec) Tj
+T*
+(- bundle exec rake smoke:integration:all) Tj
+T*
+(- bundle exec steep check) Tj
+T*
+(- focused affected-area spec runs) Tj
+T*
+(- renewed mutation runs on the Henitai repository) Tj
+T*
+() Tj
+T*
+(At the end of the work:) Tj
+T*
+() Tj
+T*
+(- the smoke suite passed) Tj
+ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 9 0 R >>
+endobj
+11 0 obj
+<< /Length 2462 >>
+stream
+BT
+/F1 10 Tf
+11 TL
+54 786 Td
+(- Steep passed) Tj
+T*
+(- affected integration and classifier specs passed) Tj
+T*
+(- mutation runs on Henitai were running again) Tj
+T*
+() Tj
+T*
+(Lessons Learned) Tj
+T*
+() Tj
+T*
+(1. The architecture contract must be executable) Tj
+T*
+() Tj
+T*
+(If a design rule is essential, it needs a contract test. In this case:) Tj
+T*
+() Tj
+T*
+(- same-process mutant activation and test execution) Tj
+T*
+(- explicit file-list execution for RSpec) Tj
+T*
+() Tj
+T*
+(2. A tiny smoke suite is not enough) Tj
+T*
+() Tj
+T*
+(Small real fixtures are still useful, but they are not a substitute for) Tj
+T*
+(one fast repo-level dogfood smoke that exercises the real execution) Tj
+T*
+(path.) Tj
+T*
+() Tj
+T*
+(3. Child diagnostics should be built in early) Tj
+T*
+() Tj
+T*
+(Mutation frameworks need strong child-process diagnostics because the) Tj
+T*
+(failure surface is wide:) Tj
+T*
+() Tj
+T*
+(- fork boundaries) Tj
+T*
+(- stdout/stderr capture) Tj
+T*
+(- framework boot) Tj
+T*
+(- suite discovery) Tj
+T*
+(- test hooks) Tj
+T*
+(- timeouts) Tj
+T*
+() Tj
+T*
+(4. Misclassification is almost as bad as crashing) Tj
+T*
+() Tj
+T*
+(A mutation-testing tool must not silently convert a runner failure into) Tj
+T*
+(a plausible but wrong mutant status. Wrong feedback is worse than loud) Tj
+T*
+(failure.) Tj
+T*
+() Tj
+T*
+(Preventive Actions) Tj
+T*
+() Tj
+T*
+(Done) Tj
+T*
+() Tj
+T*
+(- Added a repo-level dogfood RSpec smoke path.) Tj
+T*
+(- Hardened zero-example classification.) Tj
+T*
+(- Updated integration tests to follow the real runner shape.) Tj
+T*
+(- Added debug lifecycle markers and timeout thread dumps.) Tj
+T*
+(- Declared the new debug surface in RBS.) Tj
+T*
+() Tj
+T*
+(Recommended Next) Tj
+T*
+() Tj
+T*
+(- Add a small repo-level mutant-child smoke, not only a baseline-suite) Tj
+T*
+(  smoke.) Tj
+T*
+(- Keep the dogfood smoke in CI as a required gate.) Tj
+T*
+(- Add an explicit regression around the ?same process? mutation) Tj
+T*
+(  activation contract.) Tj
+T*
+(- Treat unexpected zero-example runs as a named runner/discovery failure) Tj
+T*
+(  mode in reporting, not only as a conservative compile-error fallback.) Tj
+T*
+(- Clean up duplicated ScenarioLogSupport responsibilities in) Tj
+T*
+(  lib/henitai/integration.rb to make the integration easier to reason) Tj
+T*
+(  about.) Tj
+T*
+() Tj
+T*
+(Conclusion) Tj
+T*
+() Tj
+T*
+(This incident was not a random flake. It exposed a real architectural) Tj
+T*
+(problem: Henitai had let RSpec execution drift away from the core) Tj
+ET
+endstream
+endobj
+12 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 11 0 R >>
+endobj
+13 0 obj
+<< /Length 475 >>
+stream
+BT
+/F1 10 Tf
+11 TL
+54 786 Td
+(constraints of its own mutation model, and the existing smoke coverage) Tj
+T*
+(was too small to catch it.) Tj
+T*
+() Tj
+T*
+(The repair was successful because it focused on the root cause:) Tj
+T*
+() Tj
+T*
+(- restore the execution contract) Tj
+T*
+(- stop delegating file selection back to default RSpec discovery) Tj
+T*
+(- verify the real path on the real repository) Tj
+T*
+() Tj
+T*
+(That is the standard the integration needs going forward.) Tj
+ET
+endstream
+endobj
+14 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 13 0 R >>
+endobj
+15 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+16 0 obj
+<< /Title (RSpec Execution Regression Post-Mortem) /Author (Codex) >>
+endobj
+xref
+0 17
+0000000000 65535 f 
+0000000015 00000 n 
+0000000083 00000 n 
+0000000173 00000 n 
+0000003371 00000 n 
+0000003497 00000 n 
+0000006221 00000 n 
+0000006347 00000 n 
+0000008897 00000 n 
+0000009023 00000 n 
+0000011453 00000 n 
+0000011580 00000 n 
+0000014095 00000 n 
+0000014223 00000 n 
+0000014750 00000 n 
+0000014878 00000 n 
+0000014928 00000 n 
+trailer
+<< /Size 17 /Root 15 0 R /Info 16 0 R >>
+startxref
+15014
+%%EOF

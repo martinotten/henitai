@@ -31,15 +31,26 @@ module Henitai
       start_parallel_stdin_watcher(context, stdin_pipe)
       parallel_workers(context, process_mutant).each(&:join)
     ensure
-      stop_parallel_stdin_watcher(context)
-      restore_parallel_signal_traps(context)
-      raise context.state[:error] if context&.state&.fetch(:error, nil)
-      raise Interrupt if context&.state&.fetch(:stopping, false)
+      teardown_parallel_execution(context)
     end
 
     private
 
     attr_reader :worker_count
+
+    def teardown_parallel_execution(context)
+      stop_parallel_stdin_watcher(context)
+      restore_parallel_signal_traps(context)
+      emit_scheduler_diagnostics if Integration::SchedulerDiagnostics.enabled?
+      raise context.state[:error] if context&.state&.fetch(:error, nil)
+      raise Interrupt if context&.state&.fetch(:stopping, false)
+    end
+
+    def emit_scheduler_diagnostics
+      summary = Integration::SchedulerDiagnostics.summary
+      warn "[henitai-scheduler] max_concurrent_children=#{summary[:max_concurrent]}"
+      warn "[henitai-scheduler] child_intervals=#{summary[:intervals].inspect}"
+    end
 
     def build_parallel_queue(mutants)
       Queue.new.tap { |queue| mutants.each { |mutant| queue << mutant } }
@@ -84,26 +95,33 @@ module Henitai
     end
 
     def parallel_workers(context, process_mutant)
-      Array.new(worker_count) { Thread.new { process_parallel_worker(context, process_mutant) } }
+      Array.new(worker_count) do
+        Thread.new { process_parallel_worker(context, process_mutant) }
+      end
     end
 
     def process_parallel_worker(context, process_mutant)
       loop do
         break if context.state[:stopping]
 
-        process_mutant.call(
-          context.queue.pop(true),
-          context.integration,
-          context.config,
-          context.progress_reporter,
-          context.mutex
-        )
+        run_one_mutant(context, process_mutant)
       rescue ThreadError
         break
       rescue StandardError => e
         record_parallel_error(context, e)
         break
       end
+    end
+
+    def run_one_mutant(context, process_mutant)
+      mutant = context.queue.pop(true)
+      process_mutant.call(
+        mutant,
+        context.integration,
+        context.config,
+        context.progress_reporter,
+        context.mutex
+      )
     end
 
     def stop_parallel_stdin_watcher(context)

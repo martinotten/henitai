@@ -11,6 +11,7 @@ RSpec.describe Henitai::Integration::RspecProcessRunner do
       run_in_child: 7,
       wait_with_timeout: nil,
       build_result: nil,
+      spawn_mutant: nil,
       spawn_suite_process: 4321,
       cleanup_process_group: nil,
       reap_child: nil
@@ -42,24 +43,14 @@ RSpec.describe Henitai::Integration::RspecProcessRunner do
   end
 
   def stub_mutant_run(calls, integration, log_paths, pid:, wait_result:, build_result:)
-    allow(integration).to receive(:scenario_log_paths) do |name|
-      calls << [:scenario_log_paths, name]
-      log_paths
-    end
-    allow(integration).to receive(:run_in_child) do |**kwargs|
-      calls << [:run_in_child, kwargs]
-      7
-    end
-    allow(Process).to receive(:fork) do |&block|
-      calls << :fork
-      block.call
-      pid
-    end
-    allow(Process).to receive(:setpgid) do |child_pid, pgrp|
-      calls << [:setpgid, child_pid, pgrp]
-    end
-    allow(Process).to receive(:exit) do |status|
-      calls << [:exit, status]
+    child_handle = Henitai::Integration::ChildHandle.new(
+      pid:,
+      log_paths:
+    )
+
+    allow(integration).to receive(:spawn_mutant) do |mutant:, test_files:|
+      calls << [:spawn_mutant, mutant.id, test_files]
+      child_handle
     end
     allow(integration).to receive(:wait_with_timeout) do |wait_pid, timeout|
       calls << [:wait_with_timeout, wait_pid, timeout]
@@ -105,7 +96,7 @@ RSpec.describe Henitai::Integration::RspecProcessRunner do
     end
   end
 
-  it "runs a mutant in a forked child and finalizes the result" do
+  it "runs a mutant via integration.spawn_mutant and finalizes the result" do
     integration = build_integration
     mutant = mutant_input
     wait_status = successful_wait_status
@@ -196,20 +187,38 @@ RSpec.describe Henitai::Integration::RspecProcessRunner do
     )
   end
 
+  it "finalize skips cleanup when pid is nil" do
+    integration = build_integration
+    mutant = mutant_input
+    log_paths = mutant_log_paths
+    calls = []
+
+    child_handle = Henitai::Integration::ChildHandle.new(
+      pid: nil,
+      log_paths:
+    )
+
+    allow(integration).to receive_messages(
+      spawn_mutant: child_handle,
+      wait_with_timeout: :survived,
+      build_result: :survived
+    )
+    allow(integration).to receive(:cleanup_process_group) { |pid| calls << [:cleanup, pid] }
+    allow(integration).to receive(:reap_child) { |pid| calls << [:reap, pid] }
+
+    result = described_class.new.run_mutant(
+      integration,
+      mutant:,
+      test_files: [],
+      timeout: 1.0
+    )
+
+    expect([result, calls]).to eq([:survived, []])
+  end
+
   def mutant_run_calls(mutant, wait_status, log_paths)
     [
-      [:scenario_log_paths, "mutant-abc"],
-      :fork,
-      [:setpgid, 0, 0],
-      [
-        :run_in_child,
-        {
-          mutant:,
-          test_files: ["spec/foo_spec.rb"],
-          log_paths:
-        }
-      ],
-      [:exit, 7],
+      [:spawn_mutant, mutant.id, ["spec/foo_spec.rb"]],
       [:wait_with_timeout, 4_321, 1.5],
       [:build_result, wait_status, log_paths],
       [:cleanup, 4_321]

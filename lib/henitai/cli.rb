@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "json"
 require "optparse"
 module Henitai
   # Command-line interface entry point.
@@ -100,7 +101,7 @@ module Henitai
 
       config = load_config(options)
       result = run_pipeline(options, config)
-      exit(exit_status_for(result, config))
+      exit(exit_status_for(result, config, fail_on_survivors: options[:fail_on_survivors]))
     rescue StandardError => e
       handle_run_error(e)
     end
@@ -160,6 +161,8 @@ module Henitai
         add_operator_option(opts, options)
         add_jobs_option(opts, options)
         add_output_option(opts, options)
+        add_survivors_from_option(opts, options)
+        add_fail_on_survivors_option(opts, options)
         add_help_option(opts)
         add_version_option(opts)
       end
@@ -216,6 +219,25 @@ module Henitai
       end
     end
 
+    def add_survivors_from_option(opts, options)
+      opts.on(
+        "--survivors-from PATH",
+        "Re-run only survivors from a prior report " \
+        "(partial rerun; threshold checks are skipped; dirty worktrees are included)"
+      ) do |path|
+        options[:survivors_from] = path
+      end
+    end
+
+    def add_fail_on_survivors_option(opts, options)
+      opts.on(
+        "--fail-on-survivors",
+        "Exit 1 for partial reruns when any survivors remain (otherwise exits 0)"
+      ) do
+        options[:fail_on_survivors] = true
+      end
+    end
+
     def add_help_option(opts)
       opts.on("-h", "--help", "Show this help") do
         puts opts
@@ -246,6 +268,7 @@ module Henitai
           bundle exec henitai run --since origin/main
           bundle exec henitai run 'Foo::Bar#my_method'
           bundle exec henitai run 'MyNamespace*' --operators full
+          bundle exec henitai run --survivors-from reports/mutation-report.json
           bundle exec henitai clean
           bundle exec henitai init
           bundle exec henitai operator list
@@ -255,12 +278,53 @@ module Henitai
     end
 
     def run_pipeline(options, config)
+      resolved_survivors_from = resolve_survivors_from(options[:survivors_from])
       runner = Runner.new(
         config:,
         subjects: subjects_from_argv,
-        since: options[:since]
+        since: options[:since],
+        survivors_from: resolved_survivors_from
       )
       runner.run
+    end
+
+    def resolve_survivors_from(survivors_from)
+      return nil if survivors_from.nil?
+
+      # Fast path: if the path already points into reports/sessions/<session_id>/,
+      # keep it as-is so activation-recipes.json can be found by the runner.
+      report_dir = File.dirname(survivors_from)
+      parent_dir = File.dirname(report_dir)
+      # Heuristic: treat any path under a directory named "sessions" as already
+      # being a snapshot path; this keeps activation-recipes lookup correct.
+      return survivors_from if File.basename(parent_dir) == "sessions"
+
+      session_id = session_id_from_report(survivors_from)
+      return survivors_from if session_id.nil?
+
+      snapshot_path = survivors_snapshot_path(report_dir, session_id)
+      recipe_path = File.join(report_dir, "sessions", session_id, "activation-recipes.json")
+      return snapshot_path if File.exist?(recipe_path) && File.exist?(snapshot_path)
+
+      # If the recipes exist but the snapshot doesn't (e.g. partial cleanup),
+      # fall back to the path the user provided so the error message points
+      # at what they actually passed.
+
+      survivors_from
+    rescue StandardError => e
+      warn_survivors_from_resolution_error(survivors_from, e)
+      survivors_from
+    end
+
+    def survivors_snapshot_path(report_dir, session_id)
+      File.join(report_dir, "sessions", session_id, "mutation-report.json")
+    end
+
+    def session_id_from_report(path)
+      parsed = JSON.parse(File.read(path))
+      parsed["sessionId"]
+    rescue JSON::ParserError, Errno::ENOENT
+      nil
     end
 
     def load_config(options)
@@ -277,6 +341,13 @@ module Henitai
     def handle_run_error(error)
       warn "#{error.class}: #{error.message}"
       exit 2
+    end
+
+    def warn_survivors_from_resolution_error(survivors_from, error)
+      warn(
+        "henitai: warning: could not resolve survivors-from " \
+        "#{survivors_from}: #{error.class}: #{error.message}"
+      )
     end
 
     def clean_summary(removed_paths)
@@ -301,7 +372,14 @@ module Henitai
       end
     end
 
-    def exit_status_for(result, config)
+    def exit_status_for(result, config, fail_on_survivors: false)
+      if result.respond_to?(:partial_rerun?) && result.partial_rerun?
+        warn "henitai: partial rerun - mutation score threshold not evaluated"
+        return result.survived.positive? ? 1 : 0 if fail_on_survivors
+
+        return 0
+      end
+
       result.mutation_score.to_i >= config.thresholds.fetch(:low, 60) ? 0 : 1
     end
 
