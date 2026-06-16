@@ -53,7 +53,9 @@ module Henitai
 
     def current_snapshot
       Coverage.peek_result
-    rescue StandardError
+    rescue RuntimeError
+      # Raised when coverage measurement is not running; caller warns and skips.
+      # Other errors are genuine bugs and must surface.
       nil
     end
 

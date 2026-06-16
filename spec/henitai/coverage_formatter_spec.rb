@@ -151,7 +151,7 @@ RSpec.describe Henitai::CoverageFormatter do
         formatter = described_class.new(StringIO.new)
         notification = build_notification("spec/models/sample_spec.rb")
 
-        allow(Coverage).to receive(:peek_result).and_raise(StandardError)
+        allow(Coverage).to receive(:peek_result).and_raise(RuntimeError)
 
         expect do
           formatter.example_finished(notification)
@@ -170,7 +170,7 @@ RSpec.describe Henitai::CoverageFormatter do
         formatter = described_class.new(StringIO.new)
         notification = build_notification("spec/models/sample_spec.rb")
 
-        allow(Coverage).to receive(:peek_result).and_raise(StandardError)
+        allow(Coverage).to receive(:peek_result).and_raise(RuntimeError)
 
         formatter.example_finished(notification)
         formatter.dump_summary(nil)

@@ -348,6 +348,12 @@ module Henitai
     end
 
     def remaining_slot_timeout(slot, now)
+      # Invariant: drain_draining_slots runs (and removes draining slots) before
+      # the event wait, so next_event_timeout never observes a draining slot
+      # whose SIGTERM has not been sent. Guard term_sent_at_monotonic defensively
+      # against a future ordering change: an unsignalled draining slot is due now.
+      return 0.0 if slot.draining && slot.term_sent_at_monotonic.nil?
+
       deadline =
         if slot.draining
           slot.term_sent_at_monotonic + PROCESS_DRAIN_WINDOW

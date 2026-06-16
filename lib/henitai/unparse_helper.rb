@@ -9,8 +9,11 @@ module Henitai
 
     def safe_unparse(node)
       Unparser.unparse(node)
-    rescue StandardError
-      # Unparser does not support all AST node types, so fall back gracefully.
+    rescue Unparser::UnknownNodeError, Unparser::InvalidNodeError,
+           Unparser::UnsupportedNodeError, EncodingError
+      # Unparser does not support all AST node types, and some mutated string
+      # segments carry incompatible encodings; fall back gracefully for those.
+      # Other failures (e.g. NoMethodError) are bugs and must surface.
       fallback_source(node)
     end
 
