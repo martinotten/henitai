@@ -380,7 +380,12 @@ module Henitai
         return 0
       end
 
-      result.mutation_score.to_i >= config.thresholds.fetch(:low, 60) ? 0 : 1
+      score = result.mutation_score
+      # No valid mutants to evaluate (e.g. an incremental run with no changed
+      # code) cannot fail a threshold — treat it as success.
+      return 0 if score.nil?
+
+      score.to_i >= config.thresholds.fetch(:low, 60) ? 0 : 1
     end
 
     def init_command
