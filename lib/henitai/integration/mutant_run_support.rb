@@ -30,9 +30,9 @@ module Henitai
       end
 
       def build_result(wait_result, log_paths)
-        stdout = read_log_file(log_paths[:stdout_path])
-        stderr = read_log_file(log_paths[:stderr_path])
-        write_combined_log(log_paths[:log_path], stdout, stderr)
+        stdout = scenario_log_support.read_log_file(log_paths[:stdout_path])
+        stderr = scenario_log_support.read_log_file(log_paths[:stderr_path])
+        scenario_log_support.write_combined_log(log_paths[:log_path], stdout, stderr)
 
         ScenarioExecutionResult.build(
           wait_result:,
@@ -56,24 +56,6 @@ module Henitai
 
       def mutant_log_name(mutant)
         "mutant-#{mutant.id}"
-      end
-
-      def read_log_file(path)
-        return "" unless File.exist?(path)
-
-        File.read(path)
-      end
-
-      def write_combined_log(path, stdout, stderr)
-        FileUtils.mkdir_p(File.dirname(path))
-        File.write(path, combined_log(stdout, stderr))
-      end
-
-      def combined_log(stdout, stderr)
-        [
-          (stdout.empty? ? nil : "stdout:\n#{stdout}"),
-          (stderr.empty? ? nil : "stderr:\n#{stderr}")
-        ].compact.join("\n")
       end
 
       private

@@ -374,9 +374,6 @@ module Henitai
       def build_result: (untyped, Hash[Symbol, String]) -> ScenarioExecutionResult
       def run_in_child: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
       def mutant_log_name: (Mutant) -> String
-      def read_log_file: (String) -> String
-      def write_combined_log: (String, String, String) -> void
-      def combined_log: (String, String) -> String
 
       private
 

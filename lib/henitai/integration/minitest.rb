@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 require "fileutils"
-require_relative "../integration"
+# Guarded to avoid a circular require: integration.rb requires this file at its
+# tail, by which point Base is already defined, so the require is skipped.
+require_relative "../integration" unless defined?(Henitai::Integration::Base)
 
 module Henitai
   module Integration

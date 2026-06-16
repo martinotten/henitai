@@ -28,6 +28,8 @@ module Henitai
         fallback_spec_files(subject)
       end
 
+      private
+
       def spec_files
         @spec_files ||= begin
           paths = Dir.glob("spec/**/*_spec.rb")

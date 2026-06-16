@@ -308,6 +308,8 @@ RSpec.describe Henitai::Integration::Minitest do
       order = []
       log_paths = build_log_paths("mutant-setup")
       log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
+      allow(log_support).to receive(:read_log_file).and_return("")
+      allow(log_support).to receive(:write_combined_log)
 
       allow(integration).to receive(:setup_load_path) do
         order << :setup_load_path
@@ -387,6 +389,8 @@ RSpec.describe Henitai::Integration::Minitest do
         log_path: "reports/mutation-logs/mutant-1.log"
       }
       log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
+      allow(log_support).to receive(:read_log_file).and_return("")
+      allow(log_support).to receive(:write_combined_log)
 
       allow(integration).to receive(:scenario_log_support).and_return(log_support)
       allow(log_support).to receive(:with_coverage_dir).with(mutant.id).and_yield
