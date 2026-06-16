@@ -355,6 +355,29 @@ RSpec.describe Henitai::ExecutionEngine do
     )
   end
 
+  it "reports flaky retries that happened on the parallel path" do
+    engine = described_class.new
+    mutants = 4.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
+    integration = build_integration
+    config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(
+      12.5,
+      "coverage",
+      2,
+      3
+    )
+
+    runner = instance_double(Henitai::ProcessWorkerRunner, flaky_retry_count: 1)
+    allow(runner).to receive(:run).and_return([])
+    allow(Henitai::ProcessWorkerRunner).to receive(:new).and_return(runner)
+    allow(engine).to receive(:warn)
+
+    engine.run(mutants, integration, config)
+
+    expect(engine).to have_received(:warn).with(
+      "Flaky-test mitigation: 1/4 mutants required retries (25.00%)"
+    )
+  end
+
   it "filters candidate tests by per-test coverage before executing a mutant" do
     pending = build_located_mutant("Foo#bar", file: "lib/foo.rb", line: 3)
     integration = build_integration

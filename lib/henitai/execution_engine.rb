@@ -47,15 +47,16 @@ module Henitai
     end
 
     def run_parallel(mutants, integration, config, progress_reporter)
-      ProcessWorkerRunner.new(
-        worker_count: worker_count(config)
-      ).run(
+      runner = ProcessWorkerRunner.new(worker_count: worker_count(config))
+      results = runner.run(
         mutants,
         integration,
         config,
         progress_reporter,
         test_file_resolver: ->(mutant) { prioritized_tests_for(mutant, integration, config) }
       )
+      @flaky_retry_count = runner.flaky_retry_count
+      results
     end
 
     def process_mutant(mutant, integration, config, progress_reporter, mutex)

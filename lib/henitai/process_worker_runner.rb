@@ -43,7 +43,13 @@ module Henitai
       @runtime = runtime
       @wakeup = wakeup
       @shutdown_requested = false
+      @flaky_retry_count = 0
     end
+
+    # Number of mutants that required at least one retry during the run.
+    # Mirrors the linear path's per-mutant flaky semantics so the engine can
+    # report a single, mode-agnostic flaky statistic.
+    attr_reader :flaky_retry_count
 
     # Trigger a graceful shutdown from outside the event loop.
     # Safe to call from any thread. The loop observes the flag on its next tick.
@@ -323,6 +329,7 @@ module Henitai
       @slots = {}
       @pid_to_slot = {}
       @results = []
+      @flaky_retry_count = 0
       @next_slot_id = 0
       @integration = integration
       @config = config
@@ -357,6 +364,7 @@ module Henitai
     end
 
     def retry_slot(slot) # rubocop:disable Metrics/AbcSize
+      @flaky_retry_count += 1 if slot.retry_count.zero?
       slot.retry_count += 1
       test_files = resolve_test_files(slot.mutant)
       handle = integration.spawn_mutant(mutant: slot.mutant, test_files: test_files)

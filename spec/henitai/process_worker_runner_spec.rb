@@ -450,4 +450,49 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       expect(call_count).to eq(2)
     end
   end
+
+  describe "flaky retry counting" do
+    it "counts each mutant that required at least one retry" do
+      flaky = build_mutant("flaky")
+      stable = build_mutant("stable")
+      call_counts = Hash.new(0)
+
+      integration = instance_double(Henitai::Integration::Rspec)
+      allow(integration).to receive(:select_tests).and_return([])
+      allow(integration).to receive(:spawn_mutant) do |mutant:, **|
+        log_paths = { stdout_path: "/dev/null", stderr_path: "/dev/null",
+                      log_path: "/dev/null" }
+        call_counts[mutant.id] += 1
+        # "flaky" survives the first run then is killed on retry; "stable"
+        # is killed immediately and never retries.
+        exit_code = mutant.id == "flaky" && call_counts[mutant.id] == 1 ? 0 : 1
+        pid = Process.fork { Process.exit(exit_code) }
+        Henitai::Integration::ChildHandle.new(pid, log_paths)
+      end
+      allow(integration).to receive(:build_result) do |wait_result, log_paths|
+        Henitai::ScenarioExecutionResult.build(
+          wait_result: wait_result, stdout: "", stderr: "",
+          log_path: log_paths[:log_path]
+        )
+      end
+
+      config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 1)
+      runner = described_class.new(worker_count: 1)
+
+      runner.run([flaky, stable], integration, config, nil)
+
+      expect(runner.flaky_retry_count).to eq(1)
+    end
+
+    it "reports zero retries when no mutant survives its first run" do
+      stable = build_mutant("stable")
+      integration = build_integration("stable" => { exit_code: 1 })
+      config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 3)
+      runner = described_class.new(worker_count: 1)
+
+      runner.run([stable], integration, config, nil)
+
+      expect(runner.flaky_retry_count).to eq(0)
+    end
+  end
 end
