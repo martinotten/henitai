@@ -17,18 +17,25 @@ module Henitai
     attr_reader :mutants, :started_at, :finished_at, :thresholds, :survivor_stats,
                 :session_id, :git_sha
 
+    # @param source_provider [#call] maps a file path to its source string.
+    #   Injected so the domain object performs no disk IO; the caller (which
+    #   already knows the file paths) supplies the contents. The default
+    #   provider returns "" for every file — callers that need real source in
+    #   the schema (e.g. the runner) inject a provider primed with file content.
     # rubocop:disable Metrics/ParameterLists
     def initialize(mutants:, started_at:, finished_at:, thresholds: nil,
                    partial_rerun: false, survivor_stats: nil,
-                   session_id: SecureRandom.uuid, git_sha: nil)
-      @mutants        = mutants
-      @started_at     = started_at
-      @finished_at    = finished_at
-      @thresholds     = DEFAULT_THRESHOLDS.merge(thresholds || {})
-      @partial_rerun  = partial_rerun
-      @survivor_stats = survivor_stats
-      @session_id     = session_id
-      @git_sha        = git_sha
+                   session_id: SecureRandom.uuid, git_sha: nil,
+                   source_provider: ->(_file) { "" })
+      @mutants         = mutants
+      @started_at      = started_at
+      @finished_at     = finished_at
+      @thresholds      = DEFAULT_THRESHOLDS.merge(thresholds || {})
+      @partial_rerun   = partial_rerun
+      @survivor_stats  = survivor_stats
+      @session_id      = session_id
+      @git_sha         = git_sha
+      @source_provider = source_provider
     end
     # rubocop:enable Metrics/ParameterLists
 
@@ -129,14 +136,9 @@ module Henitai
 
     def build_files_section
       mutants.group_by { |m| m.location[:file] }.transform_values do |file_mutants|
-        source = begin
-          File.read(file_mutants.first.location[:file])
-        rescue StandardError
-          ""
-        end
         {
           language: "ruby",
-          source:,
+          source: @source_provider.call(file_mutants.first.location[:file]),
           mutants: file_mutants.map { |m| mutant_to_schema(m) }
         }
       end

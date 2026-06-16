@@ -4,6 +4,7 @@
 # multiple assertions against the produced artifacts.
 # rubocop:disable Metrics/MethodLength, RSpec/MultipleExpectations, RSpec/ExampleLength
 
+require "fileutils"
 require "json"
 require "spec_helper"
 require "tmpdir"
@@ -201,6 +202,45 @@ RSpec.describe Henitai::Reporter::Json do
         Henitai::SurvivorActivationCache::FILENAME
       )
       expect(File).not_to exist(recipe_path)
+    end
+  end
+
+  it "writes mutation-history.json from an injected history store" do
+    Dir.mktmpdir do |dir|
+      reports_dir = File.join(dir, "nested", "reports")
+      store_path = File.join(reports_dir, "mutation-history.sqlite3")
+      FileUtils.mkdir_p(reports_dir)
+      File.write(store_path, "")
+      store = instance_double(
+        Henitai::MutantHistoryStore,
+        path: store_path,
+        trend_report: { runs: [{ version: "9.9.9" }], mutants: [] }
+      )
+      schema = { schemaVersion: "1.0", thresholds: { high: 80, low: 60 }, files: {} }
+
+      described_class
+        .new(config: build_config(reports_dir:), history_store: store)
+        .report(build_result(schema:))
+
+      history = JSON.parse(File.read(File.join(reports_dir, "mutation-history.json")), symbolize_names: true)
+      expect(history[:runs].first).to include(version: "9.9.9")
+    end
+  end
+
+  it "skips mutation-history.json when the injected store has no database file" do
+    Dir.mktmpdir do |dir|
+      reports_dir = File.join(dir, "reports")
+      store = instance_double(
+        Henitai::MutantHistoryStore,
+        path: File.join(reports_dir, "missing.sqlite3")
+      )
+      schema = { schemaVersion: "1.0", thresholds: { high: 80, low: 60 }, files: {} }
+
+      described_class
+        .new(config: build_config(reports_dir:), history_store: store)
+        .report(build_result(schema:))
+
+      expect(File).not_to exist(File.join(reports_dir, "mutation-history.json"))
     end
   end
 

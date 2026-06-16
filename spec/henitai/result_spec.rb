@@ -67,6 +67,19 @@ RSpec.describe Henitai::Result do
   end
   # rubocop:enable Metrics/MethodLength
 
+  def status_schema_mutant(file:, status: :survived)
+    node = Parser::CurrentRuby.parse("1 - 0")
+    mutant = Henitai::Mutant.new(
+      subject: Henitai::Subject.new(namespace: "Sample", method_name: "value"),
+      operator: "ArithmeticOperator",
+      nodes: { original: node, mutated: node },
+      description: "replaced + with -",
+      location: { file:, start_line: 1, end_line: 1, start_col: 0, end_col: 5 }
+    )
+    mutant.status = status
+    mutant
+  end
+
   def sample_location(path)
     {
       file: path,
@@ -250,6 +263,32 @@ RSpec.describe Henitai::Result do
         coveredBy: ["spec/sample_spec.rb"],
         testsCompleted: 1
       )
+    end
+  end
+
+  describe "source content" do
+    it "builds the files section from an injected source provider without disk IO" do
+      mutant = status_schema_mutant(file: "lib/sample.rb")
+      provider = ->(file) { { "lib/sample.rb" => "class Sample; end\n" }.fetch(file, "") }
+      result = described_class.new(
+        mutants: [mutant], started_at: Time.at(0), finished_at: Time.at(1),
+        source_provider: provider
+      )
+
+      schema = result.to_stryker_schema
+
+      expect(schema[:files]["lib/sample.rb"][:source]).to eq("class Sample; end\n")
+    end
+
+    it "defaults to empty source so the domain object performs no disk reads" do
+      mutant = status_schema_mutant(file: "lib/sample.rb")
+      result = described_class.new(
+        mutants: [mutant], started_at: Time.at(0), finished_at: Time.at(1)
+      )
+
+      schema = result.to_stryker_schema
+
+      expect(schema[:files]["lib/sample.rb"][:source]).to eq("")
     end
   end
 
