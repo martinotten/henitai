@@ -7,10 +7,18 @@ module Henitai
   module Integration
     # Minitest integration adapter.
     #
-    # Coverage formatter injection remains implemented in the RSpec child
-    # runner. Minitest shares selection and execution semantics, but per-test
-    # coverage collection is not yet wired into this path.
-    class Minitest < Rspec
+    # A sibling of Rspec behind Base: it shares the framework-agnostic mutant-run
+    # orchestration (MutantRunSupport) and test selection (RspecTestSelection)
+    # but implements its own Minitest-specific test invocation and suite command.
+    # Per-test coverage collection is not yet wired into this path.
+    class Minitest < Base
+      include MutantRunSupport
+      include RspecTestSelection
+
+      DEFAULT_SUITE_TIMEOUT = 300.0
+
+      def test_files = spec_files
+
       def per_test_coverage_supported?
         true
       end

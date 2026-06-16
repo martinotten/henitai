@@ -513,4 +513,52 @@ RSpec.describe Henitai::Integration::Minitest do
 
     expect(calls).to eq([[:cleanup, 4321], [:reap, 4321]])
   end
+
+  it "is a sibling of the rspec adapter, not a subtype" do
+    inherits_base = described_class.ancestors.include?(Henitai::Integration::Base)
+    inherits_rspec = described_class.ancestors.include?(Henitai::Integration::Rspec)
+
+    expect([inherits_base, inherits_rspec]).to eq([true, false])
+  end
+
+  it "does not expose rspec-only runner methods" do
+    integration = described_class.new
+    rspec_only = %i[
+      run_rspec_runner build_rspec_runner configure_rspec_runner
+      load_rspec_spec_files run_rspec_specs rspec_suite_runner_script
+    ]
+
+    exposed = rspec_only.select { |name| integration.respond_to?(name, true) }
+
+    expect(exposed).to eq([])
+  end
+
+  it "builds a scenario result from the captured child logs" do
+    with_temp_workspace do
+      log_paths = build_log_paths("mutant-build")
+      FileUtils.mkdir_p(File.dirname(log_paths[:stdout_path]))
+      File.write(log_paths[:stdout_path], "out\n")
+      File.write(log_paths[:stderr_path], "err\n")
+      wait_result = Struct.new(:success?, :exitstatus).new(true, 0)
+
+      result = described_class.new.build_result(wait_result, log_paths)
+
+      expect([result.status, result.stdout, result.stderr, File.read(log_paths[:log_path])]).to eq(
+        [:survived, "out\n", "err\n", "stdout:\nout\n\nstderr:\nerr\n"]
+      )
+    end
+  end
+
+  it "names mutant logs and scenario log paths the same way as rspec" do
+    integration = described_class.new
+    mutant = Struct.new(:id).new("abc")
+
+    with_env("HENITAI_REPORTS_DIR", "reports") do
+      expect(integration.send(:scenario_log_paths, integration.send(:mutant_log_name, mutant))).to eq(
+        stdout_path: "reports/mutation-logs/mutant-abc.stdout.log",
+        stderr_path: "reports/mutation-logs/mutant-abc.stderr.log",
+        log_path: "reports/mutation-logs/mutant-abc.log"
+      )
+    end
+  end
 end

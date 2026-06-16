@@ -4,16 +4,17 @@ require "stringio"
 require_relative "../process_wakeup"
 require_relative "child_debug_support"
 require_relative "child_runtime_control"
-require_relative "rspec_child_runner"
 require_relative "scenario_log_support"
 
 module Henitai
   module Integration
-    # Base class for all integrations.
+    # Base class for all integrations. Provides the framework-agnostic child
+    # process lifecycle (wait, timeout handling, cleanup) and subprocess
+    # environment helpers. Concrete adapters mix in MutantRunSupport and
+    # implement #run_tests plus test selection.
     class Base
       include ChildDebugSupport
       include ChildRuntimeControl
-      include RspecChildRunner
 
       # @param subject [Subject]
       # @return [Array<String>] paths to test files that cover this subject
@@ -164,34 +165,6 @@ module Henitai
         yield
       ensure
         $stdin = original_stdin
-      end
-
-      def run_tests(test_files)
-        require "rspec/core"
-        ::RSpec.__send__(:configuration).fail_if_no_examples = true
-        debug_child_rspec_trace(test_files:, rspec_options: [], rspec_argv: test_files)
-        debug_child_example_count("before_run") # steep:ignore Ruby::NoMethod
-        debug_child_puts("[henitai-debug-child] runner_run_start")
-        status = run_rspec_runner(test_files)
-        debug_child_puts("[henitai-debug-child] runner_run_return status=#{status.inspect}")
-        debug_child_example_count("after_run") # steep:ignore Ruby::NoMethod
-        debug_child_rspec_exit(status)
-        return status if status.is_a?(Integer)
-
-        status == true ? 0 : 1
-      end
-
-      def run_child_activation_and_tests(mutant:, test_files:, log_paths:)
-        scenario_log_support.with_coverage_dir(mutant.id) do
-          scenario_log_support.capture_child_output(log_paths) do
-            debug_child_mutant_meta(mutant) if debug_child?
-            debug_child_activation_start(mutant.id)
-            activation_result = Mutant::Activator.activate!(mutant)
-            debug_child_activation_check if debug_child?
-            debug_child_activation_end(activation_result, test_files:)
-            activation_result == :compile_error ? 2 : run_tests(test_files)
-          end
-        end
       end
     end
   end
