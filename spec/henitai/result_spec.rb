@@ -304,7 +304,7 @@ RSpec.describe Henitai::Result do
 
   it "falls back to the node type when a replacement cannot be unparsed" do
     mutant = unsupported_mutant(status: :pending)
-    allow(Unparser).to receive(:unparse).with(mutant.mutated_node).and_raise(StandardError, "boom")
+    allow(Unparser).to receive(:unparse).with(mutant.mutated_node).and_raise(Unparser::UnsupportedNodeError, "boom")
     schema = result([mutant]).to_stryker_schema
     file = schema[:files].keys.first
 

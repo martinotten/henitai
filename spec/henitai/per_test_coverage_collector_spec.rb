@@ -172,7 +172,7 @@ RSpec.describe Henitai::PerTestCoverageCollector do
       Dir.chdir(dir) do
         collector = described_class.new
 
-        allow(Coverage).to receive(:peek_result).and_raise(StandardError)
+        allow(Coverage).to receive(:peek_result).and_raise(RuntimeError)
 
         expect do
           collector.record_test("test/sample_test.rb")
@@ -190,7 +190,7 @@ RSpec.describe Henitai::PerTestCoverageCollector do
       Dir.chdir(dir) do
         collector = described_class.new
 
-        allow(Coverage).to receive(:peek_result).and_raise(StandardError)
+        allow(Coverage).to receive(:peek_result).and_raise(RuntimeError)
 
         collector.record_test("test/sample_test.rb")
         collector.write_report

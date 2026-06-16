@@ -76,14 +76,6 @@ module Henitai
   module Integration::ChildDebugSupport
     private
 
-    def run_rspec_runner: (Array[String]) -> untyped
-    def build_rspec_runner: () -> untyped
-    def configure_rspec_runner: (untyped) -> void
-    def load_rspec_spec_files: (Array[String]) -> void
-    def run_rspec_specs: (untyped) -> untyped
-    def debug_child_timeout_dump: (Integer) -> void
-    def install_debug_timeout_trap: () -> void
-    def debug_child_thread_dump: (String) -> void
     def debug_child_puts: (String) -> void
     def debug_child?: () -> bool
     def debug_child_rspec_trace: (
@@ -97,12 +89,53 @@ module Henitai
     def debug_child_activation_end: (untyped, test_files: Array[String]) -> void
     def debug_child_mutant_meta: (Mutant) -> void
     def debug_child_activation_check: () -> void
-    def suppress_simplecov!: () -> void
-    def suppress_coverage!: () -> void
     def loaded_feature_map: (Array[String]) -> Array[[String, bool]]
     def loaded_feature?: (String) -> bool
     def rspec_world_example_count: () -> Integer?
     def pause: (Float) -> void
+  end
+
+  module Integration::ChildRuntimeControl
+    private
+
+    def suppress_simplecov!: () -> void
+    def suppress_coverage!: () -> void
+    def debug_child_timeout_dump: (Integer) -> void
+    def install_debug_timeout_trap: () -> void
+    def debug_child_thread_dump: (String) -> void
+  end
+
+  module Integration::RspecChildRunner
+    private
+
+    def run_rspec_runner: (Array[String]) -> untyped
+    def build_rspec_runner: () -> untyped
+    def configure_rspec_runner: (untyped) -> void
+    def load_rspec_spec_files: (Array[String]) -> void
+    def run_rspec_specs: (untyped) -> untyped
+  end
+
+  module Integration::RspecTestSelection
+    REQUIRE_DIRECTIVE_PATTERN: Regexp
+
+    def select_tests: (Subject) -> Array[String]
+
+    private
+
+    def spec_files: () -> Array[String]
+    def fallback_spec_files: (Subject) -> Array[String]
+    def excluded_spec_files: () -> Array[String]
+    def rspec_exclude_patterns: () -> Array[String]
+    def rspec_config_lines: () -> Array[String]
+    def rspec_config_path: () -> String
+    def selection_patterns: (Subject) -> Array[String]
+    def requires_source_file?: (String, String) -> bool
+    def requires_source_file_transitively?: (String, String, ?Array[String]) -> bool
+    def required_files: (String) -> Array[String]
+    def resolve_required_file: (String, String, String) -> String?
+    def relative_candidates: (String, String) -> Array[String]
+    def require_candidates: (String, String) -> Array[String]
+    def expand_candidates: (String, String) -> Array[String]
   end
 
   class Configuration
@@ -295,6 +328,7 @@ module Henitai
 
     class Base
       include ChildDebugSupport
+      include ChildRuntimeControl
 
       def select_tests: (Subject) -> Array[String]
       def test_files: () -> Array[String]
@@ -314,7 +348,6 @@ module Henitai
       def cleanup_child_process: (Integer) -> void
       def suppress_simplecov!: () -> void
       def suppress_coverage!: () -> void
-      def run_tests: (Array[String]) -> Integer
       def debug_child?: () -> bool
       def debug_child_puts: (String) -> void
       def debug_child_rspec_trace: (test_files: Array[String], rspec_options: Array[String], rspec_argv: Array[String]) -> void
@@ -327,13 +360,24 @@ module Henitai
       def loaded_feature_map: (Array[String]) -> Array[[String, bool]]
       def loaded_feature?: (String) -> bool
       def rspec_world_example_count: () -> Integer?
-      def run_child_activation_and_tests: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
       def with_non_interactive_stdin: () { () -> untyped } -> untyped
       def subprocess_env: () -> Hash[String, String]
       def scenario_log_support: () -> ScenarioLogSupport
       def with_subprocess_env: () { () -> untyped } -> untyped
       def restore_subprocess_env: (Hash[String, String?]) -> void
-      def spawn_suite_process: (Array[String], Hash[Symbol, String]) -> Integer
+    end
+
+    module MutantRunSupport
+      def spawn_mutant: (mutant: Mutant, test_files: Array[String]) -> ChildHandle
+      def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
+      def scenario_log_paths: (String) -> Hash[Symbol, String]
+      def build_result: (untyped, Hash[Symbol, String]) -> ScenarioExecutionResult
+      def run_in_child: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
+      def mutant_log_name: (Mutant) -> String
+
+      private
+
+      def run_child_activation_and_tests: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
     end
 
     class ScenarioLogSupport
@@ -374,58 +418,28 @@ module Henitai
     end
 
     class RspecProcessRunner
-      def run_mutant: (Rspec, mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
-      def run_suite: (Rspec, Array[String], timeout: Float) -> ScenarioExecutionResult
-      def spawn_mutant: (Rspec, mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> ChildHandle
+      def run_mutant: (Base, mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
+      def run_suite: (Base, Array[String], timeout: Float) -> ScenarioExecutionResult
+      def spawn_mutant: (Base, mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> ChildHandle
     end
 
     class Rspec < Base
-      REQUIRE_DIRECTIVE_PATTERN: Regexp
+      include MutantRunSupport
+      include RspecChildRunner
+      include RspecTestSelection
+
       DEFAULT_SUITE_TIMEOUT: Float
 
-      def select_tests: (Subject) -> Array[String]
       def test_files: () -> Array[String]
-      def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
-      def spawn_mutant: (mutant: Mutant, test_files: Array[String]) -> ChildHandle
       def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
       def per_test_coverage_supported?: () -> bool
+      def suite_command: (Array[String]) -> Array[String]
+      def rspec_suite_runner_script: () -> String
+      def spawn_suite_process: (Array[String], Hash[Symbol, String]) -> Integer
 
       private
 
-      def mutant_log_name: (Mutant) -> String
-      def run_in_child: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
-      def suppress_simplecov!: () -> void
-      def suppress_coverage!: () -> void
-      def install_debug_timeout_trap: () -> void
-      def debug_child_thread_dump: (String) -> void
-      def debug_child_example_count: (String) -> void
-      def suite_command: (Array[String]) -> Array[String]
-      def rspec_suite_runner_script: () -> String
-      def build_result: (untyped, Hash[Symbol, String]) -> ScenarioExecutionResult
-      def scenario_status: (untyped) -> Symbol
-      def exit_status_for: (untyped) -> Integer?
-      def read_log_file: (String) -> String
-      def write_combined_log: (String, String, String) -> void
-      def combined_log: (String, String) -> String
-      def scenario_log_paths: (String) -> Hash[Symbol, String]
       def run_tests: (Array[String]) -> Integer
-      def with_subprocess_env: () { () -> untyped } -> untyped
-      def spec_files: () -> Array[String]
-      def fallback_spec_files: (Subject) -> Array[String]
-      def excluded_spec_files: () -> Array[String]
-      def rspec_exclude_patterns: () -> Array[String]
-      def rspec_config_lines: () -> Array[String]
-      def rspec_config_path: () -> String
-      def selection_patterns: (Subject) -> Array[String]
-      def requires_source_file?: (String, String) -> bool
-      def requires_source_file_transitively?: (String, String, ?Array[String]) -> bool
-      def required_files: (String) -> Array[String]
-      def resolve_required_file: (String, String, String) -> String?
-      def loaded_feature_map: (Array[String]) -> Array[[String, bool]]
-      def loaded_feature?: (String) -> bool
-      def relative_candidates: (String, String) -> Array[String]
-      def require_candidates: (String, String) -> Array[String]
-      def expand_candidates: (String, String) -> Array[String]
     end
 
     module CoverageRuntimeSuppressors
@@ -441,20 +455,28 @@ module Henitai
       def start: (*untyped) -> nil
     end
 
-    class Minitest < Rspec
+    class Minitest < Base
+      include MutantRunSupport
+      include RspecTestSelection
+
+      DEFAULT_SUITE_TIMEOUT: Float
+
+      def test_files: () -> Array[String]
+      def per_test_coverage_supported?: () -> bool
       def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
       def spawn_mutant: (mutant: Mutant, test_files: Array[String]) -> ChildHandle
+      def run_in_child: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
       def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
 
       private
 
-      def run_in_child: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
       def run_tests: (Array[String]) -> Integer
       def preload_environment: () -> void
       def setup_load_path: () -> void
       def suppress_minitest_autorun!: () -> nil
       def suppress_simplecov!: () -> void
       def subprocess_env: () -> Hash[String, String]
+      def spawn_suite_process: (Array[String], Hash[Symbol, String]) -> Integer
       def cleanup_suite_process: (Integer?, untyped) -> void
       def spec_files: () -> Array[String]
     end

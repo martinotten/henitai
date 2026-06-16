@@ -249,8 +249,8 @@ RSpec.describe Henitai::Reporter::Terminal do
   it "falls back to the node type when unparsing unsupported strings" do
     reporter = described_class.new(config: build_config)
     mutant = unsupported_string_mutant
-    allow(Unparser).to receive(:unparse).with(mutant.original_node).and_raise(StandardError, "boom")
-    allow(Unparser).to receive(:unparse).with(mutant.mutated_node).and_raise(StandardError, "boom")
+    allow(Unparser).to receive(:unparse).with(mutant.original_node).and_raise(Unparser::UnsupportedNodeError, "boom")
+    allow(Unparser).to receive(:unparse).with(mutant.mutated_node).and_raise(Unparser::UnsupportedNodeError, "boom")
     result = build_result(
       mutants: [mutant],
       scoring_summary: survived_detail_scoring_summary,

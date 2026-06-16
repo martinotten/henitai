@@ -279,10 +279,10 @@ RSpec.describe Henitai::Integration::Rspec do
 
   def stub_child_logging(integration)
     log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
-
-    allow(integration).to receive(:scenario_log_support).and_return(log_support)
+    allow(log_support).to receive_messages(read_log_file: "", write_combined_log: nil)
     allow(log_support).to receive(:with_coverage_dir).and_yield
     allow(log_support).to receive(:capture_child_output).and_yield
+    allow(integration).to receive(:scenario_log_support).and_return(log_support)
   end
 
   def stub_process_exit(record)
@@ -2018,6 +2018,8 @@ RSpec.describe Henitai::Integration::Rspec do
       log_path: "reports/mutation-logs/mutant-thread.log"
     }
     log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
+    allow(log_support).to receive(:read_log_file).and_return("")
+    allow(log_support).to receive(:write_combined_log)
 
     allow(integration).to receive(:scenario_log_support).and_return(log_support)
     allow(log_support).to receive(:with_coverage_dir).with(mutant.id).and_yield
@@ -2050,6 +2052,8 @@ RSpec.describe Henitai::Integration::Rspec do
       log_path: "reports/mutation-logs/mutant-simplecov.log"
     }
     log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
+    allow(log_support).to receive(:read_log_file).and_return("")
+    allow(log_support).to receive(:write_combined_log)
 
     allow(integration).to receive_messages(
       scenario_log_support: log_support,
@@ -2081,6 +2085,8 @@ RSpec.describe Henitai::Integration::Rspec do
       log_path: "reports/mutation-logs/mutant-parallel-env.log"
     }
     log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
+    allow(log_support).to receive(:read_log_file).and_return("")
+    allow(log_support).to receive(:write_combined_log)
     original_parallel_workers = ENV.fetch("PARALLEL_WORKERS", nil)
     observed_parallel_workers = nil
 
@@ -2119,6 +2125,8 @@ RSpec.describe Henitai::Integration::Rspec do
       log_path: "reports/mutation-logs/mutant-debug.log"
     }
     log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
+    allow(log_support).to receive(:read_log_file).and_return("")
+    allow(log_support).to receive(:write_combined_log)
     capture_started = false
 
     allow(integration).to receive(:scenario_log_support).and_return(log_support)
@@ -2193,12 +2201,6 @@ RSpec.describe Henitai::Integration::Rspec do
     )
   end
 
-  it "returns an empty string when reading a missing log file" do
-    integration = described_class.new
-
-    expect(integration.send(:read_log_file, "missing/log.log")).to eq("")
-  end
-
   it "builds baseline log paths under reports/mutation-logs" do
     integration = described_class.new
 
@@ -2206,21 +2208,6 @@ RSpec.describe Henitai::Integration::Rspec do
       stdout_path: "reports/mutation-logs/baseline.stdout.log",
       stderr_path: "reports/mutation-logs/baseline.stderr.log",
       log_path: "reports/mutation-logs/baseline.log"
-    )
-  end
-
-  it "formats combined logs without empty sections" do
-    integration = described_class.new
-    expect(
-      [
-        integration.send(:combined_log, "out\n", ""),
-        integration.send(:combined_log, "", "err\n")
-      ]
-    ).to eq(
-      [
-        "stdout:\nout\n",
-        "stderr:\nerr\n"
-      ]
     )
   end
 
