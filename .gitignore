@@ -5,3 +5,5 @@ reports/*
 .claude/worktrees/*
 tmp/**/*
 henitai-*.gem
+graphify-out/
+.graphify_*
