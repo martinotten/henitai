@@ -11,10 +11,9 @@ RSpec.describe Henitai::ParallelExecutionRunner do
     end.new(:pending, Struct.new(:expression).new(expression))
   end
 
-  def build_fake_integration(sleep_duration: 0.01)
+  def build_fake_integration
     Class.new do
       define_method(:run_mutant) do |mutant:, **_kwargs|
-        sleep sleep_duration
         mutant.status = :killed
       end
     end.new
@@ -35,7 +34,7 @@ RSpec.describe Henitai::ParallelExecutionRunner do
   it "emits scheduler diagnostics to stderr when HENITAI_DEBUG_SCHEDULER=1" do
     first = build_mutant("Foo#bar")
     second = build_mutant("Foo#baz")
-    integration = build_fake_integration(sleep_duration: 0.01)
+    integration = build_fake_integration
     config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(12.5, "coverage", 2, 0)
 
     process_mutant = lambda do |mutant, _integration, _config, _reporter, _mutex|
@@ -60,7 +59,7 @@ RSpec.describe Henitai::ParallelExecutionRunner do
 
   it "emits child interval records to stderr when HENITAI_DEBUG_SCHEDULER=1" do
     first = build_mutant("Foo#bar")
-    integration = build_fake_integration(sleep_duration: 0.01)
+    integration = build_fake_integration
     config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(12.5, "coverage", 2, 0)
 
     process_mutant = lambda do |mutant, _integration, _config, _reporter, _mutex|
@@ -85,7 +84,7 @@ RSpec.describe Henitai::ParallelExecutionRunner do
 
   it "does not emit diagnostics when HENITAI_DEBUG_SCHEDULER is not set" do
     first = build_mutant("Foo#bar")
-    integration = build_fake_integration(sleep_duration: 0.001)
+    integration = build_fake_integration
     config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(12.5, "coverage", 2, 0)
 
     process_mutant = lambda do |mutant, _integration, _config, _reporter, _mutex|
