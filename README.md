@@ -43,7 +43,7 @@ Or install globally:
 gem install henitai
 ```
 
-**Requires Ruby 4.0.2+**
+**Requires Ruby 4.0.0+**
 
 ## Quick start
 
