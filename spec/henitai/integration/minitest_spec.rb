@@ -423,6 +423,9 @@ RSpec.describe Henitai::Integration::Minitest do
     integration = described_class.new
     calls = []
 
+    allow(Henitai::Integration::CoverageRuntimeSuppressors).to receive(:suppress_simplecov!) do
+      calls << [:suppress_simplecov]
+    end
     allow(integration).to receive(:require) do |path|
       calls << [:require, path]
       true
@@ -438,7 +441,7 @@ RSpec.describe Henitai::Integration::Minitest do
       [
         3,
         [
-          [:require, "simplecov"],
+          [:suppress_simplecov],
           [:require, "minitest"],
           [:require, sample_test_path],
           [:minitest, []]
