@@ -684,6 +684,23 @@ RSpec.describe Henitai::CLI do
     end
   end
 
+  it "exits zero when there are no valid mutants to evaluate" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      exit_status = nil
+      result = instance_double(Henitai::Result, mutation_score: nil, partial_rerun?: false)
+      runner = build_runner(result:)
+
+      allow(Henitai::Runner).to receive(:new) { |**_kwargs| runner }
+
+      cli = described_class.new(["run", "--config", config_path, "Foo#bar"])
+      cli.define_singleton_method(:exit) { |status = nil| exit_status = status }
+      cli.run
+
+      expect(exit_status).to eq(0)
+    end
+  end
+
   it "exits zero when the score matches the low threshold" do
     Dir.mktmpdir do |dir|
       config_path = write_configuration(dir)
