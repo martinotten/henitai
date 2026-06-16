@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "tmpdir"
 
 RSpec.describe Henitai::ProcessWorkerRunner do
   after do
@@ -150,42 +151,72 @@ RSpec.describe Henitai::ProcessWorkerRunner do
     end
   end
 
-  # An integration stub that forks a real child process and returns results
-  # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
+  def fake_log_paths
+    { stdout_path: "/dev/null", stderr_path: "/dev/null", log_path: "/dev/null" }
+  end
+
+  def barrier_timeout
+    5.0
+  end
+
+  # An integration stub that forks a real child process and returns results.
+  # Children exit immediately with the configured exit code (no work sleep);
+  # callers that need concurrency overlap use build_barrier_integration.
   def build_integration(results_map)
     integration = instance_double(Henitai::Integration::Rspec)
-
-    allow(integration).to receive(:select_tests) { |subject|
-      ["spec/#{subject.expression}_spec.rb"]
-    }
-
+    allow(integration).to receive(:select_tests) { |subject| ["spec/#{subject.expression}_spec.rb"] }
     allow(integration).to receive(:spawn_mutant) do |mutant:, **|
-      log_paths = {
-        stdout_path: "/dev/null",
-        stderr_path: "/dev/null",
-        log_path: "/dev/null"
-      }
-      pid = Process.fork do
-        # Simulate some work; exit 0 = survived (success? is true)
-        sleep(results_map.fetch(mutant.id, {}).fetch(:sleep, 0))
-        exit_code = results_map.fetch(mutant.id, {}).fetch(:exit_code, 0)
-        Process.exit(exit_code)
-      end
-      Henitai::Integration::ChildHandle.new(pid, log_paths)
+      exit_code = results_map.fetch(mutant.id, {}).fetch(:exit_code, 0)
+      pid = Process.fork { Process.exit(exit_code) }
+      Henitai::Integration::ChildHandle.new(pid, fake_log_paths)
     end
-
-    allow(integration).to receive(:build_result) do |wait_result, log_paths|
-      Henitai::ScenarioExecutionResult.build(
-        wait_result: wait_result,
-        stdout: "",
-        stderr: "",
-        log_path: log_paths[:log_path]
-      )
-    end
-
+    stub_result_builder(integration)
     integration
   end
-  # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
+
+  # Forks children that rendezvous at a filesystem barrier before exiting.
+  # Each child writes its marker, then polls (bounded) until `expected`
+  # markers exist, guaranteeing all children are simultaneously alive. This
+  # proves real concurrency deterministically without wall-clock timing.
+  def build_barrier_integration(barrier_dir:, expected:)
+    integration = instance_double(Henitai::Integration::Rspec)
+    allow(integration).to receive(:select_tests).and_return([])
+    allow(integration).to receive(:spawn_mutant) do |mutant:, **|
+      pid = Process.fork { run_barrier_child(barrier_dir, expected, mutant.id) }
+      Henitai::Integration::ChildHandle.new(pid, fake_log_paths)
+    end
+    stub_result_builder(integration)
+    integration
+  end
+
+  # Forks a child that blocks reading `release_reader` until the parent closes
+  # the matching writer, then exits. Keeps the child reliably alive while the
+  # runner is waiting, with no timing guess.
+  def build_pipe_blocking_integration(release_reader, release_writer)
+    integration = instance_double(Henitai::Integration::Rspec)
+    allow(integration).to receive(:select_tests).and_return([])
+    allow(integration).to receive(:spawn_mutant) do |**|
+      pid = Process.fork do
+        release_writer.close # drop the inherited writer so read sees EOF
+        release_reader.read
+        Process.exit(0)
+      end
+      Henitai::Integration::ChildHandle.new(pid, fake_log_paths)
+    end
+    stub_result_builder(integration)
+    integration
+  end
+
+  def run_barrier_child(barrier_dir, expected, marker_id)
+    File.write(File.join(barrier_dir, marker_id.to_s), "")
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + barrier_timeout
+    until Dir.children(barrier_dir).size >= expected
+      break if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+
+      Thread.pass
+    end
+    Process.exit(0)
+  end
 
   describe "empty queue" do
     it "returns empty array immediately when given zero mutants" do
@@ -216,84 +247,77 @@ RSpec.describe Henitai::ProcessWorkerRunner do
   end
 
   describe "slot count" do
+    # Proves jobs:1 serialization deterministically via SchedulerDiagnostics
+    # rather than a wall-clock gap: with one slot the runner must call
+    # child_started/child_ended in matched pairs, so peak concurrency is 1.
+    # If two children were ever live at once, max_concurrent would reach 2.
     it "runs mutants one at a time with jobs:1" do # rubocop:disable RSpec/MultipleExpectations
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("HENITAI_DEBUG_SCHEDULER").and_return("1")
+      Henitai::Integration::SchedulerDiagnostics.reset!
+
       mutant_a = build_mutant("a")
       mutant_b = build_mutant("b")
-      started_at = {}
-
-      integration = instance_double(Henitai::Integration::Rspec)
-      allow(integration).to receive(:select_tests).and_return([])
-      allow(integration).to receive(:spawn_mutant) do |mutant:, **|
-        log_paths = { stdout_path: "/dev/null", stderr_path: "/dev/null",
-                      log_path: "/dev/null" }
-        started_at[mutant.id] = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        pid = Process.fork do
-          sleep(0.01)
-          Process.exit(0)
-        end
-        Henitai::Integration::ChildHandle.new(pid, log_paths)
-      end
-      allow(integration).to receive(:build_result) do |wait_result, log_paths|
-        Henitai::ScenarioExecutionResult.build(
-          wait_result: wait_result, stdout: "", stderr: "",
-          log_path: log_paths[:log_path]
-        )
-      end
-
+      integration = build_integration("a" => { exit_code: 0 }, "b" => { exit_code: 0 })
       config = Struct.new(:timeout, :max_flaky_retries).new(10.0, 0)
       runner = described_class.new(worker_count: 1)
 
       results = runner.run([mutant_a, mutant_b], integration, config, nil)
 
       expect(results.size).to eq(2)
-      # With 1 slot, the second mutant starts after the first finishes.
-      # started_at[b] must be >= started_at[a] + ~0.01s gap
-      expect(started_at["b"]).to be >= started_at["a"] + 0.008
+      expect(Henitai::Integration::SchedulerDiagnostics.summary[:max_concurrent]).to eq(1)
     end
   end
 
   describe "concurrency proof" do
-    it "runs 4 mutants concurrently with real PID overlap and sub-serial wall time" do # rubocop:disable RSpec/MultipleExpectations
+    # All four children rendezvous at a filesystem barrier before any exits, so
+    # the runner must hold four live OS children at once. A serial runner would
+    # deadlock at the barrier (the child times out instead), so a clean
+    # max_concurrent == 4 is a deterministic proof of real concurrency with no
+    # reliance on wall-clock timing.
+    it "runs 4 mutants concurrently with real OS-level overlap" do # rubocop:disable RSpec/MultipleExpectations
       allow(ENV).to receive(:[]).and_call_original
       allow(ENV).to receive(:[]).with("HENITAI_DEBUG_SCHEDULER").and_return("1")
       Henitai::Integration::SchedulerDiagnostics.reset!
 
-      mutants = (1..4).map { |i| build_mutant("m#{i}") }
-      # Each mutant sleeps 0.05s; serial would take ~0.2s
-      results_map = (1..4).to_h { |i| ["m#{i}", { sleep: 0.05, exit_code: 0 }] }
-      integration = build_integration(results_map)
-      config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 0)
-      runner = described_class.new(worker_count: 4)
+      Dir.mktmpdir do |barrier_dir|
+        mutants = (1..4).map { |i| build_mutant("m#{i}") }
+        integration = build_barrier_integration(barrier_dir: barrier_dir, expected: 4)
+        config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 0)
+        runner = described_class.new(worker_count: 4)
 
-      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      results = runner.run(mutants, integration, config, nil)
-      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+        results = runner.run(mutants, integration, config, nil)
 
-      expect(results.size).to eq(4)
-      # Verify real OS-PID overlap: at least 2 children were live simultaneously
-      expect(Henitai::Integration::SchedulerDiagnostics.summary[:max_concurrent]).to be >= 2
-      # Wall time must be materially below serial (0.2s); 0.25s still proves concurrency
-      expect(elapsed).to be < 0.25
+        expect(results.size).to eq(4)
+        expect(Henitai::Integration::SchedulerDiagnostics.summary[:max_concurrent]).to eq(4)
+      end
     end
   end
 
   describe "wakeup loop" do
+    # The child blocks reading a pipe until the parent closes the write end, so
+    # it is provably still alive when the runner reaches IO.select. The stub
+    # releases the child on the first real select call, replacing the former
+    # fixed child sleep with a deterministic, race-free handshake.
     it "waits on a wakeup io while children are active" do
+      release_reader, release_writer = IO.pipe
       mutant = build_mutant("wakeup")
-      integration = build_integration("wakeup" => { sleep: 0.005, exit_code: 0 })
+      integration = build_pipe_blocking_integration(release_reader, release_writer)
       config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 0)
       runner = described_class.new(worker_count: 1)
 
-      allow(IO).to receive(:select).and_call_original
+      allow(IO).to receive(:select).and_wrap_original do |original, *args|
+        release_writer.close unless release_writer.closed?
+        original.call(*args)
+      end
 
       runner.run([mutant], integration, config, nil)
 
       expect(IO).to have_received(:select).with(
-        array_including(instance_of(IO)),
-        nil,
-        nil,
-        kind_of(Numeric)
+        array_including(instance_of(IO)), nil, nil, kind_of(Numeric)
       )
+    ensure
+      [release_reader, release_writer].each { |io| io.close unless io.closed? }
     end
   end
 

@@ -5,13 +5,12 @@ require "tmpdir"
 require "stringio"
 
 RSpec.describe Henitai::CLI do
-  around do |example|
-    Dir.mktmpdir do |dir|
-      Dir.chdir(dir) { example.run }
-    end
-  end
-
-  def write_configuration(dir, reports_dir: "reports")
+  # Each example that needs a workspace opens its own Dir.mktmpdir and passes
+  # explicit paths (--config, reports_dir, init PATH) into the CLI, so no global
+  # Dir.chdir is needed. Mutating process-wide cwd is unsafe under random order
+  # and future parallel execution.
+  def write_configuration(dir, reports_dir: nil)
+    reports_dir ||= File.join(dir, "reports")
     path = File.join(dir, ".henitai.yml")
     File.write(
       path,
@@ -131,12 +130,6 @@ RSpec.describe Henitai::CLI do
     stdout.string
   ensure
     $stdout = original_stdout
-  end
-
-  it "runs in an isolated working directory" do
-    repo_root = File.expand_path("../..", __dir__)
-
-    expect(Dir.pwd).not_to eq(repo_root)
   end
 
   it "applies CLI overrides after loading the YAML config" do
@@ -560,38 +553,34 @@ RSpec.describe Henitai::CLI do
 
   it "prints the singular clean summary when one artifact is removed" do
     Dir.mktmpdir do |dir|
-      Dir.chdir(dir) do
-        config_path = write_configuration(dir)
-        reports_dir = File.join(dir, "reports")
-        FileUtils.mkdir_p(reports_dir)
-        artifact_path = File.join(reports_dir, *Henitai::CLI::REPORT_CLEANUP_PATHS.first)
-        FileUtils.mkdir_p(File.dirname(artifact_path))
-        File.write(artifact_path, "stale")
+      reports_dir = File.join(dir, "reports")
+      config_path = write_configuration(dir, reports_dir:)
+      FileUtils.mkdir_p(reports_dir)
+      artifact_path = File.join(reports_dir, *Henitai::CLI::REPORT_CLEANUP_PATHS.first)
+      FileUtils.mkdir_p(File.dirname(artifact_path))
+      File.write(artifact_path, "stale")
 
-        expect do
-          described_class.new(["clean", "--config", config_path]).run
-        end.to output("Removed 1 generated report artifact\n").to_stdout
-      end
+      expect do
+        described_class.new(["clean", "--config", config_path]).run
+      end.to output("Removed 1 generated report artifact\n").to_stdout
     end
   end
 
   it "prints the plural clean summary when multiple artifacts are removed" do
     Dir.mktmpdir do |dir|
-      Dir.chdir(dir) do
-        config_path = write_configuration(dir)
-        reports_dir = File.join(dir, "reports")
-        FileUtils.mkdir_p(reports_dir)
+      reports_dir = File.join(dir, "reports")
+      config_path = write_configuration(dir, reports_dir:)
+      FileUtils.mkdir_p(reports_dir)
 
-        Henitai::CLI::REPORT_CLEANUP_PATHS.first(2).each do |relative_path|
-          artifact_path = File.join(reports_dir, *relative_path)
-          FileUtils.mkdir_p(File.dirname(artifact_path))
-          File.write(artifact_path, "stale")
-        end
-
-        expect do
-          described_class.new(["clean", "--config", config_path]).run
-        end.to output("Removed 2 generated report artifacts\n").to_stdout
+      Henitai::CLI::REPORT_CLEANUP_PATHS.first(2).each do |relative_path|
+        artifact_path = File.join(reports_dir, *relative_path)
+        FileUtils.mkdir_p(File.dirname(artifact_path))
+        File.write(artifact_path, "stale")
       end
+
+      expect do
+        described_class.new(["clean", "--config", config_path]).run
+      end.to output("Removed 2 generated report artifacts\n").to_stdout
     end
   end
 
@@ -796,82 +785,82 @@ RSpec.describe Henitai::CLI do
     end
   end
 
+  # init writes to the PATH argument, so each example passes an explicit path
+  # inside its own tmpdir instead of relying on (and mutating) the global cwd.
+  def init_path(dir, name = ".henitai.yml")
+    File.join(dir, name)
+  end
+
   it "creates a default configuration file during init" do
     Dir.mktmpdir do |dir|
-      Dir.chdir(dir) do
-        cli = described_class.new(["init"])
-        allow($stdin).to receive_messages(tty?: false, gets: nil)
+      path = init_path(dir)
+      cli = described_class.new(["init", path])
+      allow($stdin).to receive_messages(tty?: false, gets: nil)
 
-        expect { cli.run }.to output("Created .henitai.yml\n").to_stdout
-      end
+      expect { cli.run }.to output("Created #{path}\n").to_stdout
     end
   end
 
   it "includes the default integration block during init" do
     Dir.mktmpdir do |dir|
-      Dir.chdir(dir) do
-        cli = described_class.new(["init"])
-        allow($stdin).to receive_messages(tty?: false, gets: nil)
+      path = init_path(dir)
+      cli = described_class.new(["init", path])
+      allow($stdin).to receive_messages(tty?: false, gets: nil)
 
-        cli.run
+      cli.run
 
-        expect(File.read(".henitai.yml")).to include("integration:\n  name: rspec")
-      end
+      expect(File.read(path)).to include("integration:\n  name: rspec")
     end
   end
 
   it "can skip the explicit integration block during init" do
     Dir.mktmpdir do |dir|
-      Dir.chdir(dir) do
-        cli = described_class.new(["init"])
-        allow($stdin).to receive_messages(tty?: true, gets: "n\n")
+      path = init_path(dir)
+      cli = described_class.new(["init", path])
+      allow($stdin).to receive_messages(tty?: true, gets: "n\n")
 
-        cli.run
+      cli.run
 
-        expect(File.read(".henitai.yml")).not_to include("integration:")
-      end
+      expect(File.read(path)).not_to include("integration:")
     end
   end
 
   it "writes the exact default integration block during init" do
     Dir.mktmpdir do |dir|
-      Dir.chdir(dir) do
-        cli = described_class.new(["init"])
-        allow($stdin).to receive_messages(tty?: true, gets: "y\n")
+      path = init_path(dir)
+      cli = described_class.new(["init", path])
+      allow($stdin).to receive_messages(tty?: true, gets: "y\n")
 
-        cli.run
+      cli.run
 
-        expect(File.read(".henitai.yml")).to eq(<<~YAML)
-          # yaml-language-server: $schema=./assets/schema/henitai.schema.json
-          includes:
-            - lib
-          mutation:
-            operators: light
-            timeout: 10.0
-            max_flaky_retries: 3
-            sampling:
-              ratio: 0.05
-              strategy: stratified
-          reports_dir: reports
-          thresholds:
-            high: 80
-            low: 60
-          integration:
-            name: rspec
-        YAML
-      end
+      expect(File.read(path)).to eq(<<~YAML)
+        # yaml-language-server: $schema=./assets/schema/henitai.schema.json
+        includes:
+          - lib
+        mutation:
+          operators: light
+          timeout: 10.0
+          max_flaky_retries: 3
+          sampling:
+            ratio: 0.05
+            strategy: stratified
+        reports_dir: reports
+        thresholds:
+          high: 80
+          low: 60
+        integration:
+          name: rspec
+      YAML
     end
   end
 
   # L269 — Prompt-String muss tatsächlich ausgegeben werden (StringLiteral)
   it "prints the RSpec prompt text when stdin is a tty" do
     Dir.mktmpdir do |dir|
-      Dir.chdir(dir) do
-        cli = described_class.new(["init"])
-        allow($stdin).to receive_messages(tty?: true, gets: "y\n")
+      cli = described_class.new(["init", init_path(dir)])
+      allow($stdin).to receive_messages(tty?: true, gets: "y\n")
 
-        expect { cli.run }.to output(%r{Use the default RSpec integration\? \[Y/n\]}).to_stdout
-      end
+      expect { cli.run }.to output(%r{Use the default RSpec integration\? \[Y/n\]}).to_stdout
     end
   end
 
@@ -880,112 +869,102 @@ RSpec.describe Henitai::CLI do
   # Mutation gibt false (weil `(false || false) and true` = false).
   it "includes the integration block when the user types 'yes'" do
     Dir.mktmpdir do |dir|
-      Dir.chdir(dir) do
-        cli = described_class.new(["init"])
-        allow($stdin).to receive_messages(tty?: true, gets: "yes\n")
+      path = init_path(dir)
+      cli = described_class.new(["init", path])
+      allow($stdin).to receive_messages(tty?: true, gets: "yes\n")
 
-        cli.run
+      cli.run
 
-        expect(File.read(".henitai.yml")).to include("integration:\n  name: rspec")
-      end
+      expect(File.read(path)).to include("integration:\n  name: rspec")
     end
   end
 
   # L271 — Sicherstellen dass ein leerer Enter (response.empty?) auch einbindet
   it "includes the integration block when the user presses enter without input" do
     Dir.mktmpdir do |dir|
-      Dir.chdir(dir) do
-        cli = described_class.new(["init"])
-        allow($stdin).to receive_messages(tty?: true, gets: "\n")
+      path = init_path(dir)
+      cli = described_class.new(["init", path])
+      allow($stdin).to receive_messages(tty?: true, gets: "\n")
 
-        cli.run
+      cli.run
 
-        expect(File.read(".henitai.yml")).to include("integration:\n  name: rspec")
-      end
+      expect(File.read(path)).to include("integration:\n  name: rspec")
     end
   end
 
   it "does not include the integration block when the user types no" do
     Dir.mktmpdir do |dir|
-      Dir.chdir(dir) do
-        cli = described_class.new(["init"])
-        allow($stdin).to receive_messages(tty?: true, gets: "no\n")
+      path = init_path(dir)
+      cli = described_class.new(["init", path])
+      allow($stdin).to receive_messages(tty?: true, gets: "no\n")
 
-        cli.run
+      cli.run
 
-        expect(File.read(".henitai.yml")).not_to include("integration:\n  name: rspec")
-      end
+      expect(File.read(path)).not_to include("integration:\n  name: rspec")
     end
   end
 
   it "includes the integration block when stdin reaches EOF" do
     Dir.mktmpdir do |dir|
-      Dir.chdir(dir) do
-        cli = described_class.new(["init"])
-        allow($stdin).to receive_messages(tty?: true, gets: nil)
+      path = init_path(dir)
+      cli = described_class.new(["init", path])
+      allow($stdin).to receive_messages(tty?: true, gets: nil)
 
-        cli.run
+      cli.run
 
-        expect(File.read(".henitai.yml")).to include("integration:\n  name: rspec")
-      end
+      expect(File.read(path)).to include("integration:\n  name: rspec")
     end
   end
 
   # L275 — integration_block ohne trailing Double-Newline (.chomp)
   it "does not produce a trailing blank line in the generated config" do
     Dir.mktmpdir do |dir|
-      Dir.chdir(dir) do
-        cli = described_class.new(["init"])
-        allow($stdin).to receive_messages(tty?: false, gets: nil)
+      path = init_path(dir)
+      cli = described_class.new(["init", path])
+      allow($stdin).to receive_messages(tty?: false, gets: nil)
 
-        cli.run
+      cli.run
 
-        expect(File.read(".henitai.yml")).not_to end_with("\n\n")
-      end
+      expect(File.read(path)).not_to end_with("\n\n")
     end
   end
 
   it "creates the requested configuration file during init" do
     Dir.mktmpdir do |dir|
-      Dir.chdir(dir) do
-        cli = described_class.new(["init", "custom.yml"])
-        allow($stdin).to receive_messages(tty?: false, gets: nil)
-        cli.define_singleton_method(:exit) { |_status = nil| nil }
+      path = init_path(dir, "custom.yml")
+      cli = described_class.new(["init", path])
+      allow($stdin).to receive_messages(tty?: false, gets: nil)
+      cli.define_singleton_method(:exit) { |_status = nil| nil }
 
-        cli.run
+      cli.run
 
-        expect(File).to exist("custom.yml")
-      end
+      expect(File).to exist(path)
     end
   end
 
   it "prints a warning when init receives unexpected arguments" do
     Dir.mktmpdir do |dir|
-      Dir.chdir(dir) do
-        cli = described_class.new(["init", "custom.yml", "extra"])
-        allow($stdin).to receive_messages(tty?: false, gets: nil)
-        cli.define_singleton_method(:exit) { |_status = nil| nil }
-        allow(cli).to receive(:warn)
+      cli = described_class.new(["init", init_path(dir, "custom.yml"), "extra"])
+      allow($stdin).to receive_messages(tty?: false, gets: nil)
+      cli.define_singleton_method(:exit) { |_status = nil| nil }
+      allow(cli).to receive(:warn)
 
-        cli.run
+      cli.run
 
-        expect(cli).to have_received(:warn).with("Unexpected arguments: extra")
-      end
+      expect(cli).to have_received(:warn).with("Unexpected arguments: extra")
     end
   end
 
   it "exits non-zero when init receives unexpected arguments" do
     Dir.mktmpdir do |dir|
-      Dir.chdir(dir) do
-        cli = described_class.new(["init", "custom.yml", "extra"])
-        exit_status = nil
-        allow($stdin).to receive_messages(tty?: false, gets: nil)
-        cli.define_singleton_method(:exit) { |status = nil| exit_status = status }
+      cli = described_class.new(["init", init_path(dir, "custom.yml"), "extra"])
+      exit_status = nil
+      allow($stdin).to receive_messages(tty?: false, gets: nil)
+      cli.define_singleton_method(:exit) { |status = nil| exit_status = status }
 
-        cli.run
+      cli.run
 
-        expect(exit_status).to eq(1)
-      end
+      expect(exit_status).to eq(1)
     end
   end
 
