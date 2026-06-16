@@ -22,7 +22,7 @@ module Henitai
     # @param names  [Array<String>] reporter names from configuration
     # @param result [Result]
     # @param config [Configuration]
-    # @param history_store [MutantHistoryStore, nil] persistence the JSON
+    # @param history_store [MutantHistoryStore, nil] persistence store the JSON
     #   reporter reads trend data from; supplied by the composition root so the
     #   reporter does not build infrastructure itself.
     def self.run_all(names:, result:, config:, history_store: nil)

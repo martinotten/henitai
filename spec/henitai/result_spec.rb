@@ -274,10 +274,14 @@ RSpec.describe Henitai::Result do
         mutants: [mutant], started_at: Time.at(0), finished_at: Time.at(1),
         source_provider: provider
       )
+      allow(File).to receive(:read).and_call_original
 
       schema = result.to_stryker_schema
 
-      expect(schema[:files]["lib/sample.rb"][:source]).to eq("class Sample; end\n")
+      aggregate_failures do
+        expect(File).not_to have_received(:read)
+        expect(schema[:files]["lib/sample.rb"][:source]).to eq("class Sample; end\n")
+      end
     end
 
     it "defaults to empty source so the domain object performs no disk reads" do
@@ -285,10 +289,14 @@ RSpec.describe Henitai::Result do
       result = described_class.new(
         mutants: [mutant], started_at: Time.at(0), finished_at: Time.at(1)
       )
+      allow(File).to receive(:read).and_call_original
 
       schema = result.to_stryker_schema
 
-      expect(schema[:files]["lib/sample.rb"][:source]).to eq("")
+      aggregate_failures do
+        expect(File).not_to have_received(:read)
+        expect(schema[:files]["lib/sample.rb"][:source]).to eq("")
+      end
     end
   end
 

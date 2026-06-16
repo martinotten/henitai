@@ -681,7 +681,6 @@ module Henitai
       def session_snapshot_path: (String) -> String
       def session_recipe_path: (String) -> String
       def canonical_path: () -> String
-      def report_path: () -> String
       def write_history_report: () -> void
       def default_history_store: () -> MutantHistoryStore
       def history_report_path: () -> String
