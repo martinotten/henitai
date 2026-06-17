@@ -55,6 +55,7 @@ module Henitai
   autoload :ExecutionEngine, "henitai/execution_engine"
   autoload :ParallelExecutionRunner, "henitai/parallel_execution_runner"
   autoload :ProcessWorkerRunner, "henitai/process_worker_runner"
+  autoload :SlotScheduler, "henitai/slot_scheduler"
   autoload :ProcessWakeup, "henitai/process_wakeup"
   autoload :Runner, "henitai/runner"
   autoload :Reporter, "henitai/reporter"
