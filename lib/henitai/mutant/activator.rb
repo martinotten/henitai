@@ -6,7 +6,6 @@ require "unparser"
 module Henitai
   class Mutant
     # Activates a mutant inside the forked child process.
-    # rubocop:disable Metrics/ClassLength
     class Activator
       # Filters "already initialized constant" C-level warnings that fire when
       # a source file is loaded into a process that already has the constant
@@ -23,17 +22,6 @@ module Henitai
         end
       end
       Warning.singleton_class.prepend(ConstantRedefinitionFilter)
-
-      SERIALIZER_METHODS = {
-        arg: :argument_parameter_fragment,
-        optarg: :optional_parameter_fragment,
-        restarg: :rest_parameter_fragment,
-        kwarg: :keyword_parameter_fragment,
-        kwoptarg: :optional_keyword_parameter_fragment,
-        kwrestarg: :keyword_rest_parameter_fragment,
-        blockarg: :block_parameter_fragment,
-        forward_arg: :forward_parameter_fragment
-      }.freeze
 
       def self.activate!(mutant)
         new.activate!(mutant)
@@ -124,76 +112,11 @@ module Henitai
       end
 
       def parameter_source(mutant)
-        args_node = method_arguments(mutant.subject.ast_node)
-        return "" unless args_node
-        return forward_parameter_fragment(nil) if args_node.type == :forward_args
-
-        args_node.children.filter_map do |argument|
-          parameter_fragment(argument)
-        end.join(", ")
-      end
-
-      def method_arguments(subject_node)
-        case subject_node&.type
-        when :def
-          subject_node.children[1]
-        when :defs
-          subject_node.children[2]
-        when :block
-          block_arguments(subject_node)
-        end
-      end
-
-      def parameter_fragment(argument)
-        method_name = SERIALIZER_METHODS[argument&.type]
-        return unless method_name
-
-        send(method_name, argument)
-      end
-
-      def argument_parameter_fragment(argument)
-        argument.children[0].to_s
-      end
-
-      def optional_parameter_fragment(argument)
-        "#{argument.children[0]} = #{compile_safe_unparse(argument.children[1])}"
-      end
-
-      def rest_parameter_fragment(argument)
-        prefixed_parameter(argument, "*")
-      end
-
-      def keyword_parameter_fragment(argument)
-        "#{argument.children[0]}:"
-      end
-
-      def optional_keyword_parameter_fragment(argument)
-        "#{argument.children[0]}: #{compile_safe_unparse(argument.children[1])}"
-      end
-
-      def keyword_rest_parameter_fragment(argument)
-        prefixed_parameter(argument, "**")
-      end
-
-      def block_parameter_fragment(argument)
-        "&#{argument.children[0]}"
-      end
-
-      def forward_parameter_fragment(_argument)
-        "*args, **kwargs, &block"
-      end
-
-      def prefixed_parameter(argument, prefix)
-        name = argument.children[0]
-        name ? "#{prefix}#{name}" : prefix
+        ParameterSource.new.build(mutant.subject.ast_node)
       end
 
       def block_body(subject_node)
         subject_node.children[2]
-      end
-
-      def block_arguments(subject_node)
-        subject_node.children[1]
       end
 
       def heredoc_location?(location)
@@ -277,6 +200,5 @@ module Henitai
         raise Unparser::UnsupportedNodeError, e.message
       end
     end
-    # rubocop:enable Metrics/ClassLength
   end
 end

@@ -6,74 +6,11 @@ require "json"
 require "sqlite3"
 require "time"
 require_relative "mutant_identity"
+require_relative "mutant_history_store/sql"
 
 module Henitai
   # Persists mutant outcomes across runs in a lightweight SQLite database.
-  # rubocop:disable Metrics/ClassLength
   class MutantHistoryStore
-    RUNS_TABLE_SQL = <<~SQL
-      CREATE TABLE IF NOT EXISTS runs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        version TEXT NOT NULL,
-        recorded_at TEXT NOT NULL,
-        mutation_score REAL,
-        mutation_score_indicator REAL,
-        equivalence_uncertainty TEXT,
-        total_mutants INTEGER NOT NULL,
-        killed_mutants INTEGER NOT NULL,
-        survived_mutants INTEGER NOT NULL,
-        timeout_mutants INTEGER NOT NULL,
-        equivalent_mutants INTEGER NOT NULL
-      );
-    SQL
-
-    MUTANTS_TABLE_SQL = <<~SQL
-      CREATE TABLE IF NOT EXISTS mutants (
-        mutant_id TEXT PRIMARY KEY,
-        first_seen_version TEXT NOT NULL,
-        first_seen_at TEXT NOT NULL,
-        last_seen_version TEXT NOT NULL,
-        last_seen_at TEXT NOT NULL,
-        current_status TEXT NOT NULL,
-        status_history TEXT NOT NULL,
-        days_alive INTEGER NOT NULL
-      );
-    SQL
-
-    INSERT_RUN_SQL = <<~SQL
-      INSERT INTO runs (
-        version,
-        recorded_at,
-        mutation_score,
-        mutation_score_indicator,
-        equivalence_uncertainty,
-        total_mutants,
-        killed_mutants,
-        survived_mutants,
-        timeout_mutants,
-        equivalent_mutants
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    SQL
-
-    UPSERT_MUTANT_SQL = <<~SQL
-      INSERT INTO mutants (
-        mutant_id,
-        first_seen_version,
-        first_seen_at,
-        last_seen_version,
-        last_seen_at,
-        current_status,
-        status_history,
-        days_alive
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(mutant_id) DO UPDATE SET
-        last_seen_version = excluded.last_seen_version,
-        last_seen_at = excluded.last_seen_at,
-        current_status = excluded.current_status,
-        status_history = excluded.status_history,
-        days_alive = excluded.days_alive
-    SQL
-
     def initialize(path:)
       @path = path
     end
@@ -120,17 +57,17 @@ module Henitai
     end
 
     def ensure_schema(db)
-      db.execute_batch(RUNS_TABLE_SQL)
-      db.execute_batch(MUTANTS_TABLE_SQL)
+      db.execute_batch(Sql::RUNS_TABLE)
+      db.execute_batch(Sql::MUTANTS_TABLE)
     end
 
     def insert_run(db, result, version, recorded_at)
-      db.execute(INSERT_RUN_SQL, insert_run_bindings(result, version, recorded_at))
+      db.execute(Sql::INSERT_RUN, insert_run_bindings(result, version, recorded_at))
     end
 
     def upsert_mutant(db, mutant, version, recorded_at)
       db.execute(
-        UPSERT_MUTANT_SQL,
+        Sql::UPSERT_MUTANT,
         upsert_mutant_bindings(mutant_history_data(db, mutant, version, recorded_at))
       )
     end
@@ -261,4 +198,3 @@ module Henitai
     end
   end
 end
-# rubocop:enable Metrics/ClassLength

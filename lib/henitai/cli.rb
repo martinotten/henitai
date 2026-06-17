@@ -1,8 +1,12 @@
 # frozen_string_literal: true
 
-require "fileutils"
-require "json"
-require "optparse"
+require_relative "cli/command_support"
+require_relative "cli/options"
+require_relative "cli/run_command"
+require_relative "cli/clean_command"
+require_relative "cli/init_command"
+require_relative "cli/operator_command"
+
 module Henitai
   # Command-line interface entry point.
   #
@@ -18,24 +22,16 @@ module Henitai
   #   --all-logs        Print all captured child logs
   #   -h, --help        Show this help message
   #   -v, --version     Show version
-  # rubocop:disable Metrics/ClassLength
+  #
+  # Argument parsing and command dispatch live here; the per-command behaviour
+  # lives in the mixed-in command modules under +lib/henitai/cli/+.
   class CLI
-    INIT_TEMPLATE_LINES = [
-      "# yaml-language-server: $schema=./assets/schema/henitai.schema.json",
-      "includes:",
-      "  - lib",
-      "mutation:",
-      "  operators: light",
-      "  timeout: 10.0",
-      "  max_flaky_retries: 3",
-      "  sampling:",
-      "    ratio: 0.05",
-      "    strategy: stratified",
-      "reports_dir: reports",
-      "thresholds:",
-      "  high: 80",
-      "  low: 60"
-    ].freeze
+    include CommandSupport
+    include Options
+    include RunCommand
+    include CleanCommand
+    include InitCommand
+    include OperatorCommand
 
     REPORT_CLEANUP_PATHS = [
       %w[mutation-logs baseline.log],
@@ -45,28 +41,6 @@ module Henitai
       %w[coverage .last_run.json],
       ["henitai_per_test.json"]
     ].freeze
-
-    OPERATOR_METADATA = {
-      "ArithmeticOperator" => ["Arithmetic operators", "a + b -> a - b"],
-      "EqualityOperator" => ["Comparison operators", "a == b -> a != b"],
-      "LogicalOperator" => ["Boolean operators", "a && b -> a || b"],
-      "BooleanLiteral" => ["Boolean literals", "true -> false"],
-      "ConditionalExpression" => ["Conditional branches", "if cond then ... end"],
-      "StringLiteral" => ["String literals", '"foo" -> ""'],
-      "ReturnValue" => ["Return expressions", "return x -> return nil"],
-      "ArrayDeclaration" => ["Array literals", "[1, 2] -> []"],
-      "HashLiteral" => ["Hash literals", "{ a: 1 } -> {}"],
-      "RangeLiteral" => ["Range literals", "1..5 -> 1...5"],
-      "SafeNavigation" => ["Safe navigation", "user&.name -> user.name"],
-      "PatternMatch" => ["Pattern matching", "in { x: Integer } -> in { x: String }"],
-      "BlockStatement" => ["Block statements", "{ do_work } -> {}"],
-      "MethodExpression" => ["Method calls", "call_service -> nil"],
-      "AssignmentExpression" => ["Assignment expressions", "x += 1 -> x -= 1"],
-      "MethodChainUnwrap" => ["Method chain unwrap", "a.b.c -> a.b"],
-      "RegexMutator" => ["Regex literals", "/foo+/ -> /foo*/"],
-      "UnaryOperator" => ["Unary operators", "-x -> x"],
-      "UpdateOperator" => ["Compound assignment", "x += 1 -> x -= 1"]
-    }.freeze
 
     def self.start(argv)
       new(argv).run
@@ -94,164 +68,6 @@ module Henitai
 
     private
 
-    def run_command
-      @command_halted = false
-      options = parse_run_options
-      return if @command_halted
-
-      config = load_config(options)
-      result = run_pipeline(options, config)
-      exit(exit_status_for(result, config, fail_on_survivors: options[:fail_on_survivors]))
-    rescue StandardError => e
-      handle_run_error(e)
-    end
-
-    def clean_command
-      @command_halted = false
-      options = parse_clean_options
-      return if @command_halted
-
-      config = load_config(options)
-      removed_paths = cleanup_report_artifacts(config)
-      puts clean_summary(removed_paths)
-    rescue StandardError => e
-      handle_run_error(e)
-    end
-
-    def parse_run_options
-      options = {}
-      build_run_option_parser(options).parse!(@argv)
-      options
-    end
-
-    def configuration_overrides(options)
-      deep_compact(
-        {
-          integration: options[:integration],
-          all_logs: options[:all_logs],
-          mutation: {
-            operators: options[:operators],
-            timeout: options[:timeout]
-          },
-          jobs: options[:jobs]
-        }
-      )
-    end
-
-    def deep_compact(value)
-      case value
-      when Hash
-        value.each_with_object({}) do |(key, nested_value), result|
-          compacted = deep_compact(nested_value)
-          result[key] = compacted unless compacted.nil?
-        end
-      when Array
-        value.map { |item| deep_compact(item) }.compact
-      else
-        value
-      end
-    end
-
-    def build_run_option_parser(options)
-      OptionParser.new do |opts|
-        opts.banner = "Usage: henitai run [options] [SUBJECT_PATTERN...]"
-        add_since_option(opts, options)
-        add_integration_option(opts, options)
-        add_config_option(opts, options)
-        add_operator_option(opts, options)
-        add_jobs_option(opts, options)
-        add_output_option(opts, options)
-        add_survivors_from_option(opts, options)
-        add_fail_on_survivors_option(opts, options)
-        add_help_option(opts)
-        add_version_option(opts)
-      end
-    end
-
-    def parse_clean_options
-      options = {}
-      build_clean_option_parser(options).parse!(@argv)
-      options
-    end
-
-    def build_clean_option_parser(options)
-      OptionParser.new do |opts|
-        opts.banner = "Usage: henitai clean [options]"
-        add_config_option(opts, options)
-        add_help_option(opts)
-        add_version_option(opts)
-      end
-    end
-
-    def add_since_option(opts, options)
-      opts.on("--since GIT_REF", "Only mutate subjects changed since GIT_REF") do |ref|
-        options[:since] = ref
-      end
-    end
-
-    def add_integration_option(opts, options)
-      opts.on("--use INTEGRATION", "Test framework integration (rspec)") do |name|
-        options[:integration] = name
-      end
-    end
-
-    def add_config_option(opts, options)
-      opts.on("--config PATH", "Path to .henitai.yml") do |path|
-        options[:config] = path
-      end
-    end
-
-    def add_operator_option(opts, options)
-      opts.on("--operators SET", "Operator set: light | full") do |set|
-        options[:operators] = set
-      end
-    end
-
-    def add_jobs_option(opts, options)
-      opts.on("--jobs N", Integer, "Number of parallel workers (default: 1)") do |n|
-        options[:jobs] = n
-      end
-    end
-
-    def add_output_option(opts, options)
-      opts.on("--all-logs", "--verbose", "Print all captured child logs") do
-        options[:all_logs] = true
-      end
-    end
-
-    def add_survivors_from_option(opts, options)
-      opts.on(
-        "--survivors-from PATH",
-        "Re-run only survivors from a prior report " \
-        "(partial rerun; threshold checks are skipped; dirty worktrees are included)"
-      ) do |path|
-        options[:survivors_from] = path
-      end
-    end
-
-    def add_fail_on_survivors_option(opts, options)
-      opts.on(
-        "--fail-on-survivors",
-        "Exit 1 for partial reruns when any survivors remain (otherwise exits 0)"
-      ) do
-        options[:fail_on_survivors] = true
-      end
-    end
-
-    def add_help_option(opts)
-      opts.on("-h", "--help", "Show this help") do
-        puts opts
-        @command_halted = true
-      end
-    end
-
-    def add_version_option(opts)
-      opts.on("-v", "--version", "Show version") do
-        puts Henitai::VERSION
-        @command_halted = true
-      end
-    end
-
     def help_text
       <<~HELP
         Hen'i-tai 変異体 #{Henitai::VERSION} — Ruby 4 Mutation Testing
@@ -276,214 +92,5 @@ module Henitai
         Run `henitai run --help` for full option list.
       HELP
     end
-
-    def run_pipeline(options, config)
-      resolved_survivors_from = resolve_survivors_from(options[:survivors_from])
-      runner = Runner.new(
-        config:,
-        subjects: subjects_from_argv,
-        since: options[:since],
-        survivors_from: resolved_survivors_from
-      )
-      runner.run
-    end
-
-    def resolve_survivors_from(survivors_from)
-      return nil if survivors_from.nil?
-
-      # Fast path: if the path already points into reports/sessions/<session_id>/,
-      # keep it as-is so activation-recipes.json can be found by the runner.
-      report_dir = File.dirname(survivors_from)
-      parent_dir = File.dirname(report_dir)
-      # Heuristic: treat any path under a directory named "sessions" as already
-      # being a snapshot path; this keeps activation-recipes lookup correct.
-      return survivors_from if File.basename(parent_dir) == "sessions"
-
-      session_id = session_id_from_report(survivors_from)
-      return survivors_from if session_id.nil?
-
-      snapshot_path = survivors_snapshot_path(report_dir, session_id)
-      recipe_path = File.join(report_dir, "sessions", session_id, "activation-recipes.json")
-      return snapshot_path if File.exist?(recipe_path) && File.exist?(snapshot_path)
-
-      # If the recipes exist but the snapshot doesn't (e.g. partial cleanup),
-      # fall back to the path the user provided so the error message points
-      # at what they actually passed.
-
-      survivors_from
-    rescue StandardError => e
-      warn_survivors_from_resolution_error(survivors_from, e)
-      survivors_from
-    end
-
-    def survivors_snapshot_path(report_dir, session_id)
-      File.join(report_dir, "sessions", session_id, "mutation-report.json")
-    end
-
-    def session_id_from_report(path)
-      parsed = JSON.parse(File.read(path))
-      parsed["sessionId"]
-    rescue JSON::ParserError, Errno::ENOENT
-      nil
-    end
-
-    def load_config(options)
-      Configuration.load(
-        path: options.fetch(:config, Configuration::CONFIG_FILE),
-        overrides: configuration_overrides(options)
-      )
-    end
-
-    def subjects_from_argv
-      @argv.empty? ? nil : @argv.map { |expr| Subject.parse(expr) }
-    end
-
-    def handle_run_error(error)
-      warn "#{error.class}: #{error.message}"
-      exit 2
-    end
-
-    def warn_survivors_from_resolution_error(survivors_from, error)
-      warn(
-        "henitai: warning: could not resolve survivors-from " \
-        "#{survivors_from}: #{error.class}: #{error.message}"
-      )
-    end
-
-    def clean_summary(removed_paths)
-      return "No generated report artifacts to clean" if removed_paths.empty?
-
-      format(
-        "Removed %<count>s generated report artifact%<plural>s",
-        count: removed_paths.length,
-        plural: removed_paths.length == 1 ? "" : "s"
-      )
-    end
-
-    def cleanup_report_artifacts(config)
-      removed_paths = report_cleanup_paths(config).select { |path| File.exist?(path) }
-      removed_paths.each { |path| FileUtils.rm_f(path) }
-      removed_paths
-    end
-
-    def report_cleanup_paths(config)
-      REPORT_CLEANUP_PATHS.map do |relative_path|
-        File.join(config.reports_dir, *relative_path)
-      end
-    end
-
-    def exit_status_for(result, config, fail_on_survivors: false)
-      if result.respond_to?(:partial_rerun?) && result.partial_rerun?
-        warn "henitai: partial rerun - mutation score threshold not evaluated"
-        return result.survived.positive? ? 1 : 0 if fail_on_survivors
-
-        return 0
-      end
-
-      score = result.mutation_score
-      # No valid mutants to evaluate (e.g. an incremental run with no changed
-      # code) cannot fail a threshold — treat it as success.
-      return 0 if score.nil?
-
-      score.to_i >= config.thresholds.fetch(:low, 60) ? 0 : 1
-    end
-
-    def init_command
-      path = @argv.shift || Configuration::CONFIG_FILE
-      unexpected_arguments = @argv.dup
-      warn "Unexpected arguments: #{unexpected_arguments.join(' ')}" unless unexpected_arguments.empty?
-      exit 1 unless unexpected_arguments.empty?
-
-      File.write(path, init_template)
-      puts "Created #{path}"
-    end
-
-    def operator_command
-      subcommand = @argv.shift
-      case subcommand
-      when "list" then puts operator_list_text
-      when nil, "-h", "--help" then puts operator_help_text
-      else
-        warn "Unknown operator command: #{subcommand}"
-        warn operator_help_text
-        exit 1
-      end
-    rescue ArgumentError => e
-      warn e.message
-      exit 1
-    end
-
-    def init_template
-      template = init_template_lines
-      template << integration_block if include_default_integration?
-      "#{template.join("\n")}\n"
-    end
-
-    def init_template_lines
-      INIT_TEMPLATE_LINES.dup
-    end
-
-    def include_default_integration?
-      return true unless $stdin.tty?
-
-      print "Use the default RSpec integration? [Y/n] "
-      response = $stdin.gets&.strip&.downcase
-      response.nil? || response.empty? || !%w[n no].include?(response)
-    end
-
-    def integration_block
-      <<~YAML.chomp
-        integration:
-          name: rspec
-      YAML
-    end
-
-    def operator_help_text
-      <<~HELP
-        Hen'i-tai operator commands
-
-        Usage:
-          henitai operator list
-
-        Run `henitai operator list` to see all built-in operators.
-      HELP
-    end
-
-    def operator_list_text
-      validate_operator_metadata!
-      sections = [
-        operator_list_section("Light set", Operator::LIGHT_SET),
-        operator_list_section("Full set", Operator::FULL_SET)
-      ]
-
-      ["Available operators", *sections].join("\n")
-    end
-
-    def operator_list_section(title, names)
-      rows = names.map { |name| operator_description_row(name) }
-      ([title] + rows).join("\n")
-    end
-
-    def operator_description_row(name)
-      description, example = operator_metadata[name] || fallback_operator_metadata
-
-      format("- %<name>s: %<description>s (%<example>s)", name:, description:, example:)
-    end
-
-    def operator_metadata
-      OPERATOR_METADATA
-    end
-
-    def fallback_operator_metadata
-      ["No metadata available", "n/a"]
-    end
-
-    def validate_operator_metadata!
-      missing = Operator::FULL_SET - operator_metadata.keys
-      return if missing.empty?
-
-      raise ArgumentError, "Missing operator metadata for: #{missing.join(', ')}"
-    end
   end
-  # rubocop:enable Metrics/ClassLength
 end
