@@ -24,10 +24,12 @@ RSpec.describe "Minitest SimpleCov bootstrap" do
   end
 
   def run_loader(coverage_dir_env)
-    env = coverage_dir_env ? { "HENITAI_COVERAGE_DIR" => coverage_dir_env } : {}
+    # A nil value unsets HENITAI_COVERAGE_DIR in the child so the default case is
+    # isolated from an inherited env (e.g. when run inside henitai's own coverage
+    # bootstrap). chdir: avoids mutating this process's working directory.
+    env = { "HENITAI_COVERAGE_DIR" => coverage_dir_env }
     Dir.mktmpdir do |dir|
-      out = nil
-      Dir.chdir(dir) { out = IO.popen(env, ["ruby", "-e", loader_script], &:read) }
+      out = IO.popen(env, ["ruby", "-e", loader_script], chdir: dir, &:read)
       JSON.parse(out[/<<<JSON(.*)JSON>>>/m, 1])
     end
   end
