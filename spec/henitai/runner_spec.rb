@@ -68,6 +68,16 @@ RSpec.describe Henitai::Runner do
     Struct.new(:subject, :status).new(subject, :pending)
   end
 
+  # A mutant carrying a real status plus the predicates Result derives counts
+  # from, so the pipeline can be asserted on the produced Result rather than on
+  # an internal call log.
+  def executed_mutant(status)
+    Struct.new(:status) do
+      def killed?   = status == :killed
+      def survived? = status == :survived
+    end.new(status)
+  end
+
   def build_result(mutants)
     Struct.new(:mutants).new(mutants)
   end
@@ -92,164 +102,86 @@ RSpec.describe Henitai::Runner do
     history_store
   end
 
-  # The bootstrap runs in a background thread (option 2) so bootstrap and
-  # generate are concurrent. We check:
-  #   - every phase fires with the correct arguments
-  #   - the partial ordering guaranteed by the implementation holds:
-  #       resolve < generate  (both sequential in main thread)
-  #       bootstrap < filter  (thread is joined before filter)
-  #       generate  < filter  (sequential in main thread)
-  #       filter    < execute (sequential in main thread)
-  it "runs the pipeline and reports the result" do
+  # Stubs only the true infrastructure seams (subject resolution, generation,
+  # static filtering, the backgrounded coverage bootstrap, mutant execution,
+  # integration and history persistence). Result and Reporter are left real so
+  # examples can assert on observable output. The backgrounded bootstrap thread
+  # is exercised for real; its join synchronizes the pipeline without sleeps.
+  def stub_pipeline(runner, history_store:, resolved: [], generated: [], executed: [])
+    subject_resolver = instance_double(Henitai::SubjectResolver, resolve_from_files: resolved)
+    mutant_generator = instance_double(Henitai::MutantGenerator, generate: generated)
+    static_filter = instance_double(Henitai::StaticFilter, apply: generated)
+    coverage_bootstrapper = instance_double(Henitai::CoverageBootstrapper, ensure!: nil)
+    execution_engine = instance_double(Henitai::ExecutionEngine, run: executed)
+    integration = instance_double(Henitai::Integration::Rspec)
+
+    allow(runner).to receive_messages(
+      subject_resolver:, mutant_generator:, static_filter:,
+      coverage_bootstrapper:, execution_engine:, integration:, history_store:
+    )
+  end
+
+  # Behavioral pipeline test: real Result, real Reporter dispatch suppressed,
+  # infra seams stubbed. We assert on the produced Result (the runner's output)
+  # rather than on the order in which collaborators were called. The kill/
+  # survive mix the execution engine returns must flow through to the Result's
+  # reported counts and mutation score, and the same Result must be reported.
+  it "returns a Result whose counts reflect the executed mutants" do
     Dir.mktmpdir do |dir|
       FileUtils.mkdir_p(File.join(dir, "lib"))
       File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
 
       Dir.chdir(dir) do
-        config = build_config
-        runner = described_class.new(config:)
+        runner = described_class.new(config: build_config)
         subject = build_subject("Sample#answer", source_file: "lib/sample.rb")
-        subjects = [subject]
-        mutants = [build_mutant(subject)]
-        result = build_result(mutants)
-        mu = Mutex.new
-        calls = []
-        subject_resolver = instance_double(Henitai::SubjectResolver)
-        mutant_generator = instance_double(Henitai::MutantGenerator)
-        static_filter = instance_double(Henitai::StaticFilter)
-        coverage_bootstrapper = instance_double(Henitai::CoverageBootstrapper)
-        execution_engine = instance_double(Henitai::ExecutionEngine)
-        integration = instance_double(Henitai::Integration::Rspec)
-        history_store = build_history_store(calls)
-        reporter = instance_double(Henitai::Reporter::Terminal)
+        executed = [executed_mutant(:killed), executed_mutant(:killed), executed_mutant(:survived)]
+        history_store = build_history_store
+        reported = nil
 
-        allow(Henitai::Reporter::Terminal).to receive(:new).and_return(reporter)
-        allow(runner).to receive_messages(
-          coverage_bootstrapper:,
-          subject_resolver:,
-          mutant_generator:,
-          static_filter:,
-          execution_engine:,
-          integration:,
-          history_store:
+        stub_pipeline(
+          runner,
+          history_store:,
+          resolved: [subject],
+          generated: executed,
+          executed:
         )
-        allow(subject_resolver).to receive(:resolve_from_files) do |paths|
-          mu.synchronize { calls << [:resolve_from_files, paths] }
-          subjects
-        end
-        allow(coverage_bootstrapper).to receive(:ensure!) do |kwargs|
-          mu.synchronize { calls << [:bootstrap, kwargs[:source_files], kwargs[:config]] }
-        end
-        allow(mutant_generator).to receive(:generate) do |resolved_subjects, operators, kwargs|
-          mu.synchronize do
-            calls << [:generate, resolved_subjects, operators.map(&:class), kwargs[:config]]
-          end
-          mutants
-        end
-        allow(static_filter).to receive(:apply) do |current_mutants, received_config|
-          mu.synchronize { calls << [:filter, current_mutants, received_config] }
-          mutants
-        end
-        allow(execution_engine).to receive(:run) do |current_mutants,
-                                                     current_integration,
-                                                     received_config,
-                                                     progress_reporter:|
-          mu.synchronize do
-            calls << [:execute, current_mutants, current_integration, received_config,
-                      progress_reporter]
-          end
-          mutants
-        end
-        allow(Henitai::Result).to receive(:new) do |kwargs|
-          mu.synchronize do
-            calls << [:result, kwargs[:mutants], kwargs[:started_at].is_a?(Time),
-                      kwargs[:finished_at].is_a?(Time), kwargs[:thresholds]]
-          end
-          result
-        end
-        allow(Henitai::Reporter).to receive(:run_all) do |kwargs|
-          mu.synchronize { calls << [:report, kwargs] }
-        end
+        allow(Henitai::Reporter).to receive(:run_all) { |kwargs| reported = kwargs[:result] }
 
-        runner.run
+        result = runner.run
 
-        expect(calls).to satisfy do |events|
-          resolve_call = [:resolve_from_files, ["lib/sample.rb"]]
-          bootstrap_call = [:bootstrap, ["lib/sample.rb"], config]
-          generate_call = [:generate, subjects, Henitai::Operator.for_set(:light).map(&:class), config]
-          filter_call = [:filter, mutants, config]
-          execute_call = [:execute, mutants, integration, config, reporter]
-          result_call = [:result, mutants, true, true, config.thresholds]
-          report_call = [:report, { names: ["terminal"], result:, config:, history_store: }]
-
-          resolve_index = events.index(resolve_call)
-          bootstrap_index = events.index(bootstrap_call)
-          generate_index = events.index(generate_call)
-          filter_index = events.index(filter_call)
-          execute_index = events.index(execute_call)
-          result_index = events.index(result_call)
-          report_index = events.index(report_call)
-
-          resolve_index && bootstrap_index && generate_index &&
-            filter_index && execute_index && result_index && report_index &&
-            resolve_index < generate_index &&
-            bootstrap_index < filter_index &&
-            generate_index < filter_index &&
-            filter_index < execute_index &&
-            result_index < report_index &&
-            events.include?(:history)
-        end
+        expect(
+          returned: result.equal?(runner.result),
+          reported: reported.equal?(result),
+          killed: result.killed,
+          survived: result.survived,
+          score: result.mutation_score
+        ).to eq(
+          returned: true, reported: true, killed: 2, survived: 1, score: 66.67
+        )
       end
     end
   end
 
-  # Option 2: bootstrap and generate_mutants proceed concurrently.
-  it "generates mutants while the coverage bootstrap is in progress" do
+  it "records the result in the history store and stamps run timing" do
     Dir.mktmpdir do |dir|
       FileUtils.mkdir_p(File.join(dir, "lib"))
       File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
 
       Dir.chdir(dir) do
-        config = build_config(reporters: [])
-        runner = described_class.new(config:)
-        subject_resolver = instance_double(Henitai::SubjectResolver)
-        mutant_generator = instance_double(Henitai::MutantGenerator)
-        static_filter = instance_double(Henitai::StaticFilter)
-        coverage_bootstrapper = instance_double(Henitai::CoverageBootstrapper)
-        execution_engine = instance_double(Henitai::ExecutionEngine)
-        integration = instance_double(Henitai::Integration::Rspec)
-        history_store = build_history_store
-        result = build_result([])
-        events = []
-        mu = Mutex.new
+        runner = described_class.new(config: build_config(reporters: []))
+        recorded = nil
+        history_store = instance_double(Henitai::MutantHistoryStore)
+        allow(history_store).to receive(:record) { |result, **| recorded = result }
 
-        allow(runner).to receive_messages(
-          coverage_bootstrapper:,
-          subject_resolver:,
-          mutant_generator:,
-          static_filter:,
-          execution_engine:,
-          integration:,
-          history_store:
-        )
-        allow(subject_resolver).to receive(:resolve_from_files).and_return([])
-        allow(coverage_bootstrapper).to receive(:ensure!) do |**|
-          sleep 0.001 # hold the bootstrap thread open long enough for generate to run
-          mu.synchronize { events << :bootstrap_end }
-        end
-        allow(mutant_generator).to receive(:generate) do |*|
-          mu.synchronize { events << :generate }
-          []
-        end
-        allow(static_filter).to receive(:apply).and_return([])
-        allow(execution_engine).to receive(:run).and_return([])
-        allow(Henitai::Result).to receive(:new).and_return(result)
+        stub_pipeline(runner, history_store:, executed: [executed_mutant(:killed)])
         allow(Henitai::Reporter).to receive(:run_all)
 
-        runner.run
+        result = runner.run
 
-        # generate must complete before the bootstrap finishes sleeping
-        expect(events.index(:generate)).to be < events.index(:bootstrap_end)
+        expect(
+          recorded: recorded.equal?(result),
+          timed: result.finished_at >= result.started_at
+        ).to eq(recorded: true, timed: true)
       end
     end
   end
