@@ -104,7 +104,7 @@ module Henitai
     end
 
     def report(result)
-      Reporter.run_all(names: config.reporters, result:, config:)
+      Reporter.run_all(names: config.reporters, result:, config:, history_store:)
     end
 
     def persist_history(result, recorded_at)
@@ -123,11 +123,26 @@ module Henitai
         thresholds: result_thresholds,
         partial_rerun: survivor_rerun?,
         survivor_stats: @survivor_stats,
-        git_sha: safe_head_sha
+        git_sha: safe_head_sha,
+        source_provider: source_provider
       )
       persist_history(@result, finished_at)
       report(@result)
       @result
+    end
+
+    # Reads each source file once and caches it, so Result consumes source
+    # content while performing no disk IO of its own. Returns "" for files that
+    # cannot be read (e.g. recipe stubs with synthetic locations).
+    def source_provider
+      cache = {} # : Hash[String, String]
+      lambda do |file|
+        cache[file] ||= begin
+          File.read(file)
+        rescue StandardError
+          ""
+        end
+      end
     end
 
     def safe_head_sha

@@ -180,7 +180,7 @@ RSpec.describe Henitai::Runner do
           filter_call = [:filter, mutants, config]
           execute_call = [:execute, mutants, integration, config, reporter]
           result_call = [:result, mutants, true, true, config.thresholds]
-          report_call = [:report, { names: ["terminal"], result:, config: }]
+          report_call = [:report, { names: ["terminal"], result:, config:, history_store: }]
 
           resolve_index = events.index(resolve_call)
           bootstrap_index = events.index(bootstrap_call)

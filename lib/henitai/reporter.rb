@@ -22,9 +22,12 @@ module Henitai
     # @param names  [Array<String>] reporter names from configuration
     # @param result [Result]
     # @param config [Configuration]
-    def self.run_all(names:, result:, config:)
+    # @param history_store [MutantHistoryStore, nil] persistence store the JSON
+    #   reporter reads trend data from; supplied by the composition root so the
+    #   reporter does not build infrastructure itself.
+    def self.run_all(names:, result:, config:, history_store: nil)
       names.each do |name|
-        reporter_class(name).new(config:).report(result)
+        reporter_class(name).new(config:, history_store:).report(result)
       end
     end
 
@@ -36,8 +39,12 @@ module Henitai
 
     # Base class for all reporters.
     class Base
-      def initialize(config:)
+      # @param history_store [MutantHistoryStore, nil] accepted by every
+      #   reporter for a uniform factory signature; only the JSON reporter uses
+      #   it. Ignored elsewhere.
+      def initialize(config:, history_store: nil)
         @config = config
+        @history_store = history_store
       end
 
       # @param result [Result]
@@ -47,7 +54,7 @@ module Henitai
 
       private
 
-      attr_reader :config
+      attr_reader :config, :history_store
     end
 
     # Terminal reporter.
@@ -297,12 +304,17 @@ module Henitai
       end
 
       def write_history_report
-        path = File.join(config.reports_dir, Henitai::HISTORY_STORE_FILENAME)
-        history_store = MutantHistoryStore.new(path:)
-        return unless File.exist?(path)
+        store = history_store || default_history_store
+        return unless File.exist?(store.path)
 
         FileUtils.mkdir_p(File.dirname(history_report_path))
-        File.write(history_report_path, JSON.pretty_generate(history_store.trend_report))
+        File.write(history_report_path, JSON.pretty_generate(store.trend_report))
+      end
+
+      def default_history_store
+        MutantHistoryStore.new(
+          path: File.join(config.reports_dir, Henitai::HISTORY_STORE_FILENAME)
+        )
       end
 
       def history_report_path

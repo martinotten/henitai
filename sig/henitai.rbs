@@ -502,6 +502,8 @@ module Henitai
   end
 
   class MutantHistoryStore
+    attr_reader path: String
+
     def initialize: (path: String) -> void
     def record: (untyped, version: String, ?recorded_at: Time) -> void
     def trend_report: () -> Hash[Symbol, untyped]
@@ -621,16 +623,17 @@ module Henitai
   end
 
   module Reporter
-    def self.run_all: (names: Array[String], result: Result, config: Configuration) -> void
+    def self.run_all: (names: Array[String], result: Result, config: Configuration, ?history_store: MutantHistoryStore?) -> void
     def self.reporter_class: (String) -> untyped
 
     class Base
-      def initialize: (config: Configuration) -> void
+      def initialize: (config: Configuration, ?history_store: MutantHistoryStore?) -> void
       def report: (Result) -> void
 
       private
 
       def config: () -> Configuration
+      def history_store: () -> MutantHistoryStore?
     end
 
     class Terminal < Base
@@ -678,9 +681,8 @@ module Henitai
       def session_snapshot_path: (String) -> String
       def session_recipe_path: (String) -> String
       def canonical_path: () -> String
-      def report_path: () -> String
       def write_history_report: () -> void
-      def history_store_path: () -> String
+      def default_history_store: () -> MutantHistoryStore
       def history_report_path: () -> String
     end
 
@@ -741,7 +743,7 @@ module Henitai
     attr_reader session_id: String
     attr_reader git_sha: String?
 
-    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time, ?thresholds: Hash[Symbol, Integer]?, ?partial_rerun: bool, ?survivor_stats: Hash[Symbol, untyped]?, ?session_id: String, ?git_sha: String?) -> void
+    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time, ?thresholds: Hash[Symbol, Integer]?, ?partial_rerun: bool, ?survivor_stats: Hash[Symbol, untyped]?, ?session_id: String, ?git_sha: String?, ?source_provider: ^(String) -> String) -> void
     def partial_rerun?: () -> bool
     def killed: () -> Integer
     def survived: () -> Integer
@@ -843,6 +845,7 @@ module Henitai
     private
 
     def build_result: (Array[Mutant], Time, Time) -> Result
+    def source_provider: () -> ^(String) -> String
     def persist_history: (Result, Time) -> void
     def bootstrap_coverage: (Array[String], ?Array[String]?) -> void
     def bootstrap_mutants: (Array[String]) -> Thread
