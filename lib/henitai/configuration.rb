@@ -23,7 +23,7 @@ module Henitai
     DEFAULT_THRESHOLDS = { high: 80, low: 60 }.freeze
     CONFIG_FILE        = ".henitai.yml"
 
-    attr_reader :integration, :includes, :operators, :timeout,
+    attr_reader :integration, :includes, :excludes, :operators, :timeout,
                 :ignore_patterns, :sampling, :jobs,
                 :max_flaky_retries, :coverage_criteria, :thresholds,
                 :reporters, :reports_dir,
@@ -72,6 +72,7 @@ module Henitai
     def apply_general_defaults(raw)
       @integration = resolve_integration_default(raw[:integration])
       @includes = raw[:includes] || ["lib"]
+      @excludes = raw[:excludes] || []
       @jobs = raw.fetch(:jobs, DEFAULT_JOBS)
       @reporters = raw[:reporters] || ["terminal"]
       @reports_dir = raw[:reports_dir] || DEFAULT_REPORTS_DIR

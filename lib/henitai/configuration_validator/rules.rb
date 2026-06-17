@@ -30,6 +30,10 @@ module Henitai
         Scalars.validate_string_array(raw[:includes], "includes")
       end
 
+      def validate_excludes(raw)
+        Scalars.validate_string_array(raw[:excludes], "excludes")
+      end
+
       def validate_jobs(raw)
         value = raw[:jobs]
         return if value.nil?

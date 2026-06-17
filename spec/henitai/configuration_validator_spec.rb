@@ -101,6 +101,25 @@ RSpec.describe Henitai::ConfigurationValidator do
   end
 
   # ---------------------------------------------------------------------------
+  # excludes
+  # ---------------------------------------------------------------------------
+  describe "excludes validation" do
+    it "accepts absent excludes" do
+      expect { described_class.validate!({}) }.not_to raise_error
+    end
+
+    it "accepts a string-array excludes" do
+      expect { described_class.validate!({ excludes: ["lib/henitai/eager_load.rb"] }) }.not_to raise_error
+    end
+
+    it "rejects a non-array excludes with path in error" do
+      expect { described_class.validate!({ excludes: "lib" }) }.to raise_error(
+        Henitai::ConfigurationError, /for excludes:/
+      )
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # jobs
   # ---------------------------------------------------------------------------
   describe "jobs validation" do

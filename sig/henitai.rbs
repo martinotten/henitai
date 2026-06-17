@@ -151,6 +151,7 @@ module Henitai
 
     attr_reader integration: untyped
     attr_reader includes: Array[String]
+    attr_reader excludes: Array[String]
     attr_reader operators: Symbol
     attr_reader timeout: Float
     attr_reader ignore_patterns: Array[untyped]
@@ -853,6 +854,10 @@ module Henitai
     def history_store: () -> untyped
     def history_store_path: () -> String
     def source_files: () -> Array[String]
+    def included_source_files: () -> Array[String]
+    def reject_excluded: (Array[String]) -> Array[String]
+    def excluded_source_files: () -> Array[String]
+    def filter_changed: (Array[String]) -> Array[String]
     def pattern_subjects: () -> Array[Subject]
     def unique_subjects: (Array[Subject]) -> Array[Subject]
     def normalize_path: (String) -> String

@@ -8,6 +8,11 @@ integration:
 includes:
   - lib
 
+# Standalone entry points that only run as side effects or in a subprocess
+# cannot be mutation-tested in-process, so they are excluded from the scope.
+excludes:
+  - lib/henitai/eager_load.rb
+
 # Mutation operator configuration
 mutation:
   operators: light # light (default) | full

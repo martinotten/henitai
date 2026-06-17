@@ -72,6 +72,9 @@ integration:
 includes:
   - lib
 
+excludes:
+  - lib/henitai/eager_load.rb   # standalone entry points with no in-process coverage
+
 mutation:
   operators: light   # light | full
   timeout: 10.0
