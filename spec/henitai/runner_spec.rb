@@ -682,24 +682,28 @@ RSpec.describe Henitai::Runner do
   end
 
   it "treats missing dirty worktree files as dirty source files" do
-    runner = described_class.new(config: build_config(reporters: []))
+    strategy = Henitai::SurvivorRerunStrategy.new(
+      survivors_from: "reports/mutation-report.json",
+      config: build_config(reporters: []),
+      git_diff_analyzer: instance_double(Henitai::GitDiffAnalyzer)
+    )
 
-    expect(runner.send(:dirty_source_files?, nil)).to be(true)
+    expect(strategy.send(:dirty_source_files?, nil)).to be(true)
   end
 
   it "builds a survivor test filter with the default dirty_source_files flag" do
-    runner = described_class.new(config: build_config(reporters: []))
     loaded = build_loaded_survivors([])
     filter = instance_double(Henitai::SurvivorTestFilter)
-    diff_analyzer = instance_double(Henitai::GitDiffAnalyzer)
-
-    allow(runner).to receive_messages(
-      git_diff_analyzer: diff_analyzer,
-      dirty_worktree_changed_files: []
+    diff_analyzer = instance_double(Henitai::GitDiffAnalyzer, working_tree_changed_files: [])
+    strategy = Henitai::SurvivorRerunStrategy.new(
+      survivors_from: "reports/mutation-report.json",
+      config: build_config(reporters: []),
+      git_diff_analyzer: diff_analyzer
     )
+
     allow(Henitai::SurvivorTestFilter).to receive(:new).and_return(filter)
 
-    runner.send(:test_filter, loaded)
+    strategy.send(:test_filter, loaded)
 
     expect(Henitai::SurvivorTestFilter).to have_received(:new).with(
       coverage_map: {},
@@ -715,7 +719,16 @@ RSpec.describe Henitai::Runner do
       report_path = File.join(dir, "mutation-report.json")
       File.write(report_path, "{}")
 
-      runner = described_class.new(config: build_config(reporters: []), survivors_from: report_path)
+      diff_analyzer = instance_double(
+        Henitai::GitDiffAnalyzer,
+        working_tree_changed_files: [],
+        changed_files: []
+      )
+      strategy = Henitai::SurvivorRerunStrategy.new(
+        survivors_from: report_path,
+        config: build_config(reporters: []),
+        git_diff_analyzer: diff_analyzer
+      )
       loaded = build_loaded_survivors(["stable-id"], coverage_map: { "lib/sample.rb" => [1] })
       selector = instance_double(
         Henitai::SurvivorSelector,
@@ -730,14 +743,14 @@ RSpec.describe Henitai::Runner do
 
       allow(Henitai::SurvivorLoader).to receive(:new).and_return(loader)
       allow(Henitai::SurvivorSelector).to receive(:new).and_return(selector)
-      allow(runner).to receive(:test_filter).and_return(filter)
+      allow(strategy).to receive(:test_filter).and_return(filter)
       allow(selector).to receive(:select).and_return(selected)
 
       warned = false
-      allow(runner).to receive(:warn) { warned = true }
+      allow(strategy).to receive(:warn) { warned = true }
 
-      result = runner.send(:apply_survivor_selection, [build_mutant_status])
-      stats = runner.instance_variable_get(:@survivor_stats)
+      result = strategy.apply_selection([build_mutant_status])
+      stats = strategy.survivor_stats
 
       expect(
         result: result,
@@ -795,7 +808,11 @@ RSpec.describe Henitai::Runner do
       loader = instance_double(Henitai::SurvivorLoader, load: loaded)
       stable = build_mutant_status
       filter = instance_double(Henitai::SurvivorTestFilter, apply: { stable: [stable], pending: [] })
-      runner = described_class.new(config: build_config(reporters: []), survivors_from: report_path)
+      strategy = Henitai::SurvivorRerunStrategy.new(
+        survivors_from: report_path,
+        config: build_config(reporters: []),
+        git_diff_analyzer: instance_double(Henitai::GitDiffAnalyzer)
+      )
       selected_stubs = nil
 
       allow(Henitai::SurvivorLoader).to receive(:new).and_return(loader)
@@ -805,13 +822,13 @@ RSpec.describe Henitai::Runner do
         selected_stubs = stubs
         stubs
       end
-      allow(runner).to receive_messages(
+      allow(strategy).to receive_messages(
         dirty_worktree_changed_files: [],
         test_filter: filter
       )
 
       {
-        runner: runner,
+        strategy: strategy,
         stable: stable,
         selected_stubs: lambda {
           selected_stubs
@@ -821,7 +838,7 @@ RSpec.describe Henitai::Runner do
 
     after { FileUtils.rm_rf(tmpdir) }
 
-    def runner = setup.fetch(:runner)
+    def strategy = setup.fetch(:strategy)
     def stable = setup.fetch(:stable)
     def selected_stubs = setup.fetch(:selected_stubs).call
 
@@ -829,7 +846,7 @@ RSpec.describe Henitai::Runner do
       let(:recipe) { base_recipe.merge("methodType" => "class", "coveredBy" => ["spec/sample_spec.rb"]) }
 
       it "maps methodType to symbol on the stub subject" do
-        result = runner.send(:try_recipe_run)
+        result = strategy.try_recipe_run
         stub = selected_stubs.first
 
         expect(
@@ -850,7 +867,7 @@ RSpec.describe Henitai::Runner do
 
     context "when recipe omits methodType" do
       it "defaults method_type to :instance" do
-        runner.send(:try_recipe_run)
+        strategy.try_recipe_run
         expect(selected_stubs.first.subject.method_type).to eq(:instance)
       end
     end
@@ -1127,11 +1144,13 @@ RSpec.describe Henitai::Runner do
     end
   end
 
-  describe "#dirty_source_files? (private)" do
-    def runner_with_analyzer(analyzer, includes: ["lib"])
-      runner = described_class.new(config: build_config(includes:))
-      allow(runner).to receive(:git_diff_analyzer).and_return(analyzer)
-      runner
+  describe "SurvivorRerunStrategy#dirty_source_files? (private)" do
+    def strategy_with_analyzer(analyzer, includes: ["lib"])
+      Henitai::SurvivorRerunStrategy.new(
+        survivors_from: "reports/mutation-report.json",
+        config: build_config(includes:),
+        git_diff_analyzer: analyzer
+      )
     end
 
     def stub_analyzer(committed: [])
@@ -1143,8 +1162,8 @@ RSpec.describe Henitai::Runner do
     it "returns true when a committed source file in includes changed since git_sha" do
       Dir.mktmpdir do |dir|
         Dir.chdir(dir) do
-          runner = runner_with_analyzer(stub_analyzer(committed: ["lib/henitai/foo.rb"]))
-          expect(runner.send(:dirty_source_files?, [], git_sha: "abc123")).to be(true)
+          strategy = strategy_with_analyzer(stub_analyzer(committed: ["lib/henitai/foo.rb"]))
+          expect(strategy.send(:dirty_source_files?, [], git_sha: "abc123")).to be(true)
         end
       end
     end
@@ -1152,8 +1171,8 @@ RSpec.describe Henitai::Runner do
     it "returns false when only spec files changed since git_sha" do
       Dir.mktmpdir do |dir|
         Dir.chdir(dir) do
-          runner = runner_with_analyzer(stub_analyzer(committed: ["spec/henitai/foo_spec.rb"]))
-          expect(runner.send(:dirty_source_files?, [], git_sha: "abc123")).to be(false)
+          strategy = strategy_with_analyzer(stub_analyzer(committed: ["spec/henitai/foo_spec.rb"]))
+          expect(strategy.send(:dirty_source_files?, [], git_sha: "abc123")).to be(false)
         end
       end
     end
@@ -1161,8 +1180,8 @@ RSpec.describe Henitai::Runner do
     it "returns false when git_sha is nil and worktree is clean" do
       Dir.mktmpdir do |dir|
         Dir.chdir(dir) do
-          runner = described_class.new(config: build_config)
-          expect(runner.send(:dirty_source_files?, [], git_sha: nil)).to be(false)
+          strategy = strategy_with_analyzer(instance_double(Henitai::GitDiffAnalyzer))
+          expect(strategy.send(:dirty_source_files?, [], git_sha: nil)).to be(false)
         end
       end
     end
@@ -1172,8 +1191,8 @@ RSpec.describe Henitai::Runner do
         Dir.chdir(dir) do
           analyzer = instance_double(Henitai::GitDiffAnalyzer)
           allow(analyzer).to receive(:changed_files).and_raise(Henitai::GitDiffError, "fatal")
-          runner = runner_with_analyzer(analyzer)
-          expect(runner.send(:dirty_source_files?, [], git_sha: "abc123")).to be(true)
+          strategy = strategy_with_analyzer(analyzer)
+          expect(strategy.send(:dirty_source_files?, [], git_sha: "abc123")).to be(true)
         end
       end
     end
@@ -1181,8 +1200,8 @@ RSpec.describe Henitai::Runner do
     it "returns true when dirty_worktree_files is nil regardless of git_sha" do
       Dir.mktmpdir do |dir|
         Dir.chdir(dir) do
-          runner = described_class.new(config: build_config)
-          expect(runner.send(:dirty_source_files?, nil, git_sha: "abc123")).to be(true)
+          strategy = strategy_with_analyzer(instance_double(Henitai::GitDiffAnalyzer))
+          expect(strategy.send(:dirty_source_files?, nil, git_sha: "abc123")).to be(true)
         end
       end
     end

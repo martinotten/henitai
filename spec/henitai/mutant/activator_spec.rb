@@ -341,10 +341,10 @@ RSpec.describe Henitai::Mutant::Activator do
   end
 
   it "keeps named prefixes intact when prefix is nil" do
-    activator = described_class.new
+    parameter_source = Henitai::Mutant::ParameterSource.new
     argument = Struct.new(:children).new(["value"])
 
-    expect(activator.send(:prefixed_parameter, argument, nil)).to eq("value")
+    expect(parameter_source.send(:prefixed_parameter, argument, nil)).to eq("value")
   end
 
   it "uses heredoc body source when the location is heredoc" do

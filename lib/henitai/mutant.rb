@@ -17,6 +17,7 @@ module Henitai
   #   :ignored, :no_coverage
   class Mutant
     autoload :Activator, "henitai/mutant/activator"
+    autoload :ParameterSource, "henitai/mutant/parameter_source"
 
     # Status-Vokabular folgt dem Stryker mutation-testing-report-schema.
     # :equivalent ist ein Henitai-interner Status (wird im JSON als "Ignored" serialisiert,

@@ -44,6 +44,7 @@ module Henitai
   autoload :SurvivorSelector,        "henitai/survivor_selector"
   autoload :SurvivorTestFilter,      "henitai/survivor_test_filter"
   autoload :SurvivorActivationCache, "henitai/survivor_activation_cache"
+  autoload :SurvivorRerunStrategy, "henitai/survivor_rerun_strategy"
   autoload :ScenarioExecutionResult, "henitai/scenario_execution_result"
   autoload :CoverageFormatter, "henitai/coverage_formatter"
   autoload :MinitestCoverageReporter, "henitai/minitest_coverage_reporter"

@@ -507,6 +507,13 @@ module Henitai
     def initialize: (path: String) -> void
     def record: (untyped, version: String, ?recorded_at: Time) -> void
     def trend_report: () -> Hash[Symbol, untyped]
+
+    module Sql
+      RUNS_TABLE: String
+      MUTANTS_TABLE: String
+      INSERT_RUN: String
+      UPSERT_MUTANT: String
+    end
   end
 
   class EquivalenceDetector
@@ -587,8 +594,6 @@ module Henitai
   end
 
   class Mutant::Activator
-    SERIALIZER_METHODS: Hash[Symbol, Symbol]
-
     def self.activate!: (untyped) -> Symbol?
     def self.activation_source_for: (Mutant) -> String?
     def initialize: () -> void
@@ -602,6 +607,22 @@ module Henitai
     def method_source: (Mutant) -> String
     def body_source: (Mutant) -> String
     def parameter_source: (Mutant) -> String
+    def replace_node: (untyped, untyped, untyped) -> untyped
+    def same_node?: (untyped, untyped) -> bool
+    def replace_child: (untyped, untyped, untyped) -> untyped
+    def method_body: (untyped) -> untyped
+    def source_file_from_ast: (Subject) -> String?
+    def node_location_signature: (untyped) -> Array[untyped]?
+    def compile_safe_unparse: (untyped) -> String
+  end
+
+  class Mutant::ParameterSource
+    SERIALIZER_METHODS: Hash[Symbol, Symbol]
+
+    def build: (untyped) -> String
+
+    private
+
     def method_arguments: (untyped) -> untyped
     def parameter_fragment: (untyped) -> String?
     def argument_parameter_fragment: (untyped) -> String
@@ -613,12 +634,6 @@ module Henitai
     def block_parameter_fragment: (untyped) -> String
     def forward_parameter_fragment: (untyped) -> String
     def prefixed_parameter: (untyped, String) -> String
-    def replace_node: (untyped, untyped, untyped) -> untyped
-    def same_node?: (untyped, untyped) -> bool
-    def replace_child: (untyped, untyped, untyped) -> untyped
-    def method_body: (untyped) -> untyped
-    def source_file_from_ast: (Subject) -> String?
-    def node_location_signature: (untyped) -> Array[untyped]?
     def compile_safe_unparse: (untyped) -> String
   end
 
@@ -853,8 +868,20 @@ module Henitai
     def with_reports_dir: () { () -> untyped } -> untyped
     def result_thresholds: () -> Hash[Symbol, Integer]?
     def survivor_rerun?: () -> bool
-    def apply_survivor_selection: (Array[Mutant]) -> Array[Mutant]
+    def survivor_strategy: () -> SurvivorRerunStrategy
+    def safe_head_sha: () -> String?
+  end
+
+  class SurvivorRerunStrategy
+    attr_reader survivor_stats: Hash[Symbol, untyped]?
+
+    def initialize: (survivors_from: String?, config: Configuration, git_diff_analyzer: untyped) -> void
+    def active?: () -> bool
     def try_recipe_run: () -> Array[Mutant]?
+    def apply_selection: (Array[Mutant]) -> Array[Mutant]
+
+    private
+
     def load_survivor_report: () -> SurvivorLoader::Report
     def run_from_recipes: (SurvivorLoader::Report, Array[String]?) -> Array[Mutant]?
     def recipe_fast_path_safe?: (SurvivorLoader::Report, Array[String]?) -> bool
@@ -868,10 +895,10 @@ module Henitai
     def dirty_source_files?: (Array[String]?, ?git_sha: String?) -> bool
     def committed_changed_files: (String?) -> Array[String]
     def in_include_root?: (String, Array[String]) -> bool
+    def normalize_path: (String) -> String
     def warn_survivor_drift: (SurvivorSelector) -> void
     def build_survivor_stats: (SurvivorSelector, Array[Mutant], Hash[Symbol, Array[Mutant]]) -> Hash[Symbol, untyped]
     def test_filter: (SurvivorLoader::Report, ?dirty_source_files: bool) -> SurvivorTestFilter
-    def safe_head_sha: () -> String?
   end
 
   class CoverageBootstrapper
