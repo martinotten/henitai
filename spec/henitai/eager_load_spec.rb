@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "open3"
 require "spec_helper"
 require "tmpdir"
 
@@ -40,11 +41,20 @@ RSpec.describe "Henitai eager loading" do
     RUBY
   end
 
+  # Runs the loader in a clean subprocess and returns the parsed JSON payload.
+  # The exit status is asserted (with stderr surfaced) before parsing so an
+  # eager-load failure produces an actionable message instead of an opaque
+  # JSON parse error. stderr is intentionally not asserted empty: harmless
+  # interpreter warnings (e.g. parser version notices) can land there.
   def run_loader
     Dir.mktmpdir do |dir|
-      out = nil
-      Dir.chdir(dir) { out = IO.popen(["ruby", "-e", loader_script], &:read) }
-      JSON.parse(out[/<<<JSON(.*)JSON>>>/m, 1])
+      stdout, stderr, status = Open3.capture3("ruby", "-e", loader_script, chdir: dir)
+      expect(status).to be_success, "eager load subprocess failed (#{status}):\n#{stderr}"
+
+      payload = stdout[/<<<JSON(.*)JSON>>>/m, 1]
+      expect(payload).not_to be_nil,
+                             "no JSON payload in subprocess output:\nSTDOUT:\n#{stdout}\nSTDERR:\n#{stderr}"
+      JSON.parse(payload)
     end
   end
 
