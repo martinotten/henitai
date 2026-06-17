@@ -20,4 +20,4 @@ Inject mutated behavior through `Module#define_method` inside the forked child p
 ## Related Documents
 
 - [Architecture overview](../architecture.md)
-- [Implementation plan](../../plan/implementation_plan.md)
+- [Implementation plan](../../plans/implementation_plan.md)

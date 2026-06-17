@@ -20,4 +20,4 @@ Use the Stryker `mutation-testing-report-schema` JSON as the native serialisatio
 ## Related Documents
 
 - [Architecture overview](../architecture.md)
-- [Implementation plan](../../plan/implementation_plan.md)
+- [Implementation plan](../../plans/implementation_plan.md)

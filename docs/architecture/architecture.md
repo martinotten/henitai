@@ -8,7 +8,7 @@ language: en
 
 Canonical language: English.
 
-This document is the primary architecture reference for Henitai. It replaces the earlier draft under `docs/plan/architecture.md` and follows the arc42 structure.
+This document is the primary architecture reference for Henitai. It replaces an earlier draft (since archived under `docs/backlog/done/`) and follows the arc42 structure.
 
 Research basis: 39 mutation-testing papers collected in `docs/research/summaries/`, plus the mutant and Stryker ecosystem analyses in `docs/research/`.
 
@@ -684,4 +684,4 @@ The long-form evidence trail is intentionally kept out of the architecture narra
 
 ## Legacy Location
 
-For historical reference only, the old draft remains documented in `docs/plan/architecture.md` as a redirect note. The canonical source is this file.
+For historical reference only, the old draft's redirect note is archived under `docs/backlog/done/2026-06-16-plan-architecture-redirect.md`. The canonical source is this file.

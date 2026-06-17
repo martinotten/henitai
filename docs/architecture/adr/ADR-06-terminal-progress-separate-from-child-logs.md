@@ -38,5 +38,5 @@ Henitai will separate progress output from child process logs.
 ## Related Documents
 
 - [Architecture overview](../architecture.md)
-- [Implementation plan](../../plan/implementation_plan.md)
+- [Implementation plan](../../plans/implementation_plan.md)
 - [ADR index](README.md)

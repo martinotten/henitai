@@ -20,4 +20,4 @@ Run each mutant in its own forked child process.
 ## Related Documents
 
 - [Architecture overview](../architecture.md)
-- [Implementation plan](../../plan/implementation_plan.md)
+- [Implementation plan](../../plans/implementation_plan.md)

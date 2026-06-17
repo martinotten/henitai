@@ -20,4 +20,4 @@ Use Prism as the parsing backend and translate its syntax tree into parser-compa
 ## Related Documents
 
 - [Architecture overview](../architecture.md)
-- [Implementation plan](../../plan/implementation_plan.md)
+- [Implementation plan](../../plans/implementation_plan.md)

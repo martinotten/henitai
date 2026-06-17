@@ -57,4 +57,4 @@ Concretely:
 ## Related Documents
 
 - [Architecture overview](../architecture.md)
-- [Survivor-only rerun plan](../../plan/survivor-only-rerun.md)
+- [Survivor-only rerun plan](../../backlog/2026-04-07-survivor-only-rerun.md)
