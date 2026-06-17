@@ -21,7 +21,7 @@ module Henitai
           next unless now >= slot.started_at_monotonic + slot.timeout
 
           # Final targeted reap: if the child already exited, classify it normally.
-          pid, status = runtime.wait2(slot.pid, Process::WNOHANG)
+          pid, status = wnohang_reap(slot.pid)
           if pid
             complete_slot(pid, status)
           else
