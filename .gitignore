@@ -7,3 +7,4 @@ tmp/**/*
 henitai-*.gem
 graphify-out/
 .graphify_*
+*.original.md

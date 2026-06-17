@@ -16,4 +16,4 @@ This directory contains one ADR per accepted architecture decision.
 
 ## Maintenance Rule
 
-Each decision should live in its own file. Update the relevant ADR first, then reflect any architecture-level consequences in [../architecture.md](../architecture.md) and [../../plan/implementation_plan.md](../../plan/implementation_plan.md).
+Each decision should live in its own file. Update the relevant ADR first, then reflect any architecture-level consequences in [../architecture.md](../architecture.md) and [../../plans/implementation_plan.md](../../plans/implementation_plan.md).

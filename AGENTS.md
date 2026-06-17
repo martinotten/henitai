@@ -22,7 +22,7 @@ or with the architecture docs, stop and resolve the conflict before coding.
 
 ## Worktree And Documentation
 
-- Read `README.md`, `docs/architecture/architecture.md`, `docs/plan/implementation_plan.md`, and the relevant ADRs
+- Read `README.md`, `docs/architecture/architecture.md`, `docs/plans/implementation_plan.md`, and the relevant ADRs
   before changing behavior.
 - Update or add specs whenever behavior changes.
 - Update documentation when the public API, CLI, configuration, or architecture

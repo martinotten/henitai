@@ -139,13 +139,17 @@ The repository ships a JSON Schema at [`assets/schema/henitai.schema.json`](/wor
 **Full** — adds lower-signal operators:
 
 - `ArrayDeclaration`, `HashLiteral`, `RangeLiteral`
+- `MethodChainUnwrap` — remove a link from a method chain
+- `RegexMutator` — mutate regexp quantifiers, anchors, char-class negation
 - `SafeNavigation` — `&.` → `.`
 - `PatternMatch` — case/in arm removal
 - `BlockStatement` — remove blocks
 - `MethodExpression` — remove calls
 - `AssignmentExpression` — mutate compound assignment
+- `UnaryOperator` — remove unary `-` and `~`
+- `UpdateOperator` — swap compound assignments (`+=`↔`-=`, `*=`↔`/=`, `||=`↔`&&=`)
 
-## Stryker Dashboard integration (untested)
+## Stryker Dashboard integration
 
 ```yaml
 # .henitai.yml
@@ -160,7 +164,12 @@ dashboard:
   base_url: "https://dashboard.stryker-mutator.io"
 ```
 
-Set `STRYKER_DASHBOARD_API_KEY` in your CI environment to publish reports.
+Set `STRYKER_DASHBOARD_API_KEY` in your CI environment to publish reports. When
+the key, project, and version are present, the `dashboard` reporter uploads the
+Stryker-schema report to the dashboard REST API (default
+`https://dashboard.stryker-mutator.io`); otherwise it is skipped silently. The
+project defaults to the git remote and the version to the current branch or CI
+ref (`GITHUB_REF_NAME`/`GITHUB_REF`/`GITHUB_SHA`).
 
 JSON reports are written to `reports/mutation-report.json` by default. Set
 `reports_dir` to change the output directory.
