@@ -10,7 +10,7 @@ includes:
 
 # Mutation operator configuration
 mutation:
-  operators: light # light (default) | full
+  operators: full # light (default) | full
   ignore_patterns:
     - "(send _ {:log :debug :info :warn :error} _)" # Logger calls
     - "(send _ :puts _)" # puts / debug output
@@ -23,8 +23,8 @@ jobs: 8 # null = auto-detect CPU count
 # Coverage criteria
 coverage_criteria:
   test_result: true
-  timeout: false
-  process_abort: false
+  timeout: true
+  process_abort: true
 
 # Thresholds for HTML report colouring
 thresholds:
