@@ -618,7 +618,6 @@ RSpec.describe Henitai::ConfigurationValidator do
     end
   end
 
-  # rubocop:disable RSpec/MultipleExpectations
   describe Henitai::ConfigurationValidator::Rules do
     describe ".validate_coverage_criteria" do
       it "does nothing if coverage_criteria is nil" do
@@ -680,13 +679,17 @@ RSpec.describe Henitai::ConfigurationValidator do
         expect(Henitai::ConfigurationValidator).to have_received(:warn).with(/mutation\.sampling\.unknown/)
       end
 
-      it "delegates to completeness, ratio, and strategy validators" do
+      it "rejects when only ratio is provided without strategy" do
         expect { described_class.validate_sampling({ ratio: 0.5 }) }
           .to raise_error(Henitai::ConfigurationError, /mutation\.sampling: expected both ratio and strategy/)
+      end
 
+      it "rejects when sampling ratio is invalid" do
         expect { described_class.validate_sampling({ ratio: 1.5, strategy: "stratified" }) }
           .to raise_error(Henitai::ConfigurationError, /mutation\.sampling\.ratio/)
+      end
 
+      it "rejects when sampling strategy is invalid" do
         expect { described_class.validate_sampling({ ratio: 0.5, strategy: "invalid" }) }
           .to raise_error(Henitai::ConfigurationError, /mutation\.sampling\.strategy/)
       end
@@ -737,5 +740,4 @@ RSpec.describe Henitai::ConfigurationValidator do
       end
     end
   end
-  # rubocop:enable RSpec/MultipleExpectations
 end
