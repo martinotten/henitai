@@ -617,4 +617,125 @@ RSpec.describe Henitai::ConfigurationValidator do
       )
     end
   end
+
+  # rubocop:disable RSpec/MultipleExpectations
+  describe Henitai::ConfigurationValidator::Rules do
+    describe ".validate_coverage_criteria" do
+      it "does nothing if coverage_criteria is nil" do
+        expect { described_class.validate_coverage_criteria({}) }.not_to raise_error
+      end
+
+      it "rejects non-hash values" do
+        expect { described_class.validate_coverage_criteria({ coverage_criteria: "not_a_hash" }) }
+          .to raise_error(Henitai::ConfigurationError, /for coverage_criteria: expected Hash, got String/)
+      end
+
+      it "warns on unknown keys" do
+        allow(Henitai::ConfigurationValidator).to receive(:warn)
+        described_class.validate_coverage_criteria({ coverage_criteria: { unknown: true } })
+        expect(Henitai::ConfigurationValidator).to have_received(:warn).with(/coverage_criteria\.unknown/)
+      end
+
+      it "validates each element as boolean" do
+        expect { described_class.validate_coverage_criteria({ coverage_criteria: { test_result: "invalid" } }) }
+          .to raise_error(Henitai::ConfigurationError, /for coverage_criteria\.test_result/)
+      end
+    end
+
+    describe ".validate_thresholds" do
+      it "does nothing if thresholds is nil" do
+        expect { described_class.validate_thresholds({}) }.not_to raise_error
+      end
+
+      it "rejects non-hash values" do
+        expect { described_class.validate_thresholds({ thresholds: "not_a_hash" }) }
+          .to raise_error(Henitai::ConfigurationError, /for thresholds: expected Hash, got String/)
+      end
+
+      it "warns on unknown keys" do
+        allow(Henitai::ConfigurationValidator).to receive(:warn)
+        described_class.validate_thresholds({ thresholds: { unknown: 80 } })
+        expect(Henitai::ConfigurationValidator).to have_received(:warn).with(/thresholds\.unknown/)
+      end
+
+      it "validates each element as threshold" do
+        expect { described_class.validate_thresholds({ thresholds: { low: "invalid" } }) }
+          .to raise_error(Henitai::ConfigurationError, /for thresholds\.low/)
+      end
+    end
+
+    describe ".validate_sampling" do
+      it "does nothing if value is nil" do
+        expect { described_class.validate_sampling(nil) }.not_to raise_error
+      end
+
+      it "rejects non-hash value" do
+        expect { described_class.validate_sampling("invalid") }
+          .to raise_error(Henitai::ConfigurationError, /mutation\.sampling: expected Hash/)
+      end
+
+      it "warns on unknown keys" do
+        allow(Henitai::ConfigurationValidator).to receive(:warn)
+        described_class.validate_sampling({ ratio: 0.5, strategy: "stratified", unknown: true })
+        expect(Henitai::ConfigurationValidator).to have_received(:warn).with(/mutation\.sampling\.unknown/)
+      end
+
+      it "delegates to completeness, ratio, and strategy validators" do
+        expect { described_class.validate_sampling({ ratio: 0.5 }) }
+          .to raise_error(Henitai::ConfigurationError, /mutation\.sampling: expected both ratio and strategy/)
+
+        expect { described_class.validate_sampling({ ratio: 1.5, strategy: "stratified" }) }
+          .to raise_error(Henitai::ConfigurationError, /mutation\.sampling\.ratio/)
+
+        expect { described_class.validate_sampling({ ratio: 0.5, strategy: "invalid" }) }
+          .to raise_error(Henitai::ConfigurationError, /mutation\.sampling\.strategy/)
+      end
+    end
+
+    describe ".warn_unknown_keys" do
+      it "does not warn if all keys are allowed" do
+        allow(Henitai::ConfigurationValidator).to receive(:warn)
+        described_class.warn_unknown_keys({ foo: 1 }, [:foo])
+        expect(Henitai::ConfigurationValidator).not_to have_received(:warn)
+      end
+
+      it "warns if there are unknown keys" do
+        allow(Henitai::ConfigurationValidator).to receive(:warn)
+        described_class.warn_unknown_keys({ foo: 1, bar: 2 }, [:foo], "path")
+        expect(Henitai::ConfigurationValidator).to have_received(:warn).with("Unknown configuration key: path.bar")
+      end
+    end
+
+    describe ".key_path" do
+      it "joins path and key with a dot if path is present" do
+        expect(described_class.key_path("foo", :bar)).to eq("foo.bar")
+      end
+
+      it "returns the key as a string if path is nil" do
+        expect(described_class.key_path(nil, :bar)).to eq("bar")
+      end
+    end
+
+    describe ".ensure_hash!" do
+      it "does nothing if value is a hash" do
+        expect { described_class.ensure_hash!({}, "path") }.not_to raise_error
+      end
+
+      it "raises configuration_error if value is not a hash" do
+        expect { described_class.ensure_hash!(42, "path") }
+          .to raise_error(
+            Henitai::ConfigurationError,
+            "Invalid configuration value for path: expected Hash, got Integer"
+          )
+      end
+    end
+
+    describe ".configuration_error" do
+      it "raises Henitai::ConfigurationError with the message" do
+        expect { described_class.configuration_error("error message") }
+          .to raise_error(Henitai::ConfigurationError, "error message")
+      end
+    end
+  end
+  # rubocop:enable RSpec/MultipleExpectations
 end
