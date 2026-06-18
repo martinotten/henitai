@@ -554,13 +554,41 @@ module Henitai
   end
 
   class ProcessWorkerRunner
-    SCHEDULER_POLL_INTERVAL: Float
+    attr_reader worker_count: Integer
+    attr_reader runtime: untyped
+    attr_reader wakeup: untyped
+
+    def initialize: (worker_count: Integer, ?runtime: untyped, ?wakeup: untyped) -> void
+    def flaky_retry_count: () -> Integer
+    def shutdown_requested?: () -> bool
+    def request_shutdown: () -> void
+    def run: (Array[Mutant], untyped, untyped, untyped?, ?Hash[Symbol, untyped]) -> Array[ScenarioExecutionResult]
+  end
+
+  class SlotScheduler
     PROCESS_DRAIN_WINDOW: Float
 
     Slot: untyped
 
-    def initialize: (worker_count: Integer) -> void
-    def run: (Array[Mutant], untyped, untyped, untyped?, ?Hash[Symbol, untyped]) -> Array[ScenarioExecutionResult]
+    attr_reader flaky_retry_count: Integer
+    attr_reader results: Array[ScenarioExecutionResult]
+
+    def initialize: (
+      integration: untyped,
+      config: untyped,
+      progress_reporter: untyped?,
+      options: Hash[Symbol, untyped],
+      host: untyped
+    ) -> void
+    def enqueue: (Array[Mutant]) -> Array[Mutant]
+    def done?: () -> bool
+    def fill_idle_slots: () -> void
+    def reap_all_completed_children: () -> void
+    def next_event_timeout: () -> Float?
+    def check_timeouts: () -> void
+    def draining_slots?: () -> bool
+    def drain_draining_slots: () -> void
+    def interrupt_active_slots: () -> void
   end
 
   class StaticFilter

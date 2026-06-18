@@ -519,25 +519,4 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       expect(runner.flaky_retry_count).to eq(0)
     end
   end
-
-  describe "#remaining_slot_timeout draining invariant" do
-    it "treats a draining slot with no SIGTERM timestamp as due immediately" do
-      slot = Henitai::ProcessWorkerRunner::Slot.new(
-        1, nil, 12, 0.0, 5.0, nil, 0, true, nil, :timeout
-      )
-      runner = described_class.new(worker_count: 1)
-
-      expect(runner.send(:remaining_slot_timeout, slot, 0.0)).to eq(0.0)
-    end
-
-    it "uses the drain window once SIGTERM has been sent" do
-      slot = Henitai::ProcessWorkerRunner::Slot.new(
-        1, nil, 12, 0.0, 5.0, nil, 0, true, 1.0, :timeout
-      )
-      runner = described_class.new(worker_count: 1)
-      window = Henitai::ProcessWorkerRunner::PROCESS_DRAIN_WINDOW
-
-      expect(runner.send(:remaining_slot_timeout, slot, 1.0)).to be_within(1e-9).of(window)
-    end
-  end
 end
