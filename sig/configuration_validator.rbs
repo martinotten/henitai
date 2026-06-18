@@ -17,6 +17,7 @@ module Henitai
       def self?.validate_top_level_keys: (Hash[Symbol, untyped]) -> void
       def self?.validate_integration: (Hash[Symbol, untyped]) -> void
       def self?.validate_includes: (Hash[Symbol, untyped]) -> void
+      def self?.validate_excludes: (Hash[Symbol, untyped]) -> void
       def self?.validate_jobs: (Hash[Symbol, untyped]) -> void
       def self?.validate_reporters: (Hash[Symbol, untyped]) -> void
       def self?.validate_reports_dir: (Hash[Symbol, untyped]) -> void

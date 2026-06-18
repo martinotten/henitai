@@ -12,6 +12,7 @@ module Henitai
     VALID_TOP_LEVEL_KEYS = %i[
       integration
       includes
+      excludes
       mutation
       coverage_criteria
       thresholds
@@ -32,6 +33,7 @@ module Henitai
       validate_top_level_keys
       validate_integration
       validate_includes
+      validate_excludes
       validate_jobs
       validate_reporters
       validate_reports_dir

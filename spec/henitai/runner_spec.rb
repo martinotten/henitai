@@ -13,6 +13,7 @@ RSpec.describe Henitai::Runner do
       "RunnerSpecConfig",
       Struct.new(
         :includes,
+        :excludes,
         :operators,
         :timeout,
         :reporters,
@@ -34,6 +35,7 @@ RSpec.describe Henitai::Runner do
 
     RunnerSpecConfig.new(
       values[:includes],
+      values[:excludes],
       values[:operators],
       values[:timeout],
       values[:reporters],
@@ -46,6 +48,7 @@ RSpec.describe Henitai::Runner do
   def default_config_values
     {
       includes: ["lib"],
+      excludes: [],
       operators: :light,
       timeout: 10.0,
       reporters: ["terminal"],
@@ -367,6 +370,49 @@ RSpec.describe Henitai::Runner do
         expect(calls).to eq([[
                               File.join("lib", "nested", "sample.rb")
                             ]])
+      end
+    end
+  end
+
+  it "drops files matched by excludes globs from the source set" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+      File.write(File.join(dir, "lib/eager_load.rb"), "# loader\n")
+
+      Dir.chdir(dir) do
+        config = build_config(reporters: [], excludes: ["lib/eager_load.rb"])
+        runner = described_class.new(config:)
+        subject_resolver = instance_double(Henitai::SubjectResolver)
+        mutant_generator = instance_double(Henitai::MutantGenerator)
+        static_filter = instance_double(Henitai::StaticFilter)
+        execution_engine = instance_double(Henitai::ExecutionEngine)
+        integration = instance_double(Henitai::Integration::Rspec)
+        history_store = build_history_store
+        result = build_result([])
+        calls = []
+
+        allow(runner).to receive_messages(
+          subject_resolver:,
+          mutant_generator:,
+          static_filter:,
+          execution_engine:,
+          integration:,
+          history_store:
+        )
+        allow(subject_resolver).to receive(:resolve_from_files) do |paths|
+          calls << paths
+          []
+        end
+        allow(mutant_generator).to receive(:generate).and_return([])
+        allow(static_filter).to receive(:apply).and_return([])
+        allow(execution_engine).to receive(:run).and_return([])
+        allow(Henitai::Result).to receive(:new).and_return(result)
+        allow(Henitai::Reporter).to receive(:run_all)
+
+        runner.run
+
+        expect(calls).to eq([["lib/sample.rb"]])
       end
     end
   end

@@ -203,22 +203,38 @@ module Henitai
     end
 
     def source_files
-      @source_files ||= begin
-        included_files = Array(config.includes).flat_map do |include_path|
-          Dir.glob(File.join(include_path, "**", "*.rb"))
-        end.uniq
+      @source_files ||= filter_changed(reject_excluded(included_source_files))
+    end
 
-        if @since
-          changed_files = git_diff_analyzer.changed_files(from: @since, to: "HEAD")
-          changed_file_set = changed_files.map { |path| normalize_path(path) }
+    def included_source_files
+      Array(config.includes).flat_map do |include_path|
+        Dir.glob(File.join(include_path, "**", "*.rb"))
+      end.uniq
+    end
 
-          included_files.select do |path|
-            changed_file_set.include?(normalize_path(path))
-          end
-        else
-          included_files
-        end
-      end
+    # Drops files matched by any `excludes:` glob (e.g. standalone entry points
+    # that cannot be mutation-tested in-process). Excludes apply regardless of
+    # the --since filter.
+    def reject_excluded(files)
+      excluded = excluded_source_files
+      return files if excluded.empty?
+
+      files.reject { |path| excluded.include?(normalize_path(path)) }
+    end
+
+    def excluded_source_files
+      Array(config.excludes)
+        .flat_map { |pattern| Dir.glob(pattern) }
+        .map { |path| normalize_path(path) }
+    end
+
+    def filter_changed(files)
+      return files unless @since
+
+      changed_file_set = git_diff_analyzer
+                         .changed_files(from: @since, to: "HEAD")
+                         .map { |path| normalize_path(path) }
+      files.select { |path| changed_file_set.include?(normalize_path(path)) }
     end
 
     def pattern_subjects

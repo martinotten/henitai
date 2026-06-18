@@ -472,6 +472,30 @@ RSpec.describe Henitai::Configuration do
     )
   end
 
+  it "defaults excludes to an empty array" do
+    expect(load_missing_configuration.excludes).to eq([])
+  end
+
+  it "loads excludes as a string array" do
+    config = load_configuration(<<~YAML)
+      excludes:
+        - lib/henitai/eager_load.rb
+    YAML
+
+    expect(config.excludes).to eq(["lib/henitai/eager_load.rb"])
+  end
+
+  it "aborts on invalid excludes values" do
+    expect do
+      load_configuration(<<~YAML)
+        excludes: lib/henitai/eager_load.rb
+      YAML
+    end.to raise_error(
+      Henitai::ConfigurationError,
+      /excludes: expected Array<String>, got String/
+    )
+  end
+
   it "describes invalid array element types" do
     expect do
       load_configuration(<<~YAML)
