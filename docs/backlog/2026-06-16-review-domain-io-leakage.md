@@ -1,6 +1,6 @@
 # Stop Domain Objects From Doing Direct IO
 
-Status: backlog
+Status: done
 Date: 2026-06-16
 Severity: Medium
 Source: 2026-06-16 structured review

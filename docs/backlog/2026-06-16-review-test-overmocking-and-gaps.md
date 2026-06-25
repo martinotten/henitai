@@ -1,6 +1,6 @@
 # Reduce Over-Mocking and Close Spec Coverage Gaps
 
-Status: backlog
+Status: partial
 Date: 2026-06-16
 Severity: High
 Source: 2026-06-16 structured review

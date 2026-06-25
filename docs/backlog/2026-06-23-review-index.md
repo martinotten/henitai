@@ -1,6 +1,6 @@
 # Structured Review Findings — 2026-06-23
 
-Status: in progress
+Status: in progress (all 4 issues still open, re-verified against code 2026-06-25)
 Date: 2026-06-23
 
 Backlog issues from the 2026-06-23 in-depth structured review (multi-agent

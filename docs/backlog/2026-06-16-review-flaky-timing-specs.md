@@ -1,6 +1,6 @@
 # Remove Timing- and chdir-Dependent Flakiness From Specs
 
-Status: backlog
+Status: partial
 Date: 2026-06-16
 Severity: Medium
 Source: 2026-06-16 structured review

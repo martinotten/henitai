@@ -1,6 +1,6 @@
 # Reconcile README Claims and Consolidate Documentation Debt
 
-Status: backlog
+Status: done
 Date: 2026-06-16
 Severity: Medium
 Source: 2026-06-16 structured review

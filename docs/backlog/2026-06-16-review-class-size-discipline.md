@@ -1,6 +1,6 @@
 # Restore Class-Size Discipline (Remove rubocop Metrics Disables)
 
-Status: backlog
+Status: partial
 Date: 2026-06-16
 Severity: Medium
 Source: 2026-06-16 structured review

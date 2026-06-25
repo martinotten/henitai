@@ -1,6 +1,6 @@
 # Dead Production Class: ParallelExecutionRunner
 
-Status: backlog
+Status: open
 Date: 2026-06-23
 Severity: Medium
 Source: 2026-06-23 structured review
