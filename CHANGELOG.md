@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-25
+
+### Fixed
+- `henitai run` now exits 0 when a run evaluates no valid mutants, instead of
+  failing a CI gate on a vacuous result
+- Flaky-retry counts are now recorded on the parallel execution path (they were
+  always reported as 0 regardless of actual retries)
+
+### Changed
+- `Result` and `Reporter::Json` take their IO as an injected dependency,
+  restoring the domain/infrastructure boundary (no public API change)
+- Decomposed the monolithic `integration.rb` into single-responsibility files
+  and reparented `Integration::Minitest` off `Rspec` onto a shared
+  `MutantRunSupport` mixin; restored class-size discipline across the codebase
+- Narrowed broad rescues in `safe_unparse` and per-test coverage snapshotting
+
+### Internal
+- De-mocked runner specs, added `process_wakeup` and helper coverage, and
+  removed sleep- and chdir-based flakiness from the suite
+- Enabled full-operator dogfooding configuration and isolated the
+  `minitest_simplecov` spec
+- Reconciled README and consolidated plan-tree documentation
+
 ## [0.2.0] - 2026-04-30
 
 ### Added
@@ -279,7 +302,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI critical path: `henitai run` now executes the full pipeline, supports `--since`, returns CI-friendly exit codes, and `henitai version` prints `Henitai::VERSION`
 - RSpec per-test coverage output: `henitai/coverage_formatter` now writes `coverage/henitai_per_test.json`
 
-[Unreleased]: https://github.com/martinotten/henitai/compare/v0.1.10...HEAD
+[Unreleased]: https://github.com/martinotten/henitai/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/martinotten/henitai/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/martinotten/henitai/compare/v0.1.10...v0.2.0
 [0.1.10]: https://github.com/martinotten/henitai/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/martinotten/henitai/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/martinotten/henitai/compare/v0.1.7...v0.1.8
