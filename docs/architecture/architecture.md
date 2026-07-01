@@ -309,7 +309,7 @@ The operator system is split into a light set for MVP stability and a full set f
 | Canonical name | Purpose | Ruby example |
 |---|---|---|
 | `ArithmeticOperator` | Replace arithmetic operators such as `+`, `-`, `*`, `/`, `**`, `%` | `a + b` -> `a - b` |
-| `EqualityOperator` | Replace comparison operators such as `==`, `!=`, `<`, `>`, `<=`, `>=`, `<=>`, `eql?`, `equal?` | `a > b` -> `a >= b` |
+| `EqualityOperator` | Replace relational operators `==`, `!=`, `<`, `>`, `<=`, `>=`, `<=>` with each other | `a > b` -> `a >= b` |
 | `LogicalOperator` | Replace `&&` and `||` | `a && b` -> `a || b` |
 | `BooleanLiteral` | Toggle `true` and `false`, and remove simple negation | `true` -> `false` |
 | `ConditionalExpression` | Negate or simplify conditions and branches | `if cond then ... end` |
@@ -332,6 +332,9 @@ The operator system is split into a light set for MVP stability and a full set f
 | `UpdateOperator` | Swap compound-assignment operators in arithmetic and logical pairs | `x += 1` -> `x -= 1`, `x \|\|= v` -> `x &&= v` |
 | `RegexMutator` | Mutate regex quantifiers (`+`/`*` swap) and anchors (`^`/`$` removal) | `/\d+/` -> `/\d*/` |
 | `MethodChainUnwrap` | Remove a link from a method chain by replacing the outer call with its receiver | `arr.sort.first` -> `arr.first` |
+| `EqualityIdentityOperator` | Replace a relational operator with `eql?`/`equal?`, or replace `eql?`/`equal?` with any other comparison method | `a == b` -> `a.eql?(b)` |
+
+`EqualityOperator` and `EqualityIdentityOperator` partition the same operator space along a signal/noise line (ADR-10): `==`/`eql?`/`equal?` is the hardest equality pairing to kill in practice, so it moved out of the default light set while the rest of the relational swaps stayed.
 
 ### 8.2 Cost Reduction Pipeline
 
@@ -387,7 +390,14 @@ The strategy is:
 - detect some cases heuristically after generation via `EquivalenceDetector`
 - preserve the remaining uncertainty in the report
 
-The implemented heuristics in `EquivalenceDetector` are deliberately conservative: only cases where the AST shape and literal values make equivalence provable are marked. The current set covers arithmetic neutral-element patterns — specifically `x + 0`, `x - 0`, `x * 1`, and `x / 1` — where the mutated form is semantically identical to the original. More aggressive heuristics are intentionally avoided to prevent false positives.
+The implemented heuristics in `EquivalenceDetector` are deliberately conservative: only cases where the AST shape and literal values make equivalence provable are marked. The current set covers:
+
+- arithmetic neutral-element patterns — `x + 0`, `x - 0`, `x * 1`, `x / 1` — where the mutated form is semantically identical to the original
+- logical identity patterns — `false || x` mutated to `x` (and the symmetric `true && x` case) — where the literal operand makes the other branch unreachable regardless of mutation
+- singleton equality — `==` mutated to `equal?` (or the reverse) when both receiver and right-hand side are statically known singleton literals (`nil`, `true`, `false`, or a `Symbol`), since singleton identity and value comparison coincide for those types
+- string `eql?` — `==` mutated to `eql?` (or the reverse) when at least one operand is a string literal, since `String#==` and `String#eql?` both compare type and value with no possible divergence
+
+More aggressive heuristics are intentionally avoided to prevent false positives.
 
 If an optional LLM-based detector is introduced later, it must remain a plugin and not a hard dependency.
 
@@ -561,6 +571,7 @@ It should stay opt-in so the default mode remains easy to reason about.
 | Equivalent mutants are reported as uncertainty, not hidden | vendor-extension field in the primary JSON payload | accepted | preserves scientific honesty while keeping the primary Stryker payload schema-clean |
 | Method coverage as the static-filter signal (ADR-07) | line-only check; `Subject#source_range` heuristic; remove the gate entirely; explicit test-to-subject mapping | accepted | addresses the root cause of false `NoCoverage` classifications on interior hash/array lines without relying on a heuristic surrogate |
 | Remove per-line mutation cap (ADR-08) | keep the default cap; make it configurable only; use sampling instead | accepted | every other major mutation framework emits all mutations per node; the cap silently discarded granular operator output and made coverage metrics dishonest |
+| Split `EqualityOperator` into relational vs identity-method mutations (ADR-10) | thread operator-set context into `Operator#mutate`; rely solely on `EquivalenceDetector`; drop `eql?`/`equal?` mutations entirely | accepted | `==`/`eql?`/`equal?` is the hardest equality pairing to kill in practice (precedent: the `mutant` gem excludes it from its default operator set); partitioning by class fits the existing `Operator.for_set` model used by every other operator |
 
 Formal ADRs live in `docs/architecture/adr/` and use the same English terminology.
 

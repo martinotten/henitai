@@ -4,15 +4,19 @@ require_relative "../parser_current"
 
 module Henitai
   module Operators
-    # Replaces relational/equality operators with the other relational operators.
+    # Replaces relational operators with identity methods (`eql?`, `equal?`)
+    # and vice versa.
     #
-    # Identity-method comparisons (`eql?`, `equal?`) are handled separately by
-    # EqualityIdentityOperator: that pairing is the hardest to kill in practice
-    # (most objects don't observably distinguish `==` from `eql?`/`equal?`), so
-    # it is kept out of the default light set.
-    class EqualityOperator < Henitai::Operator
+    # This is the noisy half of the equality/identity pairing split out of
+    # EqualityOperator: most Ruby objects don't observably distinguish `==`
+    # from `eql?`/`equal?`, so these mutations are frequently unkillable by
+    # ordinary tests. They stay available in the full operator set rather
+    # than the default light set.
+    class EqualityIdentityOperator < Henitai::Operator
       NODE_TYPES = [:send].freeze
-      OPERATORS = %i[== != < > <= >= <=>].freeze
+      RELATIONAL = %i[== != < > <= >= <=>].freeze
+      IDENTITY = %i[eql? equal?].freeze
+      OPERATORS = (RELATIONAL + IDENTITY).freeze
 
       def self.node_types
         NODE_TYPES
@@ -24,6 +28,7 @@ module Henitai
 
         OPERATORS.each_with_object([]) do |replacement, mutants|
           next if replacement == method_name
+          next if RELATIONAL.include?(method_name) && RELATIONAL.include?(replacement)
 
           mutants << build_mutant(
             subject:,

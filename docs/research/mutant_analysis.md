@@ -1,9 +1,9 @@
 # Analyse: mutant-Gem — Konzepte, Lücken und Ableitungen
 ## Basis für unser eigenes Ruby-4-Framework
 
-> **Quelle:** Ausschließlich öffentliche Dokumentation (README, /docs/*, Meta-Verzeichnis-Struktur)
+> **Quelle:** Primär öffentliche Dokumentation (README, /docs/*, Meta-Verzeichnis-Struktur). Abschnitt 2.2a wurde am 2026-06-30 zusätzlich gegen den tatsächlichen Quellcode (`github.com/mbj/mutant`, `ruby/lib/mutant/`) verifiziert.
 > **Lizenz-Hinweis:** Kein Code wurde kopiert oder adaptiert. Nur Konzepte und Design-Entscheidungen werden dokumentiert.
-> **Stand:** März 2026
+> **Stand:** März 2026, Code-Verifikation 2026-06-30
 
 ---
 
@@ -61,6 +61,80 @@ module Operators
   end
 end
 ```
+
+---
+
+### 2.2a Gleichheits-Operatoren — code-verifiziert (2026-06-30)
+
+**Korrektur gegenüber der ursprünglichen Annahme:** mutant generiert sehr wohl Mutationen für Gleichheits-/Vergleichsoperatoren — aber nicht symmetrisch und nicht standardmäßig vollständig.
+
+**Implementierung:** `send`-Knoten mit binärem Methoden-Operator werden in `lib/mutant/mutator/node/send.rb` per `meta.binary_method_operator?` an `Mutant::Mutator::Node::Send::Binary` (`lib/mutant/mutator/node/send/binary.rb`) delegiert. Die konkreten Ersetzungs-Ziele kommen aus einer statischen Konfigurationstabelle, nicht aus pro-Operator-Code:
+
+```ruby
+# lib/mutant/mutation/operators.rb — Operators::Full::SELECTOR_REPLACEMENTS (Auszug)
+:!= => %i[==]
+:<  => %i[== eql? equal?]
+:<= => %i[< == eql? equal?]
+:== => %i[!= eql? equal?]
+:>  => %i[== eql? equal?]
+:>= => %i[> == eql? equal?]
+```
+
+Zusätzlich erzeugt `Send::Binary#emit_not_equality_mutations` für `!=` zwei weitere, negierte Mutanten: `!(left.eql?(right))` und `!(left.equal?(right))`.
+
+**Wichtigster Befund — `==` ist im Default-Operator-Set deaktiviert:**
+
+```ruby
+# Operators::Light (Default-Set)
+SELECTOR_REPLACEMENTS = Full::SELECTOR_REPLACEMENTS.dup.tap do |r|
+  r.delete(:==)
+  r.delete(:eql?)
+  r.delete(:first)
+  r.delete(:last)
+end.freeze
+```
+
+Im Light-Set (Standard) wird `==` als Mutations-*Quelle* komplett entfernt — kein `==`→`!=`/`eql?`/`equal?`-Mutant entsteht, außer mit explizitem `--mutation-operators full`. `<`, `<=`, `>`, `>=` und `!=` mutieren aber auch im Light-Set weiterhin in Richtung `==`/`eql?`/`equal?`.
+
+**Einordnung:** mutant hat laut Abschnitt 3.7 keine *dynamische* Äquivalenz-Erkennung — das bleibt korrekt. Die `==`-Ausnahme im Light-Set ist aber eine *statische, kuratierte* Vermeidung genau des Äquivalenz-Falls, den unser eigener `EquivalenceDetector` (`lib/henitai/equivalence_detector.rb`) zur Laufzeit fallweise nachweist (`==`↔`eql?`/`equal?` bei Singleton- bzw. String-Operanden, siehe `docs/architecture/architecture.md` §8.3). mutant löst dasselbe Rausch-Problem also durch Weglassen statt durch Beweis — ein Kompromiss, der False Negatives in Kauf nimmt (echte, ungleichwertige `==`-Bugs werden im Default-Set gar nicht erst geprüft), während unser Ansatz pro Mutant einzeln beweist und dadurch granularer, aber teurer ist.
+
+**Für unser Framework — umgesetzt (2026-07-01):** Dieser Befund wurde in [ADR-10](../architecture/adr/ADR-10-split-equality-identity-mutations.md) umgesetzt: `EqualityOperator` wurde in zwei Klassen aufgeteilt — die relationalen Operatoren (`== != < > <= >= <=>`) bleiben im Light-Set, `eql?`/`equal?` wandern in eine neue `EqualityIdentityOperator`-Klasse im Full-Set. Anders als mutants asymmetrische Ausnahme (nur `==`/`eql?` als Quelle entfernt) ist unsere Aufteilung symmetrisch: jede Mutation, an der `eql?`/`equal?` auf irgendeiner Seite beteiligt ist, verschwindet aus dem Default-Profil. `EquivalenceDetector` bleibt unverändert als ergänzender Laufzeit-Beweis für die verbleibenden literalen Fälle.
+
+---
+
+### 2.2b Drei weitere Hypothesen geprüft und verworfen (2026-07-01)
+
+Nach ADR-10 wurden drei weitere mutant-Vermeidungsmuster gegen henitais Code
+geprüft. Alle drei erwiesen sich als **nicht übertragbar** — dokumentiert hier,
+damit sie nicht blind erneut untersucht werden:
+
+1. **Ternäre Ausdrücke in `return`/`next`/`break` (vgl. mutants `if.rb:44-50`).**
+   Hypothese: `ConditionalExpression` könnte für `return flag ? "yes" : nil`
+   eine wirkungslose Mutation erzeugen. Falsifiziert: `removed then branch`
+   liefert `return nil`, was für `flag=true` das Rückgabeverhalten sichtbar
+   ändert (`"yes"` → `nil`) — killbar durch einen gewöhnlichen Test. Beim
+   erneuten Lesen von `if.rb` zeigte sich außerdem, dass mutant an dieser
+   Stelle etwas anderes vermeidet (zusätzliche Mutationen auf einem nackten
+   `nil`-Literal), nicht die Branch-Entfernung selbst — die ursprüngliche
+   Hypothese beschrieb mutants tatsächliches Verhalten ungenau.
+2. **Range/Index-Grenzfälle (vgl. mutants `index.rb:28-42`).** Hypothese:
+   `RangeLiteral`s `irange`↔`erange`-Flip könnte für bestimmte Ranges
+   (`arr[0..-1]`, Einzelelement-Ranges) äquivalent sein. Falsifiziert: jeder
+   getestete Fall (`arr[0..-1]` vs. `arr[0...-1]`, `.cover?`, `.to_a`,
+   `(1..1)` vs. `(1...1)`) verhält sich nachweislich unterschiedlich. mutants
+   Optimierung betrifft Array-Subscript-Slicing-Semantik, die für
+   direkte Range-Literal-Mutation nicht gilt.
+3. **Compound Assignment (vgl. mutants `binary.rb:21,38`).** Hypothese:
+   `LogicalOperator` könnte mit `UpdateOperator` auf denselben AST-Knoten
+   kollidieren (`x \|\|= y`). Falsifiziert: `LogicalOperator` verarbeitet nur
+   `:and`/`:or`-Knoten, `UpdateOperator` nur `:and_asgn`/`:or_asgn` — beide
+   Knotentypen überlappen nie, also gibt es keine Kollision zu vermeiden. Der
+   einzige real harte Fall (Memoization `@var \|\|= compute`) ist bereits durch
+   `AridNodeFilter` (`arid_node_filter.rb:40-44`) pauschal gefiltert — eine
+   einfachere Lösung als mutants knotenspezifischer Skip.
+
+Keine Code-Änderung aus diesen drei Punkten. Negative Ergebnisse sind hier so
+viel wert wie das positive Ergebnis, das zu ADR-10 führte.
 
 ---
 
@@ -279,7 +353,7 @@ Kein Persistenz-Modell, keine Mutanten-Datenbank, kein historisches Tracking. Je
 
 ### 3.7 Keine Äquivalenz-Heuristiken
 
-mutant ignoriert das Equivalent-Mutant-Problem vollständig — es gibt keine automatische Erkennung. Alle lebenden Mutanten werden gleich behandelt, ohne Hinweis darauf, welche möglicherweise äquivalent sind.
+mutant ignoriert das Equivalent-Mutant-Problem vollständig — es gibt keine automatische Erkennung zur Laufzeit. Alle lebenden Mutanten werden gleich behandelt, ohne Hinweis darauf, welche möglicherweise äquivalent sind. (Eine Ausnahme auf Konfigurationsebene, nicht Laufzeit-Ebene, dokumentiert Abschnitt 2.2a: das Default-Operator-Set vermeidet den bekanntesten Äquivalenzfall — `==`↔`eql?`/`equal?` — durch Weglassen statt durch Erkennung.)
 
 **Unsere Chance:** Selbst einfache Heuristiken (Arid-Node-Filtering nach Google-Muster, MEDIC-ähnliche Datenfluss-Patterns) wären bereits ein Fortschritt.
 

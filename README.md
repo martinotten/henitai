@@ -132,7 +132,7 @@ The repository ships a JSON Schema at [`assets/schema/henitai.schema.json`](/wor
 **Light** (default) — high-signal, low-noise operators covering the majority of real-world defects:
 
 - `ArithmeticOperator` — `+` ↔ `-`, `*` ↔ `/`
-- `EqualityOperator` — `==` ↔ `!=`, `>` ↔ `<`, etc.
+- `EqualityOperator` — `==` ↔ `!=`, `>` ↔ `<`, etc. (relational operators only)
 - `LogicalOperator` — `&&` ↔ `||`
 - `BooleanLiteral` — `true` ↔ `false`, `!expr`
 - `ConditionalExpression` — remove branch bodies
@@ -151,6 +151,7 @@ The repository ships a JSON Schema at [`assets/schema/henitai.schema.json`](/wor
 - `AssignmentExpression` — mutate compound assignment
 - `UnaryOperator` — remove unary `-` and `~`
 - `UpdateOperator` — swap compound assignments (`+=`↔`-=`, `*=`↔`/=`, `||=`↔`&&=`)
+- `EqualityIdentityOperator` — `==` ↔ `eql?`/`equal?` (hardest equality pairing to kill; see [ADR-10](docs/architecture/adr/ADR-10-split-equality-identity-mutations.md))
 
 ## Stryker Dashboard integration
 
