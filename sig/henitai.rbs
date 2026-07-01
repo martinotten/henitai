@@ -685,11 +685,13 @@ module Henitai
 
       PROGRESS_GLYPHS: Hash[Symbol, String]
 
+      def initialize: (config: Configuration, ?history_store: MutantHistoryStore?, ?color_enabled: bool) -> void
       def report: (Result) -> void
       def progress: (untyped, ?scenario_result: ScenarioExecutionResult) -> void
 
       private
 
+      def color_enabled: () -> bool
       def report_lines: (Result) -> Array[String]
       def summary_lines: (untyped) -> Array[String]
       def full_summary_lines: (untyped) -> Array[String]
@@ -740,28 +742,17 @@ module Henitai
       def escaped_report_json: (Result) -> String
     end
 
-  class Dashboard < Base
-      DEFAULT_BASE_URL: String
-      HTTP_TIMEOUT_SECONDS: Integer
-
-      def report: (Result) -> void
+    class DashboardMetadataProvider
+      def initialize: (dashboard_config: Hash[Symbol, untyped]?, ?env: untyped, ?git_executor: untyped) -> void
+      def project: () -> String?
+      def version: () -> String?
+      def api_key: () -> String?
 
       private
 
-      def ready?: () -> bool
-      def build_request: (Result, untyped) -> untyped
-      def request_headers: () -> Hash[String, String]
-      def send_request: (untyped, untyped) -> untyped
-      def dashboard_uri: () -> untyped
-      def base_url: () -> String
-      def project: () -> String?
-      def version: () -> String?
       def env_version: () -> String?
       def ref_without_prefix: (String?) -> String?
       def project_from_git_remote: () -> String?
-      def api_key: () -> String?
-      def project_path: () -> String
-      def encoded_version: () -> String
       def blank?: (String?) -> bool
       def git_remote_url: () -> String?
       def git_branch_name: () -> String?
@@ -770,6 +761,31 @@ module Henitai
       def self.normalize_git_url: (String?) -> String?
       def self.project_from_uri_url: (String) -> String?
       def self.project_from_ssh_url: (String) -> String?
+    end
+
+  class Dashboard < Base
+      DEFAULT_BASE_URL: String
+      HTTP_TIMEOUT_SECONDS: Integer
+
+      def initialize: (config: Configuration, ?history_store: MutantHistoryStore?, ?metadata_provider: DashboardMetadataProvider?) -> void
+      def report: (Result) -> void
+
+      private
+
+      def metadata_provider: () -> DashboardMetadataProvider
+      def ready?: () -> bool
+      def build_request: (Result, untyped) -> untyped
+      def request_headers: () -> Hash[String, String]
+      def send_request: (untyped, untyped) -> untyped
+      def dashboard_uri: () -> untyped
+      def base_url: () -> String
+      def project: () -> String?
+      def version: () -> String?
+      def api_key: () -> String?
+      def project_path: () -> String
+      def encoded_version: () -> String
+
+      def self.project_from_git_url: (String?) -> String?
     end
   end
 

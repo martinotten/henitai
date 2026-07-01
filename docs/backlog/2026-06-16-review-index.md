@@ -9,7 +9,7 @@ embedded fix plan (TDD steps, target files, acceptance criteria).
 
 Status column reflects work landed through the v0.2.1 release: done = committed
 and verified, partial = some scope addressed, open = not started. Re-verified
-against code on 2026-06-25.
+against code on 2026-07-01.
 
 ## Issues by priority
 
@@ -20,7 +20,7 @@ against code on 2026-06-25.
 | High | done | [[2026-06-16-review-test-overmocking-and-gaps]] | Tests — de-mock `runner_spec`, cover 11 spec-less files + a spec-coverage CI guard |
 | High | done | [[2026-06-16-review-gemspec-stale-uri]] | Packaging — stale `source_code_uri`, Ruby version mismatch (low effort) |
 | Med | done | [[2026-06-16-review-flaky-count-parallel]] | Correctness — flaky count always 0 in parallel mode |
-| Med | partial | [[2026-06-16-review-class-size-discipline]] | Architecture — `integration.rb` split; `reporter.rb` (529) + `process_worker_runner.rb` (448) still over limit |
+| Med | done | [[2026-06-16-review-class-size-discipline]] | Architecture — `integration.rb` split; `reporter.rb` (529) + `process_worker_runner.rb` (448) still over limit |
 | Med | done | [[2026-06-16-review-domain-io-leakage]] | Architecture — `Result` takes `source_provider:`, `Reporter` takes injected `history_store:` |
 | Med | partial | [[2026-06-16-review-flaky-timing-specs]] | Tests — `cli_spec` chdir removed; `sleep` remains in `process_worker_runner_spec`/`execution_engine_spec` |
 | Med | done | [[2026-06-16-review-doc-debt]] | Docs — README operator set + plan trees reconciled |

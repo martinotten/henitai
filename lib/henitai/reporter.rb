@@ -6,6 +6,7 @@ require "net/http"
 require "open3"
 require "uri"
 require_relative "unparse_helper"
+require_relative "reporter/dashboard_metadata_provider"
 
 module Henitai
   # Namespace for result reporters.
@@ -68,6 +69,11 @@ module Henitai
         ignored: "I"
       }.freeze
 
+      def initialize(config:, history_store: nil, color_enabled: !ENV.key?("NO_COLOR"))
+        super(config:, history_store:)
+        @color_enabled = color_enabled
+      end
+
       def report(result)
         puts report_lines(result)
       end
@@ -87,6 +93,8 @@ module Henitai
       end
 
       private
+
+      attr_reader :color_enabled
 
       def report_lines(result)
         lines = summary_lines(result)
@@ -226,7 +234,7 @@ module Henitai
       end
 
       def colorize(text, color)
-        return text if ENV.key?("NO_COLOR")
+        return text unless color_enabled
 
         "\e[#{color}m#{text}\e[0m"
       end
@@ -367,10 +375,16 @@ module Henitai
       end
     end
 
-    # Dashboard reporter.
+    # Dashboard reporter. Delegates project/version/api-key resolution to
+    # {DashboardMetadataProvider} so it never touches real ENV or git itself.
     class Dashboard < Base
       DEFAULT_BASE_URL = "https://dashboard.stryker-mutator.io"
       HTTP_TIMEOUT_SECONDS = 30
+
+      def initialize(config:, history_store: nil, metadata_provider: nil)
+        super(config:, history_store:)
+        @metadata_provider = metadata_provider || DashboardMetadataProvider.new(dashboard_config: config.dashboard)
+      end
 
       def report(result)
         return unless ready?
@@ -380,7 +394,19 @@ module Henitai
         send_request(uri, request)
       end
 
+      class << self
+        def project_from_git_url(url)
+          DashboardMetadataProvider.project_from_git_url(url)
+        end
+      end
+
       private
+
+      attr_reader :metadata_provider
+
+      def project = metadata_provider.project
+      def version = metadata_provider.version
+      def api_key = metadata_provider.api_key
 
       def ready?
         !project.nil? && !version.nil? && !api_key.nil?
@@ -427,102 +453,12 @@ module Henitai
         config.dashboard[:base_url] || DEFAULT_BASE_URL
       end
 
-      def project
-        @project ||= config.dashboard[:project] || project_from_git_remote
-      end
-
-      def version
-        @version ||= env_version || git_branch_name
-      end
-
-      def env_version
-        ref_name = ENV.fetch("GITHUB_REF_NAME", nil)
-        return ref_name unless blank?(ref_name)
-
-        ref = ENV.fetch("GITHUB_REF", nil)
-        return ref_without_prefix(ref) unless ref.nil? || blank?(ref)
-
-        ENV.fetch("GITHUB_SHA", nil)
-      end
-
-      def ref_without_prefix(ref)
-        return nil if blank?(ref)
-
-        ref.to_s.sub(%r{^refs/(heads|tags|pull)/}, "")
-      end
-
-      def project_from_git_remote
-        self.class.project_from_git_url(git_remote_url)
-      end
-
-      def api_key
-        ENV.fetch("STRYKER_DASHBOARD_API_KEY", nil)
-      end
-
       def project_path
         project.to_s.split("/").map { |segment| URI.encode_www_form_component(segment) }.join("/")
       end
 
       def encoded_version
         URI.encode_www_form_component(version.to_s)
-      end
-
-      def blank?(value)
-        value.nil? || value.strip.empty?
-      end
-
-      def git_remote_url
-        stdout, status = Open3.capture2("git", "remote", "get-url", "origin")
-        return stdout.strip if status.success?
-
-        nil
-      rescue Errno::ENOENT
-        nil
-      end
-
-      def git_branch_name
-        stdout, status = Open3.capture2("git", "rev-parse", "--abbrev-ref", "HEAD")
-        return stdout.strip if status.success? && !stdout.strip.empty?
-
-        nil
-      rescue Errno::ENOENT
-        nil
-      end
-
-      class << self
-        def project_from_git_url(url)
-          normalized = normalize_git_url(url)
-          return nil if normalized.nil?
-
-          return project_from_uri_url(normalized) if normalized.include?("://")
-          return project_from_ssh_url(normalized) if normalized.include?("@")
-
-          normalized
-        rescue URI::InvalidURIError
-          nil
-        end
-
-        def normalize_git_url(url)
-          return nil if url.nil? || url.strip.empty?
-
-          url.strip.sub(/\.git\z/, "")
-        end
-
-        def project_from_uri_url(normalized)
-          uri = URI.parse(normalized)
-          path = uri.path.to_s.sub(%r{^/}, "")
-          [uri.host, path].compact.reject(&:empty?).join("/")
-        end
-
-        def project_from_ssh_url(normalized)
-          _, host_and_path = normalized.split("@", 2)
-          return nil if host_and_path.nil?
-
-          host, path = host_and_path.split(":", 2)
-          return nil unless host && path
-
-          "#{host}/#{path}"
-        end
       end
     end
   end

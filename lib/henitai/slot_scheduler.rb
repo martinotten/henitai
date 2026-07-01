@@ -147,22 +147,30 @@ module Henitai
       !shutdown? && result.survived? && slot.retry_count < config.max_flaky_retries.to_i
     end
 
-    def retry_slot(slot) # rubocop:disable Metrics/AbcSize
+    def retry_slot(slot)
       test_files = resolve_test_files(slot.mutant)
       handle = integration.spawn_mutant(mutant: slot.mutant, test_files: test_files)
+      finish_retry(slot, handle)
+    rescue StandardError => e
+      slots.delete(slot.slot_id)
+      record_spawn_failure(slot.mutant, e)
+    end
+
+    def finish_retry(slot, handle)
       @flaky_retry_count += 1 if slot.retry_count.zero?
       slot.retry_count += 1
+      reset_slot_for_retry(slot, handle)
+      pid_to_slot[handle.pid] = slot.slot_id
+      Integration::SchedulerDiagnostics.child_started(handle.pid)
+    end
+
+    def reset_slot_for_retry(slot, handle)
       slot.pid = handle.pid
       slot.log_paths = handle.log_paths
       slot.started_at_monotonic = monotonic_time
       slot.draining = false
       slot.term_sent_at_monotonic = nil
       slot.forced_outcome = nil
-      pid_to_slot[handle.pid] = slot.slot_id
-      Integration::SchedulerDiagnostics.child_started(handle.pid)
-    rescue StandardError => e
-      slots.delete(slot.slot_id)
-      record_spawn_failure(slot.mutant, e)
     end
 
     def record_spawn_failure(mutant, error)
