@@ -17,3 +17,5 @@ group :development do
 end
 
 gem "sqlite3", "~> 1.7"
+
+gem "ruby-lsp", "~> 0.26.9", group: :development
