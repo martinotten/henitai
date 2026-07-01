@@ -67,4 +67,39 @@ RSpec.describe Henitai::Operator do
 
     expect(mutant.location).to eq({})
   end
+
+  it "builds full location metadata with symbol keys mirroring the node's source span" do
+    operator_class = stub_const(
+      "Henitai::LocationProbeOperator",
+      Class.new(described_class) do
+        def self.node_types
+          [:send]
+        end
+
+        def mutate(node, subject:)
+          [build_mutant(subject:, original_node: node, mutated_node: node, description: "probe")]
+        end
+      end
+    )
+
+    source = <<~RUBY
+      foo(
+        1
+      )
+    RUBY
+    node = Henitai::SourceParser.parse(source, path: "example.rb")
+
+    mutant = operator_class.new.mutate(node, subject: Henitai::Subject.new(
+      namespace: "Example",
+      method_name: "example"
+    )).first
+
+    expect(mutant.location).to eq(
+      file: "example.rb",
+      start_line: 1,
+      end_line: 3,
+      start_col: 0,
+      end_col: 1
+    )
+  end
 end
