@@ -1,6 +1,6 @@
 # Structured Review Findings — 2026-06-23
 
-Status: in progress (3 of 4 done, 1 open, re-verified against code 2026-07-01)
+Status: resolved (4 of 4 done, re-verified against code 2026-07-01)
 Date: 2026-06-23
 
 Backlog issues from the 2026-06-23 in-depth structured review (multi-agent
@@ -19,7 +19,7 @@ regressions.
 | Med | done | [[2026-06-23-review-flaky-retry-counter-inflation]] | Correctness — flaky counter bumped before respawn that can fail |
 | Med | done | [[2026-06-23-review-dead-parallel-runner]] | Architecture — `ParallelExecutionRunner` autoloaded + spec'd but never used |
 | Med | done | [[2026-06-23-review-reporter-and-runner-class-size]] | Architecture — `reporter.rb` (529) + `process_worker_runner.rb` (448) over limit, infra leak |
-| Med | open | [[2026-06-23-review-factory-errorpaths-and-tautological-mocks]] | Tests — untested factory `ArgumentError` paths, tautological mock specs |
+| Med | done | [[2026-06-23-review-factory-errorpaths-and-tautological-mocks]] | Tests — untested factory `ArgumentError` paths, tautological mock specs |
 
 ## Fixed inline during the review (no separate issue)
 

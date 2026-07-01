@@ -290,7 +290,6 @@ RSpec.describe Henitai::ExecutionEngine do
 
     allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
       thread_ids << Thread.current.object_id
-      sleep 0.001
       mutant.status = :killed
     end
 
@@ -308,7 +307,6 @@ RSpec.describe Henitai::ExecutionEngine do
 
     allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
       thread_ids << Thread.current.object_id
-      sleep 0.001
       mutant.status = :killed
     end
 

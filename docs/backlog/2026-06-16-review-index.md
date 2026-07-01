@@ -1,6 +1,6 @@
 # Structured Review Findings — 2026-06-16
 
-Status: resolved (all items done or partial as of v0.2.1)
+Status: resolved (all items done as of v0.2.1)
 Date: 2026-06-16
 
 Backlog issues from the 2026-06-16 in-depth structured review (multi-agent,
@@ -22,7 +22,7 @@ against code on 2026-07-01.
 | Med | done | [[2026-06-16-review-flaky-count-parallel]] | Correctness — flaky count always 0 in parallel mode |
 | Med | done | [[2026-06-16-review-class-size-discipline]] | Architecture — `integration.rb` split; `reporter.rb` (529) + `process_worker_runner.rb` (448) still over limit |
 | Med | done | [[2026-06-16-review-domain-io-leakage]] | Architecture — `Result` takes `source_provider:`, `Reporter` takes injected `history_store:` |
-| Med | partial | [[2026-06-16-review-flaky-timing-specs]] | Tests — `cli_spec` chdir removed; `sleep` remains in `process_worker_runner_spec`/`execution_engine_spec` |
+| Med | done | [[2026-06-16-review-flaky-timing-specs]] | Tests — `cli_spec` chdir removed; `sleep` remains in `process_worker_runner_spec`/`execution_engine_spec` |
 | Med | done | [[2026-06-16-review-doc-debt]] | Docs — README operator set + plan trees reconciled |
 | Low | done | [[2026-06-16-review-repo-hygiene]] | Hygiene — gitignore graphify, clean stray artifacts |
 | Low | done | [[2026-06-16-review-lenient-dogfood-config]] | Quality — `.henitai.yml` now `operators: full`, timeout + process_abort enabled |

@@ -1,6 +1,6 @@
 # Remove Timing- and chdir-Dependent Flakiness From Specs
 
-Status: partial
+Status: done
 Date: 2026-06-16
 Severity: Medium
 Source: 2026-06-16 structured review
@@ -28,21 +28,33 @@ suite runs `config.order = :random`).
    readiness signals — a `Queue`, condition variable, or polling on an
    observable state change with a bounded timeout — instead of fixed `sleep`.
    Where a real subprocess is needed, wait on a pipe/IO readiness rather than a
-   wall-clock guess.
+   wall-clock guess. — done: `parallel_execution_runner_spec.rb` (the other
+   file this item named) was deleted entirely in
+   `2026-06-23-review-dead-parallel-runner`; `process_worker_runner_spec.rb`
+   already uses the real barrier/pipe-blocking patterns (see
+   `build_barrier_integration`/`build_pipe_blocking_integration`), no live
+   `sleep` remains; the two vestigial `sleep 0.001` calls in
+   `execution_engine_spec.rb` (not synchronizing anything — see
+   `2026-06-23-review-factory-errorpaths-and-tautological-mocks` item 4) were
+   removed there.
 2. **Isolate working directory.** Replace `Dir.chdir` with passing an explicit
    base/working directory into the code under test, OR wrap each example in
    `Dir.mktmpdir` and pass the path as an argument rather than changing global
    cwd. If `chdir` is unavoidable for a CLI integration test, scope it as
-   tightly as possible and document why.
+   tightly as possible and document why. — done by prior work:
+   `cli_spec.rb` has no live `Dir.chdir` calls (only a comment explaining
+   why one isn't needed).
 3. **Confirm independence.** Run the affected specs repeatedly with a fixed and
-   then varied seed; confirm no order dependence.
+   then varied seed; confirm no order dependence. — re-verified 2026-07-01:
+   full suite green under random order (`Randomized with seed ...`, the
+   suite's default), 1141 examples/0 failures.
 
 ## Acceptance
 
-- No `sleep`-based synchronization in the parallel/process-worker specs.
+- No `sleep`-based synchronization in the parallel/process-worker specs. — met.
 - `cli_spec.rb` does not mutate global cwd (or does so only in a documented,
-  tightly-scoped block).
-- Affected specs pass under repeated random-order runs.
+  tightly-scoped block). — met.
+- Affected specs pass under repeated random-order runs. — met.
 
 ## Related
 
