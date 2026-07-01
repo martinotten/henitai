@@ -548,11 +548,6 @@ module Henitai
     def test_lines_by_file: (?String) -> Hash[String, Hash[String, Array[Integer]]]
   end
 
-  class ParallelExecutionRunner
-    def initialize: (worker_count: Integer) -> void
-    def run: (Array[Mutant], untyped, untyped, untyped, ?Hash[Symbol, untyped]) -> void
-  end
-
   class ProcessWorkerRunner
     attr_reader worker_count: Integer
     attr_reader runtime: untyped
