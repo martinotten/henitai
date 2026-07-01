@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require "open3"
+require "uri"
+
 module Henitai
   module Reporter
     # Resolves the Stryker Dashboard project/version/api-key coordinates for
