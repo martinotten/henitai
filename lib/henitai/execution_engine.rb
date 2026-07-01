@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "parallel_execution_runner"
 require_relative "process_worker_runner"
 
 module Henitai

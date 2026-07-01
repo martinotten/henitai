@@ -69,7 +69,7 @@ CLI -> Orchestrator (Runner)
 | Mutant generation | `operator.rb`, `operators.rb`, `operators/*`, `mutant_generator.rb`, `mutant.rb`, `mutant/activator.rb` |
 | Filtering | `arid_node_filter.rb`, `static_filter.rb`, `stillborn_filter.rb`, `syntax_validator.rb`, `equivalence_detector.rb` |
 | Coverage | `coverage_bootstrapper.rb`, `coverage_report_reader.rb`, `coverage_formatter.rb`, `per_test_coverage_collector.rb`, `per_test_coverage_selector.rb` |
-| Execution | `execution_engine.rb`, `parallel_execution_runner.rb`, `process_worker_runner.rb`, `slot_scheduler.rb`, `process_wakeup.rb` |
+| Execution | `execution_engine.rb`, `process_worker_runner.rb`, `slot_scheduler.rb`, `process_wakeup.rb` |
 | Survivor reruns | `survivor_loader.rb`, `survivor_selector.rb`, `survivor_rerun_strategy.rb`, `survivor_activation_cache.rb`, `survivor_test_filter.rb` |
 | Results / history | `result.rb`, `scenario_execution_result.rb`, `mutant_history_store.rb` (SQLite), `mutant_identity.rb` |
 | Reporting | `reporter.rb` (terminal/JSON/HTML/dashboard) |
@@ -81,7 +81,7 @@ CLI -> Orchestrator (Runner)
 
 - Source parsing uses Prism's translation layer (real AST, not regex). `RubyVM::AbstractSyntaxTree` is for inspection only, not the mutation backend.
 - Mutants run via `Module#define_method` injection inside **forked worker processes** — process isolation is the default and required model, not thread-only parallelism.
-- `ExecutionEngine`/`ParallelExecutionRunner` use a Thread+Queue worker pool (`config.jobs`, default `1`) where each worker forks a child process per mutant: threads coordinate the queue, forked processes provide test isolation.
+- `ExecutionEngine`/`ProcessWorkerRunner` use a Thread+Queue worker pool (`config.jobs`, default `1`) where each worker forks a child process per mutant: threads coordinate the queue, forked processes provide test isolation.
 - Survived mutants are retried up to `config.max_flaky_retries` (default 3) before being classified as survived; a warning is emitted if >5% of mutants needed a retry.
 - Coverage is a required gate, checked before subject resolution: if existing coverage doesn't cover the configured sources, the configured test suite is run once to bootstrap it; if still unusable, `Henitai::CoverageError` aborts the run.
 
