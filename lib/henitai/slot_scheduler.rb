@@ -148,10 +148,10 @@ module Henitai
     end
 
     def retry_slot(slot) # rubocop:disable Metrics/AbcSize
-      @flaky_retry_count += 1 if slot.retry_count.zero?
-      slot.retry_count += 1
       test_files = resolve_test_files(slot.mutant)
       handle = integration.spawn_mutant(mutant: slot.mutant, test_files: test_files)
+      @flaky_retry_count += 1 if slot.retry_count.zero?
+      slot.retry_count += 1
       slot.pid = handle.pid
       slot.log_paths = handle.log_paths
       slot.started_at_monotonic = monotonic_time
