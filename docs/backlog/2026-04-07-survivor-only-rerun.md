@@ -11,7 +11,7 @@ Verified against current code:
 - CLI: `--survivors-from PATH` option (`lib/henitai/cli/options.rb`), wired
   through `lib/henitai/cli/run_command.rb` (including session-dir path
   resolution) into `Runner.new(survivors_from:)`.
-- `lib/henitai/runner.rb:31,35,259,263` — `survivors_from` triggers
+- `lib/henitai/runner.rb:31,35,258,262` — `survivors_from` triggers
   `SurvivorRerunStrategy` (built from `SurvivorLoader`, `SurvivorSelector`,
   `SurvivorActivationCache`, `SurvivorTestFilter`) instead of the full mutant
   pipeline.
