@@ -586,8 +586,12 @@ module Henitai
     def interrupt_active_slots: () -> void
   end
 
+  class MutationSkipDirectives
+    def skip?: (Mutant) -> bool
+  end
+
   class StaticFilter
-    def initialize: (?coverage_report_reader: CoverageReportReader) -> void
+    def initialize: (?coverage_report_reader: CoverageReportReader, ?skip_directives: MutationSkipDirectives) -> void
     def apply: (Array[Mutant], untyped) -> Array[Mutant]
     def coverage_lines_for: (untyped) -> Hash[String, Array[Integer]]
     def coverage_lines_by_file: (?String) -> Hash[String, Array[Integer]]

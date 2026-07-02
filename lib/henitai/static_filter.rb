@@ -8,8 +8,10 @@ module Henitai
     DEFAULT_COVERAGE_REPORT_PATH = CoverageReportReader::DEFAULT_COVERAGE_REPORT_PATH
     DEFAULT_PER_TEST_COVERAGE_REPORT_PATH = CoverageReportReader::DEFAULT_PER_TEST_COVERAGE_REPORT_PATH
 
-    def initialize(coverage_report_reader: CoverageReportReader.new)
+    def initialize(coverage_report_reader: CoverageReportReader.new,
+                   skip_directives: MutationSkipDirectives.new)
       @coverage_report_reader = coverage_report_reader
+      @skip_directives = skip_directives
     end
 
     # This method is the gate-level filter orchestrator.
@@ -18,7 +20,7 @@ module Henitai
       coverage_report_present = coverage_report_present?(config)
 
       Array(mutants).each do |mutant|
-        next if ignored_mutant?(mutant, config)
+        next if ignored_mutant?(mutant, config) || skip_directive_mutant?(mutant)
 
         mark_equivalent_mutant(mutant)
         mark_no_coverage_mutant(
@@ -61,7 +63,7 @@ module Henitai
 
     private
 
-    attr_reader :coverage_report_reader
+    attr_reader :coverage_report_reader, :skip_directives
 
     def ignored?(mutant, config)
       source = source_for(mutant)
@@ -74,6 +76,13 @@ module Henitai
 
     def ignored_mutant?(mutant, config)
       return false unless ignored?(mutant, config)
+
+      mutant.status = :ignored
+      true
+    end
+
+    def skip_directive_mutant?(mutant)
+      return false unless skip_directives.skip?(mutant)
 
       mutant.status = :ignored
       true

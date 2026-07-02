@@ -40,8 +40,8 @@ RSpec.describe Henitai::StaticFilter do
     File.write(File.join(coverage_dir, "henitai_per_test.json"), data.to_json)
   end
 
-  def filter_with_coverage
-    filter = described_class.new
+  def filter_with_coverage(**)
+    filter = described_class.new(**)
     allow(filter).to receive(:coverage_lines_by_file).and_return("sample.rb" => [1])
     filter
   end
@@ -54,6 +54,133 @@ RSpec.describe Henitai::StaticFilter do
     mutant = build_mutant("foo.bar")
 
     filter_with_coverage.apply([mutant], config(ignore_patterns: ["foo\\.bar"]))
+
+    expect(mutant.status).to eq(:ignored)
+  end
+
+  it "marks mutants on a line with a trailing skip directive as ignored" do
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "sample.rb")
+      File.write(
+        path,
+        <<~RUBY
+          class Sample
+            def value(input)
+              input + 1 # henitai:disable
+            end
+          end
+        RUBY
+      )
+
+      subject = sample_subject(path)
+      mutants = Henitai::MutantGenerator.new.generate(
+        [subject],
+        [Henitai::Operators::ArithmeticOperator.new]
+      )
+
+      Dir.chdir(dir) do
+        described_class.new.apply(mutants, config)
+      end
+
+      expect(mutants.map(&:status).uniq).to eq([:ignored])
+    end
+  end
+
+  it "marks every mutant of a method with a leading skip directive as ignored" do
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "sample.rb")
+      File.write(
+        path,
+        <<~RUBY
+          class Sample
+            # henitai:disable
+            def value(input)
+              input + 1
+            end
+          end
+        RUBY
+      )
+
+      subject = Henitai::Subject.new(
+        namespace: "Sample", method_name: "value", source_location: { file: path, range: 3..5 }
+      )
+      mutants = Henitai::MutantGenerator.new.generate(
+        [subject],
+        [Henitai::Operators::ArithmeticOperator.new]
+      )
+
+      Dir.chdir(dir) do
+        described_class.new.apply(mutants, config)
+      end
+
+      expect(mutants.map(&:status).uniq).to eq([:ignored])
+    end
+  end
+
+  it "leaves mutants on lines without a skip directive untouched" do
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "sample.rb")
+      File.write(
+        path,
+        <<~RUBY
+          class Sample
+            def value(input)
+              tagged = input + 1 # henitai:disable
+              tagged + 2
+            end
+          end
+        RUBY
+      )
+
+      subject = sample_subject(path)
+      mutants = Henitai::MutantGenerator.new.generate(
+        [subject],
+        [Henitai::Operators::ArithmeticOperator.new]
+      )
+
+      Dir.chdir(dir) do
+        described_class.new.apply(mutants, config)
+      end
+
+      statuses = mutants.group_by { |mutant| mutant.location[:start_line] }
+                        .transform_values { |group| group.map(&:status).uniq }
+      expect(statuses.slice(3, 4)).to eq(3 => [:ignored], 4 => [:pending])
+    end
+  end
+
+  it "prefers the skip directive over equivalence detection" do
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "sample.rb")
+      File.write(
+        path,
+        <<~RUBY
+          class Sample
+            def value(input)
+              input + 0 # henitai:disable
+            end
+          end
+        RUBY
+      )
+
+      subject = sample_subject(path)
+      mutant = Henitai::MutantGenerator.new.generate(
+        [subject],
+        [Henitai::Operators::ArithmeticOperator.new]
+      ).find { |candidate| candidate.description == "replaced + with -" }
+
+      Dir.chdir(dir) do
+        described_class.new.apply([mutant], config)
+      end
+
+      expect(mutant.status).to eq(:ignored)
+    end
+  end
+
+  it "consults an injected skip-directives collaborator" do
+    mutant = build_mutant("foo.bar")
+    skip_directives = instance_double(Henitai::MutationSkipDirectives, skip?: true)
+
+    filter_with_coverage(skip_directives:).apply([mutant], config)
 
     expect(mutant.status).to eq(:ignored)
   end

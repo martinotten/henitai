@@ -67,7 +67,7 @@ CLI -> Orchestrator (Runner)
 | CLI / config | `cli.rb`, `configuration.rb`, `configuration_validator.rb` |
 | Subject resolution | `subject.rb`, `subject_resolver.rb`, `git_diff_analyzer.rb` |
 | Mutant generation | `operator.rb`, `operators.rb`, `operators/*`, `mutant_generator.rb`, `mutant.rb`, `mutant/activator.rb` |
-| Filtering | `arid_node_filter.rb`, `static_filter.rb`, `stillborn_filter.rb`, `syntax_validator.rb`, `equivalence_detector.rb` |
+| Filtering | `arid_node_filter.rb`, `static_filter.rb`, `mutation_skip_directives.rb`, `stillborn_filter.rb`, `syntax_validator.rb`, `equivalence_detector.rb` |
 | Coverage | `coverage_bootstrapper.rb`, `coverage_report_reader.rb`, `coverage_formatter.rb`, `per_test_coverage_collector.rb`, `per_test_coverage_selector.rb` |
 | Execution | `execution_engine.rb`, `process_worker_runner.rb`, `slot_scheduler.rb`, `process_wakeup.rb` |
 | Survivor reruns | `survivor_loader.rb`, `survivor_selector.rb`, `survivor_rerun_strategy.rb`, `survivor_activation_cache.rb`, `survivor_test_filter.rb` |
@@ -99,6 +99,8 @@ MSI = killed / total
 ### Operators
 
 Canonical operator names are public API; don't alias them. Light set (default, `mutation.operators: light`): `ArithmeticOperator`, `EqualityOperator`, `LogicalOperator`, `BooleanLiteral`, `ConditionalExpression`, `StringLiteral`, `ReturnValue`. Full set adds `SafeNavigation`, `RangeLiteral`, `HashLiteral`, `PatternMatch`, `ArrayDeclaration`, `BlockStatement`, `MethodExpression`, `AssignmentExpression`, `UnaryOperator`, `UpdateOperator`, `RegexMutator`, `MethodChainUnwrap`. This repo's own `.henitai.yml` dogfoods with `operators: full`.
+
+`# henitai:disable` magic comments skip mutation at the call site (trailing comment = line-scoped, standalone comment directly above a `def` = method-scoped); handled by `MutationSkipDirectives` inside `StaticFilter`, matches are reported as `Ignored`, not dropped.
 
 Arid-node filtering (intentionally skipped locations) covers logger/debug calls, `binding.pry`/`byebug`, frozen constants, memoization (`@var ||= ...`), RSpec DSL helpers, and `is_a?`/`respond_to?`/`kind_of?`. The `@var ||= ...` exclusion is deliberate even though `||=` is a valid `UpdateOperator`/`AssignmentExpression` target elsewhere — `UpdateOperator` can still emit the `&&=` side of that pair.
 

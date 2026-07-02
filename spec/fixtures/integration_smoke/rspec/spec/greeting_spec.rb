@@ -7,4 +7,12 @@ RSpec.describe Greeting do
   it "returns a truthy value" do
     expect(described_class.new.message).to be_truthy
   end
+
+  it "shouts a truthy value" do
+    expect(described_class.new.shout).to be_truthy
+  end
+
+  it "whispers a truthy value" do
+    expect(described_class.new.whisper).to be_truthy
+  end
 end

@@ -89,24 +89,33 @@ module IntegrationSmoke
     end
 
     def verify_run!(stdout, stderr, status)
-      return if status.exitstatus == 1 && survivor_count.positive?
+      return if status.exitstatus == 1 && survivor_count.positive? && ignored_count.positive?
 
       details = [stdout, stderr].reject(&:empty?).join("\n")
-      raise "Expected surviving mutants for #{name}\n#{details}"
+      raise "Expected surviving and ignored mutants for #{name}\n#{details}"
     end
 
     def announce_success
       puts format(
-        "smoke:%<name>s ok (%<count>d surviving mutants in %<report>s)",
+        "smoke:%<name>s ok (%<survived>d surviving, %<ignored>d ignored mutants in %<report>s)",
         name:,
-        count: survivor_count,
+        survived: survivor_count,
+        ignored: ignored_count,
         report: report_path
       )
     end
 
     def survivor_count
+      status_count("Survived")
+    end
+
+    def ignored_count
+      status_count("Ignored")
+    end
+
+    def status_count(status)
       report.fetch("files").values.sum do |file|
-        file.fetch("mutants").count { |mutant| mutant.fetch("status") == "Survived" }
+        file.fetch("mutants").count { |mutant| mutant.fetch("status") == status }
       end
     end
 

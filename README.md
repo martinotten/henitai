@@ -125,6 +125,30 @@ the run trend history. Dirty worktree changes are included, so you can edit
 tests locally without committing first; if source files under `includes` are
 dirty, Henitai reruns the matched survivors conservatively.
 
+### Skipping mutations inline
+
+A `# henitai:disable` magic comment excludes code from mutation at the call
+site, without touching `.henitai.yml`:
+
+```ruby
+def risky_calc(x)
+  x * 2 # henitai:disable            — skips mutants on this line
+end
+
+# henitai:disable                     — skips every mutant in this method
+def legacy_shim(x)
+  x - 1
+end
+```
+
+The line form applies to mutants starting on that line. The method form is a
+standalone comment in the contiguous comment block directly above a `def`
+(a blank line breaks the association). Trailing text is allowed
+(`# henitai:disable -- reviewed defensive branch`). Skipped mutants are
+reported as `Ignored`, so they stay visible in the report instead of silently
+vanishing. Use `mutation.ignore_patterns` for repo-wide policy and
+`# henitai:disable` for one-off, reviewed exclusions.
+
 The repository ships a JSON Schema at [`assets/schema/henitai.schema.json`](/workspaces/henitai/assets/schema/henitai.schema.json) for editor autocompletion.
 
 ## Operator sets

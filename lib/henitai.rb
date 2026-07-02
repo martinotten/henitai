@@ -35,6 +35,7 @@ module Henitai
   autoload :GitDiffError, "henitai/git_diff_analyzer"
   autoload :MutantGenerator, "henitai/mutant_generator"
   autoload :MutantHistoryStore, "henitai/mutant_history_store"
+  autoload :MutationSkipDirectives, "henitai/mutation_skip_directives"
   autoload :AridNodeFilter, "henitai/arid_node_filter"
   autoload :AvailableCpuCount, "henitai/available_cpu_count"
   autoload :EquivalenceDetector, "henitai/equivalence_detector"

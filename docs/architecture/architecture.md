@@ -372,6 +372,13 @@ The arid-node catalog is intentionally extensible. The initial Ruby set includes
 - RSpec DSL helpers such as `let`, `subject`, `before`, and `after`
 - invariants such as `is_a?`, `respond_to?`, and `kind_of?`
 
+Beyond the arid-node pre-generation pass, a source-level opt-out exists:
+`# henitai:disable` magic comments (line-scoped trailing form, or
+method-scoped standalone form directly above a `def`). This check lives in
+`StaticFilter` (`MutationSkipDirectives`), not the arid-node pass, because it
+runs after mutant generation and marks matches as `Ignored` so they remain
+visible in reports rather than being silently suppressed.
+
 Memoization is a deliberate trade-off: `@var ||= compute_value` is treated as
 arid by default even though `||=` is a valid mutation target in the full
 operator set. That also means `UpdateOperator` can still emit the `&&=` side
