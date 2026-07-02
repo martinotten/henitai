@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "coverage_report_reader"
+require_relative "mutation_skip_directives"
 
 module Henitai
   # Applies static, pre-execution filtering to generated mutants.
