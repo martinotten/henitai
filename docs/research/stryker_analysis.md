@@ -2,7 +2,7 @@
 ## Wiederverwendbarkeit für unser Ruby-Framework
 
 > **Analysierte Quellen:** stryker-mutator.io Docs, GitHub: stryker-js, stryker4s, stryker-net, mutation-testing-elements, stryker-dashboard
-> **Stand:** März 2026
+> **Stand:** März 2026 · **Refresh:** 2026-07-06 (siehe Abschnitt „Refresh 2026-07-06" am Ende; Delta-Recherche in `cross_framework_comparison.md`)
 > **Kritische Erkenntnis:** Das Stryker-Ökosystem ist bewusst sprachagnostisch designt — ein Ruby-Framework kann Dashboard, HTML-Report und JSON-Schema ohne Änderungen nutzen.
 
 ---
@@ -19,7 +19,7 @@ Die entscheidende Designentscheidung der Stryker-Entwickler: Die gesamte Visuali
 
 ### 2.1 Was es ist
 
-Das `mutation-testing-report-schema` (NPM-Paket, aktuelle Version 3.5.1, ~85.000 wöchentliche Downloads) definiert das gemeinsame JSON-Format für alle Stryker-Implementierungen. Es ist der Kern des gesamten Ökosystems.
+Das `mutation-testing-report-schema` (NPM-Paket, Version 3.5.1 im März 2026; **3.8.3 per 2026-07-06**, ~85.000 wöchentliche Downloads) definiert das gemeinsame JSON-Format für alle Stryker-Implementierungen. Es ist der Kern des gesamten Ökosystems.
 
 ### 2.2 Vollständige Schema-Struktur
 
@@ -469,6 +469,55 @@ Entwickler, die Stryker aus JS- oder .NET-Projekten kennen, haben sofort ein men
 | Per-Test-Coverage-Analyse | Übernehmen (SimpleCov) | Mittel |
 | Incremental Snapshot | Übernehmen (JSON-Datei) | Mittel |
 | Mutation-Switching | Optionaler Performance-Modus | Hoch (Phase 2) |
+
+---
+
+## Refresh 2026-07-06 (live gegen StrykerJS 9.6.1 verifiziert)
+
+Delta-Recherche im Rahmen des Cross-Framework-Reviews — vollständige
+Ergebnisse in `docs/research/cross_framework_comparison.md`. Korrekturen an
+diesem Dokument:
+
+**Stale/falsche Aussagen im März-Stand:**
+
+1. **Schema-Version**: 3.5.1 → **3.8.3** (2026-06-05; 3.8.0 ergänzte
+   Node-22–24-/Java-25-Targets). Oben in §2.1 korrigiert.
+2. **§5.1 „16 StrykerJS-Operatoren"**: aktuelle supported-mutators-Seite
+   listet **15 Kategorien** für StrykerJS. `AssignmentExpression` ist
+   **Stryker.NET-only** (in der Tabelle fälschlich als JS-Operator geführt),
+   `ArrowFunction` ist keine eigene Kategorie mehr.
+3. **§5.3 „existiert in keiner Stryker-Implementierung"** für
+   `SafeNavigation` ist falsch (und widerspricht §5.1, das
+   `OptionalChaining` korrekt listet): StrykerJS mutiert `obj?.prop` →
+   `obj.prop` — dasselbe Konzept.
+4. **§6.1 Mutation-Switching**: Aktivierung läuft in StrykerJS über eine
+   **globale Variable** (`global.activeMutant`), nicht über eine
+   ENV-Variable; alle Stryker-Plattformen (nicht nur Stryker4s) nutzen
+   Mutant-Schemata, plus „hot reload" (Tests einmal laden, pro Mutant
+   re-ausführen). Der Ruby-Adaptions-Sketch bleibt konzeptionell gültig.
+5. **§8/F3 Schema-Versionsangabe**: siehe Punkt 1.
+
+**Seit März neu bzw. dort nicht abgedeckt (Details im Vergleichs-Doc):**
+
+- `--incremental` ist voll ausgeliefert und dokumentiert: Reuse eines
+  Killed-Verdicts nur wenn der killende Test unverändert existiert;
+  Survived-Reuse nur ohne neue/geänderte covering Tests; `--force` als
+  Bypass. **StrykerJS hat kein `--since`** — git-diff-Selektion ist
+  Stryker.NET-only (inkl. `--with-baseline` mit Disk/Dashboard/S3-Providern).
+- `coverageAnalysis: "perTest"` ist der **Default**, nicht Opt-in.
+- Timeout-Formel: `netTime × timeoutFactor(1.5) + timeoutMS(5000) +
+  overheadMs`; `dryRunOnly: true` als reiner Baseline-Run.
+- Disable-Kommentare: `// Stryker [disable|restore] [next-line]
+  <mutatorList|all>[: reason]` — pro Operator, mit Block-Scope und
+  Begründung im Report (Status Ignored). Dazu AST-basierte Ignore-Plugins
+  via `@stryker-mutator/api`.
+- `concurrency` akzeptiert seit 9.6.0 Prozent-Strings (`"50%"`);
+  Sandbox-Verzeichnis (`.stryker-tmp`) ist Default, `inPlace: true` als
+  Alternative.
+- **Kein** CI-Annotation-/PR-Kommentar-Reporter in irgendeiner
+  Stryker-Plattform; keine Equivalent-Mutant-Analyse; keine Flaky-Retries.
+- Dashboard-API, Badge-URLs, Metrik-Formeln: unverändert gültig
+  (GitLab/Bitbucket weiterhin nur „planned").
 
 ---
 

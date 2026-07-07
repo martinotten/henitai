@@ -3,7 +3,9 @@
 Status: backlog
 Date: 2026-07-02
 Severity: Low
-Source: feature-parity comparison against `mutant` and `cargo-mutants`
+Source: feature-parity comparison against `mutant` and `cargo-mutants`;
+evidence extended 2026-07-06 by the cross-framework round
+(`docs/research/cross_framework_comparison.md` §2.3)
 
 ## Summary
 
@@ -33,6 +35,27 @@ has no relationship to how long the relevant test subset actually takes:
   differs per-subject in ways a single global number can't capture (a
   method covered by 3 fast unit tests vs. one covered by a slow integration
   test needs a different timeout).
+
+## Cross-Framework Evidence (added 2026-07-06)
+
+Baseline-derived timeouts are industry consensus, not a cargo-mutants
+quirk — four independent implementations (live-verified 2026-07-06):
+
+- **cargo-mutants**: `5× baseline, min 20s` (original evidence).
+- **StrykerJS 9.6**: `netTime × timeoutFactor(1.5) + timeoutMS(5000) +
+  overheadMs`.
+- **PIT 1.25**: `observed test runtime × timeoutFactor(1.25) +
+  timeoutConstant(4000ms)` — notably PIT measures *per selected test*, which
+  matches this ticket's per-mutant-baseline preference.
+- **mutmut 3.6**: `(estimated_time_of_tests + timeout_constant(15)) ×
+  timeout_multiplier(1.0)` **plus a separate CPU-time limit ~2× the wall
+  limit enforced via SIGXCPU then SIGKILL** — the CPU-limit idea catches
+  busy-loop mutants even when wall-clock is inflated by slow I/O and is
+  worth considering as a second guard here.
+
+Only Infection (and henitai) still use a fixed manual value. The severity
+of this ticket was set from single-framework evidence; the 4-way consensus
+is an argument to re-rank it upward when the backlog is next prioritized.
 
 ## Proposed Behavior
 
@@ -94,3 +117,67 @@ without hand-computing an absolute value.
   `config.timeout` consumption point (passed into `integration.run_mutant`)
   — is what would need the calibrated value instead of (or as a fallback
   default for) the static config value.
+
+## Fix Plan (TDD)
+
+Phase 1 is shared infrastructure with
+[[2026-07-06-runtime-aware-test-ordering]] — implement once, both tickets
+consume it. Whichever ticket lands first builds Phase 1.
+
+**Phase 1 — Gate-0 timing capture (shared):**
+
+1. **Red.** Spec for `PerTestCoverageCollector`: after a collected run,
+   each test file entry carries a wall-clock `duration` (seconds, float)
+   alongside its line coverage. Spec for `CoverageReportReader`: exposes
+   `durations_by_test(path)`; returns `{}` for legacy files without the
+   field (backward compat — old `henitai_per_test.json` must stay
+   readable).
+2. **Green.** Capture per-test-file wall time in the collector, serialize
+   into `henitai_per_test.json`; reader accessor.
+
+**Phase 2 — calibration:**
+
+3. **Red.** Spec for a new `TimeoutCalibrator` (pure object, injected
+   timing source): given the selected test files for a mutant and their
+   durations, returns `multiplier × sum(durations)` clamped to a floor
+   (2.0s). Matrix: timings present / partially present (missing file →
+   treat run as uncalibratable, fall back) / absent entirely (→ nil,
+   caller falls back to `DEFAULT_TIMEOUT`).
+4. **Green.** Implement calibrator.
+5. **Red.** Spec for `ExecutionEngine`: when `mutation.timeout` is unset
+   in config, `integration.run_mutant` receives the calibrated value for
+   that mutant's test subset; when set, it receives the config value
+   untouched (fixed override wins); when calibration returns nil, it
+   receives `DEFAULT_TIMEOUT` and exactly one warning is emitted per run
+   (not per mutant).
+6. **Green.** Wire calibrator into the engine seam.
+7. **Red.** Config/CLI: `mutation.timeout_multiplier` key (default 3.0,
+   pending empirical tuning) + `--timeout-multiplier` flag; validator +
+   `assets/schema/henitai.schema.json` entry;
+   `spec/infra/config schema` invariants stay green.
+8. **Green**, refactor, full suite.
+
+## Acceptance
+
+- `mutation.timeout` set: behavior byte-identical to today (existing
+  timeout specs pass unmodified).
+- `mutation.timeout` unset + timing data present: per-mutant timeout is
+  `multiplier × baseline(selected tests)`, never below the 2.0s floor,
+  deterministic given the timing file.
+- No timing data (warm-coverage run, no persisted baseline):
+  `DEFAULT_TIMEOUT` fallback + one warning line naming the fallback cause.
+- Regression guard: dogfood run before/after on unchanged source produces
+  identical mutant statuses (checked against
+  `mutation-history.sqlite3` trend — no score drift from calibration
+  alone).
+- RuboCop, Steep, full suite green.
+
+## Test Plan
+
+| Layer | Coverage |
+|---|---|
+| Unit | `timeout_calibrator_spec.rb` (full matrix incl. floor + fallbacks); collector/reader specs for the `duration` field + legacy-file compat |
+| Unit | `execution_engine_spec.rb`: calibrated vs fixed vs fallback value reaches `integration.run_mutant`; single-warning behavior |
+| Config | validator + schema specs for `timeout_multiplier`; CLI option parsing spec |
+| Smoke | rspec fixture: first run writes durations into `henitai_per_test.json` (assert field present); second run with `timeout:` removed from fixture config completes with calibrated timeouts (assert via `--all-logs` output marker) |
+| Regression | full dogfood `bundle exec henitai run` — status distribution unchanged vs prior run |
