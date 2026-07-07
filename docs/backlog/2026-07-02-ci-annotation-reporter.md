@@ -1,6 +1,6 @@
 # CI-Native Annotation Reporter (GitHub Actions)
 
-Status: backlog
+Status: done (2026-07-08)
 Date: 2026-07-02
 Severity: Low
 Source: feature-parity comparison against `cargo-mutants`;

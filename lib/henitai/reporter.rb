@@ -35,7 +35,7 @@ module Henitai
     def self.reporter_class(name)
       const_get(name.capitalize)
     rescue NameError
-      raise ArgumentError, "Unknown reporter: #{name}. Valid reporters: terminal, json, html, dashboard"
+      raise ArgumentError, "Unknown reporter: #{name}. Valid reporters: terminal, json, html, dashboard, github"
     end
 
     # Base class for all reporters.
@@ -372,6 +372,48 @@ module Henitai
             .gsub("&", "\\u0026")
             .gsub("<", "\\u003c")
             .gsub(">", "\\u003e")
+      end
+    end
+
+    # GitHub Actions annotation reporter. Prints one `::warning` workflow
+    # command per survived mutant so survivors show up inline on the PR diff.
+    # Killed/ignored/no-coverage/timeout mutants stay silent.
+    class Github < Base
+      def initialize(config:, history_store: nil, io: $stdout)
+        super(config:, history_store:)
+        @io = io
+      end
+
+      def report(result)
+        result.mutants.select(&:survived?).each do |mutant|
+          io.puts(annotation_line(mutant))
+        end
+      end
+
+      private
+
+      attr_reader :io
+
+      def annotation_line(mutant)
+        format(
+          "::warning file=%<file>s,line=%<line>d::%<message>s",
+          file: relative_path(mutant.location.fetch(:file)),
+          line: mutant.location.fetch(:start_line),
+          message: escape_message("Survived mutant: #{mutant.operator} — #{mutant.description}")
+        )
+      end
+
+      def relative_path(file)
+        pathname = Pathname.new(file)
+        return file unless pathname.absolute?
+
+        pathname.relative_path_from(Dir.pwd).to_s
+      end
+
+      # GitHub workflow-command message payload escaping: only `%`, LF and CR
+      # are significant; everything else is parsed literally.
+      def escape_message(message)
+        message.gsub("%", "%25").gsub("\n", "%0A").gsub("\r", "%0D")
       end
     end
 

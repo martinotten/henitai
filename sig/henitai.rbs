@@ -741,6 +741,18 @@ module Henitai
       def escaped_report_json: (Result) -> String
     end
 
+    class Github < Base
+      def initialize: (config: Configuration, ?history_store: MutantHistoryStore?, ?io: untyped) -> void
+      def report: (Result) -> void
+
+      private
+
+      def io: () -> untyped
+      def annotation_line: (Mutant) -> String
+      def relative_path: (String) -> String
+      def escape_message: (String) -> String
+    end
+
     class DashboardMetadataProvider
       def initialize: (dashboard_config: Hash[Symbol, untyped]?, ?env: untyped, ?git_executor: untyped) -> void
       def project: () -> String?

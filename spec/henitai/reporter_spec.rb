@@ -8,7 +8,8 @@ RSpec.describe Henitai::Reporter do
       "terminal" => Henitai::Reporter::Terminal,
       "json" => Henitai::Reporter::Json,
       "html" => Henitai::Reporter::Html,
-      "dashboard" => Henitai::Reporter::Dashboard
+      "dashboard" => Henitai::Reporter::Dashboard,
+      "github" => Henitai::Reporter::Github
     }.each do |name, klass|
       it "resolves #{name.inspect} to #{klass}" do
         expect(described_class.reporter_class(name)).to eq(klass)
@@ -17,7 +18,7 @@ RSpec.describe Henitai::Reporter do
 
     it "raises ArgumentError for an unknown reporter name" do
       expect { described_class.reporter_class("nope") }
-        .to raise_error(ArgumentError, /Unknown reporter: nope\. Valid reporters: terminal, json, html, dashboard/)
+        .to raise_error(ArgumentError, /Unknown reporter: nope\. Valid reporters: terminal, json, html, dashboard, github/)
     end
   end
 

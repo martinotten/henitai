@@ -41,6 +41,7 @@ reporters:
   - terminal
   - html
   - json
+  - github
 #   - dashboard
 #
 # dashboard:
