@@ -7,10 +7,13 @@ require "sqlite3"
 require "time"
 require_relative "mutant_identity"
 require_relative "mutant_history_store/sql"
+require_relative "mutant_history_store/verdict_cache"
 
 module Henitai
   # Persists mutant outcomes across runs in a lightweight SQLite database.
   class MutantHistoryStore
+    include VerdictCache
+
     def initialize(path:)
       @path = path
     end
@@ -127,18 +130,12 @@ module Henitai
     def mutant_history_data(db, mutant, version, recorded_at)
       mutant_id = stable_mutant_id(mutant)
       existing = existing_mutant_row(db, mutant_id)
-      history = existing_status_history(existing)
-      history << mutation_history_entry(mutant, version, recorded_at)
+      history = existing_status_history(existing) << mutation_history_entry(mutant, version, recorded_at)
       first_seen = first_seen_metadata(existing, version, recorded_at)
 
       {
-        mutant_id: mutant_id,
-        first_seen_version: first_seen[:version],
-        first_seen_at: first_seen[:at],
-        version: version,
-        recorded_at: recorded_at,
-        mutant: mutant,
-        history: history,
+        mutant_id:, version:, recorded_at:, mutant:, history:, existing_row: existing,
+        first_seen_version: first_seen[:version], first_seen_at: first_seen[:at],
         days_alive: days_alive_since(first_seen[:at], recorded_at)
       }
     end
@@ -228,23 +225,8 @@ module Henitai
         mutant.status.to_s,
         JSON.generate(data.fetch(:history)),
         data.fetch(:days_alive),
-        *verdict_cache_bindings(mutant)
+        *verdict_cache_bindings(mutant, data[:existing_row])
       ]
-    end
-
-    # Hashes are persisted for killed mutants only — they are the reusable
-    # verdicts; every other status stays NULL and always re-executes.
-    def verdict_cache_bindings(mutant)
-      return [nil, nil] unless mutant.status.to_s == "killed"
-
-      [
-        VerdictFingerprint.subject_source_hash(mutant),
-        VerdictFingerprint.tests_fingerprint(covered_tests_for(mutant))
-      ]
-    end
-
-    def covered_tests_for(mutant)
-      mutant.respond_to?(:covered_by) ? mutant.covered_by : nil
     end
   end
 end

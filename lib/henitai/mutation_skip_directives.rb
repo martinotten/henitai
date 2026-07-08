@@ -182,7 +182,7 @@ module Henitai
 
       def parse_payload(rest, line)
         text = rest.to_s.strip
-        return Directive.new(operators: nil, reason: nil) if text.empty? || text.start_with?("--")
+        return Directive.new(operators: nil, reason: nil) if prose?(text)
         return Directive.new(operators: nil, reason: presence(text[1..])) if text.start_with?(":")
 
         operators_part, reason = text.split(":", 2)
@@ -190,6 +190,15 @@ module Henitai
           operators: parse_operator_names(operators_part, line),
           reason: presence(reason)
         )
+      end
+
+      # Free-form rationale after a bare directive stays valid (pre-grammar
+      # behavior): empty, `-- prose`, or anything whose first token cannot be
+      # an operator name (operators are CamelCase). Only CamelCase-looking
+      # tokens are validated against the registry and can raise.
+      def prose?(text)
+        text.empty? || text.start_with?("--") ||
+          (!text.start_with?(":") && !text.match?(/\A[A-Z]/))
       end
 
       def parse_operator_names(operators_part, line)

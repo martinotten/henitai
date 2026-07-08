@@ -122,6 +122,13 @@ Prior-art reuse rules (live-verified 2026-07-06):
   `--incremental` reused 18 of 19 verdicts with matching scores. Re-add the
   smoke assertion when the fixture ticket lands.
 
+**Review fix (2026-07-08, codex/gpt-5.5):** re-recording a cache-hit mutant
+recomputed its fingerprints from empty data (`covered_by` nil — never
+executed) and wiped them, silently disabling reuse after one cached run.
+`MutantHistoryStore::VerdictCache` now carries the stored fingerprints
+forward for `from_cache?` mutants; verified with a back-to-back-to-back
+dogfood run (reuse count stable across consecutive `--incremental` runs).
+
 ## Fix Plan (TDD)
 
 Prerequisite: a short design spike answering the schema question (add

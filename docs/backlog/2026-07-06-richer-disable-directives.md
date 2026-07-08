@@ -113,6 +113,12 @@ end
   it differs or is absent in the vendored schema version, use a vendored
   extension field beside `stableId` instead.
 
+**Review fix (2026-07-08, codex/gpt-5.5):** legacy free-form rationale
+without `--` (e.g. `# henitai:disable reviewed defensive branch`) was parsed
+as an operator list and aborted the run. Lowercase-first payloads are now
+treated as prose (bare all-operator disable, pre-grammar behavior); only
+CamelCase-looking tokens are validated against the registry and can raise.
+
 ## Fix Plan (TDD)
 
 0. Verify the schema field name against the vendored report schema

@@ -265,6 +265,14 @@ RSpec.describe Henitai::MutationSkipDirectives do
       end
     end
 
+    it "treats lowercase free-form rationale as a bare all-operator disable" do
+      Dir.mktmpdir do |dir|
+        path = write_two_operator_source(dir, "# henitai:disable reviewed defensive branch")
+
+        expect(described_class.new.skip?(build_mutant(file: path, start_line: 3))).to be(true)
+      end
+    end
+
     it "raises for an unknown operator name with file and line" do
       Dir.mktmpdir do |dir|
         path = write_two_operator_source(dir, "# henitai:disable Bogus")

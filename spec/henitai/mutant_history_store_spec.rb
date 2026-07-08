@@ -332,6 +332,21 @@ RSpec.describe Henitai::MutantHistoryStore do
       end
     end
 
+    it "preserves stored fingerprints when re-recording a cache-hit mutant" do
+      Dir.mktmpdir do |dir|
+        store = store_at(dir)
+        mutant = build_cacheable_mutant(dir, status: :killed)
+        store.record(build_result([mutant], summary), version: "0.1.0")
+
+        cached = build_cacheable_mutant(dir, status: :killed)
+        cached.define_singleton_method(:covered_by) { nil }
+        cached.define_singleton_method(:from_cache?) { true }
+        store.record(build_result([cached], summary), version: "0.1.1")
+
+        expect(store.killed_verdict_for(Henitai::MutantIdentity.stable_id(mutant))).not_to be_nil
+      end
+    end
+
     it "returns nil for survived mutants" do
       Dir.mktmpdir do |dir|
         store = store_at(dir)
