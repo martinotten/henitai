@@ -1,9 +1,10 @@
 # frozen_string_literal: true
 
-# rubocop:disable RSpec/ExampleLength
+# rubocop:disable RSpec/ExampleLength, RSpec/MultipleExpectations
 
 require "fileutils"
 require "json"
+require "parser/current"
 require "spec_helper"
 require "stringio"
 require "tmpdir"
@@ -29,6 +30,16 @@ RSpec.describe Henitai::Runner do
     allow(Henitai::CoverageBootstrapper).to receive(:new).and_return(
       coverage_bootstrapper
     )
+  end
+
+  it "loads configuration by default" do
+    config = build_config(reporters: [])
+    allow(Henitai::Configuration).to receive(:load).and_return(config)
+
+    runner = described_class.new
+
+    expect(runner.config).to be(config)
+    expect(Henitai::Configuration).to have_received(:load)
   end
 
   def build_config(overrides = {})
@@ -70,6 +81,19 @@ RSpec.describe Henitai::Runner do
 
   def build_mutant(subject)
     Struct.new(:subject, :status).new(subject, :pending)
+  end
+
+  def build_schema_mutant(file:, status:, source: "1 + 2")
+    node = Parser::CurrentRuby.parse(source)
+    mutant = Henitai::Mutant.new(
+      subject: build_subject("Sample#answer", source_file: file),
+      operator: "ArithmeticOperator",
+      nodes: { original: node, mutated: node },
+      description: "replaced + with -",
+      location: { file:, start_line: 1, end_line: 1, start_col: 0, end_col: 5 }
+    )
+    mutant.status = status
+    mutant
   end
 
   # A mutant carrying a real status plus the predicates Result derives counts
@@ -123,6 +147,176 @@ RSpec.describe Henitai::Runner do
       subject_resolver:, mutant_generator:, static_filter:,
       coverage_bootstrapper:, execution_engine:, integration:, history_store:
     )
+  end
+
+  describe "public collaborator seams" do
+    it "builds a result through the public lazy constructors" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "lib"))
+        File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+        Dir.chdir(dir) do
+          config = build_config(reporters: [], reports_dir: File.join(dir, "reports"))
+          runner = described_class.new(config:)
+          subject = build_subject("Sample#answer", source_file: "lib/sample.rb")
+          mutant = build_schema_mutant(file: "lib/sample.rb", status: :killed)
+          subject_resolver = instance_double(Henitai::SubjectResolver)
+          mutant_generator = instance_double(Henitai::MutantGenerator)
+          static_filter = instance_double(Henitai::StaticFilter)
+          execution_engine = instance_double(Henitai::ExecutionEngine)
+          integration = instance_double(Henitai::Integration::Rspec)
+          diff_analyzer = instance_double(Henitai::GitDiffAnalyzer, head_sha: "abc123")
+          history_store = Henitai::MutantHistoryStore.new(
+            path: File.join(dir, "reports", Henitai::HISTORY_STORE_FILENAME)
+          )
+          integration_class = class_double(Henitai::Integration::Rspec)
+
+          allow(integration_class).to receive(:new).and_return(integration)
+          allow(Henitai::Integration).to receive(:for).and_return(integration_class)
+          allow(Henitai::SubjectResolver).to receive(:new).and_return(subject_resolver)
+          allow(Henitai::MutantGenerator).to receive(:new).and_return(mutant_generator)
+          allow(Henitai::StaticFilter).to receive(:new).and_return(static_filter)
+          allow(Henitai::ExecutionEngine).to receive(:new).and_return(execution_engine)
+          allow(Henitai::GitDiffAnalyzer).to receive(:new).and_return(diff_analyzer)
+          allow(Henitai::MutantHistoryStore).to receive(:new).and_return(history_store)
+          allow(subject_resolver).to receive(:resolve_from_files).and_return([subject])
+          allow(mutant_generator).to receive(:generate).and_return([mutant])
+          allow(static_filter).to receive(:apply).and_return([mutant])
+          allow(execution_engine).to receive(:run).and_return([mutant])
+          allow(Henitai::Reporter).to receive(:run_all)
+
+          result = runner.run
+          schema = result.to_stryker_schema
+
+          expect(
+            git_sha: result.git_sha,
+            thresholds: result.thresholds,
+            partial_rerun: result.partial_rerun?,
+            survivor_stats: result.survivor_stats,
+            source: schema[:files]["lib/sample.rb"][:source],
+            total_mutants: history_store.trend_report[:runs].first[:totalMutants]
+          ).to eq(
+            git_sha: "abc123",
+            thresholds: { high: 80, low: 60 },
+            partial_rerun: false,
+            survivor_stats: nil,
+            source: "class Sample; end\n",
+            total_mutants: 1
+          )
+        end
+      end
+    end
+
+    it "returns an empty source string and nil git sha when the run cannot read source" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "lib"))
+        File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+        Dir.chdir(dir) do
+          config = build_config(
+            reporters: [],
+            reports_dir: File.join(dir, "reports")
+          )
+          runner = described_class.new(config:, mode: { dry_run: true })
+          mutant = build_schema_mutant(file: "lib/missing.rb", status: :pending)
+          subject_resolver = instance_double(Henitai::SubjectResolver)
+          mutant_generator = instance_double(Henitai::MutantGenerator)
+          static_filter = instance_double(Henitai::StaticFilter)
+          diff_analyzer = instance_double(Henitai::GitDiffAnalyzer)
+          dry_run_reporter = instance_double(Henitai::Reporter::DryRun, report: nil)
+
+          allow(Henitai::SubjectResolver).to receive(:new).and_return(subject_resolver)
+          allow(Henitai::MutantGenerator).to receive(:new).and_return(mutant_generator)
+          allow(Henitai::StaticFilter).to receive(:new).and_return(static_filter)
+          allow(Henitai::GitDiffAnalyzer).to receive(:new).and_return(diff_analyzer)
+          allow(subject_resolver).to receive(:resolve_from_files).and_return([])
+          allow(mutant_generator).to receive(:generate).and_return([mutant])
+          allow(static_filter).to receive(:apply).and_return([mutant])
+          allow(diff_analyzer).to receive(:head_sha).and_raise(StandardError)
+          allow(Henitai::Reporter).to receive(:run_all)
+          allow(Henitai::Reporter::DryRun).to receive(:new).and_return(dry_run_reporter)
+
+          result = runner.run
+          schema = result.to_stryker_schema
+
+          expect(
+            git_sha: result.git_sha,
+            thresholds: result.thresholds,
+            partial_rerun: result.partial_rerun?,
+            source: schema[:files]["lib/missing.rb"][:source]
+          ).to eq(
+            git_sha: nil,
+            thresholds: { high: 80, low: 60 },
+            partial_rerun: false,
+            source: ""
+          )
+        end
+      end
+    end
+
+    it "uses the survivor rerun strategy through the public runner path" do
+      Dir.mktmpdir do |dir|
+        report_path = File.join(dir, "mutation-report.json")
+        File.write(report_path, "{}")
+
+        Dir.chdir(dir) do
+          config = build_config(reporters: [], reports_dir: File.join(dir, "reports"))
+          runner = described_class.new(config:, survivors_from: report_path)
+          mutant = build_schema_mutant(file: "lib/sample.rb", status: :survived)
+          subject_resolver = instance_double(Henitai::SubjectResolver)
+          mutant_generator = instance_double(Henitai::MutantGenerator)
+          static_filter = instance_double(Henitai::StaticFilter)
+          execution_engine = instance_double(Henitai::ExecutionEngine)
+          integration = instance_double(Henitai::Integration::Rspec)
+          diff_analyzer = instance_double(Henitai::GitDiffAnalyzer, head_sha: "deadbeef")
+          history_store = Henitai::MutantHistoryStore.new(
+            path: File.join(dir, "reports", Henitai::HISTORY_STORE_FILENAME)
+          )
+          strategy = instance_double(Henitai::SurvivorRerunStrategy)
+          integration_class = class_double(Henitai::Integration::Rspec)
+
+          allow(integration_class).to receive(:new).and_return(integration)
+          allow(Henitai::Integration).to receive(:for).and_return(integration_class)
+          allow(Henitai::GitDiffAnalyzer).to receive(:new).and_return(diff_analyzer)
+          allow(Henitai::SurvivorRerunStrategy).to receive(:new).and_return(strategy)
+          allow(Henitai::SubjectResolver).to receive(:new).and_return(subject_resolver)
+          allow(Henitai::MutantGenerator).to receive(:new).and_return(mutant_generator)
+          allow(Henitai::StaticFilter).to receive(:new).and_return(static_filter)
+          allow(Henitai::ExecutionEngine).to receive(:new).and_return(execution_engine)
+          allow(Henitai::MutantHistoryStore).to receive(:new).and_return(history_store)
+          allow(strategy).to receive_messages(
+            try_recipe_run: [mutant],
+            survivor_stats: {
+              matched: 1,
+              unmatched_count: 0,
+              unmatched_ids: [],
+              skipped_count: 0,
+              drift_warning: false
+            }
+          )
+          allow(execution_engine).to receive(:run).and_return([mutant])
+          allow(Henitai::Reporter).to receive(:run_all)
+
+          result = runner.run
+
+          expect(
+            partial_rerun: result.partial_rerun?,
+            survivor_stats: result.survivor_stats,
+            git_sha: result.git_sha
+          ).to eq(
+            partial_rerun: true,
+            survivor_stats: {
+              matched: 1,
+              unmatched_count: 0,
+              unmatched_ids: [],
+              skipped_count: 0,
+              drift_warning: false
+            },
+            git_sha: "deadbeef"
+          )
+        end
+      end
+    end
   end
 
   # Behavioral pipeline test: real Result, real Reporter dispatch suppressed,
@@ -180,6 +374,9 @@ RSpec.describe Henitai::Runner do
           runner = described_class.new(config: build_config(reports_dir:), mode: { dry_run: true })
           mutants = [dry_run_mutant(:pending), dry_run_mutant(:ignored)]
           stub_dry_run_pipeline(runner, generated: mutants)
+          started_at = Time.at(10)
+          finished_at = Time.at(20)
+          allow(Time).to receive(:now).and_return(started_at, finished_at)
           run_all_called = false
           allow(Henitai::Reporter).to receive(:run_all) { run_all_called = true }
 
@@ -197,6 +394,8 @@ RSpec.describe Henitai::Runner do
             configured_reporters_run: false,
             reports_dir_written: false
           )
+          expect(runner.result.started_at).to eq(started_at)
+          expect(runner.result.finished_at).to eq(finished_at)
         end
       end
     end
@@ -272,7 +471,11 @@ RSpec.describe Henitai::Runner do
           generated: executed,
           executed:
         )
-        allow(Henitai::Reporter).to receive(:run_all) { |kwargs| reported = kwargs[:result] }
+        reported_names = nil
+        allow(Henitai::Reporter).to receive(:run_all) do |kwargs|
+          reported = kwargs[:result]
+          reported_names = kwargs[:names]
+        end
 
         result = runner.run
 
@@ -281,9 +484,11 @@ RSpec.describe Henitai::Runner do
           reported: reported.equal?(result),
           killed: result.killed,
           survived: result.survived,
-          score: result.mutation_score
+          score: result.mutation_score,
+          reporters: reported_names
         ).to eq(
-          returned: true, reported: true, killed: 2, survived: 1, score: 66.67
+          returned: true, reported: true, killed: 2, survived: 1, score: 66.67,
+          reporters: runner.config.reporters
         )
       end
     end
@@ -586,7 +791,7 @@ RSpec.describe Henitai::Runner do
       File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
 
       Dir.chdir(dir) do
-        config = build_config(reporters: ["terminal"])
+        config = build_config(reporters: [:terminal])
         runner = described_class.new(config:)
         subject_resolver = instance_double(Henitai::SubjectResolver)
         mutant_generator = instance_double(Henitai::MutantGenerator)
@@ -658,6 +863,98 @@ RSpec.describe Henitai::Runner do
     end
   end
 
+  it "passes the config to the static filter" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+      Dir.chdir(dir) do
+        config = build_config(reporters: [])
+        runner = described_class.new(config:)
+        subject_resolver = instance_double(Henitai::SubjectResolver)
+        mutant_generator = instance_double(Henitai::MutantGenerator)
+        static_filter = instance_double(Henitai::StaticFilter)
+        execution_engine = instance_double(Henitai::ExecutionEngine)
+        integration = instance_double(Henitai::Integration::Rspec)
+        history_store = build_history_store
+        result = build_result([])
+        received_config = nil
+
+        allow(runner).to receive_messages(
+          subject_resolver:,
+          mutant_generator:,
+          static_filter:,
+          execution_engine:,
+          integration:,
+          history_store:
+        )
+        allow(subject_resolver).to receive(:resolve_from_files).and_return([])
+        allow(mutant_generator).to receive(:generate).and_return([])
+        allow(static_filter).to receive(:apply) do |mutants, received|
+          received_config = received
+          mutants
+        end
+        allow(execution_engine).to receive(:run).and_return([])
+        allow(Henitai::Result).to receive(:new).and_return(result)
+        allow(Henitai::Reporter).to receive(:run_all)
+
+        runner.run
+
+        expect(received_config).to be(config)
+      end
+    end
+  end
+
+  it "passes nil thresholds when the config does not expose them" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+      Dir.chdir(dir) do
+        config = Struct.new(
+          :includes,
+          :excludes,
+          :operators,
+          :timeout,
+          :reporters,
+          :integration,
+          :reports_dir
+        ).new(["lib"], [], :light, 10.0, [], "rspec", "reports")
+        runner = described_class.new(config:)
+        subject_resolver = instance_double(Henitai::SubjectResolver)
+        mutant_generator = instance_double(Henitai::MutantGenerator)
+        static_filter = instance_double(Henitai::StaticFilter)
+        execution_engine = instance_double(Henitai::ExecutionEngine)
+        integration = instance_double(Henitai::Integration::Rspec)
+        history_store = build_history_store
+        result = build_result([])
+        captured = nil
+
+        allow(runner).to receive_messages(
+          subject_resolver:,
+          mutant_generator:,
+          static_filter:,
+          execution_engine:,
+          integration:,
+          history_store:
+        )
+        allow(subject_resolver).to receive(:resolve_from_files).and_return([])
+        allow(mutant_generator).to receive(:generate).and_return([])
+        allow(static_filter).to receive(:apply).and_return([])
+        allow(execution_engine).to receive(:run).and_return([])
+        allow(Henitai::Result).to receive(:new) do |**kwargs|
+          captured = kwargs
+          result
+        end
+        allow(Henitai::Reporter).to receive(:run_all)
+
+        runner.run
+
+        expect(captured[:thresholds]).to be_nil
+      end
+    end
+  end
+
   it "restricts Gate 1 to changed files when --since is given" do
     Dir.mktmpdir do |dir|
       FileUtils.mkdir_p(File.join(dir, "lib"))
@@ -676,9 +973,9 @@ RSpec.describe Henitai::Runner do
         result = build_result([])
         calls = []
 
+        allow(Henitai::GitDiffAnalyzer).to receive(:new).and_return(diff_analyzer)
         allow(runner).to receive_messages(
           subject_resolver:,
-          git_diff_analyzer: diff_analyzer,
           mutant_generator:,
           static_filter:,
           execution_engine:,
@@ -689,7 +986,7 @@ RSpec.describe Henitai::Runner do
           calls << kwargs
           ["lib/sample.rb", "spec/other_spec.rb"]
         end
-        allow(diff_analyzer).to receive(:head_sha).and_return(nil)
+        allow(diff_analyzer).to receive(:head_sha).and_return("new-sha")
         allow(subject_resolver).to receive(:resolve_from_files) do |paths|
           calls << paths
           []
@@ -697,11 +994,17 @@ RSpec.describe Henitai::Runner do
         allow(mutant_generator).to receive(:generate).and_return([])
         allow(static_filter).to receive(:apply).and_return([])
         allow(execution_engine).to receive(:run).and_return([])
-        allow(Henitai::Result).to receive(:new).and_return(result)
+        captured = nil
+        allow(Henitai::Result).to receive(:new) do |**kwargs|
+          captured = kwargs
+          result
+        end
         allow(Henitai::Reporter).to receive(:run_all)
 
         runner.run
 
+        expect(Henitai::GitDiffAnalyzer).to have_received(:new)
+        expect(captured[:git_sha]).to eq("new-sha")
         expect(calls).to eq(
           [
             { from: "HEAD~1", to: "HEAD" },
@@ -744,10 +1047,12 @@ RSpec.describe Henitai::Runner do
           integration:,
           history_store:
         )
-        allow(subject_resolver).to receive_messages(
-          resolve_from_files: [alpha, beta, other],
-          apply_pattern: [alpha, beta]
-        )
+        allow(subject_resolver).to receive(:resolve_from_files).and_return([alpha, beta, other])
+        pattern_calls = []
+        allow(subject_resolver).to receive(:apply_pattern) do |subjects, expression|
+          pattern_calls << [subjects, expression]
+          [alpha, beta, alpha]
+        end
         allow(integration).to receive(:select_tests).and_return([])
         allow(mutant_generator).to receive(:generate) do |selected_subjects, operators, kwargs|
           calls << [selected_subjects, operators.map(&:class), kwargs[:config]]
@@ -760,6 +1065,7 @@ RSpec.describe Henitai::Runner do
 
         runner.run
 
+        expect(pattern_calls).to eq([[[alpha, beta, other], "Sample*"]])
         expect(calls).to eq(
           [[
             [alpha, beta],
@@ -769,51 +1075,6 @@ RSpec.describe Henitai::Runner do
         )
       end
     end
-  end
-
-  it "expands normalized paths" do
-    runner = described_class.new(config: build_config(reporters: []))
-
-    expect(runner.send(:normalize_path, "lib/sample.rb")).to eq(File.expand_path("lib/sample.rb"))
-  end
-
-  it "returns configured thresholds when available" do
-    runner = described_class.new(config: build_config(reporters: []))
-
-    expect(runner.send(:result_thresholds)).to eq(low: 60, high: 80)
-  end
-
-  it "treats missing dirty worktree files as dirty source files" do
-    strategy = Henitai::SurvivorRerunStrategy.new(
-      survivors_from: "reports/mutation-report.json",
-      config: build_config(reporters: []),
-      git_diff_analyzer: instance_double(Henitai::GitDiffAnalyzer)
-    )
-
-    expect(strategy.send(:dirty_source_files?, nil)).to be(true)
-  end
-
-  it "builds a survivor test filter with the default dirty_source_files flag" do
-    loaded = build_loaded_survivors([])
-    filter = instance_double(Henitai::SurvivorTestFilter)
-    diff_analyzer = instance_double(Henitai::GitDiffAnalyzer, working_tree_changed_files: [])
-    strategy = Henitai::SurvivorRerunStrategy.new(
-      survivors_from: "reports/mutation-report.json",
-      config: build_config(reporters: []),
-      git_diff_analyzer: diff_analyzer
-    )
-
-    allow(Henitai::SurvivorTestFilter).to receive(:new).and_return(filter)
-
-    strategy.send(:test_filter, loaded)
-
-    expect(Henitai::SurvivorTestFilter).to have_received(:new).with(
-      coverage_map: {},
-      git_sha: "deadbeef",
-      dirty_source_files: false,
-      worktree_changed_files: [],
-      diff_analyzer: diff_analyzer
-    )
   end
 
   it "finalizes rerun survivors and records drift stats" do
@@ -1020,6 +1281,7 @@ RSpec.describe Henitai::Runner do
           history_store    = build_history_store
           mutant_generator = instance_spy(Henitai::MutantGenerator)
           diff_analyzer    = instance_double(Henitai::GitDiffAnalyzer)
+          received_mutants = :unset
 
           runner = described_class.new(config:, survivors_from: report_path)
           allow(runner).to receive_messages(
@@ -1036,7 +1298,10 @@ RSpec.describe Henitai::Runner do
             head_sha: nil,
             working_tree_changed_files: []
           )
-          allow(execution_engine).to receive(:run).and_return([])
+          allow(execution_engine).to receive(:run) do |mutants, _integration, _config, **_kwargs|
+            received_mutants = mutants
+            []
+          end
           allow(Henitai::Result).to receive(:new).and_return(result)
           allow(Henitai::Reporter).to receive(:run_all)
 
@@ -1044,6 +1309,7 @@ RSpec.describe Henitai::Runner do
 
           # The mutant generator must NOT have been called (fast path taken)
           expect(mutant_generator).not_to have_received(:generate)
+          expect(received_mutants.map(&:stable_id)).to eq([stable_id])
         end
       end
     end
@@ -1245,68 +1511,5 @@ RSpec.describe Henitai::Runner do
       end
     end
   end
-
-  describe "SurvivorRerunStrategy#dirty_source_files? (private)" do
-    def strategy_with_analyzer(analyzer, includes: ["lib"])
-      Henitai::SurvivorRerunStrategy.new(
-        survivors_from: "reports/mutation-report.json",
-        config: build_config(includes:),
-        git_diff_analyzer: analyzer
-      )
-    end
-
-    def stub_analyzer(committed: [])
-      analyzer = instance_double(Henitai::GitDiffAnalyzer)
-      allow(analyzer).to receive(:changed_files).with(from: anything, to: "HEAD").and_return(committed)
-      analyzer
-    end
-
-    it "returns true when a committed source file in includes changed since git_sha" do
-      Dir.mktmpdir do |dir|
-        Dir.chdir(dir) do
-          strategy = strategy_with_analyzer(stub_analyzer(committed: ["lib/henitai/foo.rb"]))
-          expect(strategy.send(:dirty_source_files?, [], git_sha: "abc123")).to be(true)
-        end
-      end
-    end
-
-    it "returns false when only spec files changed since git_sha" do
-      Dir.mktmpdir do |dir|
-        Dir.chdir(dir) do
-          strategy = strategy_with_analyzer(stub_analyzer(committed: ["spec/henitai/foo_spec.rb"]))
-          expect(strategy.send(:dirty_source_files?, [], git_sha: "abc123")).to be(false)
-        end
-      end
-    end
-
-    it "returns false when git_sha is nil and worktree is clean" do
-      Dir.mktmpdir do |dir|
-        Dir.chdir(dir) do
-          strategy = strategy_with_analyzer(instance_double(Henitai::GitDiffAnalyzer))
-          expect(strategy.send(:dirty_source_files?, [], git_sha: nil)).to be(false)
-        end
-      end
-    end
-
-    it "returns true when git diff raises (conservative fallback)" do
-      Dir.mktmpdir do |dir|
-        Dir.chdir(dir) do
-          analyzer = instance_double(Henitai::GitDiffAnalyzer)
-          allow(analyzer).to receive(:changed_files).and_raise(Henitai::GitDiffError, "fatal")
-          strategy = strategy_with_analyzer(analyzer)
-          expect(strategy.send(:dirty_source_files?, [], git_sha: "abc123")).to be(true)
-        end
-      end
-    end
-
-    it "returns true when dirty_worktree_files is nil regardless of git_sha" do
-      Dir.mktmpdir do |dir|
-        Dir.chdir(dir) do
-          strategy = strategy_with_analyzer(instance_double(Henitai::GitDiffAnalyzer))
-          expect(strategy.send(:dirty_source_files?, nil, git_sha: "abc123")).to be(true)
-        end
-      end
-    end
-  end
 end
-# rubocop:enable RSpec/ExampleLength
+# rubocop:enable RSpec/ExampleLength, RSpec/MultipleExpectations
