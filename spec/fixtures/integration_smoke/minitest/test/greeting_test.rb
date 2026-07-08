@@ -18,6 +18,10 @@ class GreetingTest < Minitest::Test
     assert Greeting.new.cheer
   end
 
+  def test_double_is_exact
+    assert_equal 6, Greeting.new.double(3)
+  end
+
   def test_records_the_henitai_worker_slot_when_run_under_henitai
     slot = ENV.fetch("HENITAI_WORKER_SLOT", nil)
     skip "not running under henitai" if slot.nil?

@@ -44,6 +44,8 @@ module Henitai
         add_jobs_option(opts, options)
         add_output_option(opts, options)
         add_survivors_from_option(opts, options)
+        add_incremental_option(opts, options)
+        add_force_option(opts, options)
         add_dry_run_option(opts, options)
         add_fail_on_survivors_option(opts, options)
         add_strict_exit_codes_option(opts, options)

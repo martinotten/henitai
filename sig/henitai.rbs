@@ -244,11 +244,13 @@ module Henitai
     attr_accessor covered_by: Array[String]?
     attr_accessor tests_completed: Integer?
     attr_accessor ignore_reason: String?
+    attr_accessor from_cache: bool
     attr_reader precomputed_stable_id: String?
     attr_reader precomputed_activation_source: String?
 
     def initialize: (subject: Subject, operator: String, nodes: Hash[Symbol, untyped], description: String, location: Hash[Symbol, untyped], ?precomputed_stable_id: String?, ?precomputed_activation_source: String?) -> void
     def stable_id: () -> String
+    def from_cache?: () -> bool
     def killed?: () -> bool
     def survived?: () -> bool
     def pending?: () -> bool
@@ -528,13 +530,16 @@ module Henitai
 
     def initialize: (path: String) -> void
     def record: (untyped, version: String, ?recorded_at: Time) -> void
+    def killed_verdict_for: (String) -> Hash[Symbol, untyped]?
     def trend_report: () -> Hash[Symbol, untyped]
 
     module Sql
       RUNS_TABLE: String
       MUTANTS_TABLE: String
+      MIGRATION_COLUMNS: Hash[String, String]
       INSERT_RUN: String
       UPSERT_MUTANT: String
+      KILLED_VERDICT: String
     end
   end
 
@@ -607,6 +612,24 @@ module Henitai
     def draining_slots?: () -> bool
     def drain_draining_slots: () -> void
     def interrupt_active_slots: () -> void
+  end
+
+  class IncrementalFilter
+    def initialize: (history_store: untyped) -> void
+    def apply: (Array[Mutant]) -> Array[Mutant]
+
+    private
+
+    def history_store: () -> untyped
+    def ambiguous_stable_ids: (Array[Mutant]) -> Set[String]
+    def reusable?: (Mutant) -> bool
+  end
+
+  module VerdictFingerprint
+    def self?.subject_source_hash: (untyped) -> String?
+    def self?.tests_fingerprint: (untyped) -> String?
+    def self?.tests_fingerprint_current?: (String?) -> bool
+    def self?.combined_content_sha: (untyped) -> String?
   end
 
   class MutationSkipDirectives
@@ -731,6 +754,7 @@ module Henitai
       def display_unparse: (untyped) -> String
       def score_line: (Result) -> String
       def format_row: (String, untyped) -> String
+      def reused_verdicts_line: (Result) -> String?
       def count_status: (Result, Symbol) -> Integer
       def format_duration: (Float) -> String
       def format_percent: (Float?) -> String
@@ -880,6 +904,7 @@ module Henitai
     def line_column: (Mutant, Symbol) -> Hash[Symbol, Integer]
     def duration_for: (Mutant) -> Integer?
     def status_reason_for: (Mutant) -> String?
+    def from_cache_for: (Mutant) -> bool?
     def equivalence_uncertainty: () -> String?
     def stryker_status: (Symbol) -> String
   end
@@ -933,7 +958,7 @@ module Henitai
     attr_reader config: Configuration
     attr_reader result: untyped
 
-    def initialize: (?config: Configuration, ?subjects: Array[Subject], ?since: String, ?survivors_from: String?, ?dry_run: bool) -> void
+    def initialize: (?config: Configuration, ?subjects: Array[Subject], ?since: String, ?survivors_from: String?, ?mode: Hash[Symbol, bool]) -> void
     def run: () -> Result
     def resolve_subjects: (?Array[String]) -> untyped
     def generate_mutants: (untyped) -> untyped
@@ -964,6 +989,7 @@ module Henitai
 
     def build_result: (Array[Mutant], Time, Time) -> Result
     def pipeline_mutants: () -> Array[Mutant]
+    def apply_incremental_filter: (Array[Mutant]) -> Array[Mutant]
     def dry_run_result: (Array[Mutant], Time, Time) -> Result
     def source_provider: () -> ^(String) -> String
     def persist_history: (Result, Time) -> void

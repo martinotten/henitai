@@ -31,6 +31,26 @@ module Henitai
       end
     end
 
+    # Verdict-cache lookup for `--incremental`: returns the stored hashes for
+    # a Killed row, or nil for survivors, unknown ids and legacy rows without
+    # hashes (recorded before the cache columns existed).
+    def killed_verdict_for(stable_id)
+      return nil unless File.exist?(path)
+
+      with_database do |db|
+        ensure_schema(db)
+        row = db.get_first_row(Sql::KILLED_VERDICT, stable_id)
+        next nil unless row && row["current_status"] == "killed"
+        next nil if row["subject_source_hash"].nil? || row["covered_tests_fingerprint"].nil?
+
+        {
+          status: :killed,
+          subject_source_hash: row["subject_source_hash"],
+          covered_tests_fingerprint: row["covered_tests_fingerprint"]
+        }
+      end
+    end
+
     def trend_report
       with_database do |db|
         ensure_schema(db)
@@ -59,6 +79,19 @@ module Henitai
     def ensure_schema(db)
       db.execute_batch(Sql::RUNS_TABLE)
       db.execute_batch(Sql::MUTANTS_TABLE)
+      migrate_mutants_table(db)
+    end
+
+    # Additive, idempotent in-place migration: databases created before the
+    # verdict-cache columns existed gain them on first contact, with existing
+    # rows left intact (NULL hashes — valid but never reusable).
+    def migrate_mutants_table(db)
+      existing = db.execute("PRAGMA table_info(mutants)").map { |row| row["name"] }
+      Sql::MIGRATION_COLUMNS.each do |column, type|
+        next if existing.include?(column)
+
+        db.execute("ALTER TABLE mutants ADD COLUMN #{column} #{type}")
+      end
     end
 
     def insert_run(db, result, version, recorded_at)
@@ -185,16 +218,33 @@ module Henitai
     end
 
     def upsert_mutant_bindings(data)
+      mutant = data.fetch(:mutant)
       [
         data.fetch(:mutant_id),
         data.fetch(:first_seen_version),
         data.fetch(:first_seen_at),
         data.fetch(:version),
         data.fetch(:recorded_at).iso8601,
-        data.fetch(:mutant).status.to_s,
+        mutant.status.to_s,
         JSON.generate(data.fetch(:history)),
-        data.fetch(:days_alive)
+        data.fetch(:days_alive),
+        *verdict_cache_bindings(mutant)
       ]
+    end
+
+    # Hashes are persisted for killed mutants only — they are the reusable
+    # verdicts; every other status stays NULL and always re-executes.
+    def verdict_cache_bindings(mutant)
+      return [nil, nil] unless mutant.status.to_s == "killed"
+
+      [
+        VerdictFingerprint.subject_source_hash(mutant),
+        VerdictFingerprint.tests_fingerprint(covered_tests_for(mutant))
+      ]
+    end
+
+    def covered_tests_for(mutant)
+      mutant.respond_to?(:covered_by) ? mutant.covered_by : nil
     end
   end
 end

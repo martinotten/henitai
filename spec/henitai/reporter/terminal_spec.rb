@@ -266,6 +266,27 @@ RSpec.describe Henitai::Reporter::Terminal do
     expect { reporter.report(result) }.to output(expected_output).to_stdout
   end
 
+  it "summarizes verdicts reused from history" do
+    reporter = described_class.new(config: build_config, color_enabled: false)
+    cached = Struct.new(:status) do
+      def survived? = false
+      def from_cache? = true
+    end.new(:killed)
+    result = build_result(
+      mutants: [cached, build_mutant(status: :killed)],
+      scoring_summary: {
+        mutation_score: 100.0,
+        mutation_score_indicator: 100.0,
+        equivalence_uncertainty: nil
+      },
+      duration: 1.0
+    )
+
+    expect { reporter.report(result) }.to output(
+      a_string_including("1 of 2 verdicts reused from history")
+    ).to_stdout
+  end
+
   it "colors the score line green when the score meets the high threshold" do
     reporter = described_class.new(config: build_config, color_enabled: true)
     result = build_result(

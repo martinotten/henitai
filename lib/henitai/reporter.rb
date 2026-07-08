@@ -120,8 +120,16 @@ module Henitai
           format_row("Survived", count_status(result, :survived)),
           format_row("Timeout", count_status(result, :timeout)),
           format_row("No coverage", count_status(result, :no_coverage)),
-          format_row("Duration", format_duration(result.duration))
-        ]
+          format_row("Duration", format_duration(result.duration)),
+          reused_verdicts_line(result)
+        ].compact
+      end
+
+      def reused_verdicts_line(result)
+        reused = result.mutants.count { |mutant| mutant.respond_to?(:from_cache?) && mutant.from_cache? }
+        return nil if reused.zero?
+
+        "#{reused} of #{result.mutants.size} verdicts reused from history"
       end
 
       def partial_summary_lines(result)

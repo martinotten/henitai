@@ -21,6 +21,10 @@ RSpec.describe Greeting do
     expect(described_class.new.cheer).to be_truthy
   end
 
+  it "doubles exactly" do
+    expect(described_class.new.double(3)).to eq(6)
+  end
+
   it "records the henitai worker slot when run under henitai" do
     slot = ENV.fetch("HENITAI_WORKER_SLOT", nil)
     skip "not running under henitai" if slot.nil?

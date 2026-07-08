@@ -334,6 +334,22 @@ RSpec.describe Henitai::Result do
     expect(schema[:files][file][:mutants].first.key?(:statusReason)).to be(false)
   end
 
+  it "serialises fromCache for verdicts reused from history" do
+    mutant = build_mutant(status: :killed)
+    mutant.from_cache = true
+    schema = result([mutant]).to_stryker_schema
+    file = schema[:files].keys.first
+
+    expect(schema[:files][file][:mutants].first[:fromCache]).to be(true)
+  end
+
+  it "omits fromCache for executed mutants" do
+    schema = result([build_mutant(status: :killed)]).to_stryker_schema
+    file = schema[:files].keys.first
+
+    expect(schema[:files][file][:mutants].first.key?(:fromCache)).to be(false)
+  end
+
   it "omits nil durations from the serialised mutant payload" do
     schema = result([build_mutant(status: :pending)]).to_stryker_schema
     file = schema[:files].keys.first

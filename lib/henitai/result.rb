@@ -153,6 +153,7 @@ module Henitai
         location: location_for(mutant),
         status: stryker_status(mutant.status),
         statusReason: status_reason_for(mutant),
+        fromCache: from_cache_for(mutant),
         description: mutant.description,
         duration: duration_for(mutant)
       }.compact.merge(coverage_schema(mutant))
@@ -197,6 +198,14 @@ module Henitai
       return nil unless mutant.respond_to?(:ignore_reason)
 
       mutant.ignore_reason
+    end
+
+    # Vendored extension field (like stableId): marks verdicts reused from
+    # the history store so reports stay honest about what actually executed.
+    def from_cache_for(mutant)
+      return nil unless mutant.respond_to?(:from_cache?)
+
+      mutant.from_cache? || nil
     end
 
     def equivalence_uncertainty

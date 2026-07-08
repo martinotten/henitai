@@ -177,7 +177,7 @@ RSpec.describe Henitai::Runner do
 
         Dir.chdir(dir) do
           reports_dir = File.join(dir, "reports")
-          runner = described_class.new(config: build_config(reports_dir:), dry_run: true)
+          runner = described_class.new(config: build_config(reports_dir:), mode: { dry_run: true })
           mutants = [dry_run_mutant(:pending), dry_run_mutant(:ignored)]
           stub_dry_run_pipeline(runner, generated: mutants)
           run_all_called = false
@@ -197,6 +197,57 @@ RSpec.describe Henitai::Runner do
             configured_reporters_run: false,
             reports_dir_written: false
           )
+        end
+      end
+    end
+  end
+
+  describe "incremental verdict reuse" do
+    it "routes the filtered mutants through the incremental filter when enabled" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "lib"))
+        File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+        Dir.chdir(dir) do
+          runner = described_class.new(config: build_config(reporters: []), mode: { incremental: true })
+          generated = [executed_mutant(:killed)]
+          history_store = build_history_store
+          stub_pipeline(runner, history_store:, generated:, executed: generated)
+          allow(Henitai::Reporter).to receive(:run_all)
+
+          filter = instance_double(Henitai::IncrementalFilter)
+          captured_store = nil
+          apply_calls = 0
+          allow(Henitai::IncrementalFilter).to receive(:new) do |history_store:|
+            captured_store = history_store
+            filter
+          end
+          allow(filter).to receive(:apply) do |mutants|
+            apply_calls += 1
+            mutants
+          end
+
+          runner.run
+
+          expect([captured_store, apply_calls]).to eq([history_store, 1])
+        end
+      end
+    end
+
+    it "never builds the incremental filter on the default path" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "lib"))
+        File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+        Dir.chdir(dir) do
+          runner = described_class.new(config: build_config(reporters: []))
+          stub_pipeline(runner, history_store: build_history_store)
+          allow(Henitai::Reporter).to receive(:run_all)
+          allow(Henitai::IncrementalFilter).to receive(:new)
+
+          runner.run
+
+          expect(Henitai::IncrementalFilter).not_to have_received(:new)
         end
       end
     end

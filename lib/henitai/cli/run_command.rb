@@ -41,7 +41,10 @@ module Henitai
           subjects: subjects_from_argv,
           since: options[:since],
           survivors_from: resolved_survivors_from,
-          dry_run: options.fetch(:dry_run, false)
+          mode: {
+            dry_run: options.fetch(:dry_run, false),
+            incremental: options.fetch(:incremental, false) && !options.fetch(:force, false)
+          }
         )
         runner.run
       end

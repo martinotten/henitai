@@ -49,6 +49,14 @@ module Henitai
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       SQL
 
+      # Nullable verdict-cache columns added after the initial release; see
+      # MIGRATION_COLUMNS. Old rows keep NULL there, which the incremental
+      # filter treats as never-reusable — the correct conservative behavior.
+      MIGRATION_COLUMNS = {
+        "subject_source_hash" => "TEXT",
+        "covered_tests_fingerprint" => "TEXT"
+      }.freeze
+
       UPSERT_MUTANT = <<~SQL
         INSERT INTO mutants (
           mutant_id,
@@ -58,14 +66,24 @@ module Henitai
           last_seen_at,
           current_status,
           status_history,
-          days_alive
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          days_alive,
+          subject_source_hash,
+          covered_tests_fingerprint
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(mutant_id) DO UPDATE SET
           last_seen_version = excluded.last_seen_version,
           last_seen_at = excluded.last_seen_at,
           current_status = excluded.current_status,
           status_history = excluded.status_history,
-          days_alive = excluded.days_alive
+          days_alive = excluded.days_alive,
+          subject_source_hash = excluded.subject_source_hash,
+          covered_tests_fingerprint = excluded.covered_tests_fingerprint
+      SQL
+
+      KILLED_VERDICT = <<~SQL
+        SELECT current_status, subject_source_hash, covered_tests_fingerprint
+        FROM mutants
+        WHERE mutant_id = ?
       SQL
     end
   end

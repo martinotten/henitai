@@ -40,6 +40,8 @@ module Henitai
   autoload :AvailableCpuCount, "henitai/available_cpu_count"
   autoload :EquivalenceDetector, "henitai/equivalence_detector"
   autoload :StaticFilter, "henitai/static_filter"
+  autoload :IncrementalFilter, "henitai/incremental_filter"
+  autoload :VerdictFingerprint, "henitai/verdict_fingerprint"
   autoload :StillbornFilter, "henitai/stillborn_filter"
   autoload :SurvivorLoader,          "henitai/survivor_loader"
   autoload :SurvivorSelector,        "henitai/survivor_selector"

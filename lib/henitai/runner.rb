@@ -28,13 +28,16 @@ module Henitai
   class Runner
     attr_reader :config, :result
 
+    # @param mode [Hash] execution-mode flags: +dry_run:+ stops before Gate 4,
+    #   +incremental:+ reuses still-valid Killed verdicts from history.
     def initialize(config: Configuration.load, subjects: nil, since: nil, survivors_from: nil,
-                   dry_run: false)
+                   mode: {})
       @config         = config
       @subjects       = subjects
       @since          = since
       @survivors_from = survivors_from
-      @dry_run        = dry_run
+      @dry_run        = mode.fetch(:dry_run, false)
+      @incremental    = mode.fetch(:incremental, false)
     end
 
     # Entry point — runs the full pipeline and returns a Result.
@@ -112,10 +115,19 @@ module Henitai
       bootstrap_thread = bootstrap_mutants(source_files)
       mutants = generate_mutants(subjects)
       bootstrap_thread.value
-      filtered = filter_mutants(mutants)
+      filtered = apply_incremental_filter(filter_mutants(mutants))
       return filtered unless survivor_rerun?
 
       survivor_strategy.apply_selection(filtered)
+    end
+
+    # Opt-in verdict reuse (`--incremental`): still-valid Killed verdicts from
+    # the history store are marked killed + from_cache before execution. The
+    # filter is only ever constructed when the flag is set.
+    def apply_incremental_filter(mutants)
+      return mutants unless @incremental
+
+      IncrementalFilter.new(history_store:).apply(mutants)
     end
 
     def bootstrap_mutants(source_files)

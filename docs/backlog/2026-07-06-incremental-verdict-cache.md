@@ -1,6 +1,6 @@
 # Incremental Verdict Cache (Skip Unchanged Mutants)
 
-Status: backlog
+Status: done (2026-07-08; see Implementation Decisions below)
 Date: 2026-07-06
 Severity: Medium
 Source: cross-framework comparison against StrykerJS 9.6 (`--incremental`),
@@ -97,6 +97,30 @@ Prior-art reuse rules (live-verified 2026-07-06):
 - Spec seams: `spec/henitai/mutant_history_store_spec.rb` for the lookup
   API; a new `incremental_filter_spec.rb`; end-to-end assertion in the
   rspec smoke fixture (run twice, second run reuses ≥1 verdict).
+
+## Implementation Decisions (2026-07-08)
+
+- **Killing-test hash adapted to covering-tests fingerprint.** Henitai never
+  populates `Mutant#killing_test`, so the invalidation basis is the mutant's
+  *covering test files* (`covered_by`, the set actually executed against it):
+  stored as `covered_tests_fingerprint` (JSON of sorted paths + combined
+  content SHA256). Any change/deletion of any covering test invalidates —
+  strictly more conservative than Stryker's killing-test rule.
+- **Schema**: two nullable columns (`subject_source_hash`,
+  `covered_tests_fingerprint`) added to `mutants` via idempotent
+  `ALTER TABLE` in `ensure_schema`; legacy rows stay NULL = never reusable.
+- **Stable-id ambiguity guard.** MutantIdentity omits coordinates, so
+  distinct mutants can share a stable id (observed on the dogfood run: a
+  CompileError aliasing a Killed verdict). `IncrementalFilter` skips reuse
+  for any id occurring more than once in the run. Root cause filed as
+  [[2026-07-08-stable-id-collisions]].
+- **Smoke double-run assertion deferred.** The smoke fixtures never produce
+  Killed mutants (activation clobbered by the specs' `require_relative` —
+  filed as [[2026-07-08-smoke-fixtures-never-kill]]), so there is nothing to
+  reuse there. End-to-end verification was done on the dogfood repo instead:
+  `henitai run 'Henitai::TestPrioritizer#sort'` twice, second run with
+  `--incremental` reused 18 of 19 verdicts with matching scores. Re-add the
+  smoke assertion when the fixture ticket lands.
 
 ## Fix Plan (TDD)
 

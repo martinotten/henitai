@@ -67,6 +67,24 @@ module Henitai
         end
       end
 
+      def add_incremental_option(opts, options)
+        opts.on(
+          "--incremental",
+          "Reuse still-valid Killed verdicts from the history store instead of re-executing them"
+        ) do
+          options[:incremental] = true
+        end
+      end
+
+      def add_force_option(opts, options)
+        opts.on(
+          "--force",
+          "Bypass verdict reuse and execute every mutant (only meaningful with --incremental)"
+        ) do
+          options[:force] = true
+        end
+      end
+
       def add_fail_on_survivors_option(opts, options)
         opts.on(
           "--fail-on-survivors",

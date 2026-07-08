@@ -129,6 +129,16 @@ and the terminal only shows progress plus a concise summary. Pass
 when the mutation score meets the low threshold, `1` when it does not, and `2`
 for framework errors.
 
+`henitai run --incremental` reuses still-valid `Killed` verdicts from the
+history store (`reports/mutation-history.sqlite3`) instead of re-executing
+them: a verdict is reused only when the subject's source and every covering
+test file are byte-identical to what was recorded. Reused mutants stay
+visible in the report (`fromCache: true` beside `stableId`) and count toward
+MS/MSI; the terminal prints `N of M verdicts reused from history`.
+Survivors, timeouts and errors always re-execute. `--force` bypasses reuse.
+`henitai run --dry-run` lists the post-filter mutant set without executing
+any tests and always exits `0`.
+
 `henitai run --survivors-from ...` performs a partial rerun: it reports only
 the selected survivors, skips threshold-based exit checks, and does not update
 the run trend history. Dirty worktree changes are included, so you can edit

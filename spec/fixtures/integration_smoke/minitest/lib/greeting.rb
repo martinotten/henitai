@@ -17,4 +17,8 @@ class Greeting
   def cheer
     1 + 1 # henitai:disable ArithmeticOperator: smoke per-operator
   end
+
+  def double(input)
+    input * 2
+  end
 end
