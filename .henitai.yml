@@ -19,7 +19,8 @@ mutation:
   ignore_patterns:
     - "(send _ {:log :debug :info :warn :error} _)" # Logger calls
     - "(send _ :puts _)" # puts / debug output
-  timeout: 10.0
+  # timeout intentionally unset: per-mutant auto-calibration
+  # (timeout_multiplier x measured baseline of the selected tests, 2s floor)
   max_flaky_retries: 3
 
 # Parallelisation
