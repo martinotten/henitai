@@ -4,6 +4,10 @@ require "fileutils"
 # Guarded to avoid a circular require: integration.rb requires this file at its
 # tail, by which point Base is already defined, so the require is skipped.
 require_relative "../integration" unless defined?(Henitai::Integration::Base)
+require_relative "minitest_load_path"
+require_relative "minitest_suite_command"
+require_relative "minitest_test_runner"
+require_relative "rails_environment_preloader"
 
 module Henitai
   module Integration
@@ -26,18 +30,18 @@ module Henitai
       end
 
       def run_mutant(mutant:, test_files:, timeout:)
-        setup_load_path
+        MinitestLoadPath.ensure!
         super
       end
 
       def spawn_mutant(mutant:, test_files:)
-        setup_load_path
+        MinitestLoadPath.ensure!
         super
       end
 
       def run_in_child(mutant:, test_files:, log_paths:)
         ENV["RAILS_ENV"] = "test" unless ENV["RAILS_ENV"] == "test"
-        preload_environment
+        RailsEnvironmentPreloader.new.call
         super
       end
 
@@ -50,50 +54,14 @@ module Henitai
         cleanup_suite_process(pid, wait_result)
       end
 
+      def suite_command(test_files)
+        MinitestSuiteCommand.new.build(test_files)
+      end
+
       private
 
-      def suite_command(test_files)
-        ["bundle", "exec", "ruby", "-I", "test",
-         "-r", "henitai/minitest_simplecov",
-         "-r", "henitai/minitest_coverage_hook",
-         "-e", "ARGV.each { |f| require File.expand_path(f) }",
-         *test_files]
-      end
-
       def run_tests(test_files)
-        suppress_simplecov!
-        suppress_minitest_autorun!
-        test_files.each { |file| require File.expand_path(file) }
-        # @type var empty_args: Array[String]
-        empty_args = []
-        status = ::Minitest.run(empty_args)
-        return status if status.is_a?(Integer)
-
-        status == true ? 0 : 1
-      end
-
-      def preload_environment
-        env_file = File.expand_path("config/environment.rb")
-        require env_file if File.exist?(env_file)
-      end
-
-      def setup_load_path
-        test_dir = File.expand_path("test")
-        $LOAD_PATH.unshift(test_dir) unless $LOAD_PATH.include?(test_dir)
-      end
-
-      def suppress_minitest_autorun!
-        require "minitest"
-        singleton_class = ::Minitest.singleton_class
-        suppressor = @minitest_autorun_suppressor ||= Module.new.tap do |mod|
-          mod.define_method(:autorun) { nil }
-        end
-        return if singleton_class.ancestors.include?(suppressor)
-
-        singleton_class.prepend(suppressor)
-        nil
-      rescue LoadError, NameError
-        nil
+        MinitestTestRunner.new.call(test_files)
       end
 
       def subprocess_env

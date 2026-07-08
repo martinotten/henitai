@@ -80,20 +80,20 @@ RSpec.describe Henitai::Integration::Minitest do
     write_file(dir, "lib/sample.rb", sample_source)
   end
 
-  def stub_minitest_run(order)
+  def stub_minitest_run(order, return_value: true)
     allow(Minitest).to receive(:run) do |argv|
       order << [:minitest, argv]
-      true
+      return_value
     end
   end
 
-  def stub_minitest_process_flow(order, test_file)
+  def stub_minitest_process_flow(order, test_file, minitest_result: true)
     stub_minitest_exit(order)
     stub_minitest_fork(order)
     stub_minitest_wait(order)
     stub_minitest_status
     stub_minitest_requires(order)
-    stub_minitest_run(order)
+    stub_minitest_run(order, return_value: minitest_result)
     write_sample_library(File.dirname(test_file, 2))
   end
 
@@ -225,33 +225,138 @@ RSpec.describe Henitai::Integration::Minitest do
     end
   end
 
-  it "sets up the load path before running a mutant" do
+  it "does not reap the baseline child when the wait result is present" do
+    integration = described_class.new
+
+    with_temp_workspace do
+      calls = []
+
+      allow(Process).to receive(:spawn).and_return(4321)
+      allow(integration).to receive_messages(
+        wait_with_timeout: Struct.new(:success?).new(true),
+        build_result: :killed
+      )
+      allow(integration).to receive(:cleanup_child_process) do |pid|
+        calls << [:cleanup, pid]
+      end
+      allow(integration).to receive(:reap_child) do |pid|
+        calls << [:reap, pid]
+      end
+
+      integration.run_suite(["test/sample_test.rb"], timeout: 4.0)
+
+      expect(calls).to eq([[:cleanup, 4321]])
+    end
+  end
+
+  it "skips cleanup entirely when the baseline process never spawned" do
+    integration = described_class.new
+
+    with_temp_workspace do
+      calls = []
+
+      allow(Process).to receive(:spawn).and_return(nil)
+      allow(integration).to receive_messages(wait_with_timeout: :timeout, build_result: :timeout)
+      allow(integration).to receive(:cleanup_child_process) { |pid| calls << [:cleanup, pid] }
+      allow(integration).to receive(:reap_child) { |pid| calls << [:reap, pid] }
+
+      integration.run_suite(["test/sample_test.rb"], timeout: 4.0)
+
+      expect(calls).to be_empty
+    end
+  end
+
+  it "spawns the suite process with the expected env, command, and streams" do
+    integration = described_class.new
+    spawn_calls = []
+
+    with_env("RAILS_ENV", nil) do
+      with_temp_workspace do
+        allow(Process).to receive(:spawn) do |*args, out:, err:|
+          spawn_calls << args
+          out.write("out-line\n")
+          err.write("err-line\n")
+          4321
+        end
+        allow(integration).to receive(:wait_with_timeout).and_return(Struct.new(:success?).new(true))
+
+        result = integration.run_suite(["test/sample_test.rb"], timeout: 4.0)
+        env, *command = spawn_calls.fetch(0)
+
+        expect([result.stdout, result.stderr, env, command]).to eq(
+          [
+            "out-line\n", "err-line\n",
+            { "PARALLEL_WORKERS" => "1", "RAILS_ENV" => "test" },
+            integration.suite_command(["test/sample_test.rb"])
+          ]
+        )
+      end
+    end
+  end
+
+  def build_mutant_log_support_double(log_paths, mutant)
+    log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
+    allow(log_support).to receive_messages(read_log_file: "", write_combined_log: nil)
+    allow(log_support).to receive(:with_coverage_dir).with(mutant.id).and_yield
+    allow(log_support).to receive(:capture_child_output).with(log_paths).and_yield
+    log_support
+  end
+
+  def stub_mutant_log_support(integration, mutant, order)
+    log_support = build_mutant_log_support_double(build_log_paths("mutant-setup"), mutant)
+    allow(Henitai::Integration::MinitestLoadPath).to receive(:ensure!) do
+      order << :setup_load_path
+    end
+    allow(integration).to receive(:scenario_log_support).and_return(log_support)
+  end
+
+  def run_mutant_with_stubbed_flow(order, minitest_result:)
     with_temp_workspace do |dir|
       test_file = write_file(dir, "test/sample_test.rb", minitest_source)
       mutant = Struct.new(:id).new("setup")
       integration = described_class.new
-      order = []
-      log_paths = build_log_paths("mutant-setup")
-      log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
-      allow(log_support).to receive(:read_log_file).and_return("")
-      allow(log_support).to receive(:write_combined_log)
+      stub_mutant_log_support(integration, mutant, order)
+      stub_minitest_process_flow(order, test_file, minitest_result:)
 
-      allow(integration).to receive(:setup_load_path) do
-        order << :setup_load_path
-      end
-      allow(integration).to receive(:scenario_log_support).and_return(log_support)
-      allow(log_support).to receive(:with_coverage_dir).with(mutant.id).and_yield
-      allow(log_support).to receive(:capture_child_output).with(log_paths).and_yield
-      stub_minitest_process_flow(order, test_file)
-
-      integration.run_mutant(
-        mutant:,
-        test_files: [test_file],
-        timeout: 4.0
-      )
-
-      expect(order.first).to eq(:setup_load_path)
+      integration.run_mutant(mutant:, test_files: [test_file], timeout: 4.0)
     end
+  end
+
+  it "sets up the load path before running a mutant" do
+    order = []
+
+    run_mutant_with_stubbed_flow(order, minitest_result: true)
+
+    expect(order.first).to eq(:setup_load_path)
+  end
+
+  context "when Minitest.run passes" do
+    it "exits the child process with status 0" do
+      order = []
+
+      run_mutant_with_stubbed_flow(order, minitest_result: true)
+
+      expect(order).to include([:exit, 0])
+    end
+  end
+
+  context "when Minitest.run fails" do
+    it "exits the child process with status 1" do
+      order = []
+
+      run_mutant_with_stubbed_flow(order, minitest_result: false)
+
+      expect(order).to include([:exit, 1])
+    end
+  end
+
+  it "delegates suite_command to MinitestSuiteCommand" do
+    integration = described_class.new
+    test_files = ["test/sample_test.rb"]
+
+    expect(integration.suite_command(test_files)).to eq(
+      Henitai::Integration::MinitestSuiteCommand.new.build(test_files)
+    )
   end
 
   it "lists minitest test files and excludes system tests" do
