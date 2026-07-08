@@ -1174,6 +1174,87 @@ RSpec.describe Henitai::Runner do
         end
       end
     end
+
+    describe "recipe fast path validation" do
+      it "skips mutant generation when all survivors have cached activation recipes and passes executed mutants" do # rubocop:disable RSpec/MultipleExpectations
+        Dir.mktmpdir do |dir|
+          FileUtils.mkdir_p(File.join(dir, "lib"))
+          File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+          report_path = File.join(dir, "mutation-report.json")
+          stable_id   = "deadbeef" * 8
+
+          report_data = {
+            "schemaVersion" => "1.0",
+            "files" => {
+              "lib/sample.rb" => {
+                "language" => "ruby", "source" => "",
+                "mutants" => [{
+                  "stableId" => stable_id,
+                  "status" => "Survived"
+                }]
+              }
+            }
+          }
+          File.write(report_path, JSON.generate(report_data))
+
+          recipe = {
+            "activationSource" => "define_method(:value) do\n  nil\nend\n",
+            "namespace" => "Sample",
+            "methodName" => "value",
+            "methodType" => "instance",
+            "sourceFile" => "lib/sample.rb",
+            "operator" => "ArithmeticOperator",
+            "description" => "+ to -",
+            "location" => { "file" => "lib/sample.rb", "startLine" => 1,
+                            "endLine" => 1, "startCol" => 0, "endCol" => 5 },
+            "coveredBy" => []
+          }
+          recipe_path = File.join(dir, Henitai::SurvivorActivationCache::FILENAME)
+          File.write(recipe_path, JSON.generate({ stable_id => recipe }))
+
+          original = Dir.pwd
+          begin
+            Dir.chdir(dir) do
+              config = build_config(reporters: [])
+              execution_engine = instance_double(Henitai::ExecutionEngine)
+              integration = instance_double(Henitai::Integration::Rspec)
+              history_store = build_history_store
+              diff_analyzer = instance_double(Henitai::GitDiffAnalyzer)
+
+              runner = described_class.new(config:, survivors_from: report_path)
+              allow(runner).to receive_messages(
+                execution_engine:,
+                integration:,
+                history_store:,
+                git_diff_analyzer: diff_analyzer
+              )
+              allow(runner).to receive(:source_files).and_raise(
+                "source_files should not be called on the recipe fast path"
+              )
+              allow(diff_analyzer).to receive_messages(
+                changed_files: [],
+                head_sha: nil,
+                working_tree_changed_files: []
+              )
+
+              expected_mutants = [executed_mutant(:killed)]
+              allow(execution_engine).to receive(:run).and_return(expected_mutants)
+              allow(Henitai::Reporter).to receive(:run_all)
+              allow(Henitai::Result).to receive(:new).and_call_original
+
+              result = runner.run
+              expect(result.mutants).to eq(expected_mutants)
+              expect(Henitai::Result).to have_received(:new).with(
+                hash_including(mutants: expected_mutants)
+              )
+            end
+          ensure
+            Dir.chdir(original)
+          end
+        end
+      end
+    end
   end
 
   describe "survivors_from:" do
@@ -1241,6 +1322,225 @@ RSpec.describe Henitai::Runner do
           expect(Henitai::Result).to have_received(:new).with(
             hash_including(partial_rerun: false)
           )
+        end
+      end
+    end
+  end
+
+  describe "#initialize" do
+    it "defaults config to Configuration.load when none is provided" do
+      fake_config = instance_double(Henitai::Configuration)
+      allow(Henitai::Configuration).to receive(:load).and_return(fake_config)
+      runner = described_class.new
+      expect(runner.config).to eq(fake_config)
+    end
+  end
+
+  describe "#resolve_subjects" do
+    it "defaults source_files to self.source_files" do # rubocop:disable RSpec/MultipleExpectations
+      runner = described_class.new(config: build_config)
+      resolver = instance_double(Henitai::SubjectResolver)
+      allow(resolver).to receive(:resolve_from_files).with(["lib/sample.rb"]).and_return([])
+      allow(runner).to receive_messages(
+        source_files: ["lib/sample.rb"],
+        subject_resolver: resolver
+      )
+
+      expect(runner.send(:resolve_subjects)).to eq([])
+      expect(resolver).to have_received(:resolve_from_files).with(["lib/sample.rb"])
+    end
+
+    it "applies pattern on the resolver with the correct pattern expression" do # rubocop:disable RSpec/MultipleExpectations
+      subject_pattern = double(expression: "Sample*")
+      runner = described_class.new(config: build_config, subjects: [subject_pattern])
+      resolver = instance_double(Henitai::SubjectResolver)
+
+      subj = build_subject("Sample#answer", source_file: "lib/sample.rb")
+      allow(resolver).to receive(:resolve_from_files).with(["lib/sample.rb"]).and_return([subj])
+      allow(resolver).to receive(:apply_pattern).with([subj], "Sample*").and_return([subj])
+      allow(runner).to receive_messages(
+        source_files: ["lib/sample.rb"],
+        subject_resolver: resolver
+      )
+
+      expect(runner.send(:resolve_subjects)).to eq([subj])
+      expect(resolver).to have_received(:resolve_from_files).with(["lib/sample.rb"])
+      expect(resolver).to have_received(:apply_pattern).with([subj], "Sample*")
+    end
+  end
+
+  describe "#mutants_for" do
+    it "calls static_filter.apply with the generated mutants and config" do # rubocop:disable RSpec/MultipleExpectations
+      config = build_config(reporters: [])
+      runner = described_class.new(config:)
+
+      subject = build_subject("Sample#answer", source_file: "lib/sample.rb")
+      mutants = [build_mutant(subject)]
+      filtered = [build_mutant(subject)]
+
+      static_filter = instance_double(Henitai::StaticFilter)
+      allow(static_filter).to receive(:apply).with(mutants, config).and_return(filtered)
+      allow(runner).to receive_messages(
+        static_filter:,
+        generate_mutants: mutants
+      )
+
+      fake_thread = instance_double(Thread, value: nil)
+      allow(Thread).to receive(:new).and_return(fake_thread)
+
+      expect(runner.send(:mutants_for, [subject], ["lib/sample.rb"])).to eq(filtered)
+      expect(static_filter).to have_received(:apply).with(mutants, config)
+      expect(Thread).to have_received(:new)
+      expect(fake_thread).to have_received(:value)
+    end
+
+    it "applies survivor selection in survivor rerun" do # rubocop:disable RSpec/MultipleExpectations
+      report_path = "reports/mutation-report.json"
+      config = build_config(reporters: [])
+      runner = described_class.new(config:, survivors_from: report_path)
+
+      subject = build_subject("Sample#answer", source_file: "lib/sample.rb")
+      mutants = [build_mutant(subject)]
+      filtered = [build_mutant(subject)]
+      selected = [build_mutant(subject)]
+
+      static_filter = instance_double(Henitai::StaticFilter)
+      allow(static_filter).to receive(:apply).and_return(filtered)
+
+      strategy = instance_double(Henitai::SurvivorRerunStrategy)
+      allow(strategy).to receive(:apply_selection).with(filtered).and_return(selected)
+      allow(runner).to receive_messages(
+        static_filter:,
+        survivor_strategy: strategy,
+        generate_mutants: mutants,
+        bootstrap_mutants: instance_double(Thread, value: nil)
+      )
+
+      expect(runner.send(:mutants_for, [subject], ["lib/sample.rb"])).to eq(selected)
+      expect(strategy).to have_received(:apply_selection).with(filtered)
+    end
+  end
+
+  describe "#report and #progress_reporter" do
+    it "calls Reporter.run_all with exact parameters" do
+      config = build_config(reporters: ["terminal"])
+      runner = described_class.new(config:)
+      result = build_result([])
+      history = instance_double(Henitai::MutantHistoryStore)
+      allow(runner).to receive(:history_store).and_return(history)
+      allow(Henitai::Reporter).to receive(:run_all)
+
+      runner.send(:report, result)
+
+      expect(Henitai::Reporter).to have_received(:run_all).with(
+        names: ["terminal"],
+        result:,
+        config:,
+        history_store: history
+      )
+    end
+
+    it "returns a terminal reporter when reporters contains symbols" do
+      config = build_config(reporters: [:terminal])
+      runner = described_class.new(config:)
+      expect(runner.send(:progress_reporter)).to be_a(Henitai::Reporter::Terminal)
+    end
+  end
+
+  describe "#source_provider" do
+    it "returns a lambda that reads files and caches their content" do # rubocop:disable RSpec/MultipleExpectations
+      runner = described_class.new(config: build_config)
+      provider = runner.send(:source_provider)
+      expect(provider).to be_a(Proc)
+
+      Dir.mktmpdir do |dir|
+        file_path = File.join(dir, "test.txt")
+        File.write(file_path, "hello world")
+
+        expect(provider.call(file_path)).to eq("hello world")
+        File.write(file_path, "changed")
+        expect(provider.call(file_path)).to eq("hello world")
+
+        expect(provider.call("nonexistent.txt")).to eq("")
+      end
+    end
+  end
+
+  describe "#safe_head_sha" do
+    it "returns the git head SHA" do
+      runner = described_class.new(config: build_config)
+      analyzer = instance_double(Henitai::GitDiffAnalyzer, head_sha: "abc1234")
+      allow(runner).to receive(:git_diff_analyzer).and_return(analyzer)
+      expect(runner.send(:safe_head_sha)).to eq("abc1234")
+    end
+
+    it "returns nil and rescues StandardError when GitDiffAnalyzer fails" do
+      runner = described_class.new(config: build_config)
+      analyzer = instance_double(Henitai::GitDiffAnalyzer)
+      allow(analyzer).to receive(:head_sha).and_raise(StandardError, "git failed")
+      allow(runner).to receive(:git_diff_analyzer).and_return(analyzer)
+      expect(runner.send(:safe_head_sha)).to be_nil
+    end
+  end
+
+  describe "#git_diff_analyzer" do
+    it "instantiates a GitDiffAnalyzer" do
+      runner = described_class.new(config: build_config)
+      expect(runner.send(:git_diff_analyzer)).to be_a(Henitai::GitDiffAnalyzer)
+    end
+  end
+
+  describe "#unique_subjects" do
+    it "keeps subjects with the same expression if they are in different source files" do
+      runner = described_class.new(config: build_config)
+      s1 = build_subject("Greeter#hello", source_file: "lib/foo.rb")
+      s2 = build_subject("Greeter#hello", source_file: "lib/bar.rb")
+      s3 = build_subject("Greeter#hello", source_file: "lib/foo.rb")
+
+      unique = runner.send(:unique_subjects, [s1, s2, s3])
+      expect(unique).to eq([s1, s2])
+    end
+  end
+
+  describe "#result_thresholds" do
+    it "returns nil when config does not respond to thresholds" do
+      config = Object.new
+      runner = described_class.new(config:)
+      expect(runner.send(:result_thresholds)).to be_nil
+    end
+
+    it "returns config thresholds when config responds to thresholds" do
+      config = build_config(thresholds: { low: 20, high: 80 })
+      runner = described_class.new(config:)
+      expect(runner.send(:result_thresholds)).to eq(low: 20, high: 80)
+    end
+  end
+
+  describe "#reject_excluded" do
+    it "returns the files immediately and does not normalize paths when excludes is empty" do # rubocop:disable RSpec/MultipleExpectations
+      runner = described_class.new(config: build_config(excludes: []))
+      allow(runner).to receive(:normalize_path).and_call_original
+
+      expect(runner.send(:reject_excluded, ["lib/foo.rb"])).to eq(["lib/foo.rb"])
+      expect(runner).not_to have_received(:normalize_path)
+    end
+
+    it "filters out excluded files by pattern" do
+      runner = described_class.new(config: build_config(excludes: ["lib/exclude*"]))
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "lib"))
+        File.write(File.join(dir, "lib/foo.rb"), "")
+        File.write(File.join(dir, "lib/exclude_me.rb"), "")
+
+        original = Dir.pwd
+        begin
+          Dir.chdir(dir) do
+            files = ["lib/foo.rb", "lib/exclude_me.rb"]
+            filtered = runner.send(:reject_excluded, files)
+            expect(filtered).to eq(["lib/foo.rb"])
+          end
+        ensure
+          Dir.chdir(original)
         end
       end
     end

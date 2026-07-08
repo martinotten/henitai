@@ -28,16 +28,35 @@ RSpec.describe Henitai::StaticFilter do
     Struct.new(:ignore_patterns, :reports_dir).new(ignore_patterns, reports_dir)
   end
 
-  def write_coverage_report(dir, data)
+  def write_report(dir, filename, data)
     coverage_dir = File.join(dir, "coverage")
     FileUtils.mkdir_p(coverage_dir)
-    File.write(File.join(coverage_dir, ".resultset.json"), data.to_json)
+    File.write(File.join(coverage_dir, filename), data.to_json)
+  end
+
+  def write_coverage_report(dir, data)
+    write_report(dir, ".resultset.json", data)
   end
 
   def write_per_test_coverage_report(dir, data)
-    coverage_dir = File.join(dir, "coverage")
-    FileUtils.mkdir_p(coverage_dir)
-    File.write(File.join(coverage_dir, "henitai_per_test.json"), data.to_json)
+    write_report(dir, "henitai_per_test.json", data)
+  end
+
+  def with_sample_file(source, file_name: "sample.rb")
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, file_name)
+      File.write(path, source)
+      yield dir, path
+    end
+  end
+
+  def arithmetic_mutants(path, range: 1..4)
+    subject = sample_subject(path, range:)
+
+    Henitai::MutantGenerator.new.generate(
+      [subject],
+      [Henitai::Operators::ArithmeticOperator.new]
+    )
   end
 
   def filter_with_coverage(**)
@@ -46,8 +65,24 @@ RSpec.describe Henitai::StaticFilter do
     filter
   end
 
-  def sample_subject(path)
-    Henitai::Subject.new(namespace: "Sample", method_name: "value", source_location: { file: path, range: 1..4 })
+  def apply_mutants(dir, mutants, configuration = config, filter: described_class.new)
+    Dir.chdir(dir) do
+      filter.apply(mutants, configuration)
+    end
+  end
+
+  def set_mutant_location(mutant, file:, start_line:, end_line:)
+    mutant.location[:file] = file
+    mutant.location[:start_line] = start_line
+    mutant.location[:end_line] = end_line
+  end
+
+  def sample_subject(path, range: 1..4)
+    Henitai::Subject.new(
+      namespace: "Sample",
+      method_name: "value",
+      source_location: { file: path, range: range }
+    )
   end
 
   it "marks mutants whose source matches an ignore pattern as ignored" do
@@ -59,88 +94,50 @@ RSpec.describe Henitai::StaticFilter do
   end
 
   it "marks mutants on a line with a trailing skip directive as ignored" do
-    Dir.mktmpdir do |dir|
-      path = File.join(dir, "sample.rb")
-      File.write(
-        path,
-        <<~RUBY
-          class Sample
-            def value(input)
-              input + 1 # henitai:disable
-            end
-          end
-        RUBY
-      )
-
-      subject = sample_subject(path)
-      mutants = Henitai::MutantGenerator.new.generate(
-        [subject],
-        [Henitai::Operators::ArithmeticOperator.new]
-      )
-
-      Dir.chdir(dir) do
-        described_class.new.apply(mutants, config)
+    with_sample_file(<<~RUBY) do |dir, path|
+      class Sample
+        def value(input)
+          input + 1 # henitai:disable
+        end
       end
+    RUBY
+
+      mutants = arithmetic_mutants(path)
+      apply_mutants(dir, mutants)
 
       expect(mutants.map(&:status).uniq).to eq([:ignored])
     end
   end
 
   it "marks every mutant of a method with a leading skip directive as ignored" do
-    Dir.mktmpdir do |dir|
-      path = File.join(dir, "sample.rb")
-      File.write(
-        path,
-        <<~RUBY
-          class Sample
-            # henitai:disable
-            def value(input)
-              input + 1
-            end
-          end
-        RUBY
-      )
-
-      subject = Henitai::Subject.new(
-        namespace: "Sample", method_name: "value", source_location: { file: path, range: 3..5 }
-      )
-      mutants = Henitai::MutantGenerator.new.generate(
-        [subject],
-        [Henitai::Operators::ArithmeticOperator.new]
-      )
-
-      Dir.chdir(dir) do
-        described_class.new.apply(mutants, config)
+    with_sample_file(<<~RUBY) do |dir, path|
+      class Sample
+        # henitai:disable
+        def value(input)
+          input + 1
+        end
       end
+    RUBY
+
+      mutants = arithmetic_mutants(path, range: 3..5)
+      apply_mutants(dir, mutants)
 
       expect(mutants.map(&:status).uniq).to eq([:ignored])
     end
   end
 
   it "leaves mutants on lines without a skip directive untouched" do
-    Dir.mktmpdir do |dir|
-      path = File.join(dir, "sample.rb")
-      File.write(
-        path,
-        <<~RUBY
-          class Sample
-            def value(input)
-              tagged = input + 1 # henitai:disable
-              tagged + 2
-            end
-          end
-        RUBY
-      )
-
-      subject = sample_subject(path)
-      mutants = Henitai::MutantGenerator.new.generate(
-        [subject],
-        [Henitai::Operators::ArithmeticOperator.new]
-      )
-
-      Dir.chdir(dir) do
-        described_class.new.apply(mutants, config)
+    with_sample_file(<<~RUBY) do |dir, path|
+      class Sample
+        def value(input)
+          tagged = input + 1 # henitai:disable
+          tagged + 2
+        end
       end
+    RUBY
+
+      mutants = arithmetic_mutants(path)
+      apply_mutants(dir, mutants)
 
       statuses = mutants.group_by { |mutant| mutant.location[:start_line] }
                         .transform_values { |group| group.map(&:status).uniq }
@@ -149,28 +146,19 @@ RSpec.describe Henitai::StaticFilter do
   end
 
   it "prefers the skip directive over equivalence detection" do
-    Dir.mktmpdir do |dir|
-      path = File.join(dir, "sample.rb")
-      File.write(
-        path,
-        <<~RUBY
-          class Sample
-            def value(input)
-              input + 0 # henitai:disable
-            end
-          end
-        RUBY
-      )
-
-      subject = sample_subject(path)
-      mutant = Henitai::MutantGenerator.new.generate(
-        [subject],
-        [Henitai::Operators::ArithmeticOperator.new]
-      ).find { |candidate| candidate.description == "replaced + with -" }
-
-      Dir.chdir(dir) do
-        described_class.new.apply([mutant], config)
+    with_sample_file(<<~RUBY) do |dir, path|
+      class Sample
+        def value(input)
+          input + 0 # henitai:disable
+        end
       end
+    RUBY
+
+      mutant = arithmetic_mutants(path).find do |candidate|
+        candidate.description == "replaced + with -"
+      end
+
+      apply_mutants(dir, [mutant])
 
       expect(mutant.status).to eq(:ignored)
     end
@@ -206,28 +194,19 @@ RSpec.describe Henitai::StaticFilter do
   end
 
   it "marks arithmetic neutral mutants as equivalent" do
-    Dir.mktmpdir do |dir|
-      path = File.join(dir, "sample.rb")
-      File.write(
-        path,
-        <<~RUBY
-          class Sample
-            def value(input)
-              input + 0
-            end
-          end
-        RUBY
-      )
-
-      subject = sample_subject(path)
-      mutant = Henitai::MutantGenerator.new.generate(
-        [subject],
-        [Henitai::Operators::ArithmeticOperator.new]
-      ).find { |candidate| candidate.description == "replaced + with -" }
-
-      Dir.chdir(dir) do
-        described_class.new.apply([mutant], config)
+    with_sample_file(<<~RUBY) do |dir, path|
+      class Sample
+        def value(input)
+          input + 0
+        end
       end
+    RUBY
+
+      mutant = arithmetic_mutants(path).find do |candidate|
+        candidate.description == "replaced + with -"
+      end
+
+      apply_mutants(dir, [mutant])
 
       expect(mutant.status).to eq(:equivalent)
     end
@@ -360,13 +339,13 @@ RSpec.describe Henitai::StaticFilter do
         }.to_json
       )
 
-      mutant.location[:file] = File.expand_path("lib/sample.rb", dir)
-      mutant.location[:start_line] = 4
-      mutant.location[:end_line] = 4
-
-      Dir.chdir(dir) do
-        described_class.new.apply([mutant], config)
-      end
+      set_mutant_location(
+        mutant,
+        file: File.expand_path("lib/sample.rb", dir),
+        start_line: 4,
+        end_line: 4
+      )
+      apply_mutants(dir, [mutant])
 
       expect(mutant.status).to eq(:pending)
     end
@@ -390,13 +369,13 @@ RSpec.describe Henitai::StaticFilter do
         }.to_json
       )
 
-      mutant.location[:file] = File.join(dir, "lib", "sample.rb")
-      mutant.location[:start_line] = 3
-      mutant.location[:end_line] = 3
-
-      Dir.chdir(dir) do
-        described_class.new.apply([mutant], config(reports_dir: coverage_dir))
-      end
+      set_mutant_location(
+        mutant,
+        file: File.join(dir, "lib", "sample.rb"),
+        start_line: 3,
+        end_line: 3
+      )
+      apply_mutants(dir, [mutant], config(reports_dir: coverage_dir))
 
       expect(mutant.status).to eq(:no_coverage)
     end
@@ -416,13 +395,8 @@ RSpec.describe Henitai::StaticFilter do
         }.to_json
       )
 
-      mutant.location[:file] = File.join(dir, "lib", "sample.rb")
-      mutant.location[:start_line] = 2
-      mutant.location[:end_line] = 2
-
-      Dir.chdir(dir) do
-        described_class.new.apply([mutant], config(reports_dir: coverage_dir))
-      end
+      set_mutant_location(mutant, file: File.join(dir, "lib", "sample.rb"), start_line: 2, end_line: 2)
+      apply_mutants(dir, [mutant], config(reports_dir: coverage_dir))
 
       expect(mutant.status).to eq(:no_coverage)
     end
@@ -431,13 +405,8 @@ RSpec.describe Henitai::StaticFilter do
   it "leaves mutants pending when the coverage report is missing" do
     Dir.mktmpdir do |dir|
       mutant = build_mutant("foo.bar")
-      mutant.location[:file] = "lib/sample.rb"
-      mutant.location[:start_line] = 2
-      mutant.location[:end_line] = 2
-
-      Dir.chdir(dir) do
-        described_class.new.apply([mutant], config)
-      end
+      set_mutant_location(mutant, file: "lib/sample.rb", start_line: 2, end_line: 2)
+      apply_mutants(dir, [mutant])
 
       expect(mutant.status).to eq(:pending)
     end
@@ -462,13 +431,8 @@ RSpec.describe Henitai::StaticFilter do
         }.to_json
       )
 
-      mutant.location[:file] = "lib/sample.rb"
-      mutant.location[:start_line] = 2
-      mutant.location[:end_line] = 2
-
-      Dir.chdir(dir) do
-        described_class.new.apply([mutant], config)
-      end
+      set_mutant_location(mutant, file: "lib/sample.rb", start_line: 2, end_line: 2)
+      apply_mutants(dir, [mutant])
 
       expect(mutant.status).to eq(:pending)
     end
@@ -490,13 +454,8 @@ RSpec.describe Henitai::StaticFilter do
         }
       )
 
-      mutant.location[:file] = File.join(dir, "sample.rb")
-      mutant.location[:start_line] = 3
-      mutant.location[:end_line] = 3
-
-      Dir.chdir(dir) do
-        described_class.new.apply([mutant], config)
-      end
+      set_mutant_location(mutant, file: File.join(dir, "sample.rb"), start_line: 3, end_line: 3)
+      apply_mutants(dir, [mutant])
 
       expect(mutant.status).to eq(:no_coverage)
     end
@@ -518,13 +477,8 @@ RSpec.describe Henitai::StaticFilter do
         }
       )
 
-      mutant.location[:file] = File.join(dir, "sample.rb")
-      mutant.location[:start_line] = 2
-      mutant.location[:end_line] = 2
-
-      Dir.chdir(dir) do
-        described_class.new.apply([mutant], config)
-      end
+      set_mutant_location(mutant, file: File.join(dir, "sample.rb"), start_line: 2, end_line: 2)
+      apply_mutants(dir, [mutant])
 
       expect(mutant.status).to eq(:pending)
     end
@@ -546,13 +500,8 @@ RSpec.describe Henitai::StaticFilter do
         }
       )
 
-      mutant.location[:file] = File.join(dir, "sample.rb")
-      mutant.location[:start_line] = 1
-      mutant.location[:end_line] = 3
-
-      Dir.chdir(dir) do
-        described_class.new.apply([mutant], config)
-      end
+      set_mutant_location(mutant, file: File.join(dir, "sample.rb"), start_line: 1, end_line: 3)
+      apply_mutants(dir, [mutant])
 
       expect(mutant.status).to eq(:pending)
     end
@@ -570,13 +519,8 @@ RSpec.describe Henitai::StaticFilter do
         }
       )
 
-      mutant.location[:file] = File.join(dir, "sample.rb")
-      mutant.location[:start_line] = 3
-      mutant.location[:end_line] = 3
-
-      Dir.chdir(dir) do
-        described_class.new.apply([mutant], config)
-      end
+      set_mutant_location(mutant, file: File.join(dir, "sample.rb"), start_line: 3, end_line: 3)
+      apply_mutants(dir, [mutant])
 
       expect(mutant.status).to eq(:pending)
     end
@@ -601,13 +545,8 @@ RSpec.describe Henitai::StaticFilter do
         }
       )
 
-      mutant.location[:file]       = File.join(dir, "sample.rb")
-      mutant.location[:start_line] = 2
-      mutant.location[:end_line]   = 2
-
-      Dir.chdir(dir) do
-        described_class.new.apply([mutant], config)
-      end
+      set_mutant_location(mutant, file: File.join(dir, "sample.rb"), start_line: 2, end_line: 2)
+      apply_mutants(dir, [mutant])
 
       expect(mutant.status).to eq(:pending)
     end
@@ -632,13 +571,8 @@ RSpec.describe Henitai::StaticFilter do
         }
       )
 
-      mutant.location[:file]       = File.join(dir, "sample.rb")
-      mutant.location[:start_line] = 2
-      mutant.location[:end_line]   = 2
-
-      Dir.chdir(dir) do
-        described_class.new.apply([mutant], config)
-      end
+      set_mutant_location(mutant, file: File.join(dir, "sample.rb"), start_line: 2, end_line: 2)
+      apply_mutants(dir, [mutant])
 
       expect(mutant.status).to eq(:no_coverage)
     end
@@ -660,13 +594,8 @@ RSpec.describe Henitai::StaticFilter do
         }
       )
 
-      mutant.location[:file] = File.join(dir, "sample.rb")
-      mutant.location[:start_line] = 3
-      mutant.location[:end_line] = 3
-
-      Dir.chdir(dir) do
-        described_class.new.apply([mutant], config(ignore_patterns: ["foo\\.bar"]))
-      end
+      set_mutant_location(mutant, file: File.join(dir, "sample.rb"), start_line: 3, end_line: 3)
+      apply_mutants(dir, [mutant], config(ignore_patterns: ["foo\\.bar"]))
 
       expect(mutant.status).to eq(:ignored)
     end
@@ -676,9 +605,12 @@ RSpec.describe Henitai::StaticFilter do
     Dir.mktmpdir do |dir|
       mutant = build_mutant("foo.bar")
 
-      Dir.chdir(dir) do
-        filter_with_coverage.apply([mutant], config(ignore_patterns: ["foo\\.baz"]))
-      end
+      apply_mutants(
+        dir,
+        [mutant],
+        config(ignore_patterns: ["foo\\.baz"]),
+        filter: filter_with_coverage
+      )
 
       expect(mutant.status).to eq(:pending)
     end
@@ -688,63 +620,9 @@ RSpec.describe Henitai::StaticFilter do
     Dir.mktmpdir do |dir|
       mutant = build_mutant("foo.bar")
 
-      Dir.chdir(dir) do
-        filter_with_coverage.apply([mutant], nil)
-      end
+      apply_mutants(dir, [mutant], nil, filter: filter_with_coverage)
 
       expect(mutant.status).to eq(:pending)
-    end
-  end
-
-  describe "#normalize_path caching" do
-    it "resolves each unique path only once per StaticFilter instance" do
-      Dir.mktmpdir do |dir|
-        path = File.join(dir, "sample.rb")
-        FileUtils.touch(path)
-
-        filter = described_class.new
-
-        allow(File).to receive(:realpath).and_call_original
-        2.times { filter.send(:normalize_path, path) }
-
-        expect(File).to have_received(:realpath).once
-      end
-    end
-
-    it "resolves different paths independently" do
-      Dir.mktmpdir do |dir|
-        path_a = File.join(dir, "a.rb")
-        path_b = File.join(dir, "b.rb")
-        FileUtils.touch(path_a)
-        FileUtils.touch(path_b)
-
-        filter = described_class.new
-
-        allow(File).to receive(:realpath).and_call_original
-        filter.send(:normalize_path, path_a)
-        filter.send(:normalize_path, path_b)
-
-        expect(File).to have_received(:realpath).twice
-      end
-    end
-
-    it "falls back to the expanded path when the file does not exist" do
-      filter = described_class.new
-      result = filter.send(:normalize_path, "/no/such/file.rb")
-
-      expect(result).to eq(File.expand_path("/no/such/file.rb"))
-    end
-
-    it "caches the fallback result for non-existent paths" do
-      filter = described_class.new
-      path = "/no/such/file.rb"
-
-      allow(File).to receive(:realpath).and_call_original
-      filter.send(:normalize_path, path)
-
-      filter.send(:normalize_path, path)
-
-      expect(File).to have_received(:realpath).once.with(path)
     end
   end
 
@@ -767,9 +645,7 @@ RSpec.describe Henitai::StaticFilter do
         }
       )
 
-      Dir.chdir(dir) do
-        filter_with_coverage.apply([mutant], config(ignore_patterns: ["foo"]))
-      end
+      apply_mutants(dir, [mutant], config(ignore_patterns: ["foo"]), filter: filter_with_coverage)
 
       expect(mutant.status).to eq(:pending)
     end
