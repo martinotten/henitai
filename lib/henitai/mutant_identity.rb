@@ -19,10 +19,26 @@ module Henitai
         mutant.operator,
         mutant.description,
         mutant.location[:file],
-        mutation_signature(mutant)
+        mutation_signature(mutant),
+        site_offset(mutant)
       ]
     end
     private_class_method :identity_components
+
+    # Position of the mutation site relative to its subject's own start,
+    # not the file's absolute line/column — this still disambiguates two
+    # call sites that produce the same operator/description/signature
+    # within one subject (e.g. two `MethodExpression — replaced with nil`
+    # mutants on different lines of a method), while surviving line drift
+    # elsewhere in the file, which would shift absolute coordinates but
+    # not this offset.
+    def self.site_offset(mutant)
+      subject_start = mutant.subject.source_range&.begin
+      return mutant.location[:start_col].to_s unless subject_start
+
+      "#{mutant.location[:start_line] - subject_start}:#{mutant.location[:start_col]}"
+    end
+    private_class_method :site_offset
 
     def self.mutation_signature(mutant)
       Unparser.unparse(mutant.mutated_node)

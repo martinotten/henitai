@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "parser/current"
 require "spec_helper"
 require "tmpdir"
 
@@ -109,6 +110,33 @@ RSpec.describe Henitai::IncrementalFilter do
       described_class.new(history_store: store).apply([first, second])
 
       expect([first.status, second.status]).to eq(%i[pending pending])
+    end
+  end
+
+  it "reuses verdicts independently for two mutants that would have collided pre-fix" do # rubocop:disable RSpec/MultipleExpectations
+    Dir.mktmpdir do |dir|
+      source, test = write_workspace(dir)
+      subject = Henitai::Subject.new(namespace: "Sample", method_name: "value",
+                                     source_location: { file: source, range: (1..3) })
+      nil_node = Parser::CurrentRuby.parse("nil")
+      first = Henitai::Mutant.new(
+        subject:, operator: "MethodExpression", nodes: { original: nil_node, mutated: nil_node },
+        description: "replaced method call with nil",
+        location: { file: source, start_line: 2, end_line: 2, start_col: 2, end_col: 10 }
+      )
+      second = Henitai::Mutant.new(
+        subject:, operator: "MethodExpression", nodes: { original: nil_node, mutated: nil_node },
+        description: "replaced method call with nil",
+        location: { file: source, start_line: 2, end_line: 2, start_col: 20, end_col: 28 }
+      )
+      expect(first.stable_id).not_to eq(second.stable_id)
+
+      store = build_store(first.stable_id => verdict_for(first, test),
+                          second.stable_id => verdict_for(second, test))
+
+      described_class.new(history_store: store).apply([first, second])
+
+      expect([first.status, second.status]).to eq(%i[killed killed])
     end
   end
 
