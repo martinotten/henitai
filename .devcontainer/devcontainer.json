@@ -19,7 +19,7 @@
         "ruby.format": "rubocop",
         "[ruby]": {
           "editor.formatOnSave": true,
-          "editor.defaultFormatter": "Shopify.ruby-lsp"
+          "editor.defaultFormatter": null
         }
       }
     }
@@ -35,7 +35,9 @@
   },
   "runArgs": ["--add-host=host.docker.internal:host-gateway"],
   "mounts": [
-    "source=henitai-bundle,target=/usr/local/bundle,type=volume"
+    "source=henitai-bundle,target=/usr/local/bundle,type=volume",
+    "source=${localWorkspaceFolder}/../henitai-worktrees,target=/workspaces/worktrees,type=bind",
+    "source=${localWorkspaceFolder}/.henitai-pi-agent,target=/home/vscode/.pi,type=bind"
   ],
   "forwardPorts": [],
   "remoteUser": "vscode"

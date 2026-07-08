@@ -10,6 +10,8 @@ Hen'i-tai (`henitai`) is an AST-based mutation-testing framework for Ruby 4.0+. 
 
 RTK command usage: see `RTK.md`.
 
+In the devcontainer, `/workspaces` itself is not writable — create git worktrees under the bind-mounted `/workspaces/worktrees/<name>` (not a bare `../name`).
+
 ## Commands
 
 ```sh
