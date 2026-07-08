@@ -40,13 +40,13 @@ RSpec.describe Henitai::SlotScheduler do
     integration
   end
 
-  def build_worker_scheduler(captured, worker_count:, max_flaky_retries: 0, options: { test_files: [] })
+  def build_worker_scheduler(captured, worker_count:, max_flaky_retries: 0, **opts)
     described_class.new(
       integration: build_capturing_integration(captured),
       config: Struct.new(:timeout, :max_flaky_retries).new(10.0, max_flaky_retries),
-      progress_reporter: nil,
-      options: options,
-      host: build_host(worker_count)
+      progress_reporter: opts[:progress_reporter],
+      options: opts[:options] || { test_files: [] },
+      host: build_host(worker_count, shutdown: opts.fetch(:shutdown, false))
     )
   end
 
@@ -377,6 +377,298 @@ RSpec.describe Henitai::SlotScheduler do
       second = scheduler.send(:next_slot_id!)
 
       expect([first, second]).to eq([0, 1])
+    end
+  end
+
+  describe "#complete_slot" do
+    it "does nothing when the pid is unknown", :aggregate_failures do
+      captured = []
+      scheduler = build_worker_scheduler(captured, worker_count: 1)
+      scheduler.enqueue([build_worker_mutant("a")])
+      scheduler.fill_idle_slots
+
+      expect { scheduler.send(:complete_slot, 999_999, nil) }.not_to raise_error
+      expect(scheduler.send(:slots).size).to eq(1)
+    end
+
+    it "does nothing when the slot table has no entry for the pid" do
+      scheduler = build_scheduler
+      scheduler.send(:pid_to_slot)[42] = "stale-slot-id"
+
+      expect { scheduler.send(:complete_slot, 42, nil) }.not_to raise_error
+    end
+
+    it "reports the pid to SchedulerDiagnostics and builds the result", :aggregate_failures do
+      captured = []
+      scheduler = build_worker_scheduler(captured, worker_count: 1)
+      scheduler.enqueue([build_worker_mutant("a")])
+      scheduler.fill_idle_slots
+      slot = scheduler.send(:slots).values.first
+      allow(Henitai::Integration::SchedulerDiagnostics).to receive(:child_ended)
+      killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed)
+      allow(scheduler.send(:integration)).to receive(:build_result).with(:wait_result,
+                                                                         slot.log_paths).and_return(killed)
+
+      scheduler.send(:complete_slot, slot.pid, :wait_result)
+
+      expect(Henitai::Integration::SchedulerDiagnostics).to have_received(:child_ended).with(slot.pid)
+      expect(slot.mutant.status).to eq(:killed)
+    end
+  end
+
+  describe "#dispatch_slot_result" do
+    it "removes the slot, records the result, and reports progress", :aggregate_failures do
+      captured = []
+      progress_reporter = instance_double(Henitai::Reporter::Terminal)
+      allow(progress_reporter).to receive(:progress)
+      scheduler = build_worker_scheduler(captured, worker_count: 1, progress_reporter: progress_reporter)
+      mutant = build_worker_mutant("a")
+      scheduler.enqueue([mutant])
+      scheduler.fill_idle_slots
+      slot = scheduler.send(:slots).values.first
+      killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed)
+
+      scheduler.send(:dispatch_slot_result, slot, killed)
+
+      expect(scheduler.send(:slots)).to be_empty
+      expect(mutant.status).to eq(:killed)
+      expect(scheduler.results).to eq([killed])
+      expect(progress_reporter).to have_received(:progress).with(mutant, scenario_result: killed)
+    end
+
+    it "retries instead of finalizing when should_retry? is true", :aggregate_failures do
+      captured = []
+      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 1)
+      scheduler.enqueue([build_worker_mutant("a")])
+      scheduler.fill_idle_slots
+      slot = scheduler.send(:slots).values.first
+      survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true, status: :survived)
+
+      scheduler.send(:dispatch_slot_result, slot, survived)
+
+      expect(scheduler.results).to be_empty
+      expect(scheduler.flaky_retry_count).to eq(1)
+    end
+  end
+
+  describe "#should_retry?" do
+    def build_slot_with_retry_count(count)
+      Henitai::SlotScheduler::Slot.new(1, nil, 12, 0.0, 5.0, nil, count, false, nil, nil, 0)
+    end
+
+    it "is false when shutdown has been requested" do
+      scheduler = described_class.new(
+        integration: nil, config: Struct.new(:max_flaky_retries).new(3),
+        progress_reporter: nil, options: {}, host: build_host(1, shutdown: true)
+      )
+      survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true)
+
+      expect(scheduler.send(:should_retry?, build_slot_with_retry_count(0), survived)).to be(false)
+    end
+
+    it "is false when the result did not survive" do
+      scheduler = described_class.new(
+        integration: nil, config: Struct.new(:max_flaky_retries).new(3),
+        progress_reporter: nil, options: {}, host: build_host(1)
+      )
+      killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false)
+
+      expect(scheduler.send(:should_retry?, build_slot_with_retry_count(0), killed)).to be(false)
+    end
+
+    it "is true when retry_count is one below the max" do
+      scheduler = described_class.new(
+        integration: nil, config: Struct.new(:max_flaky_retries).new(3),
+        progress_reporter: nil, options: {}, host: build_host(1)
+      )
+      survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true)
+
+      expect(scheduler.send(:should_retry?, build_slot_with_retry_count(2), survived)).to be(true)
+    end
+
+    it "is false once retry_count reaches the max exactly" do
+      scheduler = described_class.new(
+        integration: nil, config: Struct.new(:max_flaky_retries).new(3),
+        progress_reporter: nil, options: {}, host: build_host(1)
+      )
+      survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true)
+
+      expect(scheduler.send(:should_retry?, build_slot_with_retry_count(3), survived)).to be(false)
+    end
+
+    it "is false when retry_count already exceeds the max" do
+      scheduler = described_class.new(
+        integration: nil, config: Struct.new(:max_flaky_retries).new(3),
+        progress_reporter: nil, options: {}, host: build_host(1)
+      )
+      survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true)
+
+      expect(scheduler.send(:should_retry?, build_slot_with_retry_count(4), survived)).to be(false)
+    end
+
+    it "coerces a string max_flaky_retries to an integer for comparison" do
+      scheduler = described_class.new(
+        integration: nil, config: Struct.new(:max_flaky_retries).new("3"),
+        progress_reporter: nil, options: {}, host: build_host(1)
+      )
+      survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true)
+
+      expect(scheduler.send(:should_retry?, build_slot_with_retry_count(2), survived)).to be(true)
+    end
+  end
+
+  describe "#retry_slot" do
+    it "respawns with the slot's mutant and resolved test files", :aggregate_failures do
+      captured = []
+      scheduler = build_worker_scheduler(
+        captured, worker_count: 1, max_flaky_retries: 1, options: { test_files: %w[a_spec.rb] }
+      )
+      mutant = build_worker_mutant("a")
+      scheduler.enqueue([mutant])
+      scheduler.fill_idle_slots
+      slot = scheduler.send(:slots).values.first
+      original_pid = slot.pid
+      integration = scheduler.send(:integration)
+
+      scheduler.send(:retry_slot, slot)
+
+      expect(integration).to have_received(:spawn_mutant).with(mutant: mutant, test_files: %w[a_spec.rb]).twice
+      expect(slot.pid).not_to eq(original_pid)
+      expect(scheduler.send(:pid_to_slot)[slot.pid]).to eq(slot.slot_id)
+    end
+
+    it "records a spawn failure and drops the slot when the respawn raises", :aggregate_failures do
+      integration = instance_double(Henitai::Integration::Rspec)
+      allow(integration).to receive_messages(select_tests: [], spawn_mutant: Henitai::Integration::ChildHandle.new(
+        2000, { stdout_path: "/dev/null", stderr_path: "/dev/null", log_path: "/dev/null" }
+      ))
+      scheduler = described_class.new(
+        integration: integration, config: Struct.new(:timeout, :max_flaky_retries).new(10.0, 1),
+        progress_reporter: nil, options: { test_files: [] }, host: build_host(1)
+      )
+      mutant = build_worker_mutant("a")
+      scheduler.enqueue([mutant])
+      scheduler.fill_idle_slots
+      slot = scheduler.send(:slots).values.first
+      allow(integration).to receive(:spawn_mutant).and_raise(StandardError, "respawn failed")
+
+      scheduler.send(:retry_slot, slot)
+
+      expect(scheduler.send(:slots)).to be_empty
+      expect(scheduler.results.size).to eq(1)
+      expect(scheduler.results.first.status).to eq(:compile_error)
+      expect(mutant.status).to eq(:compile_error)
+    end
+
+    it "resolves test files through integration.select_tests using the slot's own mutant" do
+      captured = []
+      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 1, options: {})
+      mutant = build_worker_mutant("a")
+      integration = scheduler.send(:integration)
+      allow(integration).to receive(:select_tests).and_return(%w[a_spec.rb])
+      scheduler.enqueue([mutant])
+      scheduler.fill_idle_slots
+      slot = scheduler.send(:slots).values.first
+      allow(integration).to receive(:select_tests).with(mutant.subject).and_return(%w[b_spec.rb])
+
+      scheduler.send(:retry_slot, slot)
+
+      expect(integration).to have_received(:spawn_mutant).with(mutant: mutant, test_files: %w[b_spec.rb])
+    end
+  end
+
+  describe "#finish_retry" do
+    it "counts the first retry toward flaky_retry_count but not later ones", :aggregate_failures do
+      captured = []
+      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 2)
+      scheduler.enqueue([build_worker_mutant("a")])
+      scheduler.fill_idle_slots
+      slot = scheduler.send(:slots).values.first
+      survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true, status: :survived)
+
+      scheduler.send(:dispatch_slot_result, slot, survived)
+      expect(scheduler.flaky_retry_count).to eq(1)
+
+      scheduler.send(:dispatch_slot_result, slot, survived)
+      expect(scheduler.flaky_retry_count).to eq(1)
+    end
+
+    it "increments the slot's retry_count on every retry" do
+      captured = []
+      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 2)
+      scheduler.enqueue([build_worker_mutant("a")])
+      scheduler.fill_idle_slots
+      slot = scheduler.send(:slots).values.first
+      survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true, status: :survived)
+
+      scheduler.send(:dispatch_slot_result, slot, survived)
+
+      expect(slot.retry_count).to eq(1)
+    end
+
+    it "reports the new pid to SchedulerDiagnostics" do
+      captured = []
+      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 1)
+      scheduler.enqueue([build_worker_mutant("a")])
+      scheduler.fill_idle_slots
+      slot = scheduler.send(:slots).values.first
+      survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true, status: :survived)
+      allow(Henitai::Integration::SchedulerDiagnostics).to receive(:child_started)
+
+      scheduler.send(:dispatch_slot_result, slot, survived)
+
+      expect(Henitai::Integration::SchedulerDiagnostics).to have_received(:child_started).with(slot.pid)
+    end
+  end
+
+  describe "#reset_slot_for_retry" do
+    it "clears drain state and refreshes pid/log_paths/start time", :aggregate_failures do
+      captured = []
+      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 1)
+      scheduler.enqueue([build_worker_mutant("a")])
+      scheduler.fill_idle_slots
+      slot = scheduler.send(:slots).values.first
+      slot.draining = true
+      slot.term_sent_at_monotonic = 5.0
+      slot.forced_outcome = :timeout
+      slot.started_at_monotonic = 0.0
+      original_pid = slot.pid
+      handle = Henitai::Integration::ChildHandle.new(
+        9999, { stdout_path: "/new", stderr_path: "/new", log_path: "/new" }
+      )
+
+      scheduler.send(:reset_slot_for_retry, slot, handle)
+
+      expect(slot.pid).to eq(9999)
+      expect(slot.pid).not_to eq(original_pid)
+      expect(slot.log_paths).to eq({ stdout_path: "/new", stderr_path: "/new", log_path: "/new" })
+      expect(slot.draining).to be(false)
+      expect(slot.term_sent_at_monotonic).to be_nil
+      expect(slot.forced_outcome).to be_nil
+      expect(slot.started_at_monotonic).to be_a(Float).and be > 0.0
+    end
+  end
+
+  describe "#record_spawn_failure" do
+    it "reports the compile_error result to the progress_reporter", :aggregate_failures do
+      progress_reporter = instance_double(Henitai::Reporter::Terminal)
+      allow(progress_reporter).to receive(:progress)
+      integration = instance_double(Henitai::Integration::Rspec, select_tests: [])
+      allow(integration).to receive(:spawn_mutant).and_raise(StandardError, "boom")
+      scheduler = described_class.new(
+        integration: integration, config: nil, progress_reporter: progress_reporter,
+        options: { test_files: [] }, host: build_host(1)
+      )
+      mutant = build_worker_mutant("a")
+      scheduler.enqueue([mutant])
+
+      scheduler.fill_idle_slots
+
+      expect(progress_reporter).to have_received(:progress).with(mutant, scenario_result: scheduler.results.first)
+      result = scheduler.results.first
+      expect(result.status).to eq(:compile_error)
+      expect(result.stdout).to eq("")
+      expect(result.log_path).to eq(File::NULL)
     end
   end
 
