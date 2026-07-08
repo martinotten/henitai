@@ -350,7 +350,7 @@ RSpec.describe Henitai::SlotScheduler::Draining do
 
   describe "#record_drain_result" do
     it "sets mutant status, appends the result, and reports progress", :aggregate_failures do
-      progress_reporter = instance_double(Henitai::Reporter::Terminal)
+      progress_reporter = double("progress_reporter") # rubocop:disable RSpec/VerifiedDoubles -- avoid loading Reporter::Terminal/unparser just to stub #progress
       allow(progress_reporter).to receive(:progress)
       scheduler = build_scheduler(now: 0.0, progress_reporter: progress_reporter)
       killed = instance_double(Henitai::ScenarioExecutionResult, status: :killed)

@@ -430,7 +430,7 @@ RSpec.describe Henitai::SlotScheduler do
   describe "#dispatch_slot_result" do
     it "removes the slot, records the result, and reports progress", :aggregate_failures do
       captured = []
-      progress_reporter = instance_double(Henitai::Reporter::Terminal)
+      progress_reporter = double("progress_reporter") # rubocop:disable RSpec/VerifiedDoubles -- avoid loading Reporter::Terminal/unparser just to stub #progress
       allow(progress_reporter).to receive(:progress)
       scheduler = build_worker_scheduler(captured, worker_count: 1, progress_reporter: progress_reporter)
       mutant = build_worker_mutant("a")
@@ -662,7 +662,7 @@ RSpec.describe Henitai::SlotScheduler do
 
   describe "#record_spawn_failure" do
     it "reports the compile_error result to the progress_reporter", :aggregate_failures do
-      progress_reporter = instance_double(Henitai::Reporter::Terminal)
+      progress_reporter = double("progress_reporter") # rubocop:disable RSpec/VerifiedDoubles -- avoid loading Reporter::Terminal/unparser just to stub #progress
       allow(progress_reporter).to receive(:progress)
       integration = instance_double(Henitai::Integration::Rspec, select_tests: [])
       allow(integration).to receive(:spawn_mutant).and_raise(StandardError, "boom")
