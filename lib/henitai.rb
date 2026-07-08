@@ -53,6 +53,7 @@ module Henitai
   autoload :SyntaxValidator, "henitai/syntax_validator"
   autoload :SamplingStrategy, "henitai/sampling_strategy"
   autoload :TestPrioritizer, "henitai/test_prioritizer"
+  autoload :TimeoutCalibrator, "henitai/timeout_calibrator"
   autoload :ExecutionEngine, "henitai/execution_engine"
   autoload :ProcessWorkerRunner, "henitai/process_worker_runner"
   autoload :SlotScheduler, "henitai/slot_scheduler"

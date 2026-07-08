@@ -104,6 +104,7 @@ RSpec.describe Henitai::CLI do
                 --use INTEGRATION            Test framework integration (rspec)
                 --config PATH                Path to .henitai.yml
                 --operators SET              Operator set: light | full
+                --timeout-multiplier N       Multiplier applied to the measured per-mutant test baseline when mutation.timeout is unset (default: 3.0)
                 --jobs N                     Number of parallel workers (default: 1)
                 --all-logs, --verbose        Print all captured child logs
                 --survivors-from PATH        Re-run only survivors from a prior report (partial rerun; threshold checks are skipped; dirty worktrees are included)

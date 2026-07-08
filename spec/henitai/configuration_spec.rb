@@ -92,6 +92,36 @@ RSpec.describe Henitai::Configuration do
     }
   end
 
+  describe "timeout calibration settings" do
+    it "reports the timeout as configured when mutation.timeout is set" do
+      config = load_configuration(<<~YAML)
+        mutation:
+          timeout: 12.5
+      YAML
+
+      expect(config.timeout_configured?).to be(true)
+    end
+
+    it "reports the timeout as unconfigured by default" do
+      expect(load_configuration("{}").timeout_configured?).to be(false)
+    end
+
+    it "defaults the timeout multiplier" do
+      expect(load_configuration("{}").timeout_multiplier).to eq(
+        described_class::DEFAULT_TIMEOUT_MULTIPLIER
+      )
+    end
+
+    it "reads the timeout multiplier from the mutation block" do
+      config = load_configuration(<<~YAML)
+        mutation:
+          timeout_multiplier: 5.0
+      YAML
+
+      expect(config.timeout_multiplier).to eq(5.0)
+    end
+  end
+
   it "merges partial nested config hashes with defaults" do
     expect(configuration_snapshot(load_configuration(<<~YAML))).to eq(expected_snapshot)
       mutation:

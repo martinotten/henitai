@@ -26,6 +26,16 @@ module Henitai
         end
       end
 
+      def add_timeout_multiplier_option(opts, options)
+        opts.on(
+          "--timeout-multiplier N", Float,
+          "Multiplier applied to the measured per-mutant test baseline " \
+          "when mutation.timeout is unset (default: 3.0)"
+        ) do |n|
+          options[:timeout_multiplier] = n
+        end
+      end
+
       def add_jobs_option(opts, options)
         opts.on("--jobs N", Integer, "Number of parallel workers (default: 1)") do |n|
           options[:jobs] = n

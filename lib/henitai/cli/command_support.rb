@@ -21,7 +21,8 @@ module Henitai
             all_logs: options[:all_logs],
             mutation: {
               operators: options[:operators],
-              timeout: options[:timeout]
+              timeout: options[:timeout],
+              timeout_multiplier: options[:timeout_multiplier]
             },
             jobs: options[:jobs]
           }

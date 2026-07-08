@@ -78,6 +78,76 @@ RSpec.describe Henitai::ExecutionEngine do
     end
   end
 
+  describe "timeout calibration" do
+    def build_calibrating_config(dir, timeout_configured:, multiplier: 3.0)
+      config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :timeout_multiplier) do
+        attr_accessor :timeout_configured
+
+        def timeout_configured? = timeout_configured
+      end.new(12.5, dir, 1, 3, multiplier)
+      config.timeout_configured = timeout_configured
+      config
+    end
+
+    def write_timing_report(dir, durations)
+      payload = durations.transform_values do |duration|
+        { "coverage" => {}, "duration" => duration }
+      end
+      File.write(File.join(dir, "henitai_per_test.json"), JSON.dump(payload))
+    end
+
+    it "passes a calibrated per-mutant timeout when mutation.timeout is unset" do
+      Dir.mktmpdir do |dir|
+        config = build_calibrating_config(dir, timeout_configured: false)
+        write_timing_report(dir, "spec/foo_spec.rb" => 2.0)
+        integration = build_integration
+
+        described_class.new.run([build_mutant(:pending, "Foo#bar")], integration, config)
+
+        expect(integration.calls[:last_timeout]).to eq(6.0)
+      end
+    end
+
+    it "passes the fixed config timeout untouched when mutation.timeout is set" do
+      Dir.mktmpdir do |dir|
+        config = build_calibrating_config(dir, timeout_configured: true)
+        write_timing_report(dir, "spec/foo_spec.rb" => 2.0)
+        integration = build_integration
+
+        described_class.new.run([build_mutant(:pending, "Foo#bar")], integration, config)
+
+        expect(integration.calls[:last_timeout]).to eq(12.5)
+      end
+    end
+
+    it "falls back to the default timeout when timing data is missing" do
+      Dir.mktmpdir do |dir|
+        config = build_calibrating_config(dir, timeout_configured: false)
+        integration = build_integration
+        engine = described_class.new
+        allow(engine).to receive(:warn)
+
+        engine.run([build_mutant(:pending, "Foo#bar")], integration, config)
+
+        expect(integration.calls[:last_timeout]).to eq(Henitai::Configuration::DEFAULT_TIMEOUT)
+      end
+    end
+
+    it "warns exactly once per run when calibration is unavailable" do
+      Dir.mktmpdir do |dir|
+        config = build_calibrating_config(dir, timeout_configured: false)
+        mutants = [build_mutant(:pending, "Foo#bar"), build_mutant(:pending, "Foo#baz")]
+        warnings = []
+        engine = described_class.new
+        allow(engine).to receive(:warn) { |message| warnings << message }
+
+        engine.run(mutants, build_integration, config)
+
+        expect(warnings.grep(/Timeout calibration unavailable/).size).to eq(1)
+      end
+    end
+  end
+
   it "wires the prioritizer timing source from the reports dir" do
     Dir.mktmpdir do |dir|
       config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(12.5, dir, 1, 3)

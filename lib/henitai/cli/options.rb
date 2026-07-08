@@ -33,6 +33,7 @@ module Henitai
           add_integration_option(opts, options)
           add_config_option(opts, options)
           add_operator_option(opts, options)
+          add_timeout_multiplier_option(opts, options)
           add_jobs_option(opts, options)
           add_output_option(opts, options)
           add_survivors_from_option(opts, options)

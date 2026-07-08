@@ -81,6 +81,7 @@ module Henitai
 
       def validate_mutation_limits(value)
         Scalars.validate_timeout(value[:timeout])
+        Scalars.validate_timeout_multiplier(value[:timeout_multiplier])
         Scalars.validate_max_flaky_retries(value[:max_flaky_retries])
       end
 

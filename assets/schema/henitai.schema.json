@@ -43,6 +43,10 @@
         "timeout": {
           "type": "number"
         },
+        "timeout_multiplier": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
         "max_flaky_retries": {
           "type": "integer",
           "minimum": 0

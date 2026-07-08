@@ -73,7 +73,8 @@ module Henitai
         integration,
         config,
         progress_reporter,
-        test_file_resolver: ->(mutant) { prioritized_tests_for(mutant, integration, config) }
+        test_file_resolver: ->(mutant) { prioritized_tests_for(mutant, integration, config) },
+        timeout_resolver: ->(_mutant, test_files) { resolved_timeout(test_files, config) }
       )
       @flaky_retry_count = runner.flaky_retry_count
       results
@@ -112,6 +113,40 @@ module Henitai
       -> { CoverageReportReader.new.durations_by_test(path) }
     end
 
+    # Fixed `mutation.timeout` wins untouched; when unset, the timeout is
+    # calibrated per mutant from its selected tests' measured durations, with
+    # a single warning per run when no timing data is available.
+    def resolved_timeout(test_files, config)
+      return config.timeout unless calibration_enabled?(config)
+
+      calibrated = timeout_calibrator(config).timeout_for(test_files)
+      return calibrated if calibrated
+
+      warn_timeout_fallback_once
+      Configuration::DEFAULT_TIMEOUT
+    end
+
+    def calibration_enabled?(config)
+      config.respond_to?(:timeout_configured?) && !config.timeout_configured?
+    end
+
+    def timeout_calibrator(config)
+      @timeout_calibrator ||= TimeoutCalibrator.new(
+        timing_source: timing_source(config),
+        multiplier: config.timeout_multiplier
+      )
+    end
+
+    def warn_timeout_fallback_once
+      return if @warned_timeout_fallback
+
+      @warned_timeout_fallback = true
+      warn(
+        "Timeout calibration unavailable (no per-test timing data); " \
+        "falling back to the default timeout of #{Configuration::DEFAULT_TIMEOUT}s"
+      )
+    end
+
     def per_test_coverage_selector = @per_test_coverage_selector ||= PerTestCoverageSelector.new
 
     def test_history(config)
@@ -125,10 +160,11 @@ module Henitai
     # runtime on real CI workloads.
     # rubocop:disable Metrics/MethodLength
     def run_with_flaky_retry(mutant, integration, config, test_files, mutex)
+      timeout = resolved_timeout(test_files, config)
       scenario_result = integration.run_mutant(
         mutant:,
         test_files:,
-        timeout: config.timeout
+        timeout: timeout
       )
       return scenario_result unless scenario_status(scenario_result) == :survived
 
@@ -138,7 +174,7 @@ module Henitai
         scenario_result = integration.run_mutant(
           mutant:,
           test_files:,
-          timeout: config.timeout
+          timeout: timeout
         )
         break unless scenario_status(scenario_result) == :survived
       end

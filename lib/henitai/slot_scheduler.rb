@@ -107,26 +107,31 @@ module Henitai
       worker_index = next_free_worker_index
       ENV[WORKER_SLOT_ENV] = worker_index.to_s
       handle = integration.spawn_mutant(mutant: mutant, test_files: test_files)
-      register_slot(handle, mutant, worker_index)
+      register_slot(handle, mutant, worker_index, slot_timeout(mutant, test_files))
     rescue StandardError => e
       record_spawn_failure(mutant, e)
     end
 
-    def register_slot(handle, mutant, worker_index)
+    def register_slot(handle, mutant, worker_index, timeout)
       slot_id = next_slot_id!
-      slot = build_slot(slot_id, mutant, handle, worker_index)
+      slot = build_slot(slot_id, mutant, handle, worker_index, timeout)
       slots[slot_id] = slot
       pid_to_slot[handle.pid] = slot_id
       Integration::SchedulerDiagnostics.child_started(handle.pid)
     end
 
-    def build_slot(slot_id, mutant, handle, worker_index)
+    def build_slot(slot_id, mutant, handle, worker_index, timeout)
       Slot.new(
         slot_id, mutant, handle.pid,
         monotonic_time,
-        config.timeout, handle.log_paths, 0, false, nil, nil,
+        timeout, handle.log_paths, 0, false, nil, nil,
         worker_index
       )
+    end
+
+    def slot_timeout(mutant, test_files)
+      resolver = options[:timeout_resolver]
+      resolver ? resolver.call(mutant, test_files) : config.timeout
     end
 
     # Smallest index in 0...worker_count not held by a live slot, so
