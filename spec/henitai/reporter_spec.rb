@@ -18,7 +18,10 @@ RSpec.describe Henitai::Reporter do
 
     it "raises ArgumentError for an unknown reporter name" do
       expect { described_class.reporter_class("nope") }
-        .to raise_error(ArgumentError, /Unknown reporter: nope\. Valid reporters: terminal, json, html, dashboard, github/)
+        .to raise_error(
+          ArgumentError,
+          /Unknown reporter: nope\. Valid reporters: terminal, json, html, dashboard, github/
+        )
     end
   end
 

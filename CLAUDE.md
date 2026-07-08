@@ -40,7 +40,7 @@ Enable the repo git hook (runs rubocop, rspec, and the smoke suite pre-commit):
 git config core.hooksPath .githooks
 ```
 
-`henitai run` exit codes: `0` mutation score meets the low threshold, `1` does not meet it, `2` framework error.
+`henitai run` exit codes: `0` mutation score meets the low threshold, `1` does not meet it, `2` framework error. With `--strict-exit-codes` (opt-in, additive): `3` one or more mutants timed out, `4` runtime/compile errors present; precedence `2` > `3` > `4` > `1` > `0`. The timeout code is informational — a run can pass its threshold and still exit `3`.
 
 ## Architecture
 

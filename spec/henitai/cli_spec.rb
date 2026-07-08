@@ -108,6 +108,7 @@ RSpec.describe Henitai::CLI do
                 --all-logs, --verbose        Print all captured child logs
                 --survivors-from PATH        Re-run only survivors from a prior report (partial rerun; threshold checks are skipped; dirty worktrees are included)
                 --fail-on-survivors          Exit 1 for partial reruns when any survivors remain (otherwise exits 0)
+                --strict-exit-codes          Expanded exit codes: 0 threshold met, 1 threshold miss, 2 framework error, 3 timeouts present, 4 runtime/compile errors present
             -h, --help                       Show this help
             -v, --version                    Show version
       HELP
@@ -1272,6 +1273,114 @@ RSpec.describe Henitai::CLI do
         raise "expected exit status 0, got #{status.inspect}" unless status == 0
       end
       expect { cli.run }.to output(/partial rerun - mutation score threshold not evaluated/).to_stderr
+    end
+  end
+
+  describe "--strict-exit-codes" do
+    def build_status_mutant(status)
+      Struct.new(:status).new(status)
+    end
+
+    def strict_exit_status(mutation_score:, statuses:)
+      exit_status = nil
+      Dir.mktmpdir do |dir|
+        config_path = write_configuration(dir)
+        result = instance_double(
+          Henitai::Result,
+          mutation_score:,
+          partial_rerun?: false,
+          mutants: statuses.map { |status| build_status_mutant(status) }
+        )
+        allow(Henitai::Runner).to receive(:new).and_return(build_runner(result:))
+
+        cli = described_class.new(["run", "--config", config_path, "--strict-exit-codes"])
+        cli.define_singleton_method(:exit) { |status = nil| exit_status = status }
+        cli.run
+      end
+      exit_status
+    end
+
+    it "parses into options[:strict_exit_codes]" do
+      cli = described_class.new(["run", "--strict-exit-codes", "--help"])
+      capture_stdout { cli.run }
+
+      expect(cli.instance_variable_get(:@argv)).to eq([])
+    end
+
+    it "documents the flag in run --help" do
+      cli = described_class.new(["run", "--help"])
+
+      expect(capture_stdout { cli.run }).to match(/--strict-exit-codes/)
+    end
+
+    it "exits 0 when the threshold is met with no timeouts or errors" do
+      expect(strict_exit_status(mutation_score: 100, statuses: %i[killed killed])).to eq(0)
+    end
+
+    it "exits 1 for a survivors-only threshold miss" do
+      expect(strict_exit_status(mutation_score: 0, statuses: %i[killed survived])).to eq(1)
+    end
+
+    it "exits 3 when any mutant timed out" do
+      expect(strict_exit_status(mutation_score: 100, statuses: %i[killed timeout])).to eq(3)
+    end
+
+    it "exits 4 when any mutant hit a runtime error" do
+      expect(strict_exit_status(mutation_score: 100, statuses: %i[killed runtime_error])).to eq(4)
+    end
+
+    it "exits 4 when any mutant hit a compile error" do
+      expect(strict_exit_status(mutation_score: 100, statuses: %i[killed compile_error])).to eq(4)
+    end
+
+    it "prefers 3 over 4 and 1 when conditions co-occur" do
+      expect(
+        strict_exit_status(mutation_score: 0, statuses: %i[survived timeout runtime_error])
+      ).to eq(3)
+    end
+
+    it "prefers 4 over 1 when errors co-occur with a threshold miss" do
+      expect(strict_exit_status(mutation_score: 0, statuses: %i[survived compile_error])).to eq(4)
+    end
+
+    it "exits 2 on framework errors regardless of the flag" do
+      Dir.mktmpdir do |dir|
+        config_path = write_configuration(dir)
+        runner = instance_double(Henitai::Runner)
+        allow(Henitai::Runner).to receive(:new).and_return(runner)
+        allow(runner).to receive(:run).and_raise(Henitai::ConfigurationError, "boom")
+
+        cli = described_class.new(["run", "--config", config_path, "--strict-exit-codes"])
+        cli.define_singleton_method(:exit) do |status = nil|
+          raise "expected exit status 2, got #{status.inspect}" unless status == 2
+        end
+        allow(cli).to receive(:warn)
+
+        cli.run
+
+        expect(cli).to have_received(:warn).with("Henitai::ConfigurationError: boom")
+      end
+    end
+
+    it "keeps partial-rerun semantics unchanged when combined with --fail-on-survivors" do
+      Dir.mktmpdir do |dir|
+        config_path = write_configuration(dir)
+        result = instance_double(
+          Henitai::Result,
+          mutation_score: 0,
+          partial_rerun?: true,
+          survived: 1
+        )
+        allow(Henitai::Runner).to receive(:new).and_return(build_runner(result:))
+
+        cli = described_class.new(
+          ["run", "--config", config_path, "--strict-exit-codes", "--fail-on-survivors"]
+        )
+        cli.define_singleton_method(:exit) do |status = nil|
+          raise "expected exit status 1, got #{status.inspect}" unless status == 1
+        end
+        expect { cli.run }.to output(/partial rerun/).to_stderr
+      end
     end
   end
 end
