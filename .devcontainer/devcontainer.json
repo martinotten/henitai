@@ -24,10 +24,16 @@
       }
     }
   },
-  "postCreateCommand": "bundle install && rtk init -g --codex --auto-patch",
+  "postCreateCommand": "bundle install && mkdir -p ~/.claude && rtk init -g --codex && rtk init -g --auto-patch && configure-pi-models",
   "remoteEnv": {
-    "BUNDLE_PATH": "/usr/local/bundle"
+    "BUNDLE_PATH": "/usr/local/bundle",
+    "OPENAI_BASE_URL": "http://host.docker.internal:8000/v1",
+    "OPENAI_API_BASE": "http://host.docker.internal:8000/v1",
+    "OPENAI_API_KEY": "llmapi",
+    "PI_OPENAI_BASE_URL": "http://host.docker.internal:8000/v1",
+    "PI_OPENAI_API_KEY": "llmapi"
   },
+  "runArgs": ["--add-host=host.docker.internal:host-gateway"],
   "mounts": [
     "source=henitai-bundle,target=/usr/local/bundle,type=volume"
   ],
