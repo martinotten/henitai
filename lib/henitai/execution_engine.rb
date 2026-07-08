@@ -100,10 +100,17 @@ module Henitai
         mutant,
         reports_dir: config.reports_dir
       )
-      test_prioritizer.sort(tests, mutant, test_history(config))
+      test_prioritizer(config).sort(tests, mutant, test_history(config))
     end
 
-    def test_prioritizer = @test_prioritizer ||= TestPrioritizer.new
+    def test_prioritizer(config)
+      @test_prioritizer ||= TestPrioritizer.new(timing_source: timing_source(config))
+    end
+
+    def timing_source(config)
+      path = File.join(config.reports_dir, PerTestCoverageCollector::REPORT_FILE_NAME)
+      -> { CoverageReportReader.new.durations_by_test(path) }
+    end
 
     def per_test_coverage_selector = @per_test_coverage_selector ||= PerTestCoverageSelector.new
 

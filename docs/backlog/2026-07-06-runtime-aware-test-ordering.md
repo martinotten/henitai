@@ -1,6 +1,6 @@
 # Runtime-Aware Test Ordering (Fastest-First Tiebreaker)
 
-Status: backlog
+Status: done (2026-07-08)
 Date: 2026-07-06
 Severity: Low
 Source: cross-framework comparison — PIT 1.25 (coverage + test timings,

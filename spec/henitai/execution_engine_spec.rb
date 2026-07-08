@@ -78,6 +78,25 @@ RSpec.describe Henitai::ExecutionEngine do
     end
   end
 
+  it "wires the prioritizer timing source from the reports dir" do
+    Dir.mktmpdir do |dir|
+      config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(12.5, dir, 1, 3)
+      File.write(
+        File.join(dir, "henitai_per_test.json"),
+        JSON.dump("spec/foo_spec.rb" => { "coverage" => {}, "duration" => 0.5 })
+      )
+      captured = nil
+      allow(Henitai::TestPrioritizer).to receive(:new).and_wrap_original do |original, **kwargs|
+        captured = kwargs[:timing_source]
+        original.call(**kwargs)
+      end
+
+      described_class.new.run([build_mutant(:pending, "Foo#bar")], build_integration, config)
+
+      expect(captured.call).to eq("spec/foo_spec.rb" => 0.5)
+    end
+  end
+
   it "keeps the conservative single-worker fallback when jobs is nil" do
     pending_a = build_mutant(:pending, "Foo#bar")
     pending_b = build_mutant(:pending, "Foo#baz")

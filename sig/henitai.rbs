@@ -263,7 +263,7 @@ module Henitai
     REPORT_FILE_NAME: String
 
     def initialize: () -> void
-    def record_test: (String) -> void
+    def record_test: (String, ?duration: Float?) -> void
     def write_report: () -> void
 
     private
@@ -305,8 +305,13 @@ module Henitai
   end
 
   class TestPrioritizer
-    def initialize: () -> void
+    def initialize: (?timing_source: untyped?) -> void
     def sort: (Array[String], untyped, Hash[untyped, untyped]) -> Array[String]
+
+    private
+
+    def runtime: (untyped) -> Float
+    def timing_durations: () -> Hash[String, untyped]
   end
 
   class Operator
@@ -546,6 +551,7 @@ module Henitai
   class CoverageReportReader
     def coverage_lines_by_file: (?String) -> Hash[String, Array[Integer]]
     def test_lines_by_file: (?String) -> Hash[String, Hash[String, Array[Integer]]]
+    def durations_by_test: (?String) -> Hash[String, Float]
   end
 
   class ProcessWorkerRunner
@@ -617,7 +623,8 @@ module Henitai
     def run_parallel: (Array[Mutant], untyped, untyped, untyped?) -> void
     def process_mutant: (Mutant, untyped, untyped, untyped?, ?untyped) -> void
     def prioritized_tests_for: (Mutant, untyped, untyped) -> Array[String]
-    def test_prioritizer: () -> TestPrioritizer
+    def test_prioritizer: (untyped) -> TestPrioritizer
+    def timing_source: (untyped) -> untyped
     def test_history: (untyped) -> Hash[untyped, untyped]
     def run_with_flaky_retry: (Mutant, untyped, untyped, Array[String], ?untyped) -> ScenarioExecutionResult
     def warn_flaky_mutants: (Integer) -> void

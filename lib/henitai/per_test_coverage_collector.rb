@@ -18,11 +18,12 @@ module Henitai
       @coverage_by_test = Hash.new do |hash, test_file|
         hash[test_file] = Hash.new { |nested, source_file| nested[source_file] = [] }
       end
+      @duration_by_test = Hash.new(0.0)
       @previous_snapshot = {}
       @warned_missing_coverage = false
     end
 
-    def record_test(test_file)
+    def record_test(test_file, duration: nil)
       snapshot = current_snapshot
       return warn_missing_coverage unless snapshot
 
@@ -31,6 +32,7 @@ module Henitai
         @coverage_by_test[test_file][source_file].uniq!
         @coverage_by_test[test_file][source_file].sort!
       end
+      @duration_by_test[test_file] += duration.to_f
       @previous_snapshot = snapshot
     end
 
@@ -111,10 +113,11 @@ module Henitai
     end
 
     def serializable_report
-      @coverage_by_test.transform_values do |source_map|
-        source_map.to_h do |source_file, lines|
+      @coverage_by_test.to_h do |test_file, source_map|
+        coverage = source_map.to_h do |source_file, lines|
           [File.expand_path(source_file), lines.uniq.sort]
         end
+        [test_file, { "coverage" => coverage, "duration" => @duration_by_test[test_file] }]
       end
     end
   end

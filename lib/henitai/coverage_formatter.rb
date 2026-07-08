@@ -13,7 +13,11 @@ module Henitai
     end
 
     def example_finished(notification)
-      @collector.record_test(notification.example.metadata[:file_path])
+      example = notification.example
+      @collector.record_test(
+        example.metadata[:file_path],
+        duration: example.execution_result.run_time
+      )
     end
 
     def dump_summary(_summary)
