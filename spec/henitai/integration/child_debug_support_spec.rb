@@ -278,7 +278,7 @@ RSpec.describe Henitai::Integration::ChildDebugSupport do
   end
 
   describe "#loaded_feature?" do
-    let(:original_loaded_features) { $LOADED_FEATURES.dup }
+    let!(:original_loaded_features) { $LOADED_FEATURES.dup }
 
     before { $LOADED_FEATURES.clear }
 
