@@ -1,6 +1,6 @@
 # Repo Hygiene: gitignore Gaps and Working-Tree Cruft
 
-Status: backlog
+Status: done
 Date: 2026-06-16
 Severity: Low
 Source: 2026-06-16 structured review

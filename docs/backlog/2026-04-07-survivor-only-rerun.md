@@ -1,7 +1,39 @@
 # Survivor-Only Rerun
 
-Status: backlog
+Status: done
 Date: 2026-04-07
+
+## Resolution (re-verified 2026-07-02)
+
+Implemented since this ticket was filed, not tracked against it at the time.
+Verified against current code:
+
+- CLI: `--survivors-from PATH` option (`lib/henitai/cli/options.rb`), wired
+  through `lib/henitai/cli/run_command.rb` (including session-dir path
+  resolution) into `Runner.new(survivors_from:)`.
+- `lib/henitai/runner.rb:31,35,258,262` — `survivors_from` triggers
+  `SurvivorRerunStrategy` (built from `SurvivorLoader`, `SurvivorSelector`,
+  `SurvivorActivationCache`, `SurvivorTestFilter`) instead of the full mutant
+  pipeline.
+- Identity matching uses the existing stable `MutantIdentity` (expression +
+  operator + description + location + signature), not line numbers — matches
+  "Identity And Selection" section above.
+- Report semantics: rerun result flows through the same `Result`/reporter
+  path but scoped to the selected survivor subset — does not silently claim a
+  full-project score.
+- Test coverage: `spec/henitai/survivor_loader_spec.rb`,
+  `survivor_selector_spec.rb`, `survivor_activation_cache_spec.rb`,
+  `survivor_test_filter_spec.rb`; `survivor_rerun_strategy.rb` is allowlisted
+  in `spec/infra/lib_spec_coverage_spec.rb` ("instantiated and exercised
+  directly in runner_spec.rb") rather than unit-tested standalone.
+- Documented as a top-level command in `CLAUDE.md`'s Commands section
+  (`henitai run --survivors-from reports/mutation-report.json`).
+
+Open Questions above are answered by the shipped design: source of truth is
+the saved JSON report path passed to `--survivors-from` (not the SQLite
+history store); missing/unmatched mutants are handled via
+`SurvivorTestFilter`/`SurvivorSelector` rather than hard errors. No further
+work identified.
 
 ## Summary
 

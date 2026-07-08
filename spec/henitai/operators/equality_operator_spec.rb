@@ -17,6 +17,10 @@ RSpec.describe Henitai::Operators::EqualityOperator do
     end
   end
 
+  def identity_send_node(source)
+    find_nodes(parse(source), :send).find { |node| %i[eql? equal?].include?(node.children[1]) }
+  end
+
   def mutate(source)
     described_class.new.mutate(comparison_node(source), subject: mutation_subject)
   end
@@ -25,21 +29,28 @@ RSpec.describe Henitai::Operators::EqualityOperator do
     expect(described_class.node_types).to eq([:send])
   end
 
-  it "replaces each comparison operator with the other operators" do
+  it "replaces each relational operator with the other relational operators" do
     aggregate_failures do
       mutants = mutate("left == right")
 
-      expect(mutants).to have_attributes(size: 8)
+      expect(mutants).to have_attributes(size: 6)
       expect(mutants.map(&:description)).to contain_exactly(
         "replaced == with !=",
         "replaced == with <",
         "replaced == with >",
         "replaced == with <=",
         "replaced == with >=",
-        "replaced == with <=>",
-        "replaced == with eql?",
-        "replaced == with equal?"
+        "replaced == with <=>"
       )
+    end
+  end
+
+  it "ignores identity-method sends, handled by EqualityIdentityOperator" do
+    aggregate_failures do
+      expect(described_class.new.mutate(identity_send_node("left.eql?(right)"), subject: mutation_subject))
+        .to eq([])
+      expect(described_class.new.mutate(identity_send_node("left.equal?(right)"), subject: mutation_subject))
+        .to eq([])
     end
   end
 
@@ -72,17 +83,17 @@ RSpec.describe Henitai::Operators::EqualityOperator do
       .to eq([])
   end
 
-  it "preserves the right operand in each mutated send node" do
-    mutant = mutate("left == right").first
-    expect(mutant.mutated_node.children[2]).not_to be_nil
-  end
-
-  it "produces a :send AST node for each replacement" do
+  it "preserves the receiver and right operand exactly, only swapping the selector" do
+    node = comparison_node("left == right")
     mutants = mutate("left == right")
+
     aggregate_failures do
       mutants.each do |mutant|
         expect(mutant.mutated_node).to be_a(Parser::AST::Node)
         expect(mutant.mutated_node.type).to eq(:send)
+        expect(mutant.mutated_node.children.size).to eq(node.children.size)
+        expect(mutant.mutated_node.children[0]).to eq(node.children[0])
+        expect(mutant.mutated_node.children[2]).to eq(node.children[2])
       end
     end
   end

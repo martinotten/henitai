@@ -43,9 +43,30 @@ RSpec.describe Henitai::PerTestCoverageCollector do
 
         expect(JSON.parse(File.read(report_path))).to eq(
           "test/sample_test.rb" => {
-            File.expand_path("lib/sample.rb") => [2, 4]
+            "coverage" => { File.expand_path("lib/sample.rb") => [2, 4] },
+            "duration" => 0.0
           }
         )
+      end
+    end
+  end
+
+  it "accumulates wall-clock durations per test file" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        collector = described_class.new
+
+        allow(Coverage).to receive(:peek_result).and_return(
+          coverage_snapshot(source_lines: [nil, 1]),
+          coverage_snapshot(source_lines: [nil, 1, 2])
+        )
+
+        collector.record_test("test/sample_test.rb", duration: 0.25)
+        collector.record_test("test/sample_test.rb", duration: 0.5)
+        collector.write_report
+
+        parsed = JSON.parse(File.read(report_path))
+        expect(parsed.dig("test/sample_test.rb", "duration")).to eq(0.75)
       end
     end
   end
@@ -104,7 +125,8 @@ RSpec.describe Henitai::PerTestCoverageCollector do
 
         expect(JSON.parse(File.read(report_path))).to eq(
           "test/sample_test.rb" => {
-            File.expand_path("lib/sample.rb") => [2, 3, 4, 5]
+            "coverage" => { File.expand_path("lib/sample.rb") => [2, 3, 4, 5] },
+            "duration" => 0.0
           }
         )
       end
@@ -129,7 +151,8 @@ RSpec.describe Henitai::PerTestCoverageCollector do
 
         expect(JSON.parse(File.read(report_path))).to eq(
           "test/sample_test.rb" => {
-            File.expand_path("lib/sample.rb") => [2, 4]
+            "coverage" => { File.expand_path("lib/sample.rb") => [2, 4] },
+            "duration" => 0.0
           }
         )
       end
@@ -160,7 +183,8 @@ RSpec.describe Henitai::PerTestCoverageCollector do
 
         expect(JSON.parse(File.read(report_path))).to eq(
           "test/sample_test.rb" => {
-            File.expand_path("lib/sample.rb") => [2, 4]
+            "coverage" => { File.expand_path("lib/sample.rb") => [2, 4] },
+            "duration" => 0.0
           }
         )
       end

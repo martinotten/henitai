@@ -518,5 +518,34 @@ RSpec.describe Henitai::ProcessWorkerRunner do
 
       expect(runner.flaky_retry_count).to eq(0)
     end
+
+    it "does not count a retry whose respawn fails to spawn" do # rubocop:disable RSpec/MultipleExpectations
+      mutant = build_mutant("flaky")
+      call_count = 0
+
+      integration = instance_double(Henitai::Integration::Rspec)
+      allow(integration).to receive(:select_tests).and_return([])
+      allow(integration).to receive(:spawn_mutant) do |**|
+        call_count += 1
+        raise "simulated fork failure" if call_count == 2 # fails on the retry attempt
+
+        log_paths = { stdout_path: "/dev/null", stderr_path: "/dev/null", log_path: "/dev/null" }
+        pid = Process.fork { Process.exit(0) } # survives first run, triggering a retry
+        Henitai::Integration::ChildHandle.new(pid, log_paths)
+      end
+      allow(integration).to receive(:build_result) do |wait_result, log_paths|
+        Henitai::ScenarioExecutionResult.build(
+          wait_result: wait_result, stdout: "", stderr: "", log_path: log_paths[:log_path]
+        )
+      end
+
+      config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 1)
+      runner = described_class.new(worker_count: 1)
+
+      results = runner.run([mutant], integration, config, nil)
+
+      expect(runner.flaky_retry_count).to eq(0)
+      expect(results.first.status).to eq(:compile_error)
+    end
   end
 end

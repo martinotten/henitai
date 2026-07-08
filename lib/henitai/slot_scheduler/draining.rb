@@ -106,24 +106,30 @@ module Henitai
       # parent signal was sent. Once SIGTERM has been dispatched, the forced
       # outcome is authoritative — a child handling SIGTERM and exiting 0 must
       # not be misclassified as :survived.
-      def reap_and_remove_draining(draining) # rubocop:disable Metrics/AbcSize
-        draining.each_value do |slot|
-          # One last WNOHANG before blocking: catches processes that exited
-          # between SIGKILL and here.
-          _, final_status = wnohang_reap(slot.pid)
-          reap_pid(slot.pid) unless final_status
+      def reap_and_remove_draining(draining)
+        draining.each_value { |slot| reap_and_finalize_slot(slot) }
+      end
 
-          pid_to_slot.delete(slot.pid)
-          slots.delete(slot.slot_id)
-          Integration::SchedulerDiagnostics.child_ended(slot.pid)
+      # One last WNOHANG before blocking: catches processes that exited
+      # between SIGKILL and here.
+      def reap_and_finalize_slot(slot)
+        _, final_status = wnohang_reap(slot.pid)
+        reap_pid(slot.pid) unless final_status
 
-          next if slot.forced_outcome == :interrupted
+        pid_to_slot.delete(slot.pid)
+        slots.delete(slot.slot_id)
+        Integration::SchedulerDiagnostics.child_ended(slot.pid)
 
-          result = build_drain_result(slot, final_status)
-          slot.mutant.status = result.status
-          results << result
-          progress_reporter&.progress(slot.mutant, scenario_result: result)
-        end
+        return if slot.forced_outcome == :interrupted
+
+        record_drain_result(slot, final_status)
+      end
+
+      def record_drain_result(slot, final_status)
+        result = build_drain_result(slot, final_status)
+        slot.mutant.status = result.status
+        results << result
+        progress_reporter&.progress(slot.mutant, scenario_result: result)
       end
 
       # Choose result: use real exit status only if observed before any parent

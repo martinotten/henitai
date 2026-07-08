@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# rubocop:disable Metrics/MethodLength, RSpec/MultipleExpectations
+# rubocop:disable RSpec/MultipleExpectations
 
 require "json"
 require "net/http"
@@ -19,47 +19,19 @@ RSpec.describe Henitai::Reporter::Dashboard do
     Struct.new(:to_stryker_schema).new(schema)
   end
 
-  def dashboard(settings = {})
-    described_class.new(config: Struct.new(:dashboard).new(settings))
+  def fake_metadata(project: "github.com/example/project", version: "main", api_key: "secret-token")
+    instance_double(
+      Henitai::Reporter::DashboardMetadataProvider,
+      project: project, version: version, api_key: api_key
+    )
   end
 
-  def with_env(pairs)
-    original = pairs.keys.to_h { |key| [key, ENV.fetch(key, nil)] }
-    pairs.each do |key, value|
-      if value.nil?
-        ENV.delete(key)
-      else
-        ENV[key] = value
-      end
-    end
-
-    yield
-  ensure
-    original.each do |key, value|
-      if value.nil?
-        ENV.delete(key)
-      else
-        ENV[key] = value
-      end
-    end
-  end
-
-  def capture_request(env: {}, **settings)
-    http = instance_double(Net::HTTP)
-    stub_dashboard_http(http)
-
-    with_env(dashboard_environment(env)) do
-      dashboard(settings).report(result)
-    end
-  end
-
-  def dashboard_environment(overrides)
-    {
-      "STRYKER_DASHBOARD_API_KEY" => "secret-token",
-      "GITHUB_REF_NAME" => "main",
-      "GITHUB_REF" => nil,
-      "GITHUB_SHA" => nil
-    }.merge(overrides)
+  def dashboard(base_url: nil, metadata_provider: fake_metadata)
+    settings = base_url ? { base_url: base_url } : {}
+    described_class.new(
+      config: Struct.new(:dashboard).new(settings),
+      metadata_provider: metadata_provider
+    )
   end
 
   def stub_dashboard_http(http)
@@ -70,10 +42,13 @@ RSpec.describe Henitai::Reporter::Dashboard do
   end
 
   it "uploads the schema for the configured project with api key auth and env version" do
-    request = capture_request(
-      project: "github.com/example/project",
-      base_url: "https://dashboard.example.test"
-    )
+    http = instance_double(Net::HTTP)
+    stub_dashboard_http(http)
+
+    request = dashboard(
+      base_url: "https://dashboard.example.test",
+      metadata_provider: fake_metadata(project: "github.com/example/project", version: "main")
+    ).report(result)
 
     expect(request.method).to eq("PUT")
     expect(request.path).to eq("/api/reports/github.com/example/project/main")
@@ -84,10 +59,6 @@ RSpec.describe Henitai::Reporter::Dashboard do
 
   it "sets HTTP timeouts on dashboard uploads" do
     http = instance_double(Net::HTTP)
-    reporter = dashboard(
-      project: "github.com/example/project",
-      base_url: "https://dashboard.example.test"
-    )
     request = instance_double(Net::HTTP::Put)
 
     allow(Net::HTTP).to receive(:start).and_yield(http)
@@ -96,156 +67,45 @@ RSpec.describe Henitai::Reporter::Dashboard do
     allow(http).to receive(:request).and_return(request)
     allow(request).to receive(:body=)
 
-    with_env(
-      "STRYKER_DASHBOARD_API_KEY" => "secret-token",
-      "GITHUB_REF_NAME" => "main",
-      "GITHUB_REF" => nil,
-      "GITHUB_SHA" => nil
-    ) do
-      reporter.report(result)
-    end
+    dashboard(base_url: "https://dashboard.example.test").report(result)
 
     expect(http).to have_received(:open_timeout=).with(30)
     expect(http).to have_received(:read_timeout=).with(30)
   end
 
-  it "falls back to the git remote when dashboard.project is absent" do
-    reporter = dashboard(base_url: "https://dashboard.example.test")
-    allow(reporter).to receive(:git_remote_url).and_return("git@github.com:acme/app.git")
-    http = instance_double(Net::HTTP)
-    stub_dashboard_http(http)
-
-    with_env(
-      "STRYKER_DASHBOARD_API_KEY" => "secret-token",
-      "GITHUB_REF_NAME" => nil,
-      "GITHUB_REF" => "refs/heads/main",
-      "GITHUB_SHA" => nil
-    ) do
-      request = reporter.report(result)
-
-      expect(request.path).to eq("/api/reports/github.com/acme/app/main")
-    end
-  end
-
-  it "derives the version from a fuller GITHUB_REF when REF_NAME is missing" do
-    request = nil
-
-    with_env(
-      "STRYKER_DASHBOARD_API_KEY" => "secret-token",
-      "GITHUB_REF_NAME" => nil,
-      "GITHUB_REF" => "refs/heads/feature/xyz",
-      "GITHUB_SHA" => nil
-    ) do
-      request = capture_request(
-        project: "github.com/example/project",
-        base_url: "https://dashboard.example.test",
-        env: {
-          "GITHUB_REF_NAME" => nil,
-          "GITHUB_REF" => "refs/heads/feature/xyz",
-          "GITHUB_SHA" => nil
-        }
-      )
-    end
-
-    expect(request.path).to eq("/api/reports/github.com/example/project/feature%2Fxyz")
-  end
-
-  it "uses GITHUB_SHA when no ref variables are present" do
-    http = instance_double(Net::HTTP)
-    stub_dashboard_http(http)
-
-    with_env(
-      "STRYKER_DASHBOARD_API_KEY" => "secret-token",
-      "GITHUB_REF_NAME" => nil,
-      "GITHUB_REF" => nil,
-      "GITHUB_SHA" => "deadbeef"
-    ) do
-      request = dashboard(
-        project: "github.com/example/project",
-        base_url: "https://dashboard.example.test"
-      ).report(result)
-
-      expect(request.path).to eq("/api/reports/github.com/example/project/deadbeef")
-    end
-  end
-
-  it "uses the local branch when CI refs are unavailable" do
-    reporter = dashboard(
-      project: "github.com/example/project",
-      base_url: "https://dashboard.example.test"
-    )
-    http = instance_double(Net::HTTP)
-    stub_dashboard_http(http)
-    allow(reporter).to receive(:git_branch_name).and_return("local-branch")
-
-    with_env(
-      "STRYKER_DASHBOARD_API_KEY" => "secret-token",
-      "GITHUB_REF_NAME" => nil,
-      "GITHUB_REF" => nil,
-      "GITHUB_SHA" => nil
-    ) do
-      request = reporter.report(result)
-
-      expect(request.path).to eq("/api/reports/github.com/example/project/local-branch")
-    end
-  end
-
   it "does not upload when the dashboard API key is missing" do
     allow(Net::HTTP).to receive(:start)
 
-    with_env(
-      "STRYKER_DASHBOARD_API_KEY" => nil,
-      "GITHUB_REF_NAME" => "main",
-      "GITHUB_REF" => nil,
-      "GITHUB_SHA" => nil
-    ) do
-      expect(
-        dashboard(
-          project: "github.com/example/project",
-          base_url: "https://dashboard.example.test"
-        ).report(result)
-      ).to be_nil
-    end
-
+    expect(
+      dashboard(
+        base_url: "https://dashboard.example.test",
+        metadata_provider: fake_metadata(api_key: nil)
+      ).report(result)
+    ).to be_nil
     expect(Net::HTTP).not_to have_received(:start)
-  end
-
-  it "parses https git urls into dashboard project paths" do
-    expect(
-      described_class.project_from_git_url("https://github.com/acme/app.git")
-    ).to eq("github.com/acme/app")
-  end
-
-  it "parses ssh git urls into dashboard project paths" do
-    expect(
-      described_class.project_from_git_url("git@github.com:acme/app.git")
-    ).to eq("github.com/acme/app")
-  end
-
-  it "handles uri urls without a host" do
-    expect(
-      described_class.project_from_git_url("https:///acme/app.git")
-    ).to eq("acme/app")
-  end
-
-  it "returns nil for blank git urls" do
-    expect(described_class.project_from_git_url("")).to be_nil
   end
 
   it "does not upload when the version cannot be determined" do
     allow(Net::HTTP).to receive(:start)
-    reporter = dashboard(project: "github.com/example/project", base_url: "https://dashboard.example.test")
-    allow(reporter).to receive(:git_branch_name).and_return(nil)
 
-    with_env(
-      "STRYKER_DASHBOARD_API_KEY" => "secret-token",
-      "GITHUB_REF_NAME" => nil,
-      "GITHUB_REF" => nil,
-      "GITHUB_SHA" => nil
-    ) do
-      expect(reporter.report(result)).to be_nil
-    end
+    expect(
+      dashboard(
+        base_url: "https://dashboard.example.test",
+        metadata_provider: fake_metadata(version: nil)
+      ).report(result)
+    ).to be_nil
+    expect(Net::HTTP).not_to have_received(:start)
+  end
 
+  it "does not upload when the project cannot be determined" do
+    allow(Net::HTTP).to receive(:start)
+
+    expect(
+      dashboard(
+        base_url: "https://dashboard.example.test",
+        metadata_provider: fake_metadata(project: nil)
+      ).report(result)
+    ).to be_nil
     expect(Net::HTTP).not_to have_received(:start)
   end
 
@@ -258,23 +118,17 @@ RSpec.describe Henitai::Reporter::Dashboard do
       "dashboard.example.test", anything, use_ssl: true
     ).and_yield(http)
 
-    with_env(
-      "STRYKER_DASHBOARD_API_KEY" => "secret-token",
-      "GITHUB_REF_NAME" => "main",
-      "GITHUB_REF" => nil,
-      "GITHUB_SHA" => nil
-    ) do
-      dashboard(project: "github.com/example/project", base_url: "https://dashboard.example.test").report(result)
-    end
+    dashboard(base_url: "https://dashboard.example.test").report(result)
 
     expect(Net::HTTP).to have_received(:start)
   end
 
   it "handles a trailing slash in the base URL without doubling path separators" do
-    request = capture_request(
-      project: "github.com/example/project",
-      base_url: "https://dashboard.example.test/"
-    )
+    http = instance_double(Net::HTTP)
+    stub_dashboard_http(http)
+
+    request = dashboard(base_url: "https://dashboard.example.test/").report(result)
+
     expect(request.path).to eq("/api/reports/github.com/example/project/main")
   end
 
@@ -282,54 +136,28 @@ RSpec.describe Henitai::Reporter::Dashboard do
     http = instance_double(Net::HTTP)
     stub_dashboard_http(http)
 
-    with_env(
-      "STRYKER_DASHBOARD_API_KEY" => "secret-token",
-      "GITHUB_REF_NAME" => "main",
-      "GITHUB_REF" => nil,
-      "GITHUB_SHA" => nil
-    ) do
-      request = dashboard(project: "github.com/example/project").report(result)
-      expect(request.path).to start_with("/api/reports/github.com/example/project/")
-    end
+    request = dashboard.report(result)
+
+    expect(request.path).to start_with("/api/reports/github.com/example/project/")
   end
 
-  it "uses GITHUB_REF_NAME for the version when present" do
-    reporter = dashboard(project: "github.com/example/project", base_url: "https://dashboard.example.test")
-    allow(reporter).to receive(:git_branch_name).and_return("totally-different-branch")
+  it "url-encodes project and version segments" do
     http = instance_double(Net::HTTP)
     stub_dashboard_http(http)
 
-    with_env(
-      "STRYKER_DASHBOARD_API_KEY" => "secret-token",
-      "GITHUB_REF_NAME" => "release/v2.0",
-      "GITHUB_REF" => nil,
-      "GITHUB_SHA" => nil
-    ) do
-      request = reporter.report(result)
-      expect(request.path).to include("release%2Fv2.0")
-    end
+    request = dashboard(
+      base_url: "https://dashboard.example.test",
+      metadata_provider: fake_metadata(version: "release/v2.0")
+    ).report(result)
+
+    expect(request.path).to include("release%2Fv2.0")
   end
 
-  it "skips a blank GITHUB_REF and uses GITHUB_SHA instead" do
-    reporter = dashboard(project: "github.com/example/project", base_url: "https://dashboard.example.test")
-    allow(reporter).to receive(:git_branch_name).and_return("irrelevant-branch")
-    http = instance_double(Net::HTTP)
-    stub_dashboard_http(http)
+  it "constructs the default metadata provider from config.dashboard when none is injected" do
+    reporter = described_class.new(config: Struct.new(:dashboard).new({ project: "configured/project" }))
 
-    with_env(
-      "STRYKER_DASHBOARD_API_KEY" => "secret-token",
-      "GITHUB_REF_NAME" => nil,
-      "GITHUB_REF" => "   ",
-      "GITHUB_SHA" => "abc123sha"
-    ) do
-      request = reporter.report(result)
-      expect(request.path).to include("abc123sha")
-    end
-  end
-
-  it "returns nil for SSH git URLs without a path component" do
-    expect(described_class.project_from_git_url("git@github.com")).to be_nil
+    expect(reporter.send(:project)).to eq("configured/project")
   end
 end
 
-# rubocop:enable Metrics/MethodLength, RSpec/MultipleExpectations
+# rubocop:enable RSpec/MultipleExpectations

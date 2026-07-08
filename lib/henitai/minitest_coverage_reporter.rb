@@ -18,7 +18,10 @@ module Henitai
 
     def record(result)
       super
-      @collector.record_test(relative_to_pwd(result.source_location.first))
+      @collector.record_test(
+        relative_to_pwd(result.source_location.first),
+        duration: result.time
+      )
     end
 
     def report

@@ -5,6 +5,7 @@
 require "fileutils"
 require "json"
 require "spec_helper"
+require "stringio"
 require "tmpdir"
 
 RSpec.describe Henitai::Runner do
@@ -129,6 +130,129 @@ RSpec.describe Henitai::Runner do
   # rather than on the order in which collaborators were called. The kill/
   # survive mix the execution engine returns must flow through to the Result's
   # reported counts and mutation score, and the same Result must be reported.
+  describe "dry run" do
+    def capture_stdout
+      original_stdout = $stdout
+      stdout = StringIO.new
+      $stdout = stdout
+      yield
+      stdout.string
+    ensure
+      $stdout = original_stdout
+    end
+
+    def dry_run_mutant(status)
+      Struct.new(:subject, :status, :operator, :description, :location) do
+        def killed?   = false
+        def survived? = false
+      end.new(
+        Struct.new(:expression).new("Sample#answer"),
+        status,
+        :ArithmeticOperator,
+        "replaced + with -",
+        { file: "lib/sample.rb", start_line: 3, end_line: 3 }
+      )
+    end
+
+    def stub_dry_run_pipeline(runner, generated:)
+      subject_resolver = instance_double(Henitai::SubjectResolver, resolve_from_files: [])
+      mutant_generator = instance_double(Henitai::MutantGenerator, generate: generated)
+      static_filter = instance_double(Henitai::StaticFilter, apply: generated)
+      coverage_bootstrapper = instance_double(Henitai::CoverageBootstrapper, ensure!: nil)
+      # Strict doubles with no stubbed methods: any execution or history
+      # write during a dry run fails the example.
+      execution_engine = instance_double(Henitai::ExecutionEngine)
+      history_store = instance_double(Henitai::MutantHistoryStore)
+
+      allow(runner).to receive_messages(
+        subject_resolver:, mutant_generator:, static_filter:,
+        coverage_bootstrapper:, execution_engine:, integration: nil, history_store:
+      )
+    end
+
+    it "lists the post-filter mutants without executing, persisting or reporting" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "lib"))
+        File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+        Dir.chdir(dir) do
+          reports_dir = File.join(dir, "reports")
+          runner = described_class.new(config: build_config(reports_dir:), mode: { dry_run: true })
+          mutants = [dry_run_mutant(:pending), dry_run_mutant(:ignored)]
+          stub_dry_run_pipeline(runner, generated: mutants)
+          run_all_called = false
+          allow(Henitai::Reporter).to receive(:run_all) { run_all_called = true }
+
+          output = capture_stdout { runner.run }
+
+          expect(
+            listing: output.include?("Dry run: 2 mutants") &&
+              output.include?("[pending]") && output.include?("[ignored]"),
+            result_mutants: runner.result.mutants,
+            configured_reporters_run: run_all_called,
+            reports_dir_written: Dir.exist?(reports_dir) && !Dir.empty?(reports_dir)
+          ).to eq(
+            listing: true,
+            result_mutants: mutants,
+            configured_reporters_run: false,
+            reports_dir_written: false
+          )
+        end
+      end
+    end
+  end
+
+  describe "incremental verdict reuse" do
+    it "routes the filtered mutants through the incremental filter when enabled" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "lib"))
+        File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+        Dir.chdir(dir) do
+          runner = described_class.new(config: build_config(reporters: []), mode: { incremental: true })
+          generated = [executed_mutant(:killed)]
+          history_store = build_history_store
+          stub_pipeline(runner, history_store:, generated:, executed: generated)
+          allow(Henitai::Reporter).to receive(:run_all)
+
+          filter = instance_double(Henitai::IncrementalFilter)
+          captured_store = nil
+          apply_calls = 0
+          allow(Henitai::IncrementalFilter).to receive(:new) do |history_store:|
+            captured_store = history_store
+            filter
+          end
+          allow(filter).to receive(:apply) do |mutants|
+            apply_calls += 1
+            mutants
+          end
+
+          runner.run
+
+          expect([captured_store, apply_calls]).to eq([history_store, 1])
+        end
+      end
+    end
+
+    it "never builds the incremental filter on the default path" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "lib"))
+        File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+        Dir.chdir(dir) do
+          runner = described_class.new(config: build_config(reporters: []))
+          stub_pipeline(runner, history_store: build_history_store)
+          allow(Henitai::Reporter).to receive(:run_all)
+          allow(Henitai::IncrementalFilter).to receive(:new)
+
+          runner.run
+
+          expect(Henitai::IncrementalFilter).not_to have_received(:new)
+        end
+      end
+    end
+  end
+
   it "returns a Result whose counts reflect the executed mutants" do
     Dir.mktmpdir do |dir|
       FileUtils.mkdir_p(File.join(dir, "lib"))

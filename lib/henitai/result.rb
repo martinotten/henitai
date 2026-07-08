@@ -152,6 +152,8 @@ module Henitai
         replacement: replacement_for(mutant),
         location: location_for(mutant),
         status: stryker_status(mutant.status),
+        statusReason: status_reason_for(mutant),
+        fromCache: from_cache_for(mutant),
         description: mutant.description,
         duration: duration_for(mutant)
       }.compact.merge(coverage_schema(mutant))
@@ -188,6 +190,22 @@ module Henitai
 
     def duration_for(mutant)
       mutant.duration&.then { |d| (d * 1000).round }
+    end
+
+    # Serialized as the schema's statusReason so directive reasons show up
+    # next to the Ignored status in the HTML report.
+    def status_reason_for(mutant)
+      return nil unless mutant.respond_to?(:ignore_reason)
+
+      mutant.ignore_reason
+    end
+
+    # Vendored extension field (like stableId): marks verdicts reused from
+    # the history store so reports stay honest about what actually executed.
+    def from_cache_for(mutant)
+      return nil unless mutant.respond_to?(:from_cache?)
+
+      mutant.from_cache? || nil
     end
 
     def equivalence_uncertainty

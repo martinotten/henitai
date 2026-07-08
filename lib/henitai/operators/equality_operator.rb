@@ -4,10 +4,15 @@ require_relative "../parser_current"
 
 module Henitai
   module Operators
-    # Replaces comparison operators with the other comparison operators.
+    # Replaces relational/equality operators with the other relational operators.
+    #
+    # Identity-method comparisons (`eql?`, `equal?`) are handled separately by
+    # EqualityIdentityOperator: that pairing is the hardest to kill in practice
+    # (most objects don't observably distinguish `==` from `eql?`/`equal?`), so
+    # it is kept out of the default light set.
     class EqualityOperator < Henitai::Operator
       NODE_TYPES = [:send].freeze
-      OPERATORS = %i[== != < > <= >= <=> eql? equal?].freeze
+      OPERATORS = %i[== != < > <= >= <=>].freeze
 
       def self.node_types
         NODE_TYPES
@@ -33,7 +38,7 @@ module Henitai
 
       def mutated_node(node, replacement)
         receiver = node.children[0]
-        arguments = node.children[2..] || []
+        arguments = node.children[2..]
         Parser::AST::Node.new(:send, [receiver, replacement, *arguments])
       end
     end

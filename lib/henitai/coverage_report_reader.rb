@@ -22,17 +22,40 @@ module Henitai
     end
 
     def test_lines_by_file(path = DEFAULT_PER_TEST_COVERAGE_REPORT_PATH)
-      return {} unless File.exist?(path)
-
-      parsed = JSON.parse(File.read(path))
-      return {} unless parsed.is_a?(Hash)
-
-      parsed.transform_values do |coverage|
-        normalize_test_coverage(coverage)
+      per_test_report(path).transform_values do |entry|
+        normalize_test_coverage(unwrap_coverage(entry))
       end
     end
 
+    # Wall-clock seconds per test file, from reports whose entries carry a
+    # "duration" field. Legacy reports (plain source-map entries) yield {}.
+    def durations_by_test(path = DEFAULT_PER_TEST_COVERAGE_REPORT_PATH)
+      per_test_report(path).filter_map do |test_file, entry|
+        next unless wrapped_entry?(entry) && entry.key?("duration")
+
+        [test_file, entry.fetch("duration").to_f]
+      end.to_h
+    end
+
     private
+
+    def per_test_report(path)
+      return {} unless File.exist?(path)
+
+      parsed = JSON.parse(File.read(path))
+      parsed.is_a?(Hash) ? parsed : {}
+    end
+
+    # New-format entries wrap the source map under "coverage" (with a sibling
+    # "duration"); legacy entries are the source map itself. Source-map keys
+    # are absolute file paths, so a plain "coverage" key is unambiguous.
+    def wrapped_entry?(entry)
+      entry.is_a?(Hash) && entry["coverage"].is_a?(Hash)
+    end
+
+    def unwrap_coverage(entry)
+      wrapped_entry?(entry) ? entry.fetch("coverage") : entry
+    end
 
     def covered_lines(file_coverage)
       Array(file_coverage["lines"]).each_with_index.filter_map do |count, index|

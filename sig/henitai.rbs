@@ -140,6 +140,7 @@ module Henitai
 
   class Configuration
     DEFAULT_TIMEOUT: Float
+    DEFAULT_TIMEOUT_MULTIPLIER: Float
     DEFAULT_OPERATORS: Symbol
     DEFAULT_JOBS: untyped
     DEFAULT_MAX_MUTANTS_PER_LINE: Integer
@@ -154,6 +155,7 @@ module Henitai
     attr_reader excludes: Array[String]
     attr_reader operators: Symbol
     attr_reader timeout: Float
+    attr_reader timeout_multiplier: Float
     attr_reader ignore_patterns: Array[untyped]
     attr_reader max_mutants_per_line: Integer
     attr_reader max_flaky_retries: Integer
@@ -168,6 +170,7 @@ module Henitai
 
     def self.load: (?path: String, ?overrides: Hash[Symbol, untyped]) -> Configuration
     def initialize: (?path: String, ?overrides: Hash[Symbol, untyped]) -> void
+    def timeout_configured?: () -> bool
 
     private
 
@@ -240,11 +243,14 @@ module Henitai
     attr_accessor duration: Float?
     attr_accessor covered_by: Array[String]?
     attr_accessor tests_completed: Integer?
+    attr_accessor ignore_reason: String?
+    attr_accessor from_cache: bool
     attr_reader precomputed_stable_id: String?
     attr_reader precomputed_activation_source: String?
 
     def initialize: (subject: Subject, operator: String, nodes: Hash[Symbol, untyped], description: String, location: Hash[Symbol, untyped], ?precomputed_stable_id: String?, ?precomputed_activation_source: String?) -> void
     def stable_id: () -> String
+    def from_cache?: () -> bool
     def killed?: () -> bool
     def survived?: () -> bool
     def pending?: () -> bool
@@ -263,7 +269,7 @@ module Henitai
     REPORT_FILE_NAME: String
 
     def initialize: () -> void
-    def record_test: (String) -> void
+    def record_test: (String, ?duration: Float?) -> void
     def write_report: () -> void
 
     private
@@ -304,9 +310,26 @@ module Henitai
     def sample: (Array[Mutant], ratio: Float, ?strategy: Symbol) -> Array[Mutant]
   end
 
+  class TimeoutCalibrator
+    FLOOR_SECONDS: Float
+
+    def initialize: (timing_source: untyped, multiplier: untyped) -> void
+    def timeout_for: (untyped) -> Float?
+
+    private
+
+    def durations: () -> Hash[String, untyped]
+    def normalize: (untyped) -> String
+  end
+
   class TestPrioritizer
-    def initialize: () -> void
+    def initialize: (?timing_source: untyped?) -> void
     def sort: (Array[String], untyped, Hash[untyped, untyped]) -> Array[String]
+
+    private
+
+    def runtime: (untyped) -> Float
+    def timing_durations: () -> Hash[String, untyped]
   end
 
   class Operator
@@ -507,13 +530,16 @@ module Henitai
 
     def initialize: (path: String) -> void
     def record: (untyped, version: String, ?recorded_at: Time) -> void
+    def killed_verdict_for: (String) -> Hash[Symbol, untyped]?
     def trend_report: () -> Hash[Symbol, untyped]
 
     module Sql
       RUNS_TABLE: String
       MUTANTS_TABLE: String
+      MIGRATION_COLUMNS: Hash[String, String]
       INSERT_RUN: String
       UPSERT_MUTANT: String
+      KILLED_VERDICT: String
     end
   end
 
@@ -546,11 +572,7 @@ module Henitai
   class CoverageReportReader
     def coverage_lines_by_file: (?String) -> Hash[String, Array[Integer]]
     def test_lines_by_file: (?String) -> Hash[String, Hash[String, Array[Integer]]]
-  end
-
-  class ParallelExecutionRunner
-    def initialize: (worker_count: Integer) -> void
-    def run: (Array[Mutant], untyped, untyped, untyped, ?Hash[Symbol, untyped]) -> void
+    def durations_by_test: (?String) -> Hash[String, Float]
   end
 
   class ProcessWorkerRunner
@@ -567,6 +589,7 @@ module Henitai
 
   class SlotScheduler
     PROCESS_DRAIN_WINDOW: Float
+    WORKER_SLOT_ENV: String
 
     Slot: untyped
 
@@ -591,8 +614,31 @@ module Henitai
     def interrupt_active_slots: () -> void
   end
 
+  class IncrementalFilter
+    def initialize: (history_store: untyped) -> void
+    def apply: (Array[Mutant]) -> Array[Mutant]
+
+    private
+
+    def history_store: () -> untyped
+    def ambiguous_stable_ids: (Array[Mutant]) -> Set[String]
+    def reusable?: (Mutant) -> bool
+  end
+
+  module VerdictFingerprint
+    def self?.subject_source_hash: (untyped) -> String?
+    def self?.tests_fingerprint: (untyped) -> String?
+    def self?.tests_fingerprint_current?: (String?) -> bool
+    def self?.combined_content_sha: (untyped) -> String?
+  end
+
+  class MutationSkipDirectives
+    def skip?: (Mutant) -> bool
+    def directive_for: (Mutant) -> untyped
+  end
+
   class StaticFilter
-    def initialize: (?coverage_report_reader: CoverageReportReader) -> void
+    def initialize: (?coverage_report_reader: CoverageReportReader, ?skip_directives: MutationSkipDirectives) -> void
     def apply: (Array[Mutant], untyped) -> Array[Mutant]
     def coverage_lines_for: (untyped) -> Hash[String, Array[Integer]]
     def coverage_lines_by_file: (?String) -> Hash[String, Array[Integer]]
@@ -609,13 +655,16 @@ module Henitai
 
     private
 
+    def execute: (Array[Mutant], untyped, untyped, untyped?) -> Array[Mutant]
+    def with_worker_slot: () { () -> untyped } -> untyped
     def parallel_execution?: (untyped, Array[Mutant]) -> bool
     def worker_count: (untyped) -> Integer
     def run_linear: (Array[Mutant], untyped, untyped, untyped?, untyped) -> void
     def run_parallel: (Array[Mutant], untyped, untyped, untyped?) -> void
     def process_mutant: (Mutant, untyped, untyped, untyped?, ?untyped) -> void
     def prioritized_tests_for: (Mutant, untyped, untyped) -> Array[String]
-    def test_prioritizer: () -> TestPrioritizer
+    def test_prioritizer: (untyped) -> TestPrioritizer
+    def timing_source: (untyped) -> untyped
     def test_history: (untyped) -> Hash[untyped, untyped]
     def run_with_flaky_retry: (Mutant, untyped, untyped, Array[String], ?untyped) -> ScenarioExecutionResult
     def warn_flaky_mutants: (Integer) -> void
@@ -685,11 +734,13 @@ module Henitai
 
       PROGRESS_GLYPHS: Hash[Symbol, String]
 
+      def initialize: (config: Configuration, ?history_store: MutantHistoryStore?, ?color_enabled: bool) -> void
       def report: (Result) -> void
       def progress: (untyped, ?scenario_result: ScenarioExecutionResult) -> void
 
       private
 
+      def color_enabled: () -> bool
       def report_lines: (Result) -> Array[String]
       def summary_lines: (untyped) -> Array[String]
       def full_summary_lines: (untyped) -> Array[String]
@@ -703,6 +754,7 @@ module Henitai
       def display_unparse: (untyped) -> String
       def score_line: (Result) -> String
       def format_row: (String, untyped) -> String
+      def reused_verdicts_line: (Result) -> String?
       def count_status: (Result, Symbol) -> Integer
       def format_duration: (Float) -> String
       def format_percent: (Float?) -> String
@@ -740,28 +792,44 @@ module Henitai
       def escaped_report_json: (Result) -> String
     end
 
-  class Dashboard < Base
-      DEFAULT_BASE_URL: String
-      HTTP_TIMEOUT_SECONDS: Integer
+    class DryRun < Base
+      def initialize: (config: Configuration, ?history_store: MutantHistoryStore?, ?io: untyped) -> void
+      def report: (untyped) -> void
 
+      private
+
+      def io: () -> untyped
+      def listing_lines: (untyped) -> Array[String]
+      def grouped_lines: (untyped) -> Array[String]
+      def subject_label: (untyped) -> String
+      def mutant_line: (untyped) -> String
+      def ignore_reason_for: (untyped) -> String?
+      def summary_line: (untyped) -> String
+    end
+
+    class Github < Base
+      def initialize: (config: Configuration, ?history_store: MutantHistoryStore?, ?io: untyped) -> void
       def report: (Result) -> void
 
       private
 
-      def ready?: () -> bool
-      def build_request: (Result, untyped) -> untyped
-      def request_headers: () -> Hash[String, String]
-      def send_request: (untyped, untyped) -> untyped
-      def dashboard_uri: () -> untyped
-      def base_url: () -> String
+      def io: () -> untyped
+      def annotation_line: (Mutant) -> String
+      def relative_path: (String) -> String
+      def escape_message: (String) -> String
+    end
+
+    class DashboardMetadataProvider
+      def initialize: (dashboard_config: Hash[Symbol, untyped]?, ?env: untyped, ?git_executor: untyped) -> void
       def project: () -> String?
       def version: () -> String?
+      def api_key: () -> String?
+
+      private
+
       def env_version: () -> String?
       def ref_without_prefix: (String?) -> String?
       def project_from_git_remote: () -> String?
-      def api_key: () -> String?
-      def project_path: () -> String
-      def encoded_version: () -> String
       def blank?: (String?) -> bool
       def git_remote_url: () -> String?
       def git_branch_name: () -> String?
@@ -770,6 +838,31 @@ module Henitai
       def self.normalize_git_url: (String?) -> String?
       def self.project_from_uri_url: (String) -> String?
       def self.project_from_ssh_url: (String) -> String?
+    end
+
+  class Dashboard < Base
+      DEFAULT_BASE_URL: String
+      HTTP_TIMEOUT_SECONDS: Integer
+
+      def initialize: (config: Configuration, ?history_store: MutantHistoryStore?, ?metadata_provider: DashboardMetadataProvider?) -> void
+      def report: (Result) -> void
+
+      private
+
+      def metadata_provider: () -> DashboardMetadataProvider
+      def ready?: () -> bool
+      def build_request: (Result, untyped) -> untyped
+      def request_headers: () -> Hash[String, String]
+      def send_request: (untyped, untyped) -> untyped
+      def dashboard_uri: () -> untyped
+      def base_url: () -> String
+      def project: () -> String?
+      def version: () -> String?
+      def api_key: () -> String?
+      def project_path: () -> String
+      def encoded_version: () -> String
+
+      def self.project_from_git_url: (String?) -> String?
     end
   end
 
@@ -810,6 +903,8 @@ module Henitai
     def location_for: (Mutant) -> Hash[Symbol, untyped]
     def line_column: (Mutant, Symbol) -> Hash[Symbol, Integer]
     def duration_for: (Mutant) -> Integer?
+    def status_reason_for: (Mutant) -> String?
+    def from_cache_for: (Mutant) -> bool?
     def equivalence_uncertainty: () -> String?
     def stryker_status: (Symbol) -> String
   end
@@ -863,7 +958,7 @@ module Henitai
     attr_reader config: Configuration
     attr_reader result: untyped
 
-    def initialize: (?config: Configuration, ?subjects: Array[Subject], ?since: String, ?survivors_from: String?) -> void
+    def initialize: (?config: Configuration, ?subjects: Array[Subject], ?since: String, ?survivors_from: String?, ?mode: Hash[Symbol, bool]) -> void
     def run: () -> Result
     def resolve_subjects: (?Array[String]) -> untyped
     def generate_mutants: (untyped) -> untyped
@@ -893,6 +988,9 @@ module Henitai
     private
 
     def build_result: (Array[Mutant], Time, Time) -> Result
+    def pipeline_mutants: () -> Array[Mutant]
+    def apply_incremental_filter: (Array[Mutant]) -> Array[Mutant]
+    def dry_run_result: (Array[Mutant], Time, Time) -> Result
     def source_provider: () -> ^(String) -> String
     def persist_history: (Result, Time) -> void
     def bootstrap_coverage: (Array[String], ?Array[String]?) -> void

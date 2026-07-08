@@ -25,13 +25,39 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libyaml-dev \
     zlib1g-dev \
     ripgrep \
+    fd-find \
     perl \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g @openai/codex \
-    && curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh \
-    && ln -s /root/.local/bin/rtk /usr/local/bin/rtk \
+    && ln -s /usr/bin/fdfind /usr/local/bin/fd \
     && groupadd --gid ${USER_GID} ${USERNAME} \
     && useradd --uid ${USER_UID} --gid ${USER_GID} -m -s /bin/bash ${USERNAME}
+
+# Pi currently requires Node.js >= 22.19.0; Debian trixie ships Node.js 20.
+RUN npm install -g n && \
+    n 22 && \
+    npm cache clean --force && \
+    node --version
+
+# Install AI CLI tools.
+RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent && \
+    npm install -g @openai/codex
+
+COPY .devcontainer/configure-pi-models.sh /usr/local/bin/configure-pi-models
+RUN chmod +x /usr/local/bin/configure-pi-models
+
+RUN curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh \
+    && mv ~/.local/bin/rtk /usr/local/bin/rtk
+
+# Bind-mount point for agent-created git worktrees (see devcontainer.json
+# mounts). Chowned here for portability to Linux Docker hosts, which
+# enforce real host-UID permission checks on bind mounts (macOS Docker
+# Desktop overlays this regardless).
+RUN mkdir -p /workspaces/worktrees && chown ${USER_UID}:${USER_GID} /workspaces/worktrees
+
+# Pre-create and chown Pi's state dir (sessions, models.json) so the
+# named volume mounted here (see devcontainer.json) copies up with
+# vscode ownership on first mount, instead of defaulting to root.
+RUN mkdir -p /home/${USERNAME}/.pi && chown -R ${USER_UID}:${USER_GID} /home/${USERNAME}/.pi
 
 USER ${USERNAME}
 

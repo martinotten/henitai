@@ -1,6 +1,6 @@
 # Decompose integration.rb God File
 
-Status: backlog
+Status: done
 Date: 2026-06-16
 Severity: High
 Source: 2026-06-16 structured review

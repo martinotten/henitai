@@ -20,6 +20,7 @@ IntegrationSpy = Class.new do
     @calls[:run_mutant] += 1
     @calls[:last_test_files] = test_files
     @calls[:last_timeout] = timeout
+    @calls[:worker_slot] = ENV.fetch("HENITAI_WORKER_SLOT", nil)
     mutant.status = :killed
   end
 end
@@ -48,6 +49,122 @@ RSpec.describe Henitai::ExecutionEngine do
       1,
       3
     )
+  end
+
+  describe "HENITAI_WORKER_SLOT on the linear path" do
+    around do |example|
+      original = ENV.fetch("HENITAI_WORKER_SLOT", nil)
+      ENV["HENITAI_WORKER_SLOT"] = "sentinel"
+      example.run
+    ensure
+      original.nil? ? ENV.delete("HENITAI_WORKER_SLOT") : ENV["HENITAI_WORKER_SLOT"] = original
+    end
+
+    it "exposes slot 0 to every child" do
+      mutant = build_mutant(:pending, "Foo#bar")
+      integration = build_integration
+
+      described_class.new.run([mutant], integration, build_config)
+
+      expect(integration.calls[:worker_slot]).to eq("0")
+    end
+
+    it "restores the variable after the run" do
+      mutant = build_mutant(:pending, "Foo#bar")
+
+      described_class.new.run([mutant], build_integration, build_config)
+
+      expect(ENV.fetch("HENITAI_WORKER_SLOT", nil)).to eq("sentinel")
+    end
+  end
+
+  describe "timeout calibration" do
+    def build_calibrating_config(dir, timeout_configured:, multiplier: 3.0)
+      config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :timeout_multiplier) do
+        attr_accessor :timeout_configured
+
+        def timeout_configured? = timeout_configured
+      end.new(12.5, dir, 1, 3, multiplier)
+      config.timeout_configured = timeout_configured
+      config
+    end
+
+    def write_timing_report(dir, durations)
+      payload = durations.transform_values do |duration|
+        { "coverage" => {}, "duration" => duration }
+      end
+      File.write(File.join(dir, "henitai_per_test.json"), JSON.dump(payload))
+    end
+
+    it "passes a calibrated per-mutant timeout when mutation.timeout is unset" do
+      Dir.mktmpdir do |dir|
+        config = build_calibrating_config(dir, timeout_configured: false)
+        write_timing_report(dir, "spec/foo_spec.rb" => 2.0)
+        integration = build_integration
+
+        described_class.new.run([build_mutant(:pending, "Foo#bar")], integration, config)
+
+        expect(integration.calls[:last_timeout]).to eq(6.0)
+      end
+    end
+
+    it "passes the fixed config timeout untouched when mutation.timeout is set" do
+      Dir.mktmpdir do |dir|
+        config = build_calibrating_config(dir, timeout_configured: true)
+        write_timing_report(dir, "spec/foo_spec.rb" => 2.0)
+        integration = build_integration
+
+        described_class.new.run([build_mutant(:pending, "Foo#bar")], integration, config)
+
+        expect(integration.calls[:last_timeout]).to eq(12.5)
+      end
+    end
+
+    it "falls back to the default timeout when timing data is missing" do
+      Dir.mktmpdir do |dir|
+        config = build_calibrating_config(dir, timeout_configured: false)
+        integration = build_integration
+        engine = described_class.new
+        allow(engine).to receive(:warn)
+
+        engine.run([build_mutant(:pending, "Foo#bar")], integration, config)
+
+        expect(integration.calls[:last_timeout]).to eq(Henitai::Configuration::DEFAULT_TIMEOUT)
+      end
+    end
+
+    it "warns exactly once per run when calibration is unavailable" do
+      Dir.mktmpdir do |dir|
+        config = build_calibrating_config(dir, timeout_configured: false)
+        mutants = [build_mutant(:pending, "Foo#bar"), build_mutant(:pending, "Foo#baz")]
+        warnings = []
+        engine = described_class.new
+        allow(engine).to receive(:warn) { |message| warnings << message }
+
+        engine.run(mutants, build_integration, config)
+
+        expect(warnings.grep(/Timeout calibration unavailable/).size).to eq(1)
+      end
+    end
+  end
+
+  it "wires the prioritizer timing source from the reports dir" do
+    Dir.mktmpdir do |dir|
+      config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(12.5, dir, 1, 3)
+      File.write(
+        File.join(dir, "henitai_per_test.json"),
+        JSON.dump("spec/foo_spec.rb" => { "coverage" => {}, "duration" => 0.5 })
+      )
+      captured = nil
+      allow(Henitai::TestPrioritizer).to receive(:new).and_wrap_original do |original, **kwargs|
+        captured = kwargs[:timing_source]
+        original.call(**kwargs)
+      end
+
+      described_class.new.run([build_mutant(:pending, "Foo#bar")], build_integration, config)
+
+      expect(captured.call).to eq("spec/foo_spec.rb" => 0.5)
+    end
   end
 
   it "keeps the conservative single-worker fallback when jobs is nil" do
@@ -290,7 +407,6 @@ RSpec.describe Henitai::ExecutionEngine do
 
     allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
       thread_ids << Thread.current.object_id
-      sleep 0.001
       mutant.status = :killed
     end
 
@@ -308,7 +424,6 @@ RSpec.describe Henitai::ExecutionEngine do
 
     allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
       thread_ids << Thread.current.object_id
-      sleep 0.001
       mutant.status = :killed
     end
 

@@ -479,6 +479,34 @@ RSpec.describe Henitai::ConfigurationValidator do
     end
   end
 
+  describe "validate_timeout_multiplier" do
+    it "accepts nil" do
+      expect do
+        described_class.validate!({ mutation: { timeout_multiplier: nil } })
+      end.not_to raise_error
+    end
+
+    it "accepts a positive numeric value" do
+      expect do
+        described_class.validate!({ mutation: { timeout_multiplier: 2.5 } })
+      end.not_to raise_error
+    end
+
+    it "rejects a non-numeric multiplier with path in error" do
+      expect { described_class.validate!({ mutation: { timeout_multiplier: "3x" } }) }.to raise_error(
+        Henitai::ConfigurationError,
+        'Invalid configuration value for mutation.timeout_multiplier: expected positive Numeric, got "3x"'
+      )
+    end
+
+    it "rejects a non-positive multiplier" do
+      expect { described_class.validate!({ mutation: { timeout_multiplier: 0 } }) }.to raise_error(
+        Henitai::ConfigurationError,
+        "Invalid configuration value for mutation.timeout_multiplier: expected positive Numeric, got 0"
+      )
+    end
+  end
+
   describe "validate_max_flaky_retries" do
     it "accepts nil" do
       expect do

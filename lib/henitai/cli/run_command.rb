@@ -17,9 +17,21 @@ module Henitai
 
         config = load_config(options)
         result = run_pipeline(options, config)
-        exit(exit_status_for(result, config, fail_on_survivors: options[:fail_on_survivors]))
+        exit(run_exit_status(result, config, options))
       rescue StandardError => e
         handle_run_error(e)
+      end
+
+      def run_exit_status(result, config, options)
+        # A dry run tests nothing, so there is no score to gate on.
+        return 0 if options[:dry_run]
+
+        exit_status_for(
+          result,
+          config,
+          fail_on_survivors: options[:fail_on_survivors],
+          strict_exit_codes: options[:strict_exit_codes]
+        )
       end
 
       def run_pipeline(options, config)
@@ -28,7 +40,11 @@ module Henitai
           config:,
           subjects: subjects_from_argv,
           since: options[:since],
-          survivors_from: resolved_survivors_from
+          survivors_from: resolved_survivors_from,
+          mode: {
+            dry_run: options.fetch(:dry_run, false),
+            incremental: options.fetch(:incremental, false) && !options.fetch(:force, false)
+          }
         )
         runner.run
       end
@@ -76,7 +92,7 @@ module Henitai
         nil
       end
 
-      def exit_status_for(result, config, fail_on_survivors: false)
+      def exit_status_for(result, config, fail_on_survivors: false, strict_exit_codes: false)
         if result.respond_to?(:partial_rerun?) && result.partial_rerun?
           warn "henitai: partial rerun - mutation score threshold not evaluated"
           return result.survived.positive? ? 1 : 0 if fail_on_survivors
@@ -84,6 +100,23 @@ module Henitai
           return 0
         end
 
+        strict_status = strict_exit_codes ? strict_status_for(result) : nil
+        strict_status || threshold_status_for(result, config)
+      end
+
+      # Expanded, opt-in exit codes (precedence: timeout > runtime/compile
+      # error > threshold miss). The timeout code is informational and
+      # independent of coverage_criteria.timeout: a run can pass its threshold
+      # and still exit 3.
+      def strict_status_for(result)
+        statuses = result.mutants.map(&:status)
+        return 3 if statuses.include?(:timeout)
+        return 4 if statuses.include?(:runtime_error) || statuses.include?(:compile_error)
+
+        nil
+      end
+
+      def threshold_status_for(result, config)
         score = result.mutation_score
         # No valid mutants to evaluate (e.g. an incremental run with no changed
         # code) cannot fail a threshold — treat it as success.

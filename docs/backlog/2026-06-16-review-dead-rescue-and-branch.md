@@ -1,6 +1,6 @@
 # Tighten Broad Rescues and Remove Dead Defensive Branch
 
-Status: backlog
+Status: done
 Date: 2026-06-16
 Severity: Low
 Source: 2026-06-16 structured review

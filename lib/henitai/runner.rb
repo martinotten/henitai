@@ -28,11 +28,16 @@ module Henitai
   class Runner
     attr_reader :config, :result
 
-    def initialize(config: Configuration.load, subjects: nil, since: nil, survivors_from: nil)
+    # @param mode [Hash] execution-mode flags: +dry_run:+ stops before Gate 4,
+    #   +incremental:+ reuses still-valid Killed verdicts from history.
+    def initialize(config: Configuration.load, subjects: nil, since: nil, survivors_from: nil,
+                   mode: {})
       @config         = config
       @subjects       = subjects
       @since          = since
       @survivors_from = survivors_from
+      @dry_run        = mode.fetch(:dry_run, false)
+      @incremental    = mode.fetch(:incremental, false)
     end
 
     # Entry point — runs the full pipeline and returns a Result.
@@ -50,18 +55,43 @@ module Henitai
     def run
       started_at = Time.now
 
-      mutants = if survivor_rerun? && (fast_mutants = survivor_strategy.try_recipe_run)
-                  execute_mutants(fast_mutants)
-                else
-                  source_files = self.source_files
-                  subjects = resolve_subjects(source_files)
-                  execute_mutants(mutants_for(subjects, source_files))
-                end
+      mutants = pipeline_mutants
+      return dry_run_result(mutants, started_at, Time.now) if @dry_run
 
-      build_result(mutants, started_at, Time.now)
+      build_result(execute_mutants(mutants), started_at, Time.now)
     end
 
     private
+
+    # Gates 0–3 only: coverage bootstrap, subject resolution, generation and
+    # static/skip/arid/stillborn filtering — everything short of execution.
+    def pipeline_mutants
+      if survivor_rerun? && (fast_mutants = survivor_strategy.try_recipe_run)
+        return fast_mutants
+      end
+
+      source_files = self.source_files
+      subjects = resolve_subjects(source_files)
+      mutants_for(subjects, source_files)
+    end
+
+    # Dry run stops before Gate 4: prints the post-filter listing and returns
+    # a Result without executing tests, persisting history or running the
+    # configured reporters — reports/ stays untouched.
+    def dry_run_result(mutants, started_at, finished_at)
+      @result = Result.new(
+        mutants:,
+        started_at:,
+        finished_at:,
+        thresholds: result_thresholds,
+        partial_rerun: survivor_rerun?,
+        survivor_stats: survivor_strategy.survivor_stats,
+        git_sha: safe_head_sha,
+        source_provider: source_provider
+      )
+      Reporter::DryRun.new(config:).report(@result)
+      @result
+    end
 
     def resolve_subjects(source_files = self.source_files)
       subjects = subject_resolver.resolve_from_files(source_files)
@@ -85,10 +115,19 @@ module Henitai
       bootstrap_thread = bootstrap_mutants(source_files)
       mutants = generate_mutants(subjects)
       bootstrap_thread.value
-      filtered = filter_mutants(mutants)
+      filtered = apply_incremental_filter(filter_mutants(mutants))
       return filtered unless survivor_rerun?
 
       survivor_strategy.apply_selection(filtered)
+    end
+
+    # Opt-in verdict reuse (`--incremental`): still-valid Killed verdicts from
+    # the history store are marked killed + from_cache before execution. The
+    # filter is only ever constructed when the flag is set.
+    def apply_incremental_filter(mutants)
+      return mutants unless @incremental
+
+      IncrementalFilter.new(history_store:).apply(mutants)
     end
 
     def bootstrap_mutants(source_files)

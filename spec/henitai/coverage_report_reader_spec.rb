@@ -116,4 +116,65 @@ RSpec.describe Henitai::CoverageReportReader do
       expect(described_class.new.test_lines_by_file(report_path)).to eq({})
     end
   end
+
+  describe "duration-carrying per-test reports" do
+    def write_report(dir, payload)
+      report_path = File.join(dir, "coverage", "henitai_per_test.json")
+      FileUtils.mkdir_p(File.dirname(report_path))
+      File.write(report_path, JSON.dump(payload))
+      report_path
+    end
+
+    it "reads coverage from the wrapped format" do
+      Dir.mktmpdir do |dir|
+        report_path = write_report(
+          dir,
+          "spec/sample_spec.rb" => {
+            "coverage" => { "/tmp/sample.rb" => [3, 1] },
+            "duration" => 1.25
+          }
+        )
+
+        expect(described_class.new.test_lines_by_file(report_path)).to eq(
+          "spec/sample_spec.rb" => { "/tmp/sample.rb" => [1, 3] }
+        )
+      end
+    end
+
+    it "exposes per-test durations" do
+      Dir.mktmpdir do |dir|
+        report_path = write_report(
+          dir,
+          "spec/sample_spec.rb" => {
+            "coverage" => { "/tmp/sample.rb" => [1] },
+            "duration" => 1.25
+          },
+          "spec/other_spec.rb" => {
+            "coverage" => {},
+            "duration" => 0.5
+          }
+        )
+
+        expect(described_class.new.durations_by_test(report_path)).to eq(
+          "spec/sample_spec.rb" => 1.25,
+          "spec/other_spec.rb" => 0.5
+        )
+      end
+    end
+
+    it "returns an empty duration map for legacy reports without the field" do
+      Dir.mktmpdir do |dir|
+        report_path = write_report(
+          dir,
+          "spec/sample_spec.rb" => { "/tmp/sample.rb" => [1] }
+        )
+
+        expect(described_class.new.durations_by_test(report_path)).to eq({})
+      end
+    end
+
+    it "returns an empty duration map when the report is missing" do
+      expect(described_class.new.durations_by_test("/tmp/missing-per-test.json")).to eq({})
+    end
+  end
 end

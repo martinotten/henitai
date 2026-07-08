@@ -14,7 +14,8 @@ module Henitai
   # Additional operators (full set):
   #   ArrayDeclaration, HashLiteral, RangeLiteral, SafeNavigation,
   #   PatternMatch, BlockStatement, MethodExpression, AssignmentExpression,
-  #   UnaryOperator, UpdateOperator, RegexMutator, MethodChainUnwrap
+  #   UnaryOperator, UpdateOperator, RegexMutator, MethodChainUnwrap,
+  #   EqualityIdentityOperator
   #
   # Each operator subclass must implement:
   #   - .node_types  → Array<Symbol>  AST node types this operator handles
@@ -43,6 +44,7 @@ module Henitai
       AssignmentExpression
       UnaryOperator
       UpdateOperator
+      EqualityIdentityOperator
     ]).freeze
 
     # @param set [Symbol] :light or :full

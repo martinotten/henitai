@@ -13,6 +13,7 @@ This directory contains one ADR per accepted architecture decision.
 - [ADR-07: Raw Ruby method coverage for static coverage filtering](ADR-07-method-coverage-for-static-filter.md)
 - [ADR-08: Remove per-line mutation cap](ADR-08-remove-per-line-mutation-cap.md)
 - [ADR-09: Survivor-only reruns with stable mutant identity](ADR-09-survivor-only-reruns-with-stable-mutant-identity.md)
+- [ADR-10: Split equality operator into relational and identity mutations](ADR-10-split-equality-identity-mutations.md)
 
 ## Maintenance Rule
 

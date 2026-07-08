@@ -24,7 +24,8 @@ module Henitai
         "MethodChainUnwrap" => ["Method chain unwrap", "a.b.c -> a.b"],
         "RegexMutator" => ["Regex literals", "/foo+/ -> /foo*/"],
         "UnaryOperator" => ["Unary operators", "-x -> x"],
-        "UpdateOperator" => ["Compound assignment", "x += 1 -> x -= 1"]
+        "UpdateOperator" => ["Compound assignment", "x += 1 -> x -= 1"],
+        "EqualityIdentityOperator" => ["Identity-method comparisons", "a == b -> a.eql?(b)"]
       }.freeze
 
       private

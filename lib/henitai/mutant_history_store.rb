@@ -7,10 +7,13 @@ require "sqlite3"
 require "time"
 require_relative "mutant_identity"
 require_relative "mutant_history_store/sql"
+require_relative "mutant_history_store/verdict_cache"
 
 module Henitai
   # Persists mutant outcomes across runs in a lightweight SQLite database.
   class MutantHistoryStore
+    include VerdictCache
+
     def initialize(path:)
       @path = path
     end
@@ -28,6 +31,26 @@ module Henitai
             upsert_mutant(db, mutant, version, recorded_at)
           end
         end
+      end
+    end
+
+    # Verdict-cache lookup for `--incremental`: returns the stored hashes for
+    # a Killed row, or nil for survivors, unknown ids and legacy rows without
+    # hashes (recorded before the cache columns existed).
+    def killed_verdict_for(stable_id)
+      return nil unless File.exist?(path)
+
+      with_database do |db|
+        ensure_schema(db)
+        row = db.get_first_row(Sql::KILLED_VERDICT, stable_id)
+        next nil unless row && row["current_status"] == "killed"
+        next nil if row["subject_source_hash"].nil? || row["covered_tests_fingerprint"].nil?
+
+        {
+          status: :killed,
+          subject_source_hash: row["subject_source_hash"],
+          covered_tests_fingerprint: row["covered_tests_fingerprint"]
+        }
       end
     end
 
@@ -59,6 +82,19 @@ module Henitai
     def ensure_schema(db)
       db.execute_batch(Sql::RUNS_TABLE)
       db.execute_batch(Sql::MUTANTS_TABLE)
+      migrate_mutants_table(db)
+    end
+
+    # Additive, idempotent in-place migration: databases created before the
+    # verdict-cache columns existed gain them on first contact, with existing
+    # rows left intact (NULL hashes — valid but never reusable).
+    def migrate_mutants_table(db)
+      existing = db.execute("PRAGMA table_info(mutants)").map { |row| row["name"] }
+      Sql::MIGRATION_COLUMNS.each do |column, type|
+        next if existing.include?(column)
+
+        db.execute("ALTER TABLE mutants ADD COLUMN #{column} #{type}")
+      end
     end
 
     def insert_run(db, result, version, recorded_at)
@@ -94,18 +130,12 @@ module Henitai
     def mutant_history_data(db, mutant, version, recorded_at)
       mutant_id = stable_mutant_id(mutant)
       existing = existing_mutant_row(db, mutant_id)
-      history = existing_status_history(existing)
-      history << mutation_history_entry(mutant, version, recorded_at)
+      history = existing_status_history(existing) << mutation_history_entry(mutant, version, recorded_at)
       first_seen = first_seen_metadata(existing, version, recorded_at)
 
       {
-        mutant_id: mutant_id,
-        first_seen_version: first_seen[:version],
-        first_seen_at: first_seen[:at],
-        version: version,
-        recorded_at: recorded_at,
-        mutant: mutant,
-        history: history,
+        mutant_id:, version:, recorded_at:, mutant:, history:, existing_row: existing,
+        first_seen_version: first_seen[:version], first_seen_at: first_seen[:at],
         days_alive: days_alive_since(first_seen[:at], recorded_at)
       }
     end
@@ -185,15 +215,17 @@ module Henitai
     end
 
     def upsert_mutant_bindings(data)
+      mutant = data.fetch(:mutant)
       [
         data.fetch(:mutant_id),
         data.fetch(:first_seen_version),
         data.fetch(:first_seen_at),
         data.fetch(:version),
         data.fetch(:recorded_at).iso8601,
-        data.fetch(:mutant).status.to_s,
+        mutant.status.to_s,
         JSON.generate(data.fetch(:history)),
-        data.fetch(:days_alive)
+        data.fetch(:days_alive),
+        *verdict_cache_bindings(mutant, data[:existing_row])
       ]
     end
   end

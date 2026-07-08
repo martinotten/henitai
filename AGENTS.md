@@ -28,6 +28,10 @@ or with the architecture docs, stop and resolve the conflict before coding.
 - Update documentation when the public API, CLI, configuration, or architecture
   changes.
 - Do not overwrite unrelated work in the repository.
+- In the devcontainer, `/workspaces` itself is not writable — create git
+  worktrees under the bind-mounted `/workspaces/worktrees/<name>` (not a
+  bare `../name`), e.g. `git worktree add /workspaces/worktrees/<name> -b
+  <branch> main`.
 
 ## Test Workflow
 

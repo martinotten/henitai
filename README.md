@@ -110,6 +110,16 @@ yet enable the per-test coverage formatter.
 Henitai currently defaults to linear mutant execution. Set `jobs` in
 `.henitai.yml` or pass `--jobs N` to opt into parallel mutant execution.
 
+Every forked test child sees a `HENITAI_WORKER_SLOT` environment variable
+holding a stable worker-slot index (`0..jobs-1`; always `0` on the linear
+path). A flaky-retry respawn keeps the original attempt's value. Test suites
+that touch shared external resources can isolate themselves per slot without
+any henitai-side hooks — for example a per-worker database:
+
+```ruby
+database: "myapp_test_#{ENV.fetch('HENITAI_WORKER_SLOT', '0')}"
+```
+
 By default, Henitai keeps child test output out of the live terminal. Each
 baseline or mutant run writes captured stdout/stderr to `reports/mutation-logs/`
 and the terminal only shows progress plus a concise summary. Pass
@@ -119,11 +129,67 @@ and the terminal only shows progress plus a concise summary. Pass
 when the mutation score meets the low threshold, `1` when it does not, and `2`
 for framework errors.
 
+`henitai run --incremental` reuses still-valid `Killed` verdicts from the
+history store (`reports/mutation-history.sqlite3`) instead of re-executing
+them: a verdict is reused only when the subject's source and every covering
+test file are byte-identical to what was recorded. Reused mutants stay
+visible in the report (`fromCache: true` beside `stableId`) and count toward
+MS/MSI; the terminal prints `N of M verdicts reused from history`.
+Survivors, timeouts and errors always re-execute. `--force` bypasses reuse.
+`henitai run --dry-run` lists the post-filter mutant set without executing
+any tests and always exits `0`.
+
 `henitai run --survivors-from ...` performs a partial rerun: it reports only
 the selected survivors, skips threshold-based exit checks, and does not update
 the run trend history. Dirty worktree changes are included, so you can edit
 tests locally without committing first; if source files under `includes` are
 dirty, Henitai reruns the matched survivors conservatively.
+
+### Skipping mutations inline
+
+A `# henitai:disable` magic comment excludes code from mutation at the call
+site, without touching `.henitai.yml`:
+
+```ruby
+def risky_calc(x)
+  x * 2 # henitai:disable            — skips mutants on this line
+end
+
+# henitai:disable                     — skips every mutant in this method
+def legacy_shim(x)
+  x - 1
+end
+```
+
+The line form applies to mutants starting on that line. The method form is a
+standalone comment in the contiguous comment block directly above a `def`
+(a blank line breaks the association). Trailing text is allowed
+(`# henitai:disable -- reviewed defensive branch`). Skipped mutants are
+reported as `Ignored`, so they stay visible in the report instead of silently
+vanishing. Use `mutation.ignore_patterns` for repo-wide policy and
+`# henitai:disable` for one-off, reviewed exclusions.
+
+Directives can also target specific operators, carry a reason (serialized as
+`statusReason`, visible in the HTML report), and cover regions:
+
+```ruby
+x = a + b  # henitai:disable ArithmeticOperator            — only this operator
+x = a + b  # henitai:disable ArithmeticOperator: log noise — with a reason
+
+# henitai:disable RegexMutator: timing-sensitive matcher
+def parse(line)
+  ...
+end
+
+# henitai:disable-start ConditionalExpression
+...region...
+# henitai:disable-end
+```
+
+Operator names must exactly match the canonical names from
+`henitai operator list`; unknown names, unmatched or nested
+`disable-start`/`disable-end` directives abort the run (exit `2`) with the
+offending file and line. Regions do not nest.
 
 The repository ships a JSON Schema at [`assets/schema/henitai.schema.json`](/workspaces/henitai/assets/schema/henitai.schema.json) for editor autocompletion.
 
@@ -132,7 +198,7 @@ The repository ships a JSON Schema at [`assets/schema/henitai.schema.json`](/wor
 **Light** (default) — high-signal, low-noise operators covering the majority of real-world defects:
 
 - `ArithmeticOperator` — `+` ↔ `-`, `*` ↔ `/`
-- `EqualityOperator` — `==` ↔ `!=`, `>` ↔ `<`, etc.
+- `EqualityOperator` — `==` ↔ `!=`, `>` ↔ `<`, etc. (relational operators only)
 - `LogicalOperator` — `&&` ↔ `||`
 - `BooleanLiteral` — `true` ↔ `false`, `!expr`
 - `ConditionalExpression` — remove branch bodies
@@ -151,6 +217,7 @@ The repository ships a JSON Schema at [`assets/schema/henitai.schema.json`](/wor
 - `AssignmentExpression` — mutate compound assignment
 - `UnaryOperator` — remove unary `-` and `~`
 - `UpdateOperator` — swap compound assignments (`+=`↔`-=`, `*=`↔`/=`, `||=`↔`&&=`)
+- `EqualityIdentityOperator` — `==` ↔ `eql?`/`equal?` (hardest equality pairing to kill; see [ADR-10](docs/architecture/adr/ADR-10-split-equality-identity-mutations.md))
 
 ## Stryker Dashboard integration
 

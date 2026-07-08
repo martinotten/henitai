@@ -8,6 +8,7 @@ module Henitai
   module Operators
     autoload :ArithmeticOperator, "henitai/operators/arithmetic_operator"
     autoload :EqualityOperator, "henitai/operators/equality_operator"
+    autoload :EqualityIdentityOperator, "henitai/operators/equality_identity_operator"
     autoload :LogicalOperator, "henitai/operators/logical_operator"
     autoload :BooleanLiteral, "henitai/operators/boolean_literal"
     autoload :ConditionalExpression, "henitai/operators/conditional_expression"

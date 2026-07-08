@@ -16,8 +16,8 @@ RSpec.describe Henitai::MinitestCoverageReporter do
     ENV["HENITAI_REPORTS_DIR"] = original if original
   end
 
-  def build_result(absolute_path)
-    Struct.new(:source_location).new([absolute_path, 5])
+  def build_result(absolute_path, time: 0.25)
+    Struct.new(:source_location, :time).new([absolute_path, 5], time)
   end
 
   def coverage_snapshot(source_lines:)
@@ -41,7 +41,8 @@ RSpec.describe Henitai::MinitestCoverageReporter do
         report_path = File.join("coverage", "henitai_per_test.json")
         expect(JSON.parse(File.read(report_path))).to eq(
           "test/sample_test.rb" => {
-            File.expand_path("lib/sample.rb") => [2, 4]
+            "coverage" => { File.expand_path("lib/sample.rb") => [2, 4] },
+            "duration" => 0.25
           }
         )
       end

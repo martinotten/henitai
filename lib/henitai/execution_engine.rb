@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "parallel_execution_runner"
 require_relative "process_worker_runner"
 
 module Henitai
@@ -9,22 +8,43 @@ module Henitai
     def run(mutants, integration, config, progress_reporter: nil)
       with_reports_dir(config) do
         with_coverage_dir(config) do
-          @flaky_retry_count = 0
-          pending_mutants = Array(mutants).select(&:pending?)
-          mutex = Mutex.new
-          if parallel_execution?(config, pending_mutants)
-            run_parallel(pending_mutants, integration, config, progress_reporter)
-          else
-            run_linear(pending_mutants, integration, config, progress_reporter, mutex)
+          with_worker_slot do
+            execute(mutants, integration, config, progress_reporter)
           end
-
-          warn_flaky_mutants(pending_mutants.size)
-          mutants
         end
       end
     end
 
     private
+
+    def execute(mutants, integration, config, progress_reporter)
+      @flaky_retry_count = 0
+      pending_mutants = Array(mutants).select(&:pending?)
+      mutex = Mutex.new
+      if parallel_execution?(config, pending_mutants)
+        run_parallel(pending_mutants, integration, config, progress_reporter)
+      else
+        run_linear(pending_mutants, integration, config, progress_reporter, mutex)
+      end
+
+      warn_flaky_mutants(pending_mutants.size)
+      mutants
+    end
+
+    # Linear-path children inherit slot 0 so suite-side isolation code works
+    # identically in both execution modes; the parallel scheduler overwrites
+    # the value per spawn. Restored afterwards like the other run-scoped vars.
+    def with_worker_slot
+      original = ENV.fetch(SlotScheduler::WORKER_SLOT_ENV, nil)
+      ENV[SlotScheduler::WORKER_SLOT_ENV] = "0"
+      yield
+    ensure
+      if original.nil?
+        ENV.delete(SlotScheduler::WORKER_SLOT_ENV)
+      else
+        ENV[SlotScheduler::WORKER_SLOT_ENV] = original
+      end
+    end
 
     def parallel_execution?(config, mutants)
       worker_count(config) > 1 && mutants.size > 1
@@ -53,7 +73,8 @@ module Henitai
         integration,
         config,
         progress_reporter,
-        test_file_resolver: ->(mutant) { prioritized_tests_for(mutant, integration, config) }
+        test_file_resolver: ->(mutant) { prioritized_tests_for(mutant, integration, config) },
+        timeout_resolver: ->(_mutant, test_files) { resolved_timeout(test_files, config) }
       )
       @flaky_retry_count = runner.flaky_retry_count
       results
@@ -80,10 +101,51 @@ module Henitai
         mutant,
         reports_dir: config.reports_dir
       )
-      test_prioritizer.sort(tests, mutant, test_history(config))
+      test_prioritizer(config).sort(tests, mutant, test_history(config))
     end
 
-    def test_prioritizer = @test_prioritizer ||= TestPrioritizer.new
+    def test_prioritizer(config)
+      @test_prioritizer ||= TestPrioritizer.new(timing_source: timing_source(config))
+    end
+
+    def timing_source(config)
+      path = File.join(config.reports_dir, PerTestCoverageCollector::REPORT_FILE_NAME)
+      -> { CoverageReportReader.new.durations_by_test(path) }
+    end
+
+    # Fixed `mutation.timeout` wins untouched; when unset, the timeout is
+    # calibrated per mutant from its selected tests' measured durations, with
+    # a single warning per run when no timing data is available.
+    def resolved_timeout(test_files, config)
+      return config.timeout unless calibration_enabled?(config)
+
+      calibrated = timeout_calibrator(config).timeout_for(test_files)
+      return calibrated if calibrated
+
+      warn_timeout_fallback_once
+      Configuration::DEFAULT_TIMEOUT
+    end
+
+    def calibration_enabled?(config)
+      config.respond_to?(:timeout_configured?) && !config.timeout_configured?
+    end
+
+    def timeout_calibrator(config)
+      @timeout_calibrator ||= TimeoutCalibrator.new(
+        timing_source: timing_source(config),
+        multiplier: config.timeout_multiplier
+      )
+    end
+
+    def warn_timeout_fallback_once
+      return if @warned_timeout_fallback
+
+      @warned_timeout_fallback = true
+      warn(
+        "Timeout calibration unavailable (no per-test timing data); " \
+        "falling back to the default timeout of #{Configuration::DEFAULT_TIMEOUT}s"
+      )
+    end
 
     def per_test_coverage_selector = @per_test_coverage_selector ||= PerTestCoverageSelector.new
 
@@ -98,10 +160,11 @@ module Henitai
     # runtime on real CI workloads.
     # rubocop:disable Metrics/MethodLength
     def run_with_flaky_retry(mutant, integration, config, test_files, mutex)
+      timeout = resolved_timeout(test_files, config)
       scenario_result = integration.run_mutant(
         mutant:,
         test_files:,
-        timeout: config.timeout
+        timeout: timeout
       )
       return scenario_result unless scenario_status(scenario_result) == :survived
 
@@ -111,7 +174,7 @@ module Henitai
         scenario_result = integration.run_mutant(
           mutant:,
           test_files:,
-          timeout: config.timeout
+          timeout: timeout
         )
         break unless scenario_status(scenario_result) == :survived
       end

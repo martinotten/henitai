@@ -30,6 +30,16 @@ module Henitai
         )
       end
 
+      def validate_timeout_multiplier(value)
+        return if value.nil?
+        return if value.is_a?(Numeric) && value.positive?
+
+        Rules.configuration_error(
+          "Invalid configuration value for mutation.timeout_multiplier: " \
+          "expected positive Numeric, got #{value.inspect}"
+        )
+      end
+
       def validate_threshold(value, path)
         return if value.is_a?(Integer) && value.between?(0, 100)
 

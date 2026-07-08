@@ -287,4 +287,151 @@ RSpec.describe Henitai::MutantHistoryStore do
       end
     end
   end
+
+  describe "verdict cache" do
+    def build_cacheable_mutant(dir, status:)
+      source = File.join(dir, "sample.rb")
+      File.write(source, "class Sample\n  def value = 1\nend\n")
+      test = File.join(dir, "sample_spec.rb")
+      File.write(test, "it works\n")
+
+      mutant = build_mutant(status:)
+      mutant.subject.instance_variable_set(:@source_file, source)
+      mutant.subject.instance_variable_set(:@source_range, 2..2)
+      mutant.define_singleton_method(:covered_by) { [test] }
+      mutant
+    end
+
+    def store_at(dir)
+      described_class.new(path: File.join(dir, "mutation-history.sqlite3"))
+    end
+
+    def summary
+      { mutation_score: 100.0, mutation_score_indicator: 100.0, equivalence_uncertainty: nil }
+    end
+
+    it "returns the stored hashes for a killed mutant" do
+      Dir.mktmpdir do |dir|
+        store = store_at(dir)
+        mutant = build_cacheable_mutant(dir, status: :killed)
+        store.record(build_result([mutant], summary), version: "0.1.0")
+
+        verdict = store.killed_verdict_for(Henitai::MutantIdentity.stable_id(mutant))
+
+        expect(
+          status: verdict[:status],
+          subject_hash: verdict[:subject_source_hash],
+          fingerprint_current: Henitai::VerdictFingerprint.tests_fingerprint_current?(
+            verdict[:covered_tests_fingerprint]
+          )
+        ).to eq(
+          status: :killed,
+          subject_hash: Henitai::VerdictFingerprint.subject_source_hash(mutant),
+          fingerprint_current: true
+        )
+      end
+    end
+
+    it "preserves stored fingerprints when re-recording a cache-hit mutant" do
+      Dir.mktmpdir do |dir|
+        store = store_at(dir)
+        mutant = build_cacheable_mutant(dir, status: :killed)
+        store.record(build_result([mutant], summary), version: "0.1.0")
+
+        cached = build_cacheable_mutant(dir, status: :killed)
+        cached.define_singleton_method(:covered_by) { nil }
+        cached.define_singleton_method(:from_cache?) { true }
+        store.record(build_result([cached], summary), version: "0.1.1")
+
+        expect(store.killed_verdict_for(Henitai::MutantIdentity.stable_id(mutant))).not_to be_nil
+      end
+    end
+
+    it "returns nil for survived mutants" do
+      Dir.mktmpdir do |dir|
+        store = store_at(dir)
+        mutant = build_cacheable_mutant(dir, status: :survived)
+        store.record(build_result([mutant], summary), version: "0.1.0")
+
+        expect(store.killed_verdict_for(Henitai::MutantIdentity.stable_id(mutant))).to be_nil
+      end
+    end
+
+    it "returns nil for unknown ids" do
+      Dir.mktmpdir do |dir|
+        store = store_at(dir)
+        store.record(build_result([build_cacheable_mutant(dir, status: :killed)], summary), version: "0.1.0")
+
+        expect(store.killed_verdict_for("nope")).to be_nil
+      end
+    end
+
+    it "returns nil when the database does not exist yet" do
+      Dir.mktmpdir do |dir|
+        expect(store_at(dir).killed_verdict_for("anything")).to be_nil
+      end
+    end
+
+    describe "legacy database migration" do
+      def legacy_mutants_table
+        <<~SQL
+          CREATE TABLE mutants (
+            mutant_id TEXT PRIMARY KEY,
+            first_seen_version TEXT NOT NULL,
+            first_seen_at TEXT NOT NULL,
+            last_seen_version TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            current_status TEXT NOT NULL,
+            status_history TEXT NOT NULL,
+            days_alive INTEGER NOT NULL
+          );
+        SQL
+      end
+
+      def create_legacy_database(dir)
+        path = File.join(dir, "mutation-history.sqlite3")
+        db = SQLite3::Database.new(path)
+        db.execute_batch(legacy_mutants_table)
+        db.execute(
+          "INSERT INTO mutants VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          ["legacy-id", "0.0.9", "2026-01-01T00:00:00Z", "0.0.9", "2026-01-01T00:00:00Z",
+           "killed", "[]", 0]
+        )
+        db.close
+        path
+      end
+
+      it "migrates in place and keeps legacy rows intact but non-reusable" do
+        Dir.mktmpdir do |dir|
+          path = create_legacy_database(dir)
+          store = described_class.new(path:)
+
+          verdict = store.killed_verdict_for("legacy-id")
+
+          db = SQLite3::Database.new(path)
+          db.results_as_hash = true
+          row = db.get_first_row("SELECT * FROM mutants WHERE mutant_id = 'legacy-id'")
+          db.close
+
+          expect(
+            verdict: verdict,
+            status: row["current_status"],
+            columns_added: row.key?("subject_source_hash") && row.key?("covered_tests_fingerprint")
+          ).to eq(verdict: nil, status: "killed", columns_added: true)
+        end
+      end
+
+      it "accepts new records after migrating a legacy database" do
+        Dir.mktmpdir do |dir|
+          path = create_legacy_database(dir)
+          store = described_class.new(path:)
+          mutant = build_cacheable_mutant(dir, status: :killed)
+
+          store.record(build_result([mutant], summary), version: "0.1.0")
+
+          expect(store.killed_verdict_for(Henitai::MutantIdentity.stable_id(mutant))).not_to be_nil
+        end
+      end
+    end
+  end
 end

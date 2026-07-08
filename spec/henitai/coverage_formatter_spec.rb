@@ -7,8 +7,11 @@ require "stringio"
 require "tmpdir"
 
 RSpec.describe Henitai::CoverageFormatter do
-  def build_notification(file_path)
-    example = Struct.new(:metadata).new({ file_path: file_path })
+  def build_notification(file_path, run_time: 0.25)
+    example = Struct.new(:metadata, :execution_result).new(
+      { file_path: file_path },
+      Struct.new(:run_time).new(run_time)
+    )
     Struct.new(:example).new(example)
   end
 
@@ -51,7 +54,8 @@ RSpec.describe Henitai::CoverageFormatter do
 
         expect(JSON.parse(File.read(report_path))).to eq(
           "spec/models/sample_spec.rb" => {
-            File.expand_path("lib/sample.rb") => [2, 4]
+            "coverage" => { File.expand_path("lib/sample.rb") => [2, 4] },
+            "duration" => 0.25
           }
         )
       end
@@ -116,7 +120,8 @@ RSpec.describe Henitai::CoverageFormatter do
 
         expect(JSON.parse(File.read(report_path))).to eq(
           "spec/models/sample_spec.rb" => {
-            File.expand_path("lib/sample.rb") => [2, 4]
+            "coverage" => { File.expand_path("lib/sample.rb") => [2, 4] },
+            "duration" => 0.25
           }
         )
       end
@@ -138,7 +143,8 @@ RSpec.describe Henitai::CoverageFormatter do
 
         expect(JSON.parse(File.read(report_path))).to eq(
           "spec/models/sample_spec.rb" => {
-            File.expand_path("lib/sample.rb") => [2, 4]
+            "coverage" => { File.expand_path("lib/sample.rb") => [2, 4] },
+            "duration" => 0.25
           }
         )
       end

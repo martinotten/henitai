@@ -10,7 +10,8 @@ module Henitai
   # Configuration is resolved from built-in defaults and the project-root
   # `.henitai.yml` file.
   class Configuration
-    DEFAULT_TIMEOUT   = 10.0
+    DEFAULT_TIMEOUT = 10.0
+    DEFAULT_TIMEOUT_MULTIPLIER = 3.0
     DEFAULT_OPERATORS = :light
     DEFAULT_JOBS      = 1
     DEFAULT_MAX_FLAKY_RETRIES = 3
@@ -24,10 +25,16 @@ module Henitai
     CONFIG_FILE        = ".henitai.yml"
 
     attr_reader :integration, :includes, :excludes, :operators, :timeout,
-                :ignore_patterns, :sampling, :jobs,
+                :timeout_multiplier, :ignore_patterns, :sampling, :jobs,
                 :max_flaky_retries, :coverage_criteria, :thresholds,
                 :reporters, :reports_dir,
                 :dashboard, :all_logs
+
+    # True when mutation.timeout was set explicitly (file or CLI override);
+    # a fixed timeout disables per-mutant auto-calibration.
+    def timeout_configured?
+      @timeout_configured
+    end
 
     # @param path [String] path to .henitai.yml (default: project root)
     def self.load(path: CONFIG_FILE, overrides: {})
@@ -84,7 +91,9 @@ module Henitai
       mutation = raw[:mutation] || {}
 
       @operators = (mutation[:operators] || DEFAULT_OPERATORS).to_sym
+      @timeout_configured = !mutation[:timeout].nil?
       @timeout = mutation[:timeout] || DEFAULT_TIMEOUT
+      @timeout_multiplier = mutation[:timeout_multiplier] || DEFAULT_TIMEOUT_MULTIPLIER
       @ignore_patterns = mutation[:ignore_patterns] || []
       @max_flaky_retries = if mutation.key?(:max_flaky_retries)
                              mutation[:max_flaky_retries]

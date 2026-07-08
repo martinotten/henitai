@@ -89,24 +89,78 @@ module IntegrationSmoke
     end
 
     def verify_run!(stdout, stderr, status)
-      return if status.exitstatus == 1 && survivor_count.positive?
+      unless status.exitstatus == 1 && survivor_count.positive? && ignored_count.positive?
+        details = [stdout, stderr].reject(&:empty?).join("\n")
+        raise "Expected surviving and ignored mutants for #{name}\n#{details}"
+      end
 
-      details = [stdout, stderr].reject(&:empty?).join("\n")
-      raise "Expected surviving mutants for #{name}\n#{details}"
+      verify_worker_slot!
+      verify_per_operator_disable!
+    end
+
+    # Proves per-operator `henitai:disable` selectivity end-to-end: on the
+    # `cheer` line, ArithmeticOperator must be Ignored with the directive's
+    # reason while at least one sibling operator's mutant still executed.
+    def verify_per_operator_disable!
+      ignored = per_operator_ignored_mutants
+      raise "Expected an Ignored ArithmeticOperator with statusReason for #{name}" if ignored.empty?
+
+      lines = ignored.map { |m| m.dig("location", "start", "line") }
+      raise "Expected a live sibling mutant on the per-operator disable line for #{name}" unless
+        live_sibling_on?(lines)
+    end
+
+    def per_operator_ignored_mutants
+      greeting_mutants.select do |m|
+        m.fetch("mutatorName").to_s == "ArithmeticOperator" &&
+          m.fetch("status") == "Ignored" &&
+          m["statusReason"] == "smoke per-operator"
+      end
+    end
+
+    def live_sibling_on?(lines)
+      greeting_mutants.any? do |m|
+        lines.include?(m.dig("location", "start", "line")) && m.fetch("status") != "Ignored"
+      end
+    end
+
+    def greeting_mutants
+      @greeting_mutants ||= report.fetch("files")
+                                  .select { |path, _| path.end_with?("greeting.rb") }
+                                  .values.flat_map { |file| file.fetch("mutants") }
+    end
+
+    # Proves HENITAI_WORKER_SLOT survives the real fork + integration
+    # boundary: the fixture suite writes the value it saw to an artifact.
+    def verify_worker_slot!
+      path = File.join(root, "reports", "worker-slot.txt")
+      raise "Expected worker-slot artifact for #{name} at #{path}" unless File.exist?(path)
+
+      value = File.read(path)
+      raise "Invalid worker slot #{value.inspect} for #{name}" unless value.match?(/\A\d+\z/)
     end
 
     def announce_success
       puts format(
-        "smoke:%<name>s ok (%<count>d surviving mutants in %<report>s)",
+        "smoke:%<name>s ok (%<survived>d surviving, %<ignored>d ignored mutants in %<report>s)",
         name:,
-        count: survivor_count,
+        survived: survivor_count,
+        ignored: ignored_count,
         report: report_path
       )
     end
 
     def survivor_count
+      status_count("Survived")
+    end
+
+    def ignored_count
+      status_count("Ignored")
+    end
+
+    def status_count(status)
       report.fetch("files").values.sum do |file|
-        file.fetch("mutants").count { |mutant| mutant.fetch("status") == "Survived" }
+        file.fetch("mutants").count { |mutant| mutant.fetch("status") == status }
       end
     end
 

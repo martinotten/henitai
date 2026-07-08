@@ -1,6 +1,6 @@
 # Fix Stale gemspec source_code_uri and Version Doc Mismatches
 
-Status: backlog
+Status: done
 Date: 2026-06-16
 Severity: High (low effort)
 Source: 2026-06-16 structured review

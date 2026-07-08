@@ -58,30 +58,6 @@ RSpec.describe Henitai::Reporter::Terminal do
     )
   end
 
-  def with_no_color
-    original = ENV.fetch("NO_COLOR", nil)
-    ENV["NO_COLOR"] = "1"
-    yield
-  ensure
-    if original.nil?
-      ENV.delete("NO_COLOR")
-    else
-      ENV["NO_COLOR"] = original
-    end
-  end
-
-  def with_color
-    original = ENV.fetch("NO_COLOR", nil)
-    ENV.delete("NO_COLOR")
-    yield
-  ensure
-    if original.nil?
-      ENV.delete("NO_COLOR")
-    else
-      ENV["NO_COLOR"] = original
-    end
-  end
-
   def summary_row(label, value)
     "#{label.ljust(12)} #{value}"
   end
@@ -261,7 +237,7 @@ RSpec.describe Henitai::Reporter::Terminal do
   end
 
   it "prints a summary table with score, counts, and duration" do
-    reporter = described_class.new(config: build_config)
+    reporter = described_class.new(config: build_config, color_enabled: true)
     result = build_result(
       mutants: %i[killed timeout no_coverage].map { |status| build_mutant(status:) },
       scoring_summary: {
@@ -287,13 +263,32 @@ RSpec.describe Henitai::Reporter::Terminal do
       #{summary_row('Duration', '12.34s')}
     OUTPUT
 
-    with_color do
-      expect { reporter.report(result) }.to output(expected_output).to_stdout
-    end
+    expect { reporter.report(result) }.to output(expected_output).to_stdout
+  end
+
+  it "summarizes verdicts reused from history" do
+    reporter = described_class.new(config: build_config, color_enabled: false)
+    cached = Struct.new(:status) do
+      def survived? = false
+      def from_cache? = true
+    end.new(:killed)
+    result = build_result(
+      mutants: [cached, build_mutant(status: :killed)],
+      scoring_summary: {
+        mutation_score: 100.0,
+        mutation_score_indicator: 100.0,
+        equivalence_uncertainty: nil
+      },
+      duration: 1.0
+    )
+
+    expect { reporter.report(result) }.to output(
+      a_string_including("1 of 2 verdicts reused from history")
+    ).to_stdout
   end
 
   it "colors the score line green when the score meets the high threshold" do
-    reporter = described_class.new(config: build_config)
+    reporter = described_class.new(config: build_config, color_enabled: true)
     result = build_result(
       mutants: [],
       scoring_summary: {
@@ -319,13 +314,11 @@ RSpec.describe Henitai::Reporter::Terminal do
       #{summary_row('Duration', '0.00s')}
     OUTPUT
 
-    with_color do
-      expect { reporter.report(result) }.to output(expected_output).to_stdout
-    end
+    expect { reporter.report(result) }.to output(expected_output).to_stdout
   end
 
   it "colors the score line yellow when the score meets the low threshold" do
-    reporter = described_class.new(config: build_config)
+    reporter = described_class.new(config: build_config, color_enabled: true)
     result = build_result(
       mutants: [],
       scoring_summary: {
@@ -351,13 +344,11 @@ RSpec.describe Henitai::Reporter::Terminal do
       #{summary_row('Duration', '0.00s')}
     OUTPUT
 
-    with_color do
-      expect { reporter.report(result) }.to output(expected_output).to_stdout
-    end
+    expect { reporter.report(result) }.to output(expected_output).to_stdout
   end
 
   it "colors the score line red when the score is below the low threshold" do
-    reporter = described_class.new(config: build_config)
+    reporter = described_class.new(config: build_config, color_enabled: true)
     result = build_result(
       mutants: [],
       scoring_summary: {
@@ -383,13 +374,11 @@ RSpec.describe Henitai::Reporter::Terminal do
       #{summary_row('Duration', '0.00s')}
     OUTPUT
 
-    with_color do
-      expect { reporter.report(result) }.to output(expected_output).to_stdout
-    end
+    expect { reporter.report(result) }.to output(expected_output).to_stdout
   end
 
-  it "does not emit ANSI colors when NO_COLOR is set" do
-    reporter = described_class.new(config: build_config)
+  it "does not emit ANSI colors when color_enabled is false" do
+    reporter = described_class.new(config: build_config, color_enabled: false)
     result = build_result(
       mutants: [],
       scoring_summary: {
@@ -414,13 +403,11 @@ RSpec.describe Henitai::Reporter::Terminal do
       #{summary_row('Duration', '0.00s')}
     OUTPUT
 
-    with_no_color do
-      expect { reporter.report(result) }.to output(expected_output).to_stdout
-    end
+    expect { reporter.report(result) }.to output(expected_output).to_stdout
   end
 
   it "prints n/a when the scoring summary does not include live mutants" do
-    reporter = described_class.new(config: build_config)
+    reporter = described_class.new(config: build_config, color_enabled: true)
     result = build_result(
       mutants: [],
       scoring_summary: {
@@ -445,13 +432,11 @@ RSpec.describe Henitai::Reporter::Terminal do
       #{summary_row('Duration', '0.00s')}
     OUTPUT
 
-    with_color do
-      expect { reporter.report(result) }.to output(expected_output).to_stdout
-    end
+    expect { reporter.report(result) }.to output(expected_output).to_stdout
   end
 
   it "prints survived mutant details after the summary block" do
-    reporter = described_class.new(config: build_config)
+    reporter = described_class.new(config: build_config, color_enabled: true)
     result = build_survived_detail_result
 
     expected_output = <<~OUTPUT
@@ -477,9 +462,7 @@ RSpec.describe Henitai::Reporter::Terminal do
       + false
     OUTPUT
 
-    with_color do
-      expect { reporter.report(result) }.to output(expected_output).to_stdout
-    end
+    expect { reporter.report(result) }.to output(expected_output).to_stdout
   end
 
   it "uses default thresholds when config.thresholds is nil" do
@@ -512,15 +495,14 @@ RSpec.describe Henitai::Reporter::Terminal do
     end
 
     it "prints a partial rerun summary header" do
-      reporter = described_class.new(config: build_config)
+      reporter = described_class.new(config: build_config, color_enabled: false)
       result = build_partial_result
-      with_no_color do
-        expect { reporter.report(result) }.to output(/Partial survivor rerun/).to_stdout
-      end
+
+      expect { reporter.report(result) }.to output(/Partial survivor rerun/).to_stdout
     end
 
     it "includes survivor match stats when survivor_stats is present" do
-      reporter = described_class.new(config: build_config)
+      reporter = described_class.new(config: build_config, color_enabled: false)
       stats = { matched: 3, unmatched_count: 1, unmatched_ids: ["abc"],
                 skipped_count: 0, drift_warning: false }
       result = build_partial_result(survivor_stats: stats)
@@ -533,9 +515,8 @@ RSpec.describe Henitai::Reporter::Terminal do
         #{summary_row('Unmatched', 1)}
         #{summary_row('Drift warning', 'no')}
       OUTPUT
-      with_no_color do
-        expect { reporter.report(result) }.to output(expected_output).to_stdout
-      end
+
+      expect { reporter.report(result) }.to output(expected_output).to_stdout
     end
   end
 end
