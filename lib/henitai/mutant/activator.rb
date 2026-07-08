@@ -164,6 +164,8 @@ module Henitai
 
         Thread.current[:henitai_filter_const_warnings] = true
         load(source_file)
+        loaded_feature = File.expand_path(source_file)
+        $LOADED_FEATURES << loaded_feature unless $LOADED_FEATURES.include?(loaded_feature)
       ensure
         Thread.current[:henitai_filter_const_warnings] = false
       end
