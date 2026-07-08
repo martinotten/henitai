@@ -28,11 +28,13 @@ module Henitai
   class Runner
     attr_reader :config, :result
 
-    def initialize(config: Configuration.load, subjects: nil, since: nil, survivors_from: nil)
+    def initialize(config: Configuration.load, subjects: nil, since: nil, survivors_from: nil,
+                   dry_run: false)
       @config         = config
       @subjects       = subjects
       @since          = since
       @survivors_from = survivors_from
+      @dry_run        = dry_run
     end
 
     # Entry point — runs the full pipeline and returns a Result.
@@ -50,18 +52,43 @@ module Henitai
     def run
       started_at = Time.now
 
-      mutants = if survivor_rerun? && (fast_mutants = survivor_strategy.try_recipe_run)
-                  execute_mutants(fast_mutants)
-                else
-                  source_files = self.source_files
-                  subjects = resolve_subjects(source_files)
-                  execute_mutants(mutants_for(subjects, source_files))
-                end
+      mutants = pipeline_mutants
+      return dry_run_result(mutants, started_at, Time.now) if @dry_run
 
-      build_result(mutants, started_at, Time.now)
+      build_result(execute_mutants(mutants), started_at, Time.now)
     end
 
     private
+
+    # Gates 0–3 only: coverage bootstrap, subject resolution, generation and
+    # static/skip/arid/stillborn filtering — everything short of execution.
+    def pipeline_mutants
+      if survivor_rerun? && (fast_mutants = survivor_strategy.try_recipe_run)
+        return fast_mutants
+      end
+
+      source_files = self.source_files
+      subjects = resolve_subjects(source_files)
+      mutants_for(subjects, source_files)
+    end
+
+    # Dry run stops before Gate 4: prints the post-filter listing and returns
+    # a Result without executing tests, persisting history or running the
+    # configured reporters — reports/ stays untouched.
+    def dry_run_result(mutants, started_at, finished_at)
+      @result = Result.new(
+        mutants:,
+        started_at:,
+        finished_at:,
+        thresholds: result_thresholds,
+        partial_rerun: survivor_rerun?,
+        survivor_stats: survivor_strategy.survivor_stats,
+        git_sha: safe_head_sha,
+        source_provider: source_provider
+      )
+      Reporter::DryRun.new(config:).report(@result)
+      @result
+    end
 
     def resolve_subjects(source_files = self.source_files)
       subjects = subject_resolver.resolve_from_files(source_files)

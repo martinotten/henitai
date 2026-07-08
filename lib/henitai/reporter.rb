@@ -375,6 +375,70 @@ module Henitai
       end
     end
 
+    # Dry-run listing: prints the post-filter mutant set (Gates 0–3) without
+    # any execution results. Used internally by the runner for `--dry-run`;
+    # not part of the `reporters:` configuration surface.
+    class DryRun < Base
+      def initialize(config:, history_store: nil, io: $stdout)
+        super(config:, history_store:)
+        @io = io
+      end
+
+      def report(result)
+        io.puts(listing_lines(result.mutants))
+      end
+
+      private
+
+      attr_reader :io
+
+      def listing_lines(mutants)
+        header = ["Dry run: #{mutants.size} mutants (no tests executed)"]
+        return header + ["", summary_line(mutants)] if mutants.empty?
+
+        header + grouped_lines(mutants) + ["", summary_line(mutants)]
+      end
+
+      def grouped_lines(mutants)
+        mutants.group_by { |mutant| subject_label(mutant) }.flat_map do |label, subject_mutants|
+          ["", label] + subject_mutants.map { |mutant| mutant_line(mutant) }
+        end
+      end
+
+      def subject_label(mutant)
+        subject = mutant.subject
+        return subject.expression if subject.respond_to?(:expression) && subject.expression
+
+        mutant.location.fetch(:file, "(unknown subject)")
+      end
+
+      def mutant_line(mutant)
+        line = format(
+          "  %<operator>s — %<description>s  %<file>s:%<line>d  [%<status>s]",
+          operator: mutant.operator,
+          description: mutant.description,
+          file: mutant.location.fetch(:file),
+          line: mutant.location.fetch(:start_line),
+          status: mutant.status
+        )
+        reason = ignore_reason_for(mutant)
+        reason ? "#{line} #{reason}" : line
+      end
+
+      def ignore_reason_for(mutant)
+        return nil unless mutant.respond_to?(:ignore_reason)
+
+        reason = mutant.ignore_reason
+        reason ? "(#{reason})" : nil
+      end
+
+      def summary_line(mutants)
+        counts = mutants.group_by(&:status).transform_values(&:size)
+        summary = counts.map { |status, count| "#{status} #{count}" }.join(" | ")
+        "Summary: #{summary.empty? ? 'no mutants' : summary}"
+      end
+    end
+
     # GitHub Actions annotation reporter. Prints one `::warning` workflow
     # command per survived mutant so survivors show up inline on the PR diff.
     # Killed/ignored/no-coverage/timeout mutants stay silent.

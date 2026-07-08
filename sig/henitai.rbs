@@ -766,6 +766,21 @@ module Henitai
       def escaped_report_json: (Result) -> String
     end
 
+    class DryRun < Base
+      def initialize: (config: Configuration, ?history_store: MutantHistoryStore?, ?io: untyped) -> void
+      def report: (untyped) -> void
+
+      private
+
+      def io: () -> untyped
+      def listing_lines: (untyped) -> Array[String]
+      def grouped_lines: (untyped) -> Array[String]
+      def subject_label: (untyped) -> String
+      def mutant_line: (untyped) -> String
+      def ignore_reason_for: (untyped) -> String?
+      def summary_line: (untyped) -> String
+    end
+
     class Github < Base
       def initialize: (config: Configuration, ?history_store: MutantHistoryStore?, ?io: untyped) -> void
       def report: (Result) -> void
@@ -915,7 +930,7 @@ module Henitai
     attr_reader config: Configuration
     attr_reader result: untyped
 
-    def initialize: (?config: Configuration, ?subjects: Array[Subject], ?since: String, ?survivors_from: String?) -> void
+    def initialize: (?config: Configuration, ?subjects: Array[Subject], ?since: String, ?survivors_from: String?, ?dry_run: bool) -> void
     def run: () -> Result
     def resolve_subjects: (?Array[String]) -> untyped
     def generate_mutants: (untyped) -> untyped
@@ -945,6 +960,8 @@ module Henitai
     private
 
     def build_result: (Array[Mutant], Time, Time) -> Result
+    def pipeline_mutants: () -> Array[Mutant]
+    def dry_run_result: (Array[Mutant], Time, Time) -> Result
     def source_provider: () -> ^(String) -> String
     def persist_history: (Result, Time) -> void
     def bootstrap_coverage: (Array[String], ?Array[String]?) -> void

@@ -17,16 +17,21 @@ module Henitai
 
         config = load_config(options)
         result = run_pipeline(options, config)
-        exit(
-          exit_status_for(
-            result,
-            config,
-            fail_on_survivors: options[:fail_on_survivors],
-            strict_exit_codes: options[:strict_exit_codes]
-          )
-        )
+        exit(run_exit_status(result, config, options))
       rescue StandardError => e
         handle_run_error(e)
+      end
+
+      def run_exit_status(result, config, options)
+        # A dry run tests nothing, so there is no score to gate on.
+        return 0 if options[:dry_run]
+
+        exit_status_for(
+          result,
+          config,
+          fail_on_survivors: options[:fail_on_survivors],
+          strict_exit_codes: options[:strict_exit_codes]
+        )
       end
 
       def run_pipeline(options, config)
@@ -35,7 +40,8 @@ module Henitai
           config:,
           subjects: subjects_from_argv,
           since: options[:since],
-          survivors_from: resolved_survivors_from
+          survivors_from: resolved_survivors_from,
+          dry_run: options.fetch(:dry_run, false)
         )
         runner.run
       end

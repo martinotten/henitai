@@ -1,6 +1,6 @@
 # Dry-Run Mode (List Mutants Without Executing Tests)
 
-Status: backlog
+Status: done (2026-07-08)
 Date: 2026-07-06
 Severity: Low
 Source: cross-framework comparison — StrykerJS 9.6 (`dryRunOnly: true`),

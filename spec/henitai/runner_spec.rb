@@ -5,6 +5,7 @@
 require "fileutils"
 require "json"
 require "spec_helper"
+require "stringio"
 require "tmpdir"
 
 RSpec.describe Henitai::Runner do
@@ -129,6 +130,78 @@ RSpec.describe Henitai::Runner do
   # rather than on the order in which collaborators were called. The kill/
   # survive mix the execution engine returns must flow through to the Result's
   # reported counts and mutation score, and the same Result must be reported.
+  describe "dry run" do
+    def capture_stdout
+      original_stdout = $stdout
+      stdout = StringIO.new
+      $stdout = stdout
+      yield
+      stdout.string
+    ensure
+      $stdout = original_stdout
+    end
+
+    def dry_run_mutant(status)
+      Struct.new(:subject, :status, :operator, :description, :location) do
+        def killed?   = false
+        def survived? = false
+      end.new(
+        Struct.new(:expression).new("Sample#answer"),
+        status,
+        :ArithmeticOperator,
+        "replaced + with -",
+        { file: "lib/sample.rb", start_line: 3, end_line: 3 }
+      )
+    end
+
+    def stub_dry_run_pipeline(runner, generated:)
+      subject_resolver = instance_double(Henitai::SubjectResolver, resolve_from_files: [])
+      mutant_generator = instance_double(Henitai::MutantGenerator, generate: generated)
+      static_filter = instance_double(Henitai::StaticFilter, apply: generated)
+      coverage_bootstrapper = instance_double(Henitai::CoverageBootstrapper, ensure!: nil)
+      # Strict doubles with no stubbed methods: any execution or history
+      # write during a dry run fails the example.
+      execution_engine = instance_double(Henitai::ExecutionEngine)
+      history_store = instance_double(Henitai::MutantHistoryStore)
+
+      allow(runner).to receive_messages(
+        subject_resolver:, mutant_generator:, static_filter:,
+        coverage_bootstrapper:, execution_engine:, integration: nil, history_store:
+      )
+    end
+
+    it "lists the post-filter mutants without executing, persisting or reporting" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "lib"))
+        File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+        Dir.chdir(dir) do
+          reports_dir = File.join(dir, "reports")
+          runner = described_class.new(config: build_config(reports_dir:), dry_run: true)
+          mutants = [dry_run_mutant(:pending), dry_run_mutant(:ignored)]
+          stub_dry_run_pipeline(runner, generated: mutants)
+          run_all_called = false
+          allow(Henitai::Reporter).to receive(:run_all) { run_all_called = true }
+
+          output = capture_stdout { runner.run }
+
+          expect(
+            listing: output.include?("Dry run: 2 mutants") &&
+              output.include?("[pending]") && output.include?("[ignored]"),
+            result_mutants: runner.result.mutants,
+            configured_reporters_run: run_all_called,
+            reports_dir_written: Dir.exist?(reports_dir) && !Dir.empty?(reports_dir)
+          ).to eq(
+            listing: true,
+            result_mutants: mutants,
+            configured_reporters_run: false,
+            reports_dir_written: false
+          )
+        end
+      end
+    end
+  end
+
   it "returns a Result whose counts reflect the executed mutants" do
     Dir.mktmpdir do |dir|
       FileUtils.mkdir_p(File.join(dir, "lib"))

@@ -108,6 +108,7 @@ RSpec.describe Henitai::CLI do
                 --jobs N                     Number of parallel workers (default: 1)
                 --all-logs, --verbose        Print all captured child logs
                 --survivors-from PATH        Re-run only survivors from a prior report (partial rerun; threshold checks are skipped; dirty worktrees are included)
+                --dry-run                    List the post-filter mutant set without executing any tests (always exits 0)
                 --fail-on-survivors          Exit 1 for partial reruns when any survivors remain (otherwise exits 0)
                 --strict-exit-codes          Expanded exit codes: 0 threshold met, 1 threshold miss, 2 framework error, 3 timeouts present, 4 runtime/compile errors present
             -h, --help                       Show this help
@@ -1274,6 +1275,47 @@ RSpec.describe Henitai::CLI do
         raise "expected exit status 0, got #{status.inspect}" unless status == 0
       end
       expect { cli.run }.to output(/partial rerun - mutation score threshold not evaluated/).to_stderr
+    end
+  end
+
+  describe "--dry-run" do
+    it "exits 0 regardless of the mutation score" do
+      Dir.mktmpdir do |dir|
+        config_path = write_configuration(dir)
+        exit_status = nil
+        result = instance_double(Henitai::Result)
+        captured_dry_run = nil
+
+        allow(Henitai::Runner).to receive(:new) do |**kwargs|
+          captured_dry_run = kwargs[:dry_run]
+          build_runner(result:)
+        end
+
+        cli = described_class.new(["run", "--config", config_path, "--dry-run"])
+        cli.define_singleton_method(:exit) { |status = nil| exit_status = status }
+        cli.run
+
+        expect([exit_status, captured_dry_run]).to eq([0, true])
+      end
+    end
+
+    it "passes dry_run: false to the runner by default" do
+      Dir.mktmpdir do |dir|
+        config_path = write_configuration(dir)
+        result = instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: false)
+        captured_dry_run = nil
+
+        allow(Henitai::Runner).to receive(:new) do |**kwargs|
+          captured_dry_run = kwargs[:dry_run]
+          build_runner(result:)
+        end
+
+        cli = described_class.new(["run", "--config", config_path])
+        cli.define_singleton_method(:exit) { |_status = nil| nil }
+        cli.run
+
+        expect(captured_dry_run).to be(false)
+      end
     end
   end
 

@@ -29,19 +29,24 @@ module Henitai
       def build_run_option_parser(options)
         OptionParser.new do |opts|
           opts.banner = "Usage: henitai run [options] [SUBJECT_PATTERN...]"
-          add_since_option(opts, options)
-          add_integration_option(opts, options)
-          add_config_option(opts, options)
-          add_operator_option(opts, options)
-          add_timeout_multiplier_option(opts, options)
-          add_jobs_option(opts, options)
-          add_output_option(opts, options)
-          add_survivors_from_option(opts, options)
-          add_fail_on_survivors_option(opts, options)
-          add_strict_exit_codes_option(opts, options)
+          add_run_flag_options(opts, options)
           add_help_option(opts)
           add_version_option(opts)
         end
+      end
+
+      def add_run_flag_options(opts, options)
+        add_since_option(opts, options)
+        add_integration_option(opts, options)
+        add_config_option(opts, options)
+        add_operator_option(opts, options)
+        add_timeout_multiplier_option(opts, options)
+        add_jobs_option(opts, options)
+        add_output_option(opts, options)
+        add_survivors_from_option(opts, options)
+        add_dry_run_option(opts, options)
+        add_fail_on_survivors_option(opts, options)
+        add_strict_exit_codes_option(opts, options)
       end
 
       def build_clean_option_parser(options)
