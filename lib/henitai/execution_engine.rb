@@ -8,22 +8,43 @@ module Henitai
     def run(mutants, integration, config, progress_reporter: nil)
       with_reports_dir(config) do
         with_coverage_dir(config) do
-          @flaky_retry_count = 0
-          pending_mutants = Array(mutants).select(&:pending?)
-          mutex = Mutex.new
-          if parallel_execution?(config, pending_mutants)
-            run_parallel(pending_mutants, integration, config, progress_reporter)
-          else
-            run_linear(pending_mutants, integration, config, progress_reporter, mutex)
+          with_worker_slot do
+            execute(mutants, integration, config, progress_reporter)
           end
-
-          warn_flaky_mutants(pending_mutants.size)
-          mutants
         end
       end
     end
 
     private
+
+    def execute(mutants, integration, config, progress_reporter)
+      @flaky_retry_count = 0
+      pending_mutants = Array(mutants).select(&:pending?)
+      mutex = Mutex.new
+      if parallel_execution?(config, pending_mutants)
+        run_parallel(pending_mutants, integration, config, progress_reporter)
+      else
+        run_linear(pending_mutants, integration, config, progress_reporter, mutex)
+      end
+
+      warn_flaky_mutants(pending_mutants.size)
+      mutants
+    end
+
+    # Linear-path children inherit slot 0 so suite-side isolation code works
+    # identically in both execution modes; the parallel scheduler overwrites
+    # the value per spawn. Restored afterwards like the other run-scoped vars.
+    def with_worker_slot
+      original = ENV.fetch(SlotScheduler::WORKER_SLOT_ENV, nil)
+      ENV[SlotScheduler::WORKER_SLOT_ENV] = "0"
+      yield
+    ensure
+      if original.nil?
+        ENV.delete(SlotScheduler::WORKER_SLOT_ENV)
+      else
+        ENV[SlotScheduler::WORKER_SLOT_ENV] = original
+      end
+    end
 
     def parallel_execution?(config, mutants)
       worker_count(config) > 1 && mutants.size > 1

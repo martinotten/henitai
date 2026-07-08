@@ -1,6 +1,6 @@
 # Parallel-Worker Resource-Isolation Hooks
 
-Status: backlog
+Status: done (2026-07-08, stages 1+2; stage 3 hooks deferred per plan)
 Date: 2026-07-02
 Severity: Medium
 Source: feature-parity comparison against `mutant`;
@@ -169,6 +169,23 @@ stage 2 proves insufficient in practice.
 8. **Docs.** README recipe:
    `database: "myapp_test_#{ENV.fetch('HENITAI_WORKER_SLOT', '0')}"` —
    the suite isolates itself; henitai provides only the stable token.
+
+## Stage-1 Decision Record (2026-07-08)
+
+- `SlotScheduler` slot ids grow monotonically per spawn (`next_slot_id!`) —
+  they are **not** stable 0..jobs-1 indices and are unsuitable as a resource
+  token. A separate `worker_index` was added to the `Slot` struct instead:
+  the smallest index in `0...worker_count` not held by a live slot,
+  assigned at initial spawn and reused for the next spawn once freed.
+- Retry stability comes free: a flaky-retry respawn reuses the same `Slot`
+  struct, so `retry_slot` re-exports the original attempt's `worker_index`.
+- Env var name `HENITAI_WORKER_SLOT`, value range `0..jobs-1`, linear-path
+  value `0` (set by `ExecutionEngine#with_worker_slot`, restored after the
+  run like `HENITAI_REPORTS_DIR`).
+- Injection is parent-side `ENV[...] =` immediately before
+  `integration.spawn_mutant` at both fork sites — safe because the
+  scheduler event loop is single-threaded (sole spawner), and forked
+  children inherit the parent environment.
 
 **Stage 3 — full lifecycle hooks (deferred):**
 

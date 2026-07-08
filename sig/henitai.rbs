@@ -562,6 +562,7 @@ module Henitai
 
   class SlotScheduler
     PROCESS_DRAIN_WINDOW: Float
+    WORKER_SLOT_ENV: String
 
     Slot: untyped
 
@@ -608,6 +609,8 @@ module Henitai
 
     private
 
+    def execute: (Array[Mutant], untyped, untyped, untyped?) -> Array[Mutant]
+    def with_worker_slot: () { () -> untyped } -> untyped
     def parallel_execution?: (untyped, Array[Mutant]) -> bool
     def worker_count: (untyped) -> Integer
     def run_linear: (Array[Mutant], untyped, untyped, untyped?, untyped) -> void

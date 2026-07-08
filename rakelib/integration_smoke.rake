@@ -89,10 +89,22 @@ module IntegrationSmoke
     end
 
     def verify_run!(stdout, stderr, status)
-      return if status.exitstatus == 1 && survivor_count.positive? && ignored_count.positive?
+      unless status.exitstatus == 1 && survivor_count.positive? && ignored_count.positive?
+        details = [stdout, stderr].reject(&:empty?).join("\n")
+        raise "Expected surviving and ignored mutants for #{name}\n#{details}"
+      end
 
-      details = [stdout, stderr].reject(&:empty?).join("\n")
-      raise "Expected surviving and ignored mutants for #{name}\n#{details}"
+      verify_worker_slot!
+    end
+
+    # Proves HENITAI_WORKER_SLOT survives the real fork + integration
+    # boundary: the fixture suite writes the value it saw to an artifact.
+    def verify_worker_slot!
+      path = File.join(root, "reports", "worker-slot.txt")
+      raise "Expected worker-slot artifact for #{name} at #{path}" unless File.exist?(path)
+
+      value = File.read(path)
+      raise "Invalid worker slot #{value.inspect} for #{name}" unless value.match?(/\A\d+\z/)
     end
 
     def announce_success

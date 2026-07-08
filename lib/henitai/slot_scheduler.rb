@@ -23,11 +23,17 @@ module Henitai
 
     PROCESS_DRAIN_WINDOW = 0.2
 
+    # Environment variable exposing a stable worker-slot index (0..jobs-1) to
+    # each forked child so test suites can isolate shared resources per slot
+    # (e.g. "myapp_test_#{ENV['HENITAI_WORKER_SLOT']}"). A flaky-retry respawn
+    # keeps the original attempt's value.
+    WORKER_SLOT_ENV = "HENITAI_WORKER_SLOT"
+
     # Tracks one in-flight mutant child process.
     Slot = Struct.new(
       :slot_id, :mutant, :pid, :started_at_monotonic, :timeout,
       :log_paths, :retry_count, :draining, :term_sent_at_monotonic,
-      :forced_outcome
+      :forced_outcome, :worker_index
     )
 
     # @return [Integer] mutants that required at least one retry during the run.
@@ -98,26 +104,38 @@ module Henitai
       test_files = resolve_test_files(mutant)
       mutant.covered_by = test_files if mutant.respond_to?(:covered_by=)
       mutant.tests_completed = test_files.size if mutant.respond_to?(:tests_completed=)
+      worker_index = next_free_worker_index
+      ENV[WORKER_SLOT_ENV] = worker_index.to_s
       handle = integration.spawn_mutant(mutant: mutant, test_files: test_files)
-      register_slot(handle, mutant)
+      register_slot(handle, mutant, worker_index)
     rescue StandardError => e
       record_spawn_failure(mutant, e)
     end
 
-    def register_slot(handle, mutant)
+    def register_slot(handle, mutant, worker_index)
       slot_id = next_slot_id!
-      slot = build_slot(slot_id, mutant, handle)
+      slot = build_slot(slot_id, mutant, handle, worker_index)
       slots[slot_id] = slot
       pid_to_slot[handle.pid] = slot_id
       Integration::SchedulerDiagnostics.child_started(handle.pid)
     end
 
-    def build_slot(slot_id, mutant, handle)
+    def build_slot(slot_id, mutant, handle, worker_index)
       Slot.new(
         slot_id, mutant, handle.pid,
         monotonic_time,
-        config.timeout, handle.log_paths, 0, false, nil, nil
+        config.timeout, handle.log_paths, 0, false, nil, nil,
+        worker_index
       )
+    end
+
+    # Smallest index in 0...worker_count not held by a live slot, so
+    # concurrently-running children always see distinct values and freed
+    # indices are reused. Slot ids themselves grow monotonically and are
+    # unsuitable as a resource token.
+    def next_free_worker_index
+      used = slots.each_value.map(&:worker_index)
+      (0...worker_count).find { |index| !used.include?(index) } || used.size
     end
 
     def complete_slot(pid, wait_result)
@@ -149,6 +167,7 @@ module Henitai
 
     def retry_slot(slot)
       test_files = resolve_test_files(slot.mutant)
+      ENV[WORKER_SLOT_ENV] = slot.worker_index.to_s
       handle = integration.spawn_mutant(mutant: slot.mutant, test_files: test_files)
       finish_retry(slot, handle)
     rescue StandardError => e

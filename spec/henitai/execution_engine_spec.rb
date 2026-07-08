@@ -20,6 +20,7 @@ IntegrationSpy = Class.new do
     @calls[:run_mutant] += 1
     @calls[:last_test_files] = test_files
     @calls[:last_timeout] = timeout
+    @calls[:worker_slot] = ENV.fetch("HENITAI_WORKER_SLOT", nil)
     mutant.status = :killed
   end
 end
@@ -48,6 +49,33 @@ RSpec.describe Henitai::ExecutionEngine do
       1,
       3
     )
+  end
+
+  describe "HENITAI_WORKER_SLOT on the linear path" do
+    around do |example|
+      original = ENV.fetch("HENITAI_WORKER_SLOT", nil)
+      ENV["HENITAI_WORKER_SLOT"] = "sentinel"
+      example.run
+    ensure
+      original.nil? ? ENV.delete("HENITAI_WORKER_SLOT") : ENV["HENITAI_WORKER_SLOT"] = original
+    end
+
+    it "exposes slot 0 to every child" do
+      mutant = build_mutant(:pending, "Foo#bar")
+      integration = build_integration
+
+      described_class.new.run([mutant], integration, build_config)
+
+      expect(integration.calls[:worker_slot]).to eq("0")
+    end
+
+    it "restores the variable after the run" do
+      mutant = build_mutant(:pending, "Foo#bar")
+
+      described_class.new.run([mutant], build_integration, build_config)
+
+      expect(ENV.fetch("HENITAI_WORKER_SLOT", nil)).to eq("sentinel")
+    end
   end
 
   it "keeps the conservative single-worker fallback when jobs is nil" do

@@ -110,6 +110,16 @@ yet enable the per-test coverage formatter.
 Henitai currently defaults to linear mutant execution. Set `jobs` in
 `.henitai.yml` or pass `--jobs N` to opt into parallel mutant execution.
 
+Every forked test child sees a `HENITAI_WORKER_SLOT` environment variable
+holding a stable worker-slot index (`0..jobs-1`; always `0` on the linear
+path). A flaky-retry respawn keeps the original attempt's value. Test suites
+that touch shared external resources can isolate themselves per slot without
+any henitai-side hooks — for example a per-worker database:
+
+```ruby
+database: "myapp_test_#{ENV.fetch('HENITAI_WORKER_SLOT', '0')}"
+```
+
 By default, Henitai keeps child test output out of the live terminal. Each
 baseline or mutant run writes captured stdout/stderr to `reports/mutation-logs/`
 and the terminal only shows progress plus a concise summary. Pass
