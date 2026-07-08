@@ -1,6 +1,6 @@
 # `CoverageBootstrapper` Only Checks Freshness, Never Completeness — Scoped Runs Silently Mark Everything `NoCoverage`
 
-Status: backlog
+Status: done (2026-07-08, Part 1 — Detection/Manifest)
 Date: 2026-07-08
 Severity: Medium
 Source: discovered running `henitai run 'Henitai::Integration::ChildDebugSupport*'` scoped to a

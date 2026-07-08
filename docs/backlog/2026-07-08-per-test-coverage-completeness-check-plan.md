@@ -1,6 +1,6 @@
 # Implementation Plan: Per-Test Coverage Completeness Check
 
-Status: plan — verified by a second Opus subagent, APPROVE WITH CHANGES
+Status: done (Part 1 shipped 2026-07-08)
 Parent ticket: `docs/backlog/2026-07-08-per-test-coverage-completeness-check.md`
 Date: 2026-07-08
 
