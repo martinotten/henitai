@@ -228,6 +228,17 @@ RSpec.describe Henitai::SlotScheduler do
         { stdout_path: "/dev/null", stderr_path: "/dev/null", log_path: "/dev/null" }
       )
     end
+
+    it "stamps the slot with a real monotonic start time" do
+      captured = []
+      scheduler = build_worker_scheduler(captured, worker_count: 1)
+      scheduler.enqueue([build_worker_mutant("a")])
+
+      scheduler.fill_idle_slots
+
+      slot = scheduler.send(:slots).values.first
+      expect(slot.started_at_monotonic).to be_a(Float).and be > 0.0
+    end
   end
 
   describe "#reap_all_completed_children" do
@@ -724,7 +735,7 @@ RSpec.describe Henitai::SlotScheduler do
         1, nil, 12, 0.0, 5.0, nil, 0, true, nil, :timeout
       )
 
-      expect(build_scheduler.send(:remaining_slot_timeout, slot, 0.0)).to eq(0.0)
+      expect(build_scheduler.send(:remaining_slot_timeout, slot, 0.0)).to be(0.0)
     end
 
     it "uses the drain window once SIGTERM has been sent" do
@@ -734,6 +745,55 @@ RSpec.describe Henitai::SlotScheduler do
       window = Henitai::SlotScheduler::PROCESS_DRAIN_WINDOW
 
       expect(build_scheduler.send(:remaining_slot_timeout, slot, 1.0)).to be_within(1e-9).of(window)
+    end
+
+    it "computes remaining time from started_at_monotonic + timeout for a live slot" do
+      slot = Henitai::SlotScheduler::Slot.new(
+        1, nil, 12, 10.0, 5.0, nil, 0, false, nil, nil
+      )
+
+      expect(build_scheduler.send(:remaining_slot_timeout, slot, 12.0)).to eq(3.0)
+    end
+
+    it "clips a negative remaining time to 0.0 for a live slot past its deadline" do
+      slot = Henitai::SlotScheduler::Slot.new(
+        1, nil, 12, 10.0, 5.0, nil, 0, false, nil, nil
+      )
+
+      expect(build_scheduler.send(:remaining_slot_timeout, slot, 20.0)).to eq(0.0)
+    end
+  end
+
+  describe "#resolve_test_files" do
+    it "uses the test_file_resolver option when present, passing it the mutant" do
+      mutant = build_worker_mutant("a")
+      resolver = ->(m) { m == mutant ? %w[resolved_spec.rb] : [] }
+      scheduler = described_class.new(
+        integration: nil, config: nil, progress_reporter: nil,
+        options: { test_file_resolver: resolver, test_files: %w[ignored_spec.rb] }, host: nil
+      )
+
+      expect(scheduler.send(:resolve_test_files, mutant)).to eq(%w[resolved_spec.rb])
+    end
+
+    it "falls back to the static test_files option when no resolver is set" do
+      scheduler = described_class.new(
+        integration: nil, config: nil, progress_reporter: nil,
+        options: { test_files: %w[static_spec.rb] }, host: nil
+      )
+
+      expect(scheduler.send(:resolve_test_files, build_worker_mutant("a"))).to eq(%w[static_spec.rb])
+    end
+
+    it "falls back to integration.select_tests when neither option is set" do
+      mutant = build_worker_mutant("a")
+      integration = instance_double(Henitai::Integration::Rspec)
+      allow(integration).to receive(:select_tests).with(mutant.subject).and_return(%w[selected_spec.rb])
+      scheduler = described_class.new(
+        integration: integration, config: nil, progress_reporter: nil, options: {}, host: nil
+      )
+
+      expect(scheduler.send(:resolve_test_files, mutant)).to eq(%w[selected_spec.rb])
     end
   end
 end
