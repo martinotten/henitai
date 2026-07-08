@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Pi currently requires Node.js >= 22.19.0; Debian trixie ships Node.js 20.
 RUN npm install -g n && \
-    n 22 && \
+    n 22.19.0 && \
     npm cache clean --force && \
     node --version
 

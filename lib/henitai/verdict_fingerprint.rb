@@ -51,8 +51,13 @@ module Henitai
     def combined_content_sha(paths)
       digest = Digest::SHA256.new
       paths.each do |path|
+        content = File.read(path)
+        digest.update(path.bytesize.to_s)
+        digest.update(":")
         digest.update(path)
-        digest.update(File.read(path))
+        digest.update(content.bytesize.to_s)
+        digest.update(":")
+        digest.update(content)
       end
       digest.hexdigest
     rescue StandardError

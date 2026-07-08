@@ -89,9 +89,9 @@ module IntegrationSmoke
     end
 
     def verify_run!(stdout, stderr, status)
-      unless status.exitstatus == 1 && survivor_count.positive? && ignored_count.positive?
+      unless status.exitstatus == 1 && survivor_count.positive? && ignored_count.positive? && killed_count.positive?
         details = [stdout, stderr].reject(&:empty?).join("\n")
-        raise "Expected surviving and ignored mutants for #{name}\n#{details}"
+        raise "Expected surviving, killed, and ignored mutants for #{name}\n#{details}"
       end
 
       verify_worker_slot!
@@ -142,12 +142,17 @@ module IntegrationSmoke
 
     def announce_success
       puts format(
-        "smoke:%<name>s ok (%<survived>d surviving, %<ignored>d ignored mutants in %<report>s)",
+        "smoke:%<name>s ok (%<killed>d killed, %<survived>d surviving, %<ignored>d ignored mutants in %<report>s)",
         name:,
+        killed: killed_count,
         survived: survivor_count,
         ignored: ignored_count,
         report: report_path
       )
+    end
+
+    def killed_count
+      status_count("Killed")
     end
 
     def survivor_count
