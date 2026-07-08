@@ -57,7 +57,7 @@ module Henitai
       covering = @coverage_map[mutant.stable_id]
       return false if covering.nil? || covering.empty?
 
-      covering.none? { |test_file| changed.include?(test_file) }
+      !changed.intersect?(covering)
     end
 
     # Returns a Set of changed test file paths, or nil on any git error

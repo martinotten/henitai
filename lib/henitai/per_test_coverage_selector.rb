@@ -31,7 +31,7 @@ module Henitai
 
     def covers_mutant?(test, mutant, reports_dir)
       covered_lines = coverage_lines_for(test, mutant, reports_dir)
-      mutant_lines(mutant).any? { |line| covered_lines.include?(line) }
+      mutant_lines(mutant).intersect?(covered_lines)
     end
 
     def coverage_lines_for(test, mutant, reports_dir)

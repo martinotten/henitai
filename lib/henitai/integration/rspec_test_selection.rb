@@ -18,7 +18,10 @@ module Henitai
       def select_tests(subject)
         matches = spec_files.select do |path|
           content = File.read(path)
+          # rubocop:disable Style/ArrayIntersect -- content is a String (substring
+          # search), not a collection; `intersect?` would raise a TypeError.
           selection_patterns(subject).any? { |pattern| content.include?(pattern) }
+          # rubocop:enable Style/ArrayIntersect
         rescue StandardError
           false
         end

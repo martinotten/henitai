@@ -78,23 +78,23 @@ RSpec.describe Henitai::CLI do
     end
 
     it "prints the run usage banner" do
-      expect(help_output).to match(/Usage: henitai run/)
+      expect(help_output).to include("Usage: henitai run")
     end
 
     it "documents the --since option" do
-      expect(help_output).to match(/--since/)
+      expect(help_output).to include("--since")
     end
 
     it "documents the -h / --help flag" do
-      expect(help_output).to match(/-h, --help/)
+      expect(help_output).to include("-h, --help")
     end
 
     it "documents the -v / --version flag" do
-      expect(help_output).to match(/-v, --version/)
+      expect(help_output).to include("-v, --version")
     end
 
     it "documents the --all-logs flag" do
-      expect(help_output).to match(/--all-logs/)
+      expect(help_output).to include("--all-logs")
     end
 
     it "prints the exact run help text" do
@@ -119,11 +119,11 @@ RSpec.describe Henitai::CLI do
     end
 
     it "documents the --survivors-from flag" do
-      expect(help_output).to match(/--survivors-from/)
+      expect(help_output).to include("--survivors-from")
     end
 
     it "documents the --fail-on-survivors flag" do
-      expect(help_output).to match(/--fail-on-survivors/)
+      expect(help_output).to include("--fail-on-survivors")
     end
   end
 
@@ -1388,7 +1388,7 @@ RSpec.describe Henitai::CLI do
     it "documents the flag in run --help" do
       cli = described_class.new(["run", "--help"])
 
-      expect(capture_stdout { cli.run }).to match(/--strict-exit-codes/)
+      expect(capture_stdout { cli.run }).to include("--strict-exit-codes")
     end
 
     it "exits 0 when the threshold is met with no timeouts or errors" do

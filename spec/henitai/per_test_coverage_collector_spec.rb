@@ -239,7 +239,7 @@ RSpec.describe Henitai::PerTestCoverageCollector do
 
         report = JSON.parse(File.read(report_path))
         source_files = report.values.flat_map(&:keys)
-        expect(source_files).not_to include(match(%r{/test/}))
+        expect(source_files).not_to include(include("/test/"))
       end
     end
   end
@@ -259,7 +259,7 @@ RSpec.describe Henitai::PerTestCoverageCollector do
 
         report = JSON.parse(File.read(report_path))
         source_files = report.values.flat_map(&:keys)
-        expect(source_files).not_to include(match(%r{/spec/}))
+        expect(source_files).not_to include(include("/spec/"))
       end
     end
   end
