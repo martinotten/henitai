@@ -79,7 +79,7 @@ module Henitai
 
       def debug_child_activation_check
         location = begin
-          Henitai::Runner.instance_method(:resolve_subjects).source_location&.join(":")
+          Henitai::Runner.instance_method(:resolve_subjects).source_location&.join(":") # henitai:disable
         rescue StandardError
           nil
         end
