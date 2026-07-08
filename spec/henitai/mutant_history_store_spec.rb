@@ -204,17 +204,7 @@ RSpec.describe Henitai::MutantHistoryStore do
         recorded_at: Time.utc(2026, 1, 1)
       )
 
-      expected_id = Digest::SHA256.hexdigest(
-        [
-          mutant.subject.expression,
-          mutant.operator,
-          mutant.description,
-          mutant.location[:file],
-          Unparser.unparse(mutant.mutated_node)
-        ].join("\0")
-      )
-
-      expect(store.trend_report[:mutants].first[:mutantId]).to eq(expected_id)
+      expect(store.trend_report[:mutants].first[:mutantId]).to eq(Henitai::MutantIdentity.stable_id(mutant))
     end
   end
 
