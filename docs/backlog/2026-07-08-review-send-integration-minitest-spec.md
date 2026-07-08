@@ -1,6 +1,6 @@
 # `integration/minitest_spec` Uses `send` to Reach Private Integration Helpers
 
-Status: backlog
+Status: done (2026-07-09)
 Date: 2026-07-08
 Severity: Medium
 Source: discovered while auditing specs that call private methods with `send`
@@ -27,3 +27,14 @@ construction, environment setup, test execution, and cleanup internals.
 - Remove the broad `send`-based helper coverage where a public behavior test can
   cover the same contract.
 - Add focused behavior specs for the user-visible adapter outcomes.
+
+## Resolution (2026-07-09)
+
+Extracted the private helpers into public-API collaborators — `MinitestSuiteCommand`,
+`MinitestTestRunner`, `MinitestLoadPath`, `RailsEnvironmentPreloader` (each with its
+own spec) — and drove `cleanup_suite_process`/`spawn_suite_process` through the
+already-public `run_suite` with stubbed inputs. `minitest_spec.rb` no longer calls
+`.send` anywhere. Side effect: raised `Henitai::Integration::Minitest` mutation score
+from MS 72.83%/MSI 43.05% to MS 100%/MSI 91.87%. Surfaced a follow-up ticket
+(`2026-07-09-equivalent-mutant-detection-gap.md`) for two mutants that are genuinely
+equivalent, not testable.
