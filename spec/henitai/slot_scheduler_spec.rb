@@ -67,6 +67,17 @@ RSpec.describe Henitai::SlotScheduler do
       expect(captured).to eq(%w[0 1])
     end
 
+    it "restores the parent slot value after initial spawn" do
+      captured = []
+      scheduler = build_worker_scheduler(captured, worker_count: 1)
+      scheduler.enqueue([build_worker_mutant("a")])
+
+      ENV["HENITAI_WORKER_SLOT"] = "parent"
+      scheduler.fill_idle_slots
+
+      expect(ENV["HENITAI_WORKER_SLOT"]).to eq("parent")
+    end
+
     it "keeps the original slot value on a flaky-retry respawn" do
       captured = []
       scheduler = build_worker_scheduler(captured, worker_count: 2, max_flaky_retries: 1)
@@ -78,6 +89,20 @@ RSpec.describe Henitai::SlotScheduler do
       scheduler.send(:dispatch_slot_result, slot_one, survived)
 
       expect(captured).to eq(%w[0 1 1])
+    end
+
+    it "restores the parent slot value after a flaky retry" do
+      captured = []
+      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 1)
+      scheduler.enqueue([build_worker_mutant("a")])
+      scheduler.fill_idle_slots
+      survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true, status: :survived)
+
+      ENV["HENITAI_WORKER_SLOT"] = "parent"
+      slot = scheduler.send(:slots).values.first
+      scheduler.send(:dispatch_slot_result, slot, survived)
+
+      expect(ENV["HENITAI_WORKER_SLOT"]).to eq("parent")
     end
 
     it "reuses a freed slot value for the next spawn" do

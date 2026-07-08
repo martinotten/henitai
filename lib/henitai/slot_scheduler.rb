@@ -105,9 +105,10 @@ module Henitai
       mutant.covered_by = test_files if mutant.respond_to?(:covered_by=)
       mutant.tests_completed = test_files.size if mutant.respond_to?(:tests_completed=)
       worker_index = next_free_worker_index
-      ENV[WORKER_SLOT_ENV] = worker_index.to_s
-      handle = integration.spawn_mutant(mutant: mutant, test_files: test_files)
-      register_slot(handle, mutant, worker_index, slot_timeout(mutant, test_files))
+      with_worker_slot(worker_index) do
+        handle = integration.spawn_mutant(mutant: mutant, test_files: test_files)
+        register_slot(handle, mutant, worker_index, slot_timeout(mutant, test_files))
+      end
     rescue StandardError => e
       record_spawn_failure(mutant, e)
     end
@@ -172,9 +173,10 @@ module Henitai
 
     def retry_slot(slot)
       test_files = resolve_test_files(slot.mutant)
-      ENV[WORKER_SLOT_ENV] = slot.worker_index.to_s
-      handle = integration.spawn_mutant(mutant: slot.mutant, test_files: test_files)
-      finish_retry(slot, handle)
+      with_worker_slot(slot.worker_index) do
+        handle = integration.spawn_mutant(mutant: slot.mutant, test_files: test_files)
+        finish_retry(slot, handle)
+      end
     rescue StandardError => e
       slots.delete(slot.slot_id)
       record_spawn_failure(slot.mutant, e)
@@ -241,6 +243,18 @@ module Henitai
       id = @next_slot_id
       @next_slot_id += 1
       id
+    end
+
+    def with_worker_slot(worker_index)
+      previous = ENV.fetch(WORKER_SLOT_ENV, nil)
+      ENV[WORKER_SLOT_ENV] = worker_index.to_s
+      yield
+    ensure
+      if previous.nil?
+        ENV.delete(WORKER_SLOT_ENV)
+      else
+        ENV[WORKER_SLOT_ENV] = previous
+      end
     end
   end
 end
