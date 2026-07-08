@@ -159,6 +159,28 @@ reported as `Ignored`, so they stay visible in the report instead of silently
 vanishing. Use `mutation.ignore_patterns` for repo-wide policy and
 `# henitai:disable` for one-off, reviewed exclusions.
 
+Directives can also target specific operators, carry a reason (serialized as
+`statusReason`, visible in the HTML report), and cover regions:
+
+```ruby
+x = a + b  # henitai:disable ArithmeticOperator            — only this operator
+x = a + b  # henitai:disable ArithmeticOperator: log noise — with a reason
+
+# henitai:disable RegexMutator: timing-sensitive matcher
+def parse(line)
+  ...
+end
+
+# henitai:disable-start ConditionalExpression
+...region...
+# henitai:disable-end
+```
+
+Operator names must exactly match the canonical names from
+`henitai operator list`; unknown names, unmatched or nested
+`disable-start`/`disable-end` directives abort the run (exit `2`) with the
+offending file and line. Regions do not nest.
+
 The repository ships a JSON Schema at [`assets/schema/henitai.schema.json`](/workspaces/henitai/assets/schema/henitai.schema.json) for editor autocompletion.
 
 ## Operator sets

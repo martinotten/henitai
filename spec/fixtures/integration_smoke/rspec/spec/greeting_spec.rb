@@ -17,6 +17,10 @@ RSpec.describe Greeting do
     expect(described_class.new.whisper).to be_truthy
   end
 
+  it "cheers a truthy value" do
+    expect(described_class.new.cheer).to be_truthy
+  end
+
   it "records the henitai worker slot when run under henitai" do
     slot = ENV.fetch("HENITAI_WORKER_SLOT", nil)
     skip "not running under henitai" if slot.nil?

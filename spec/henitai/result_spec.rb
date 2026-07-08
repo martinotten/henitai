@@ -318,6 +318,22 @@ RSpec.describe Henitai::Result do
     )
   end
 
+  it "serialises directive reasons as statusReason" do
+    mutant = build_mutant(status: :ignored)
+    mutant.ignore_reason = "log-format noise"
+    schema = result([mutant]).to_stryker_schema
+    file = schema[:files].keys.first
+
+    expect(schema[:files][file][:mutants].first[:statusReason]).to eq("log-format noise")
+  end
+
+  it "omits statusReason when no reason is attached" do
+    schema = result([build_mutant(status: :ignored)]).to_stryker_schema
+    file = schema[:files].keys.first
+
+    expect(schema[:files][file][:mutants].first.key?(:statusReason)).to be(false)
+  end
+
   it "omits nil durations from the serialised mutant payload" do
     schema = result([build_mutant(status: :pending)]).to_stryker_schema
     file = schema[:files].keys.first

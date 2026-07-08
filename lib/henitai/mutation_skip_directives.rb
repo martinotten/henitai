@@ -6,20 +6,41 @@ module Henitai
   # Reads `# henitai:disable` magic comments from subject source files and
   # decides whether a mutant is excluded from the run.
   #
-  # Two forms are supported:
-  #   - trailing comment on a code line: skips mutants starting on that line
-  #   - standalone comment in the contiguous comment block directly above a
-  #     `def`: skips every mutant of that subject
+  # Grammar (backward compatible — a bare directive means "all operators"):
+  #
+  #   # henitai:disable                          all operators, current scope
+  #   # henitai:disable -- prose                 same; `--` introduces prose
+  #   # henitai:disable OpA, OpB                 only the named operators
+  #   # henitai:disable OpA: reason              reason lands in the report
+  #   # henitai:disable: reason                  all operators, with reason
+  #   # henitai:disable-start [ops][: reason]    region begin
+  #   # henitai:disable-end                      region end
+  #
+  # Scopes: trailing comment (line), standalone comment directly above a
+  # `def` (method), and disable-start/disable-end pairs (region, no nesting).
+  # Operator names must exactly match the canonical registry names
+  # (`henitai operator list`); unknown names, unmatched or nested region
+  # directives raise Henitai::ConfigurationError with file:line.
   #
   # Matching mutants are reported as ignored by {StaticFilter}, not dropped.
   class MutationSkipDirectives
-    DIRECTIVE = /#\s*henitai:disable\b/
+    DIRECTIVE = /\A#\s*henitai:disable(?<kind>-start|-end)?(?<rest>[:\s].*)?\z/
+    VALID_OPERATOR_NAMES = Operator::FULL_SET
 
-    # Per-file directive line numbers, classified by comment position.
-    Index = Data.define(:trailing_directive_lines, :standalone_directive_lines, :standalone_comment_lines)
+    # A parsed directive: +operators+ is nil (all) or a Set of canonical
+    # operator names; +reason+ is optional free text shown in reports.
+    Directive = Data.define(:operators, :reason) do
+      def match?(operator)
+        operators.nil? || operators.include?(operator.to_s)
+      end
+    end
+
+    # Per-file directives, classified by scope.
+    Index = Data.define(:trailing, :standalone, :regions, :standalone_comment_lines)
     EMPTY_INDEX = Index.new(
-      trailing_directive_lines: Set.new.freeze,
-      standalone_directive_lines: Set.new.freeze,
+      trailing: {}.freeze,
+      standalone: {}.freeze,
+      regions: [].freeze,
       standalone_comment_lines: Set.new.freeze
     ).freeze
 
@@ -28,27 +49,43 @@ module Henitai
     end
 
     def skip?(mutant)
-      line_skipped?(mutant) || method_skipped?(mutant)
+      !directive_for(mutant).nil?
+    end
+
+    # @return [Directive, nil] the directive excluding this mutant, if any.
+    def directive_for(mutant)
+      line_directive_for(mutant) || region_directive_for(mutant) || method_directive_for(mutant)
     end
 
     private
 
-    def line_skipped?(mutant)
-      index_for(mutant.location[:file]).trailing_directive_lines.include?(mutant.location[:start_line])
+    def line_directive_for(mutant)
+      directive = index_for(mutant.location[:file]).trailing[mutant.location[:start_line]]
+      directive&.match?(mutant.operator) ? directive : nil
     end
 
-    def method_skipped?(mutant)
+    def region_directive_for(mutant)
+      index = index_for(mutant.location[:file])
+      line = mutant.location[:start_line]
+      _range, directive = index.regions.find do |range, region_directive|
+        range.cover?(line) && region_directive.match?(mutant.operator)
+      end
+      directive
+    end
+
+    def method_directive_for(mutant)
       range = mutant.subject&.source_range
-      return false unless range
+      return nil unless range
 
       index = index_for(mutant.subject.source_file)
       line = range.begin - 1
       while index.standalone_comment_lines.include?(line)
-        return true if index.standalone_directive_lines.include?(line)
+        directive = index.standalone[line]
+        return directive if directive&.match?(mutant.operator)
 
         line -= 1
       end
-      false
+      nil
     end
 
     def index_for(path)
@@ -66,29 +103,116 @@ module Henitai
     def build_index(path)
       source = File.read(path)
       lines = source.lines
-      buckets = { trailing: Set.new, standalone_directive: Set.new, standalone_comment: Set.new }
+      builder = IndexBuilder.new(path)
 
-      Prism.parse(source).comments.each { |comment| record_comment(comment, lines, buckets) }
+      Prism.parse(source).comments.sort_by { |comment| comment.location.start_line }.each do |comment|
+        builder.record(comment, standalone: standalone?(comment, lines))
+      end
 
-      Index.new(
-        trailing_directive_lines: buckets[:trailing].freeze,
-        standalone_directive_lines: buckets[:standalone_directive].freeze,
-        standalone_comment_lines: buckets[:standalone_comment].freeze
-      )
-    end
-
-    def record_comment(comment, lines, buckets)
-      line = comment.location.start_line
-      standalone = standalone?(comment, lines)
-      buckets[:standalone_comment] << line if standalone
-      return unless DIRECTIVE.match?(comment.slice)
-
-      (standalone ? buckets[:standalone_directive] : buckets[:trailing]) << line
+      builder.index
     end
 
     def standalone?(comment, lines)
       prefix = lines[comment.location.start_line - 1].to_s[0...comment.location.start_column]
       prefix.strip.empty?
+    end
+
+    # Accumulates classified directives for one file, tracking open
+    # disable-start regions and raising on malformed directive usage.
+    class IndexBuilder
+      def initialize(path)
+        @path = path
+        @trailing = {}
+        @standalone = {}
+        @regions = []
+        @standalone_comment_lines = Set.new
+        @open_region = nil
+      end
+
+      def record(comment, standalone:)
+        line = comment.location.start_line
+        @standalone_comment_lines << line if standalone
+        match = DIRECTIVE.match(comment.slice)
+        return unless match
+
+        dispatch(match, line, standalone)
+      end
+
+      def index
+        ensure_all_regions_closed!
+
+        Index.new(
+          trailing: @trailing.freeze,
+          standalone: @standalone.freeze,
+          regions: @regions.freeze,
+          standalone_comment_lines: @standalone_comment_lines.freeze
+        )
+      end
+
+      private
+
+      def ensure_all_regions_closed!
+        return unless @open_region
+
+        error("unclosed `henitai:disable-start` (opened at line #{@open_region.fetch(:line)})")
+      end
+
+      def dispatch(match, line, standalone)
+        case match[:kind]
+        when "-start" then open_region(parse_payload(match[:rest], line), line)
+        when "-end" then close_region(line)
+        else
+          bucket = standalone ? @standalone : @trailing
+          bucket[line] = parse_payload(match[:rest], line)
+        end
+      end
+
+      def open_region(directive, line)
+        error("nested `henitai:disable-start` at line #{line}") if @open_region
+
+        @open_region = { line:, directive: }
+      end
+
+      def close_region(line)
+        error("`henitai:disable-end` without a matching start at line #{line}") unless @open_region
+
+        @regions << [(@open_region.fetch(:line)..line), @open_region.fetch(:directive)]
+        @open_region = nil
+      end
+
+      def parse_payload(rest, line)
+        text = rest.to_s.strip
+        return Directive.new(operators: nil, reason: nil) if text.empty? || text.start_with?("--")
+        return Directive.new(operators: nil, reason: presence(text[1..])) if text.start_with?(":")
+
+        operators_part, reason = text.split(":", 2)
+        Directive.new(
+          operators: parse_operator_names(operators_part, line),
+          reason: presence(reason)
+        )
+      end
+
+      def parse_operator_names(operators_part, line)
+        names = operators_part.split(",", -1).map(&:strip)
+        names.each do |name|
+          next if VALID_OPERATOR_NAMES.include?(name)
+
+          error(
+            "unknown operator #{name.inspect} in `henitai:disable` directive at line #{line} " \
+            "(valid names: `henitai operator list`)"
+          )
+        end
+        names.to_set
+      end
+
+      def presence(text)
+        stripped = text.to_s.strip
+        stripped.empty? ? nil : stripped
+      end
+
+      def error(message)
+        raise Henitai::ConfigurationError, "#{@path}: #{message}"
+      end
     end
   end
 end

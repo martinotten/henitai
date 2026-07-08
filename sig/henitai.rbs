@@ -243,6 +243,7 @@ module Henitai
     attr_accessor duration: Float?
     attr_accessor covered_by: Array[String]?
     attr_accessor tests_completed: Integer?
+    attr_accessor ignore_reason: String?
     attr_reader precomputed_stable_id: String?
     attr_reader precomputed_activation_source: String?
 
@@ -610,6 +611,7 @@ module Henitai
 
   class MutationSkipDirectives
     def skip?: (Mutant) -> bool
+    def directive_for: (Mutant) -> untyped
   end
 
   class StaticFilter
@@ -877,6 +879,7 @@ module Henitai
     def location_for: (Mutant) -> Hash[Symbol, untyped]
     def line_column: (Mutant, Symbol) -> Hash[Symbol, Integer]
     def duration_for: (Mutant) -> Integer?
+    def status_reason_for: (Mutant) -> String?
     def equivalence_uncertainty: () -> String?
     def stryker_status: (Symbol) -> String
   end

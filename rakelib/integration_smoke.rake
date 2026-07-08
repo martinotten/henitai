@@ -95,6 +95,39 @@ module IntegrationSmoke
       end
 
       verify_worker_slot!
+      verify_per_operator_disable!
+    end
+
+    # Proves per-operator `henitai:disable` selectivity end-to-end: on the
+    # `cheer` line, ArithmeticOperator must be Ignored with the directive's
+    # reason while at least one sibling operator's mutant still executed.
+    def verify_per_operator_disable!
+      ignored = per_operator_ignored_mutants
+      raise "Expected an Ignored ArithmeticOperator with statusReason for #{name}" if ignored.empty?
+
+      lines = ignored.map { |m| m.dig("location", "start", "line") }
+      raise "Expected a live sibling mutant on the per-operator disable line for #{name}" unless
+        live_sibling_on?(lines)
+    end
+
+    def per_operator_ignored_mutants
+      greeting_mutants.select do |m|
+        m.fetch("mutatorName").to_s == "ArithmeticOperator" &&
+          m.fetch("status") == "Ignored" &&
+          m["statusReason"] == "smoke per-operator"
+      end
+    end
+
+    def live_sibling_on?(lines)
+      greeting_mutants.any? do |m|
+        lines.include?(m.dig("location", "start", "line")) && m.fetch("status") != "Ignored"
+      end
+    end
+
+    def greeting_mutants
+      @greeting_mutants ||= report.fetch("files")
+                                  .select { |path, _| path.end_with?("greeting.rb") }
+                                  .values.flat_map { |file| file.fetch("mutants") }
     end
 
     # Proves HENITAI_WORKER_SLOT survives the real fork + integration

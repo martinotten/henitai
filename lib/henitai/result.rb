@@ -152,6 +152,7 @@ module Henitai
         replacement: replacement_for(mutant),
         location: location_for(mutant),
         status: stryker_status(mutant.status),
+        statusReason: status_reason_for(mutant),
         description: mutant.description,
         duration: duration_for(mutant)
       }.compact.merge(coverage_schema(mutant))
@@ -188,6 +189,14 @@ module Henitai
 
     def duration_for(mutant)
       mutant.duration&.then { |d| (d * 1000).round }
+    end
+
+    # Serialized as the schema's statusReason so directive reasons show up
+    # next to the Ignored status in the HTML report.
+    def status_reason_for(mutant)
+      return nil unless mutant.respond_to?(:ignore_reason)
+
+      mutant.ignore_reason
     end
 
     def equivalence_uncertainty

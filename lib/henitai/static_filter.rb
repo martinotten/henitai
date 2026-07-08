@@ -83,9 +83,11 @@ module Henitai
     end
 
     def skip_directive_mutant?(mutant)
-      return false unless skip_directives.skip?(mutant)
+      directive = skip_directives.directive_for(mutant)
+      return false unless directive
 
       mutant.status = :ignored
+      mutant.ignore_reason = directive.reason if mutant.respond_to?(:ignore_reason=)
       true
     end
 

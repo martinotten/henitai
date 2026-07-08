@@ -176,6 +176,207 @@ RSpec.describe Henitai::MutationSkipDirectives do
     end
   end
 
+  describe "operator lists and reasons" do
+    def write_two_operator_source(dir, directive)
+      write_source(dir, <<~RUBY)
+        class Sample
+          def value(input)
+            input * 2 #{directive}
+          end
+        end
+      RUBY
+    end
+
+    def build_operator_mutant(file:, start_line:, operator:, subject_range: nil)
+      mutant = build_mutant(file:, start_line:, subject_range:)
+      mutant.instance_variable_set(:@operator, operator)
+      mutant
+    end
+
+    it "restricts a trailing directive to the named operator" do
+      Dir.mktmpdir do |dir|
+        path = write_two_operator_source(dir, "# henitai:disable ArithmeticOperator")
+        directives = described_class.new
+
+        results = %w[ArithmeticOperator StringLiteral].map do |operator|
+          directives.skip?(build_operator_mutant(file: path, start_line: 3, operator:))
+        end
+
+        expect(results).to eq([true, false])
+      end
+    end
+
+    it "accepts a comma-separated operator list" do
+      Dir.mktmpdir do |dir|
+        path = write_two_operator_source(dir, "# henitai:disable ArithmeticOperator, StringLiteral")
+        directives = described_class.new
+
+        results = %w[ArithmeticOperator StringLiteral LogicalOperator].map do |operator|
+          directives.skip?(build_operator_mutant(file: path, start_line: 3, operator:))
+        end
+
+        expect(results).to eq([true, true, false])
+      end
+    end
+
+    it "captures a reason after an operator list" do
+      Dir.mktmpdir do |dir|
+        path = write_two_operator_source(dir, "# henitai:disable ArithmeticOperator: log-format noise")
+        directive = described_class.new.directive_for(
+          build_operator_mutant(file: path, start_line: 3, operator: "ArithmeticOperator")
+        )
+
+        expect([directive.reason, directive.operators.to_a]).to eq(
+          ["log-format noise", ["ArithmeticOperator"]]
+        )
+      end
+    end
+
+    it "captures a reason without an operator list" do
+      Dir.mktmpdir do |dir|
+        path = write_two_operator_source(dir, "# henitai:disable: timing-sensitive")
+        directive = described_class.new.directive_for(
+          build_operator_mutant(file: path, start_line: 3, operator: "StringLiteral")
+        )
+
+        expect([directive.reason, directive.operators]).to eq(["timing-sensitive", nil])
+      end
+    end
+
+    it "applies an operator list to a method-scoped directive" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, <<~RUBY)
+          class Sample
+            # henitai:disable RegexMutator: timing-sensitive matcher
+            def value(input)
+              input * 2
+            end
+          end
+        RUBY
+        directives = described_class.new
+
+        results = %w[RegexMutator ArithmeticOperator].map do |operator|
+          directives.skip?(
+            build_operator_mutant(file: path, start_line: 4, operator:, subject_range: 3..5)
+          )
+        end
+
+        expect(results).to eq([true, false])
+      end
+    end
+
+    it "raises for an unknown operator name with file and line" do
+      Dir.mktmpdir do |dir|
+        path = write_two_operator_source(dir, "# henitai:disable Bogus")
+
+        expect do
+          described_class.new.skip?(build_mutant(file: path, start_line: 3))
+        end.to raise_error(
+          Henitai::ConfigurationError,
+          /#{Regexp.escape(path)}: unknown operator "Bogus" .*line 3.*henitai operator list/
+        )
+      end
+    end
+  end
+
+  describe "regions" do
+    def region_mutant(path, start_line, operator: "ArithmeticOperator")
+      mutant = build_mutant(file: path, start_line:)
+      mutant.instance_variable_set(:@operator, operator)
+      mutant
+    end
+
+    it "covers every line between disable-start and disable-end" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, <<~RUBY)
+          class Sample
+            def value(input)
+              input + 1
+              # henitai:disable-start
+              input + 2
+              input + 3
+              # henitai:disable-end
+              input + 4
+            end
+          end
+        RUBY
+        directives = described_class.new
+
+        results = [3, 5, 6, 8].map { |line| directives.skip?(region_mutant(path, line)) }
+
+        expect(results).to eq([false, true, true, false])
+      end
+    end
+
+    it "restricts a region to its named operators" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, <<~RUBY)
+          class Sample
+            def value(input)
+              # henitai:disable-start ConditionalExpression
+              input + 2
+              # henitai:disable-end
+            end
+          end
+        RUBY
+        directives = described_class.new
+
+        results = %w[ConditionalExpression ArithmeticOperator].map do |operator|
+          directives.skip?(region_mutant(path, 4, operator:))
+        end
+
+        expect(results).to eq([true, false])
+      end
+    end
+
+    it "raises for an unmatched disable-end" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, <<~RUBY)
+          class Sample
+            # henitai:disable-end
+          end
+        RUBY
+
+        expect { described_class.new.skip?(build_mutant(file: path, start_line: 1)) }.to raise_error(
+          Henitai::ConfigurationError,
+          /#{Regexp.escape(path)}: `henitai:disable-end` without a matching start at line 2/
+        )
+      end
+    end
+
+    it "raises for an unclosed disable-start" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, <<~RUBY)
+          class Sample
+            # henitai:disable-start
+          end
+        RUBY
+
+        expect { described_class.new.skip?(build_mutant(file: path, start_line: 1)) }.to raise_error(
+          Henitai::ConfigurationError,
+          /#{Regexp.escape(path)}: unclosed `henitai:disable-start` \(opened at line 2\)/
+        )
+      end
+    end
+
+    it "raises for a nested disable-start" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, <<~RUBY)
+          class Sample
+            # henitai:disable-start
+            # henitai:disable-start
+            # henitai:disable-end
+          end
+        RUBY
+
+        expect { described_class.new.skip?(build_mutant(file: path, start_line: 1)) }.to raise_error(
+          Henitai::ConfigurationError,
+          /#{Regexp.escape(path)}: nested `henitai:disable-start` at line 3/
+        )
+      end
+    end
+  end
+
   describe "robustness" do
     it "returns false for a nonexistent file without raising" do
       expect(described_class.new.skip?(build_mutant(file: "/no/such/file.rb", start_line: 1))).to be(false)

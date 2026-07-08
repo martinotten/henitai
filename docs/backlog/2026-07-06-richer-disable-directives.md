@@ -1,6 +1,6 @@
 # Richer `# henitai:disable` Directives (Operator Lists, Block Scope, Reasons)
 
-Status: backlog
+Status: done (2026-07-08)
 Date: 2026-07-06
 Severity: Low
 Source: cross-framework comparison — StrykerJS 9.6
@@ -117,6 +117,10 @@ end
 
 0. Verify the schema field name against the vendored report schema
    (step above); record the answer in this ticket.
+   **Verified 2026-07-08:** the vendored
+   `spec/fixtures/mutation-testing-report-schema-3.5.1.json` defines
+   `statusReason` on the mutant object — used directly, no vendored
+   extension field needed.
 1. **Red.** `mutation_skip_directives_spec.rb` grammar matrix:
    - bare `# henitai:disable` (trailing + preceding-def) → all operators,
      unchanged semantics (existing examples stay green unmodified)

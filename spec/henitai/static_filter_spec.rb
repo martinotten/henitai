@@ -178,11 +178,31 @@ RSpec.describe Henitai::StaticFilter do
 
   it "consults an injected skip-directives collaborator" do
     mutant = build_mutant("foo.bar")
-    skip_directives = instance_double(Henitai::MutationSkipDirectives, skip?: true)
+    directive = Henitai::MutationSkipDirectives::Directive.new(operators: nil, reason: nil)
+    skip_directives = instance_double(Henitai::MutationSkipDirectives, directive_for: directive)
 
     filter_with_coverage(skip_directives:).apply([mutant], config)
 
     expect(mutant.status).to eq(:ignored)
+  end
+
+  it "attaches the directive reason to the ignored mutant" do
+    mutant = build_mutant("foo.bar")
+    directive = Henitai::MutationSkipDirectives::Directive.new(operators: nil, reason: "log noise")
+    skip_directives = instance_double(Henitai::MutationSkipDirectives, directive_for: directive)
+
+    filter_with_coverage(skip_directives:).apply([mutant], config)
+
+    expect(mutant.ignore_reason).to eq("log noise")
+  end
+
+  it "leaves mutants alone when no directive matches" do
+    mutant = build_mutant("foo.bar")
+    skip_directives = instance_double(Henitai::MutationSkipDirectives, directive_for: nil)
+
+    filter_with_coverage(skip_directives:).apply([mutant], config)
+
+    expect(mutant.status).not_to eq(:ignored)
   end
 
   it "marks arithmetic neutral mutants as equivalent" do

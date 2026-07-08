@@ -38,7 +38,8 @@ module Henitai
     attr_reader :id, :subject, :operator, :original_node, :mutated_node,
                 :mutation_type, :description, :location,
                 :precomputed_stable_id, :precomputed_activation_source
-    attr_accessor :status, :killing_test, :duration, :covered_by, :tests_completed
+    attr_accessor :status, :killing_test, :duration, :covered_by, :tests_completed,
+                  :ignore_reason
 
     # @param subject [Subject] the subject being mutated
     # @param operator [Symbol] operator name, e.g. :ArithmeticOperator
