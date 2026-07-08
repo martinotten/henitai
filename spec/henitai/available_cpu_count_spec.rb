@@ -95,6 +95,35 @@ RSpec.describe Henitai::AvailableCpuCount do
       expect(described_class.detect).to eq(8)
     end
 
+    it "falls back when cfs period is negative" do
+      stub_nprocessors(8)
+      stub_cgroup_cpu_max(nil)
+      stub_cgroup_cfs("100000", "-100")
+      stub_cpuset_missing
+
+      expect(described_class.detect).to eq(8)
+    end
+
+    it "falls back when reading a cgroup file raises Errno::EACCES" do
+      stub_nprocessors(8)
+      allow(File).to receive(:file?).with("/sys/fs/cgroup/cpu.max").and_return(true)
+      allow(File).to receive(:read).with("/sys/fs/cgroup/cpu.max").and_raise(Errno::EACCES)
+      stub_cgroup_cfs(nil, nil)
+      stub_cpuset_missing
+
+      expect(described_class.detect).to eq(8)
+    end
+
+    it "falls back to nprocessors when a cpuset entry is not numeric" do
+      stub_nprocessors(8)
+      stub_cgroup_cpu_max(nil)
+      stub_cgroup_cfs(nil, nil)
+      stub_cpuset_effective("abc")
+      allow(File).to receive(:file?).with("/sys/fs/cgroup/cpuset.cpus").and_return(false)
+
+      expect(described_class.detect).to eq(8)
+    end
+
     it "falls back when cpuset effective is empty string" do
       stub_nprocessors(8)
       stub_cgroup_cpu_max(nil)
@@ -139,6 +168,52 @@ RSpec.describe Henitai::AvailableCpuCount do
     it "floors sub-one quota ratio to one cpu" do
       stub_nprocessors(8)
       stub_cgroup_cpu_max("150000 100000")
+      stub_cpuset_missing
+
+      expect(described_class.detect).to eq(1)
+    end
+
+    it "falls back to cpuset.cpus when cpuset.cpus.effective is absent" do
+      stub_nprocessors(8)
+      stub_cgroup_cpu_max(nil)
+      stub_cgroup_cfs(nil, nil)
+      allow(File).to receive(:file?).with("/sys/fs/cgroup/cpuset.cpus.effective").and_return(false)
+      allow(File).to receive(:file?).with("/sys/fs/cgroup/cpuset.cpus").and_return(true)
+      allow(File).to receive(:read).with("/sys/fs/cgroup/cpuset.cpus").and_return("0-2")
+
+      expect(described_class.detect).to eq(3)
+    end
+
+    it "falls back to cpuset.cpus when cpuset.cpus.effective is present but empty" do
+      stub_nprocessors(8)
+      stub_cgroup_cpu_max(nil)
+      stub_cgroup_cfs(nil, nil)
+      stub_cpuset_effective("")
+      allow(File).to receive(:file?).with("/sys/fs/cgroup/cpuset.cpus").and_return(true)
+      allow(File).to receive(:read).with("/sys/fs/cgroup/cpuset.cpus").and_return("0-2")
+
+      expect(described_class.detect).to eq(3)
+    end
+
+    it "distinguishes a quota equal to the period from a quota greater than it" do
+      stub_nprocessors(8)
+      stub_cgroup_cpu_max("100000 100000")
+      stub_cpuset_missing
+
+      expect(described_class.detect).to eq(1)
+    end
+
+    it "returns the exact quota/period ratio rather than flooring to zero incorrectly" do
+      stub_nprocessors(8)
+      stub_cgroup_cpu_max("250000 100000")
+      stub_cpuset_missing
+
+      expect(described_class.detect).to eq(2)
+    end
+
+    it "floors a quota smaller than the period to one cpu, not zero" do
+      stub_nprocessors(8)
+      stub_cgroup_cpu_max("50000 100000")
       stub_cpuset_missing
 
       expect(described_class.detect).to eq(1)

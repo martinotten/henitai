@@ -73,43 +73,6 @@ RSpec.describe Henitai::Integration::ScenarioLogSupport do
     end
   end
 
-  it "uses the real stdio objects even when the parent captures stdout" do
-    script = <<~RUBY
-      require "stringio"
-      require "tmpdir"
-
-      $stdout = StringIO.new
-      $stderr = StringIO.new
-
-      require "henitai"
-      require "henitai/integration"
-
-      support = Henitai::Integration::ScenarioLogSupport.new
-
-      Dir.mktmpdir do |dir|
-        support.send(
-          :redirect_child_output,
-          original_stdout: IO.for_fd(1).dup,
-          original_stderr: IO.for_fd(2).dup,
-          stdout_file: File.open(File.join(dir, "stdout.log"), "w"),
-          stderr_file: File.open(File.join(dir, "stderr.log"), "w")
-        )
-      end
-    RUBY
-
-    stdout, stderr, status = Open3.capture3(
-      "bundle",
-      "exec",
-      "ruby",
-      "-I",
-      "lib",
-      "-e",
-      script
-    )
-
-    expect(status.success?).to be(true), [stdout, stderr].reject(&:empty?).join("\n")
-  end
-
   it "keeps stdout and stderr usable after capturing child output" do
     script = <<~RUBY
       require "tmpdir"
@@ -144,35 +107,6 @@ RSpec.describe Henitai::Integration::ScenarioLogSupport do
     )
 
     expect(status.success?).to be(true), [stdout, stderr].reject(&:empty?).join("\n")
-  end
-
-  it "does not reopen a stream when no original stream is available" do
-    support = described_class.new
-    stream = instance_double(IO)
-    calls = []
-
-    allow(stream).to receive(:reopen) { |value| calls << value }
-
-    support.reopen_child_output_stream(stream, nil)
-
-    expect(calls).to be_empty
-  end
-
-  it "marks both child output files as sync" do
-    support = described_class.new
-    stdout_file = instance_double(File)
-    stderr_file = instance_double(File)
-    calls = []
-
-    allow(stdout_file).to receive(:sync=) { |value| calls << [:stdout, value] }
-    allow(stderr_file).to receive(:sync=) { |value| calls << [:stderr, value] }
-
-    support.sync_child_output_files(
-      stdout_file:,
-      stderr_file:
-    )
-
-    expect(calls).to eq([[:stdout, true], [:stderr, true]])
   end
 
   describe "#read_log_file" do

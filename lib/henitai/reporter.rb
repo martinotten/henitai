@@ -553,7 +553,7 @@ module Henitai
       def dashboard_uri
         uri = URI.parse(base_url)
         # @type var segments: Array[String]
-        base_path = uri.path.to_s.chomp("/")
+        base_path = uri.path.to_s.chomp("/").delete_prefix("/")
         segments = []
         segments << base_path unless base_path.empty?
         segments += ["api", "reports", project_path, encoded_version]

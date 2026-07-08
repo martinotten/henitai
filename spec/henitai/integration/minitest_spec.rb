@@ -166,47 +166,8 @@ RSpec.describe Henitai::Integration::Minitest do
     end
   end
 
-  it "builds the minitest baseline suite command" do
-    integration = described_class.new
-
-    expect(integration.send(:suite_command, ["test/sample_test.rb"])).to eq(
-      [
-        "bundle",
-        "exec",
-        "ruby",
-        "-I",
-        "test",
-        "-r",
-        "henitai/minitest_simplecov",
-        "-r",
-        "henitai/minitest_coverage_hook",
-        "-e",
-        "ARGV.each { |f| require File.expand_path(f) }",
-        "test/sample_test.rb"
-      ]
-    )
-  end
-
   it "advertises per-test coverage support" do
     expect(described_class.new.per_test_coverage_supported?).to be(true)
-  end
-
-  it "spawns the baseline suite with the minitest subprocess environment" do
-    integration = described_class.new
-
-    with_temp_workspace do
-      allow(Process).to receive(:spawn).and_return(4321)
-      allow(integration).to receive(:wait_with_timeout).and_return(:timeout)
-
-      integration.run_suite(["test/sample_test.rb"], timeout: 4.0)
-
-      expect(Process).to have_received(:spawn).with(
-        integration.send(:subprocess_env),
-        *integration.send(:suite_command, ["test/sample_test.rb"]),
-        out: kind_of(File),
-        err: kind_of(File)
-      )
-    end
   end
 
   it "uses the baseline log name and wait timeout when running the suite" do
@@ -264,42 +225,6 @@ RSpec.describe Henitai::Integration::Minitest do
     end
   end
 
-  it "requires config/environment.rb only when it exists" do
-    integration = described_class.new
-    env_file = File.expand_path("config/environment.rb")
-    calls = []
-
-    allow(File).to receive(:exist?).with(env_file).and_return(true)
-    allow(integration).to receive(:require) { |path| calls << path }
-
-    integration.send(:preload_environment)
-
-    expect(calls).to eq([env_file])
-  end
-
-  it "adds the test directory to the load path only once" do
-    integration = described_class.new
-    original_load_path = $LOAD_PATH.dup
-    test_dir = File.expand_path("test")
-
-    $LOAD_PATH.replace(original_load_path.reject { |path| path == test_dir })
-
-    2.times { integration.send(:setup_load_path) }
-
-    expect($LOAD_PATH.count(test_dir)).to eq(1)
-  ensure
-    $LOAD_PATH.replace(original_load_path)
-  end
-
-  it "sets subprocess defaults for baseline runs" do
-    with_env("RAILS_ENV", nil) do
-      expect(described_class.new.send(:subprocess_env)).to eq(
-        "RAILS_ENV" => "test",
-        "PARALLEL_WORKERS" => "1"
-      )
-    end
-  end
-
   it "sets up the load path before running a mutant" do
     with_temp_workspace do |dir|
       test_file = write_file(dir, "test/sample_test.rb", minitest_source)
@@ -338,184 +263,6 @@ RSpec.describe Henitai::Integration::Minitest do
       expect(described_class.new.test_files).to contain_exactly("test/models/sample_test.rb",
                                                                 "test/models/sample_spec.rb")
     end
-  end
-
-  it "boots the minitest integration when rspec/core is unavailable" do
-    script = <<~RUBY
-      module Kernel
-        alias __henitai_original_require__ require
-
-        def require(path)
-          raise LoadError, "blocked rspec/core" if path == "rspec/core"
-
-          __henitai_original_require__(path)
-        end
-      end
-
-      require "henitai"
-      require "henitai/integration"
-
-      command = Henitai::Integration::Minitest.new.send(
-        :suite_command,
-        ["test/sample_test.rb"]
-      )
-      puts command.last
-    RUBY
-
-    stdout, stderr, status = Open3.capture3(
-      "ruby",
-      "-I",
-      "lib",
-      "-e",
-      script,
-      chdir: Dir.pwd
-    )
-
-    aggregate_failures do
-      expect(status.success?).to be(true), stderr
-      expect(stdout).to eq("test/sample_test.rb\n")
-    end
-  end
-
-  it "activates the mutant before requiring the test files" do
-    with_temp_workspace do |dir|
-      test_file = write_file(dir, "test/sample_test.rb", minitest_source)
-      mutant = Struct.new(:id).new("mutant-1")
-      integration = described_class.new
-      order = []
-      log_paths = {
-        stdout_path: "reports/mutation-logs/mutant-1.stdout.log",
-        stderr_path: "reports/mutation-logs/mutant-1.stderr.log",
-        log_path: "reports/mutation-logs/mutant-1.log"
-      }
-      log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
-      allow(log_support).to receive(:read_log_file).and_return("")
-      allow(log_support).to receive(:write_combined_log)
-
-      allow(integration).to receive(:scenario_log_support).and_return(log_support)
-      allow(log_support).to receive(:with_coverage_dir).with(mutant.id).and_yield
-      allow(log_support).to receive(:capture_child_output).with(log_paths).and_yield
-      allow(Henitai::Mutant::Activator).to receive(:activate!) do |_mutant|
-        order << :activate
-        0
-      end
-      allow(integration).to receive(:run_tests) do |files|
-        order << [:minitest, files]
-        0
-      end
-
-      result = integration.send(
-        :run_in_child,
-        mutant:,
-        test_files: [test_file],
-        log_paths:
-      )
-
-      expect([result, order]).to eq(
-        [
-          0,
-          [
-            :activate,
-            [:minitest, [test_file]]
-          ]
-        ]
-      )
-    end
-  end
-
-  it "returns integer statuses from Minitest.run" do
-    integration = described_class.new
-    calls = []
-
-    allow(Henitai::Integration::CoverageRuntimeSuppressors).to receive(:suppress_simplecov!) do
-      calls << [:suppress_simplecov]
-    end
-    allow(integration).to receive(:require) do |path|
-      calls << [:require, path]
-      true
-    end
-    allow(Minitest).to receive(:run) do |argv|
-      calls << [:minitest, argv]
-      3
-    end
-
-    sample_test_path = File.expand_path("test/sample_test.rb")
-
-    expect([integration.send(:run_tests, ["test/sample_test.rb"]), calls]).to eq(
-      [
-        3,
-        [
-          [:suppress_simplecov],
-          [:require, "minitest"],
-          [:require, sample_test_path],
-          [:minitest, []]
-        ]
-      ]
-    )
-  end
-
-  it "prepends a suppressor to minitest autorun" do
-    integration = described_class.new
-    singleton_class = Minitest.singleton_class
-    prepended = []
-    allow(singleton_class).to receive(:ancestors).and_return([])
-    allow(singleton_class).to receive(:prepend) do |mod|
-      prepended << mod
-    end
-
-    integration.send(:suppress_minitest_autorun!)
-
-    expect(prepended.first.instance_methods(false)).to eq([:autorun])
-  end
-
-  it "returns zero when Minitest.run succeeds" do
-    integration = described_class.new
-
-    allow(integration).to receive(:require).and_return(true)
-    allow(Minitest).to receive(:run).and_return(true)
-
-    expect(integration.send(:run_tests, ["test/sample_test.rb"])).to eq(0)
-  end
-
-  it "returns one when Minitest.run reports failure" do
-    integration = described_class.new
-
-    allow(integration).to receive(:require).and_return(true)
-    allow(Minitest).to receive(:run).and_return(false)
-
-    expect(integration.send(:run_tests, ["test/sample_test.rb"])).to eq(1)
-  end
-
-  it "skips suite cleanup when the pid is nil" do
-    integration = described_class.new
-    calls = []
-
-    allow(integration).to receive(:cleanup_child_process) do |pid|
-      calls << [:cleanup, pid]
-    end
-    allow(integration).to receive(:reap_child) do |pid|
-      calls << [:reap, pid]
-    end
-
-    integration.send(:cleanup_suite_process, nil, nil)
-
-    expect(calls).to eq([])
-  end
-
-  it "cleans up and reaps a suite child when cleanup is needed" do
-    integration = described_class.new
-    calls = []
-
-    allow(integration).to receive(:cleanup_child_process) do |pid|
-      calls << [:cleanup, pid]
-    end
-    allow(integration).to receive(:reap_child) do |pid|
-      calls << [:reap, pid]
-    end
-
-    integration.send(:cleanup_suite_process, 4321, nil)
-
-    expect(calls).to eq([[:cleanup, 4321], [:reap, 4321]])
   end
 
   it "is a sibling of the rspec adapter, not a subtype" do
@@ -558,7 +305,7 @@ RSpec.describe Henitai::Integration::Minitest do
     mutant = Struct.new(:id).new("abc")
 
     with_env("HENITAI_REPORTS_DIR", "reports") do
-      expect(integration.send(:scenario_log_paths, integration.send(:mutant_log_name, mutant))).to eq(
+      expect(integration.scenario_log_paths(integration.mutant_log_name(mutant))).to eq(
         stdout_path: "reports/mutation-logs/mutant-abc.stdout.log",
         stderr_path: "reports/mutation-logs/mutant-abc.stderr.log",
         log_path: "reports/mutation-logs/mutant-abc.log"

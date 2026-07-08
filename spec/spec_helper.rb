@@ -8,6 +8,7 @@ SimpleCov.coverage_dir(ENV.fetch("HENITAI_COVERAGE_DIR", "coverage"))
 SimpleCov.start do
   add_filter "/spec/"
   enable_coverage :branch
+  minimum_coverage line: 75, branch: 45 if ENV["HENITAI_ENFORCE_COVERAGE"]
 end
 
 require_relative "support/warning_silencer"

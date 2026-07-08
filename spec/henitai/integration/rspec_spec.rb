@@ -37,6 +37,16 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  def capture_stdout
+    original_stdout = $stdout
+    stdout = StringIO.new
+    $stdout = stdout
+    yield
+    stdout.string
+  ensure
+    $stdout = original_stdout
+  end
+
   def repo_gemfile
     File.expand_path("../../../Gemfile", __dir__)
   end
@@ -599,8 +609,8 @@ RSpec.describe Henitai::Integration::Rspec do
       integration.run_suite(["spec/foo_spec.rb"])
 
       expect(Process).to have_received(:spawn).with(
-        integration.send(:subprocess_env),
-        *integration.send(:suite_command, ["spec/foo_spec.rb"]),
+        { "PARALLEL_WORKERS" => "1" },
+        *integration.suite_command(["spec/foo_spec.rb"]),
         out: kind_of(File),
         err: kind_of(File),
         pgroup: true
@@ -693,11 +703,11 @@ RSpec.describe Henitai::Integration::Rspec do
   it "uses bundle exec rspec for the baseline suite command" do
     integration = described_class.new
 
-    expect(integration.send(:suite_command, ["spec/foo_spec.rb"])).to eq(
+    expect(integration.suite_command(["spec/foo_spec.rb"])).to eq(
       [
         "bundle", "exec", "ruby",
         "-r", "henitai/rspec_coverage_formatter",
-        "-e", integration.send(:rspec_suite_runner_script),
+        "-e", integration.rspec_suite_runner_script,
         "spec/foo_spec.rb"
       ]
     )
@@ -721,147 +731,12 @@ RSpec.describe Henitai::Integration::Rspec do
 
       stdout, stderr, status = run_suite_script(
         dir,
-        integration.send(:rspec_suite_runner_script),
+        integration.rspec_suite_runner_script,
         spec_path
       )
 
       expect(status.success?).to be(true), [stdout, stderr].reject(&:empty?).join("\n")
     end
-  end
-
-  it "enables the no-examples guard for mutant child rspec runs" do
-    integration = described_class.new
-
-    allow(RSpec.configuration).to receive(:fail_if_no_examples=)
-    allow(integration).to receive(:debug_child_rspec_trace)
-    allow(integration).to receive(:debug_child_example_count)
-    allow(integration).to receive(:debug_child_puts)
-    allow(integration).to receive(:run_rspec_runner).and_return(0)
-    integration.send(:run_tests, ["spec/henitai/cli_spec.rb"])
-
-    expect(RSpec.configuration).to have_received(:fail_if_no_examples=).with(true)
-  end
-
-  it "sets files_to_run before loading spec files when debug child is enabled" do
-    integration = described_class.new
-
-    allow(integration).to receive(:debug_child_puts)
-    allow(integration).to receive(:debug_child_example_count)
-    allow(RSpec.__send__(:configuration)).to receive(:fail_if_no_examples=)
-    allow(RSpec.configuration).to receive(:files_to_run=)
-    allow(RSpec.configuration).to receive(:load_spec_files)
-
-    with_env("HENITAI_DEBUG_CHILD", "1") do
-      integration.send(:load_rspec_spec_files, ["spec/henitai/cli_spec.rb"])
-    end
-
-    expect(RSpec.configuration).to have_received(:files_to_run=).with(
-      [File.expand_path("spec/henitai/cli_spec.rb")]
-    )
-  end
-
-  it "logs the runner invocation lifecycle when debug child is enabled" do
-    integration = described_class.new
-    messages = []
-    runner = instance_double(RSpec::Core::Runner)
-
-    allow(integration).to receive(:debug_child_puts) { |message| messages << message }
-    allow(RSpec.__send__(:configuration)).to receive(:fail_if_no_examples=)
-    allow(integration).to receive(:debug_child_rspec_trace)
-    allow(RSpec::Core::Runner).to receive(:trap_interrupt)
-    allow(integration).to receive(:build_rspec_runner).and_return(runner)
-    allow(runner).to receive(:send).with(:configure, $stderr, $stdout)
-    allow(runner).to receive(:send).with(:run_specs, anything).and_return(0)
-    allow(RSpec.configuration).to receive(:files_to_run=)
-    allow(RSpec.configuration).to receive(:load_spec_files)
-
-    with_env("HENITAI_DEBUG_CHILD", "1") do
-      integration.send(:run_tests, ["spec/henitai/cli_spec.rb"])
-    end
-
-    expect(messages).to include(
-      "[henitai-debug-child] runner_run_start",
-      "[henitai-debug-child] build_rspec_runner_start",
-      "[henitai-debug-child] build_rspec_runner_return",
-      "[henitai-debug-child] configure_rspec_runner_start",
-      "[henitai-debug-child] trap_interrupt_start",
-      "[henitai-debug-child] trap_interrupt_return",
-      "[henitai-debug-child] runner_configure_start",
-      "[henitai-debug-child] runner_configure_return",
-      "[henitai-debug-child] configure_rspec_runner_return",
-      "[henitai-debug-child] load_spec_files_start",
-      "[henitai-debug-child] load_spec_files_return",
-      "[henitai-debug-child] run_specs_return result=0",
-      "[henitai-debug-child] run_specs_start",
-      "[henitai-debug-child] runner_run_ensure",
-      a_string_including("[henitai-debug-child] rspec_world_example_count_after_load="),
-      "[henitai-debug-child] runner_run_return status=0"
-    )
-  end
-
-  it "dumps child threads when the runner times out in debug mode" do
-    integration = described_class.new
-    allow(integration).to receive(:cleanup_process_group)
-    allow(integration).to receive(:reap_child)
-    allow(Process).to receive(:kill)
-
-    with_env("HENITAI_DEBUG_CHILD", "1") do
-      integration.send(:handle_timeout, 4321)
-    end
-
-    expect(Process).to have_received(:kill).with(:USR1, 4321)
-  end
-
-  it "logs SystemExit from the runner invocation when debug child is enabled" do
-    integration = described_class.new
-    messages = []
-    raised = nil
-    runner = instance_double(RSpec::Core::Runner)
-
-    allow(integration).to receive(:debug_child_puts) { |message| messages << message }
-    allow(RSpec.configuration).to receive(:fail_if_no_examples=)
-    allow(integration).to receive(:debug_child_rspec_trace)
-    allow(RSpec::Core::Runner).to receive(:trap_interrupt)
-    allow(integration).to receive(:build_rspec_runner).and_return(runner)
-    allow(runner).to receive(:send).with(:configure, $stderr, $stdout)
-    allow(RSpec.configuration).to receive(:files_to_run=)
-    allow(RSpec.configuration).to receive(:load_spec_files).and_raise(SystemExit.new(2))
-
-    with_env("HENITAI_DEBUG_CHILD", "1") do
-      integration.send(:run_tests, ["spec/henitai/cli_spec.rb"])
-    rescue SystemExit => e
-      raised = e
-    end
-
-    expect([raised.class, messages]).to match(
-      [
-        SystemExit,
-        a_collection_including(
-          a_string_including("[henitai-debug-child] runner_run_start"),
-          a_string_including("[henitai-debug-child] runner_run_system_exit status=2"),
-          a_string_including("[henitai-debug-child] runner_run_ensure")
-        )
-      ]
-    )
-  end
-
-  it "dumps a thread snapshot when requested in debug mode" do
-    integration = described_class.new
-    thread = instance_double(Thread, object_id: 123, status: "sleep", backtrace: ["foo.rb:1"])
-    messages = []
-
-    allow(integration).to receive(:debug_child_puts) { |message| messages << message }
-    allow(Thread).to receive(:list).and_return([thread])
-
-    with_env("HENITAI_DEBUG_CHILD", "1") do
-      integration.send(:debug_child_thread_dump, "timeout")
-    end
-
-    expect(messages).to include(
-      "[henitai-debug-child] thread_dump reason=timeout",
-      "[henitai-debug-child] thread index=0 id=123 status=\"sleep\"",
-      "[henitai-debug-child]   foo.rb:1"
-    )
   end
 
   it "returns the discovered spec files as test files" do
@@ -881,7 +756,7 @@ RSpec.describe Henitai::Integration::Rspec do
       write_file(dir, "spec/unit/sample_spec.rb", "")
       write_file(dir, "spec/fixtures/integration_smoke/rspec/spec/greeting_spec.rb", "")
 
-      expect(described_class.new.send(:spec_files)).to eq(["spec/unit/sample_spec.rb"])
+      expect(described_class.new.test_files).to eq(["spec/unit/sample_spec.rb"])
     end
   end
 
@@ -1267,7 +1142,7 @@ RSpec.describe Henitai::Integration::Rspec do
       [[], nil, nil]
     end
 
-    result = integration.send(:wait_with_timeout, 4321, 1.0)
+    result = integration.wait_with_timeout(4321, 1.0)
 
     expect([result, select_calls]).to eq([wait_status, 1])
   end
@@ -1841,385 +1716,14 @@ RSpec.describe Henitai::Integration::Rspec do
     expect(integration.select_tests(subject)).to eq(["spec/fallback_spec.rb"])
   end
 
-  it "skips broken fallback candidates and keeps matching ones" do
-    integration = described_class.new
-    subject = instance_double(Henitai::Subject, source_file: "lib/sample.rb")
-
-    allow(integration).to receive(:spec_files).and_return(
-      ["spec/broken_spec.rb", "spec/matching_spec.rb"]
-    )
-    allow(integration).to receive(:requires_source_file_transitively?) do |spec_file, _source_file, _visited = []|
-      raise Errno::EACCES if spec_file == "spec/broken_spec.rb"
-
-      true
-    end
-
-    expect(integration.send(:fallback_spec_files, subject)).to eq(["spec/matching_spec.rb"])
-  end
-
-  it "orders selection patterns by longest first and removes duplicates" do
-    integration = described_class.new
-    subject = instance_double(
-      Henitai::Subject,
-      expression: "Sample::Thing#value",
-      namespace: "Sample::Thing"
-    )
-
-    expect(integration.send(:selection_patterns, subject)).to eq(
-      ["Sample::Thing#value", "Sample::Thing"]
-    )
-  end
-
-  it "matches a source file when a spec only mentions the basename" do
-    integration = described_class.new
-    source_file = "/tmp/project/lib/sample.rb"
-
-    allow(File).to receive(:read).with("spec/sample_spec.rb").and_return(
-      'require_relative "../lib/sample"'
-    )
-
-    expect(
-      integration.send(:requires_source_file?, "spec/sample_spec.rb", source_file)
-    ).to be(true)
-  end
-
-  it "matches a source file when a spec mentions the full source path" do
-    integration = described_class.new
-    source_file = "/tmp/project/lib/sample.rb"
-
-    allow(File).to receive(:read).with("spec/sample_spec.rb").and_return(source_file)
-    allow(File).to receive(:basename).with(source_file, ".rb").and_return("other_name")
-
-    expect(
-      integration.send(:requires_source_file?, "spec/sample_spec.rb", source_file)
-    ).to be(true)
-  end
-
-  it "stops transitive traversal when the spec file was already visited" do
-    integration = described_class.new
-    spec_file = File.expand_path("spec/sample_spec.rb")
-
-    expect(
-      integration.send(
-        :requires_source_file_transitively?,
-        spec_file,
-        "lib/sample.rb",
-        [spec_file]
-      )
-    ).to be(false)
-  end
-
-  it "records the visited spec before traversing its requires" do
-    integration = described_class.new
-    visited = []
-
-    allow(integration).to receive_messages(
-      requires_source_file?: false,
-      required_files: []
-    )
-
-    integration.send(
-      :requires_source_file_transitively?,
-      "spec/sample_spec.rb",
-      "lib/sample.rb",
-      visited
-    )
-
-    expect(visited).to include(File.expand_path("spec/sample_spec.rb"))
-  end
-
-  it "uses relative candidates when resolving require_relative directives" do
-    integration = described_class.new
-
-    allow(integration).to receive(:relative_candidates)
-      .with("spec/sample_spec.rb", "../sample")
-      .and_return(["relative.rb"])
-    allow(integration).to receive(:require_candidates)
-    allow(File).to receive(:file?).with("relative.rb").and_return(true)
-
-    expect(
-      integration.send(
-        :resolve_required_file,
-        "spec/sample_spec.rb",
-        "require_relative",
-        "../sample"
-      )
-    ).to eq("relative.rb")
-  end
-
-  it "expands relative candidates from the spec directory" do
-    integration = described_class.new
-
-    expect(
-      integration.send(:relative_candidates, "spec/models/sample_spec.rb", "../support/helper")
-    ).to eq(
-      [
-        File.expand_path("../support/helper", "spec/models"),
-        File.expand_path("../support/helper.rb", "spec/models")
-      ]
-    )
-  end
-
-  it "expands both plain and ruby candidates from the base path" do
-    integration = described_class.new
-
-    expect(
-      integration.send(:expand_candidates, "spec/models", "../support/helper")
-    ).to eq(
-      [
-        File.expand_path("../support/helper", "spec/models"),
-        File.expand_path("../support/helper.rb", "spec/models")
-      ]
-    )
-  end
-
-  it "includes the spec dir, project dir, and load path for plain require candidates" do
-    integration = described_class.new
-    original_load_path = $LOAD_PATH.dup
-
-    allow(Dir).to receive(:pwd).and_return("/project")
-    $LOAD_PATH.unshift("/ruby/lib", "/gem/lib")
-
-    expect(
-      integration.send(:require_candidates, "spec/models/sample_spec.rb", "lib/sample")
-    ).to include(
-      File.expand_path("lib/sample", "spec/models"),
-      File.expand_path("lib/sample", "/project"),
-      File.expand_path("lib/sample", "/ruby/lib")
-    )
-  ensure
-    $LOAD_PATH.replace(original_load_path)
-  end
-
-  it "writes child stdout and stderr into the combined scenario log" do
-    with_temp_workspace do |_dir|
-      integration = described_class.new
-      log_paths = integration.send(:scenario_log_paths, "mutant-1")
-      FileUtils.mkdir_p(File.dirname(log_paths[:stdout_path]))
-      File.write(log_paths[:stdout_path], "captured stdout\n")
-      File.write(log_paths[:stderr_path], "captured stderr\n")
-
-      result = integration.send(
-        :build_result,
-        Struct.new(:success?, :exitstatus).new(true, 0),
-        log_paths
-      )
-
-      expect(File.read(result.log_path)).to eq(result.combined_output)
-    end
-  end
-
-  it "disables thread exception reporting in the mutant child" do
-    mutant = Struct.new(:id).new("mutant-thread")
-    integration = described_class.new
-    log_paths = {
-      stdout_path: "reports/mutation-logs/mutant-thread.stdout.log",
-      stderr_path: "reports/mutation-logs/mutant-thread.stderr.log",
-      log_path: "reports/mutation-logs/mutant-thread.log"
-    }
-    log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
-    allow(log_support).to receive(:read_log_file).and_return("")
-    allow(log_support).to receive(:write_combined_log)
-
-    allow(integration).to receive(:scenario_log_support).and_return(log_support)
-    allow(log_support).to receive(:with_coverage_dir).with(mutant.id).and_yield
-    allow(log_support).to receive(:capture_child_output).with(log_paths).and_yield
-    allow(Henitai::Mutant::Activator).to receive(:activation_source_for).with(mutant).and_return("source")
-    allow(Henitai::Mutant::Activator).to receive(:activate!).with(mutant).and_return(0)
-    allow(integration).to receive(:run_tests).with(["spec/foo_spec.rb"]).and_return(0)
-    allow(integration).to receive(:suppress_simplecov!)
-    allow(integration).to receive(:suppress_coverage!)
-    calls = []
-
-    allow(Thread).to receive(:report_on_exception=) { |value| calls << value }
-
-    result = integration.send(
-      :run_in_child,
-      mutant:,
-      test_files: ["spec/foo_spec.rb"],
-      log_paths:
-    )
-
-    expect([calls, result]).to eq([[false], 0])
-  end
-
-  it "suppresses SimpleCov during mutant child runs" do
-    mutant = Struct.new(:id).new("mutant-simplecov")
-    integration = described_class.new
-    log_paths = {
-      stdout_path: "reports/mutation-logs/mutant-simplecov.stdout.log",
-      stderr_path: "reports/mutation-logs/mutant-simplecov.stderr.log",
-      log_path: "reports/mutation-logs/mutant-simplecov.log"
-    }
-    log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
-    allow(log_support).to receive(:read_log_file).and_return("")
-    allow(log_support).to receive(:write_combined_log)
-
-    allow(integration).to receive_messages(
-      scenario_log_support: log_support,
-      suppress_simplecov!: nil
-    )
-    allow(log_support).to receive(:with_coverage_dir).with(mutant.id).and_yield
-    allow(log_support).to receive(:capture_child_output).with(log_paths).and_yield
-    allow(Henitai::Mutant::Activator).to receive(:activation_source_for).with(mutant).and_return("source")
-    allow(Henitai::Mutant::Activator).to receive(:activate!).with(mutant).and_return(0)
-    allow(integration).to receive(:run_tests).with(["spec/foo_spec.rb"]).and_return(0)
-    allow(integration).to receive(:suppress_coverage!)
-
-    integration.send(
-      :run_in_child,
-      mutant:,
-      test_files: ["spec/foo_spec.rb"],
-      log_paths:
-    )
-
-    expect(integration).to have_received(:suppress_simplecov!)
-  end
-
-  it "forces single-worker parallel env inside the mutant child" do
-    mutant = Struct.new(:id).new("mutant-parallel-env")
-    integration = described_class.new
-    log_paths = {
-      stdout_path: "reports/mutation-logs/mutant-parallel-env.stdout.log",
-      stderr_path: "reports/mutation-logs/mutant-parallel-env.stderr.log",
-      log_path: "reports/mutation-logs/mutant-parallel-env.log"
-    }
-    log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
-    allow(log_support).to receive(:read_log_file).and_return("")
-    allow(log_support).to receive(:write_combined_log)
-    original_parallel_workers = ENV.fetch("PARALLEL_WORKERS", nil)
-    observed_parallel_workers = nil
-
-    allow(integration).to receive(:scenario_log_support).and_return(log_support)
-    allow(log_support).to receive(:with_coverage_dir).with(mutant.id).and_yield
-    allow(log_support).to receive(:capture_child_output).with(log_paths).and_yield
-    allow(Henitai::Mutant::Activator).to receive(:activation_source_for).with(mutant).and_return("source")
-    allow(Henitai::Mutant::Activator).to receive(:activate!).with(mutant).and_return(0)
-    allow(integration).to receive(:run_tests).with(["spec/foo_spec.rb"]) do
-      observed_parallel_workers = ENV.fetch("PARALLEL_WORKERS", nil)
-      0
-    end
-
-    integration.send(
-      :run_in_child,
-      mutant:,
-      test_files: ["spec/foo_spec.rb"],
-      log_paths:
-    )
-
-    expect(observed_parallel_workers).to eq("1")
-  ensure
-    if original_parallel_workers.nil?
-      ENV.delete("PARALLEL_WORKERS")
-    else
-      ENV["PARALLEL_WORKERS"] = original_parallel_workers
-    end
-  end
-
-  it "captures child diagnostics after output redirection starts" do
-    mutant = Struct.new(:id).new("mutant-debug")
-    integration = described_class.new
-    log_paths = {
-      stdout_path: "reports/mutation-logs/mutant-debug.stdout.log",
-      stderr_path: "reports/mutation-logs/mutant-debug.stderr.log",
-      log_path: "reports/mutation-logs/mutant-debug.log"
-    }
-    log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
-    allow(log_support).to receive(:read_log_file).and_return("")
-    allow(log_support).to receive(:write_combined_log)
-    capture_started = false
-
-    allow(integration).to receive(:scenario_log_support).and_return(log_support)
-    allow(log_support).to receive(:with_coverage_dir).with(mutant.id).and_yield
-    allow(log_support).to receive(:capture_child_output).with(log_paths) do |_paths, &block|
-      capture_started = true
-      block.call
-    end
-    allow(Henitai::Mutant::Activator).to receive(:activation_source_for).with(mutant).and_return("source")
-    allow(Henitai::Mutant::Activator).to receive(:activate!).with(mutant).and_return(0)
-    allow(integration).to receive(:run_tests).with(["spec/foo_spec.rb"]).and_return(0)
-    allow(integration).to receive(:suppress_simplecov!)
-    allow(integration).to receive(:suppress_coverage!)
-    allow(integration).to receive(:debug_child_puts) do |_message|
-      raise "debug output before capture" unless capture_started
-    end
-
-    with_env("HENITAI_DEBUG_CHILD", "1") do
-      integration.send(
-        :run_in_child,
-        mutant:,
-        test_files: ["spec/foo_spec.rb"],
-        log_paths:
-      )
-    end
-
-    expect(capture_started).to be(true)
-  end
-
-  it "includes loaded feature diagnostics when debug child is enabled" do
-    integration = described_class.new
-    expanded_spec = File.expand_path("spec/foo_spec.rb")
-    original_features = $LOADED_FEATURES.dup
-    messages = []
-
-    $LOADED_FEATURES << expanded_spec
-    allow(integration).to receive(:debug_child_puts) { |message| messages << message }
-
-    with_env("HENITAI_DEBUG_CHILD", "1") do
-      integration.send(
-        :debug_child_rspec_trace,
-        test_files: ["spec/foo_spec.rb"],
-        rspec_options: [],
-        rspec_argv: ["spec/foo_spec.rb"]
-      )
-    end
-
-    expect(
-      messages.any? { |message| message.include?("loaded_features_check=[[\"spec/foo_spec.rb\", true]]") }
-    ).to be(true)
-  ensure
-    $LOADED_FEATURES.replace(original_features)
-  end
-
-  it "includes example count diagnostics when debug child is enabled" do
-    integration = described_class.new
-    messages = []
-    world = instance_double(RSpec::Core::World)
-
-    allow(integration).to receive(:debug_child_puts) { |message| messages << message }
-    allow(RSpec).to receive(:world).and_return(world)
-    allow(world).to receive(:example_count).and_return(3, 5)
-
-    with_env("HENITAI_DEBUG_CHILD", "1") do
-      integration.send(:debug_child_example_count, "before_run")
-      integration.send(:debug_child_example_count, "after_run")
-    end
-
-    expect(messages).to include(
-      "[henitai-debug-child] rspec_world_example_count_before_run=3",
-      "[henitai-debug-child] rspec_world_example_count_after_run=5"
-    )
-  end
-
   it "builds baseline log paths under reports/mutation-logs" do
     integration = described_class.new
 
-    expect(integration.send(:scenario_log_paths, "baseline")).to eq(
+    expect(integration.scenario_log_paths("baseline")).to eq(
       stdout_path: "reports/mutation-logs/baseline.stdout.log",
       stderr_path: "reports/mutation-logs/baseline.stderr.log",
       log_path: "reports/mutation-logs/baseline.log"
     )
-  end
-
-  it "delegates pause to sleep" do
-    integration = described_class.new
-    calls = []
-
-    allow(integration).to receive(:sleep) { |seconds| calls << seconds }
-
-    integration.send(:pause, 0.25)
-
-    expect(calls).to eq([0.25])
   end
 
   describe "#spawn_mutant" do

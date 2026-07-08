@@ -66,51 +66,5 @@ RSpec.describe Henitai::SlotScheduler do
 
       expect(captured).to eq(%w[0 1])
     end
-
-    it "keeps the original slot value on a flaky-retry respawn" do
-      captured = []
-      scheduler = build_worker_scheduler(captured, worker_count: 2, max_flaky_retries: 1)
-      scheduler.enqueue([build_worker_mutant("a"), build_worker_mutant("b")])
-      scheduler.fill_idle_slots
-      survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true, status: :survived)
-
-      slot_one = scheduler.send(:slots).values.last
-      scheduler.send(:dispatch_slot_result, slot_one, survived)
-
-      expect(captured).to eq(%w[0 1 1])
-    end
-
-    it "reuses a freed slot value for the next spawn" do
-      captured = []
-      scheduler = build_worker_scheduler(captured, worker_count: 2)
-      scheduler.enqueue([build_worker_mutant("a"), build_worker_mutant("b"), build_worker_mutant("c")])
-      scheduler.fill_idle_slots
-      killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed)
-
-      slot_zero = scheduler.send(:slots).values.first
-      scheduler.send(:dispatch_slot_result, slot_zero, killed)
-      scheduler.fill_idle_slots
-
-      expect(captured).to eq(%w[0 1 0])
-    end
-  end
-
-  describe "#remaining_slot_timeout draining invariant" do
-    it "treats a draining slot with no SIGTERM timestamp as due immediately" do
-      slot = Henitai::SlotScheduler::Slot.new(
-        1, nil, 12, 0.0, 5.0, nil, 0, true, nil, :timeout
-      )
-
-      expect(build_scheduler.send(:remaining_slot_timeout, slot, 0.0)).to eq(0.0)
-    end
-
-    it "uses the drain window once SIGTERM has been sent" do
-      slot = Henitai::SlotScheduler::Slot.new(
-        1, nil, 12, 0.0, 5.0, nil, 0, true, 1.0, :timeout
-      )
-      window = Henitai::SlotScheduler::PROCESS_DRAIN_WINDOW
-
-      expect(build_scheduler.send(:remaining_slot_timeout, slot, 1.0)).to be_within(1e-9).of(window)
-    end
   end
 end

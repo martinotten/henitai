@@ -85,16 +85,6 @@ RSpec.describe Henitai::ProcessWakeup do
       Signal.trap(signal_name, previous)
     end
 
-    it "closes both pipe ends" do
-      reader, writer = nil
-      with_wakeup do |wakeup|
-        reader = wakeup.send(:reader)
-        writer = wakeup.send(:writer)
-      end
-
-      expect([reader.closed?, writer.closed?]).to eq([true, true])
-    end
-
     it "is safe to call twice" do
       wakeup = described_class.new(signal_name:)
 

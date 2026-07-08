@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "stringio"
 require "spec_helper"
 require "parser/current"
 require "tmpdir"
@@ -56,6 +57,16 @@ RSpec.describe Henitai::Reporter::Terminal do
       stderr:,
       log_path:
     )
+  end
+
+  def capture_stdout
+    original_stdout = $stdout
+    stdout = StringIO.new
+    $stdout = stdout
+    yield stdout
+    stdout
+  ensure
+    $stdout = original_stdout
   end
 
   def summary_row(label, value)
@@ -175,6 +186,71 @@ RSpec.describe Henitai::Reporter::Terminal do
     end
   end
 
+  it "flushes stdout when no logs are shown" do
+    reporter = described_class.new(config: build_config)
+
+    stdout = capture_stdout do |captured_stdout|
+      allow(captured_stdout).to receive(:flush).and_call_original
+      reporter.progress(build_mutant(status: :killed))
+    end
+
+    expect(stdout.string).to eq("·")
+  end
+
+  it "flushes stdout after printing a glyph without logs" do
+    reporter = described_class.new(config: build_config)
+
+    stdout = capture_stdout do |captured_stdout|
+      allow(captured_stdout).to receive(:flush).and_call_original
+      reporter.progress(build_mutant(status: :killed))
+    end
+
+    expect(stdout).to have_received(:flush)
+  end
+
+  it "prints the failure tail and flushes when logs are shown" do
+    Dir.mktmpdir do |dir|
+      reporter = described_class.new(config: build_config)
+      scenario_result = build_scenario_result(
+        status: :timeout,
+        stdout: "stdout noise\n",
+        stderr: "stderr noise\n",
+        log_path: File.join(dir, "timeout.log")
+      )
+
+      stdout = capture_stdout do |captured_stdout|
+        allow(captured_stdout).to receive(:flush).and_call_original
+        reporter.progress(build_mutant(status: :timeout), scenario_result:)
+      end
+
+      expect(stdout.string).to include(
+        "T",
+        "log: #{File.join(dir, 'timeout.log')}",
+        "stdout:\nstdout noise",
+        "stderr:\nstderr noise"
+      )
+    end
+  end
+
+  it "flushes stdout after printing logs" do
+    Dir.mktmpdir do |dir|
+      reporter = described_class.new(config: build_config)
+      scenario_result = build_scenario_result(
+        status: :timeout,
+        stdout: "stdout noise\n",
+        stderr: "stderr noise\n",
+        log_path: File.join(dir, "timeout.log")
+      )
+
+      stdout = capture_stdout do |captured_stdout|
+        allow(captured_stdout).to receive(:flush).and_call_original
+        reporter.progress(build_mutant(status: :timeout), scenario_result:)
+      end
+
+      expect(stdout).to have_received(:flush)
+    end
+  end
+
   it "prints a timeout tail and log path" do
     Dir.mktmpdir do |dir|
       reporter = described_class.new(config: build_config)
@@ -266,14 +342,48 @@ RSpec.describe Henitai::Reporter::Terminal do
     expect { reporter.report(result) }.to output(expected_output).to_stdout
   end
 
+  it "uses default thresholds when the config does not define any" do
+    reporter = described_class.new(config: build_config(thresholds: nil), color_enabled: true)
+    result = build_result(
+      mutants: [],
+      scoring_summary: {
+        mutation_score: 81.0,
+        mutation_score_indicator: 10.0,
+        equivalence_uncertainty: nil
+      },
+      duration: 0.0
+    )
+
+    expected_output = <<~OUTPUT
+      Mutation testing summary
+      #{score_summary_line(
+        mutation_score: '81.00%',
+        mutation_score_indicator: '10.00%',
+        equivalence_uncertainty: 'n/a',
+        color_code: '32'
+      )}
+      #{summary_row('Killed', 0)}
+      #{summary_row('Survived', 0)}
+      #{summary_row('Timeout', 0)}
+      #{summary_row('No coverage', 0)}
+      #{summary_row('Duration', '0.00s')}
+    OUTPUT
+
+    expect { reporter.report(result) }.to output(expected_output).to_stdout
+  end
+
   it "summarizes verdicts reused from history" do
     reporter = described_class.new(config: build_config, color_enabled: false)
     cached = Struct.new(:status) do
       def survived? = false
       def from_cache? = true
     end.new(:killed)
+    non_cached = Struct.new(:status) do
+      def survived? = false
+      def from_cache? = false
+    end.new(:killed)
     result = build_result(
-      mutants: [cached, build_mutant(status: :killed)],
+      mutants: [cached, non_cached],
       scoring_summary: {
         mutation_score: 100.0,
         mutation_score_indicator: 100.0,
@@ -285,6 +395,35 @@ RSpec.describe Henitai::Reporter::Terminal do
     expect { reporter.report(result) }.to output(
       a_string_including("1 of 2 verdicts reused from history")
     ).to_stdout
+  end
+
+  it "prints a full summary when partial rerun status is unavailable" do
+    reporter = described_class.new(config: build_config, color_enabled: false)
+    result = Struct.new(:mutants, :scoring_summary, :duration).new(
+      [],
+      {
+        mutation_score: 75.0,
+        mutation_score_indicator: 12.5,
+        equivalence_uncertainty: nil
+      },
+      1.5
+    )
+
+    expected_output = <<~OUTPUT
+      Mutation testing summary
+      #{score_summary_line(
+        mutation_score: '75.00%',
+        mutation_score_indicator: '12.50%',
+        equivalence_uncertainty: 'n/a'
+      )}
+      #{summary_row('Killed', 0)}
+      #{summary_row('Survived', 0)}
+      #{summary_row('Timeout', 0)}
+      #{summary_row('No coverage', 0)}
+      #{summary_row('Duration', '1.50s')}
+    OUTPUT
+
+    expect { reporter.report(result) }.to output(expected_output).to_stdout
   end
 
   it "colors the score line green when the score meets the high threshold" do
@@ -465,18 +604,25 @@ RSpec.describe Henitai::Reporter::Terminal do
     expect { reporter.report(result) }.to output(expected_output).to_stdout
   end
 
-  it "uses default thresholds when config.thresholds is nil" do
-    config = Struct.new(:thresholds, :all_logs).new(nil, false)
-    reporter = described_class.new(config:)
-    # 75 falls between default low=60 and high=80 → yellow "33"
-    expect(reporter.send(:score_color, 75)).to eq("33")
-  end
+  it "renders visible escapes for string literal survivors" do
+    reporter = described_class.new(config: build_config, color_enabled: false)
+    mutant = survived_detail_mutant(
+      file: "lib/foo.rb",
+      line: 3,
+      operator: "StringLiteral",
+      original_source: "\"\\n\"",
+      mutated_source: "\"x\""
+    )
+    result = build_result(
+      mutants: [mutant],
+      scoring_summary: survived_detail_scoring_summary,
+      duration: 1.0
+    )
 
-  it "delegates flush to stdout" do
-    reporter = described_class.new(config: build_config)
-    allow($stdout).to receive(:flush)
-    reporter.send(:flush)
-    expect($stdout).to have_received(:flush)
+    expect { reporter.report(result) }.to output(
+      a_string_including(%(- "\\n"))
+        .and(a_string_including(%(+ "x")))
+    ).to_stdout
   end
 
   describe "partial rerun" do
@@ -494,11 +640,34 @@ RSpec.describe Henitai::Reporter::Terminal do
       instance
     end
 
+    def build_partial_result_without_survivor_stats
+      Struct.new(:mutants, :scoring_summary, :duration) do
+        def partial_rerun? = true
+      end.new(
+        [],
+        { mutation_score: nil, mutation_score_indicator: nil, equivalence_uncertainty: nil },
+        0.5
+      )
+    end
+
     it "prints a partial rerun summary header" do
       reporter = described_class.new(config: build_config, color_enabled: false)
       result = build_partial_result
 
       expect { reporter.report(result) }.to output(/Partial survivor rerun/).to_stdout
+    end
+
+    it "prints a partial rerun summary when survivor_stats is unavailable" do
+      reporter = described_class.new(config: build_config, color_enabled: false)
+      result = build_partial_result_without_survivor_stats
+
+      expected_output = <<~OUTPUT
+        Partial survivor rerun
+        #{summary_row('Survived', 0)}
+        #{summary_row('Duration', '0.50s')}
+      OUTPUT
+
+      expect { reporter.report(result) }.to output(expected_output).to_stdout
     end
 
     it "includes survivor match stats when survivor_stats is present" do

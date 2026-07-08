@@ -26,6 +26,24 @@ RSpec.describe Henitai::Reporter::Dashboard do
     )
   end
 
+  def with_env(key, value)
+    original = ENV.fetch(key, nil)
+
+    if value.nil?
+      ENV.delete(key)
+    else
+      ENV[key] = value
+    end
+
+    yield
+  ensure
+    if original.nil?
+      ENV.delete(key)
+    else
+      ENV[key] = original
+    end
+  end
+
   def dashboard(base_url: nil, metadata_provider: fake_metadata)
     settings = base_url ? { base_url: base_url } : {}
     described_class.new(
@@ -55,6 +73,59 @@ RSpec.describe Henitai::Reporter::Dashboard do
     expect(request["X-Api-Key"]).to eq("secret-token")
     expect(request["Content-Type"]).to eq("application/json")
     expect(request.body).to eq(JSON.generate(schema))
+  end
+
+  it "uses the default metadata provider when none is injected" do
+    http = instance_double(Net::HTTP)
+    stub_dashboard_http(http)
+
+    with_env("GITHUB_REF_NAME", "main") do
+      with_env("STRYKER_DASHBOARD_API_KEY", "secret-token") do
+        request = described_class.new(
+          config: Struct.new(:dashboard).new(
+            {
+              base_url: "https://dashboard.example.test",
+              project: "github.com/example/project"
+            }
+          )
+        ).report(result)
+
+        expect(request.path).to eq("/api/reports/github.com/example/project/main")
+        expect(request["X-Api-Key"]).to eq("secret-token")
+      end
+    end
+
+    expect(Net::HTTP).to have_received(:start).with("dashboard.example.test", 443, use_ssl: true)
+  end
+
+  it "includes a configured base path and explicit port in dashboard uploads" do
+    http = instance_double(Net::HTTP)
+    stub_dashboard_http(http)
+
+    request = dashboard(base_url: "https://dashboard.example.test:8443/team/").report(result)
+
+    expect(request.path).to eq("/team/api/reports/github.com/example/project/main")
+    expect(Net::HTTP).to have_received(:start).with("dashboard.example.test", 8443, use_ssl: true)
+  end
+
+  it "disables SSL for http base URLs" do
+    http = instance_double(Net::HTTP)
+    stub_dashboard_http(http)
+
+    request = dashboard(base_url: "http://dashboard.example.test").report(result)
+
+    expect(request.path).to eq("/api/reports/github.com/example/project/main")
+    expect(Net::HTTP).to have_received(:start).with("dashboard.example.test", 80, use_ssl: false)
+  end
+
+  it "disables SSL for non-https schemes" do
+    http = instance_double(Net::HTTP)
+    stub_dashboard_http(http)
+
+    request = dashboard(base_url: "wss://dashboard.example.test").report(result)
+
+    expect(request.path).to eq("/api/reports/github.com/example/project/main")
+    expect(Net::HTTP).to have_received(:start).with("dashboard.example.test", 443, use_ssl: false)
   end
 
   it "sets HTTP timeouts on dashboard uploads" do
@@ -111,16 +182,11 @@ RSpec.describe Henitai::Reporter::Dashboard do
 
   it "enables SSL when the base URL scheme is https" do
     http = instance_double(Net::HTTP)
-    allow(http).to receive(:open_timeout=)
-    allow(http).to receive(:read_timeout=)
-    allow(http).to receive(:request) { |req| req }
-    allow(Net::HTTP).to receive(:start).with(
-      "dashboard.example.test", anything, use_ssl: true
-    ).and_yield(http)
+    stub_dashboard_http(http)
 
     dashboard(base_url: "https://dashboard.example.test").report(result)
 
-    expect(Net::HTTP).to have_received(:start)
+    expect(Net::HTTP).to have_received(:start).with("dashboard.example.test", 443, use_ssl: true)
   end
 
   it "handles a trailing slash in the base URL without doubling path separators" do
@@ -147,16 +213,13 @@ RSpec.describe Henitai::Reporter::Dashboard do
 
     request = dashboard(
       base_url: "https://dashboard.example.test",
-      metadata_provider: fake_metadata(version: "release/v2.0")
+      metadata_provider: fake_metadata(
+        project: :"github.com/example/project",
+        version: :"release/v2.0"
+      )
     ).report(result)
 
-    expect(request.path).to include("release%2Fv2.0")
-  end
-
-  it "constructs the default metadata provider from config.dashboard when none is injected" do
-    reporter = described_class.new(config: Struct.new(:dashboard).new({ project: "configured/project" }))
-
-    expect(reporter.send(:project)).to eq("configured/project")
+    expect(request.path).to eq("/api/reports/github.com/example/project/release%2Fv2.0")
   end
 end
 

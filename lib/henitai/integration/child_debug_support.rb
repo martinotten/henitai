@@ -11,6 +11,8 @@ module Henitai
       def debug_child? = ENV["HENITAI_DEBUG_CHILD"] == "1"
 
       def debug_child_puts(message)
+        return unless debug_child?
+
         $stdout.puts(message)
         $stdout.flush
       end

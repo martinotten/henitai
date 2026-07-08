@@ -16,7 +16,7 @@ RSpec.describe "Pre-commit hook" do
         "cd \"$repo_root\"",
         "",
         "bundle exec rubocop --parallel",
-        "bundle exec rspec",
+        "HENITAI_ENFORCE_COVERAGE=1 bundle exec rspec",
         "bundle exec rake smoke:integration:all"
       ]
     )

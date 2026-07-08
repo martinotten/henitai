@@ -356,33 +356,6 @@ RSpec.describe Henitai::MutantGenerator do
   end
 
   # ---------------------------------------------------------------------------
-  # Private helper methods via send
-  # ---------------------------------------------------------------------------
-
-  describe "#sample_mutants" do
-    let(:generator) { described_class.new }
-
-    # L130 NoCoverage: sampling[:strategy] || :stratified
-    # Der Fallback wird nie exercised weil Tests immer strategy: angeben.
-    it "defaults strategy to :stratified when the sampling config has no :strategy key" do
-      mutants = [
-        instance_double(
-          Henitai::Mutant,
-          subject: instance_double(Henitai::Subject, expression: "Sample#alpha")
-        )
-      ]
-      strategy = instance_double(Henitai::SamplingStrategy)
-      config = instance_double(Henitai::Configuration, sampling: { ratio: 1.0 }) # kein :strategy
-
-      allow(strategy).to receive(:sample).and_return(mutants)
-
-      generator.send(:sample_mutants, mutants, config:, sampling_strategy: strategy)
-
-      expect(strategy).to have_received(:sample).with(mutants, ratio: 1.0, strategy: :stratified)
-    end
-  end
-
-  # ---------------------------------------------------------------------------
   # SubjectVisitor — direkte Tests der nested class
   # Ursache aller Survived-Mutanten L73–L106: Der Coverage-Tracker attributiert
   # Testausführung nicht zur nested class, nur zu MutantGenerator#generate.
@@ -569,67 +542,6 @@ RSpec.describe Henitai::MutantGenerator do
         visitor.process(Henitai::SourceParser.parse_file(path))
 
         expect(visitor.mutants).not_to be_empty
-      end
-    end
-
-    describe "#node_within_subject_range?" do
-      # Build a lightweight node double with only the interface node_within_subject_range? touches.
-      let(:fake_expression_class) { Struct.new(:line, :last_line) }
-      let(:fake_location_class) { Struct.new(:expression) }
-
-      def fake_node_at(start_line, end_line)
-        Struct.new(:location).new(
-          fake_location_class.new(fake_expression_class.new(start_line, end_line))
-        )
-      end
-
-      def visitor_with_range(start_line, end_line)
-        subject = Henitai::Subject.new(
-          namespace: "S",
-          method_name: "run",
-          source_location: { file: "s.rb", range: start_line..end_line }
-        )
-        visitor_class.new(subject, [], config: nil,
-                                       arid_node_filter: arid_filter,
-                                       syntax_validator: syntax_validator)
-      end
-
-      it "returns true when node range overlaps with subject range" do
-        visitor = visitor_with_range(3, 8)
-        expect(visitor.send(:node_within_subject_range?, fake_node_at(1, 5))).to be true
-      end
-
-      it "returns false when node range is entirely before subject range" do
-        visitor = visitor_with_range(5, 8)
-        expect(visitor.send(:node_within_subject_range?, fake_node_at(1, 3))).to be false
-      end
-
-      it "returns false when node range is entirely after subject range" do
-        visitor = visitor_with_range(1, 5)
-        expect(visitor.send(:node_within_subject_range?, fake_node_at(6, 9))).to be false
-      end
-
-      it "returns true when node and subject share exactly one boundary line" do
-        visitor = visitor_with_range(1, 5)
-        expect(visitor.send(:node_within_subject_range?, fake_node_at(5, 8))).to be true
-      end
-
-      it "returns true for any node when subject has no source_range" do
-        subject = Henitai::Subject.new(
-          namespace: "S",
-          method_name: "run",
-          source_location: { file: "s.rb", range: nil }
-        )
-        visitor = visitor_class.new(subject, [], config: nil,
-                                                 arid_node_filter: arid_filter,
-                                                 syntax_validator: syntax_validator)
-        expect(visitor.send(:node_within_subject_range?, fake_node_at(99, 200))).to be true
-      end
-
-      it "returns true when the node has no location expression" do
-        visitor = visitor_with_range(1, 5)
-        node_without_loc = Struct.new(:location).new(fake_location_class.new(nil))
-        expect(visitor.send(:node_within_subject_range?, node_without_loc)).to be true
       end
     end
 

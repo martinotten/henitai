@@ -5,6 +5,9 @@ require "etc"
 module Henitai
   # Detects the effective CPU count available to the current process.
   class AvailableCpuCount
+    CFS_QUOTA_PATH = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
+    CFS_PERIOD_PATH = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
+
     class << self
       def detect
         counts = [Etc.nprocessors, cgroup_cpu_quota, cpuset_cpu_count].compact.select(&:positive?)
@@ -14,38 +17,30 @@ module Henitai
       private
 
       def cgroup_cpu_quota
-        parse_cpu_max(read_limit("/sys/fs/cgroup/cpu.max")) ||
-          parse_cpu_cfs(
-            read_limit("/sys/fs/cgroup/cpu/cpu.cfs_quota_us"),
-            read_limit("/sys/fs/cgroup/cpu/cpu.cfs_period_us")
-          )
+        quota = parse_cpu_max(read_limit("/sys/fs/cgroup/cpu.max"))
+        return quota if quota
+
+        quota_count(read_limit(CFS_QUOTA_PATH), read_limit(CFS_PERIOD_PATH))
       end
 
       def cpuset_cpu_count
-        count_cpu_list(read_limit("/sys/fs/cgroup/cpuset.cpus.effective")) ||
-          count_cpu_list(read_limit("/sys/fs/cgroup/cpuset.cpus"))
+        count = count_cpu_list(read_limit("/sys/fs/cgroup/cpuset.cpus.effective"))
+        return count if count
+
+        count_cpu_list(read_limit("/sys/fs/cgroup/cpuset.cpus"))
       end
 
       def read_limit(path)
         return unless File.file?(path)
 
-        File.read(path).strip
-      rescue Errno::ENOENT, Errno::EACCES
-        nil
+        File.read(path)
+      rescue Errno::ENOENT, Errno::EACCES then nil
       end
 
       def parse_cpu_max(value)
-        return if value.nil? || value.empty?
+        return if value.nil?
 
         quota, period = value.split
-        return if quota == "max"
-
-        quota_count(quota, period)
-      end
-
-      def parse_cpu_cfs(quota, period)
-        return if quota.nil? || period.nil? || quota == "-1"
-
         quota_count(quota, period)
       end
 
@@ -55,16 +50,14 @@ module Henitai
         return if quota_value <= 0 || period_value <= 0
 
         [quota_value / period_value, 1].max
-      rescue ArgumentError
-        nil
+      rescue ArgumentError then nil
       end
 
       def count_cpu_list(value)
         return if value.nil? || value.empty?
 
         value.split(",").sum { |entry| cpu_list_entry_size(entry) }
-      rescue ArgumentError
-        nil
+      rescue ArgumentError then nil
       end
 
       def cpu_list_entry_size(entry)
