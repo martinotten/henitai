@@ -3,7 +3,6 @@
 require "fileutils"
 require "json"
 require "net/http"
-require "pathname"
 require "open3"
 require "uri"
 require_relative "unparse_helper"

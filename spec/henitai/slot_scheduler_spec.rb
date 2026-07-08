@@ -75,7 +75,7 @@ RSpec.describe Henitai::SlotScheduler do
       ENV["HENITAI_WORKER_SLOT"] = "parent"
       scheduler.fill_idle_slots
 
-      expect(ENV["HENITAI_WORKER_SLOT"]).to eq("parent")
+      expect(ENV.fetch("HENITAI_WORKER_SLOT", nil)).to eq("parent")
     end
 
     it "keeps the original slot value on a flaky-retry respawn" do
@@ -102,7 +102,7 @@ RSpec.describe Henitai::SlotScheduler do
       slot = scheduler.send(:slots).values.first
       scheduler.send(:dispatch_slot_result, slot, survived)
 
-      expect(ENV["HENITAI_WORKER_SLOT"]).to eq("parent")
+      expect(ENV.fetch("HENITAI_WORKER_SLOT", nil)).to eq("parent")
     end
 
     it "reuses a freed slot value for the next spawn" do
