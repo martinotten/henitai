@@ -11,8 +11,6 @@ module Henitai
       def debug_child? = ENV["HENITAI_DEBUG_CHILD"] == "1"
 
       def debug_child_puts(message)
-        return unless debug_child?
-
         $stdout.puts(message)
         $stdout.flush
       end
@@ -81,7 +79,7 @@ module Henitai
 
       def debug_child_activation_check
         location = begin
-          Henitai::Runner.instance_method(:resolve_subjects).source_location&.join(":")
+          Henitai::Runner.instance_method(:resolve_subjects).source_location&.join(":") # henitai:disable
         rescue StandardError
           nil
         end

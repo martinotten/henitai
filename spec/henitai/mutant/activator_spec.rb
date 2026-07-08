@@ -161,6 +161,48 @@ RSpec.describe Henitai::Mutant::Activator do
     end
   end
 
+  it "keeps the mutation active when the subject file is required again" do
+    Dir.mktmpdir do |dir|
+      source_dir = File.join(dir, "lib")
+      spec_dir = File.join(dir, "spec")
+      source_path = File.join(source_dir, "sample.rb")
+      loader_path = File.join(spec_dir, "loader.rb")
+
+      FileUtils.mkdir_p(source_dir)
+      FileUtils.mkdir_p(spec_dir)
+      File.write(
+        source_path,
+        <<~RUBY
+          class LoadRedefinitionSample
+            def value
+              1
+            end
+          end
+        RUBY
+      )
+      File.write(
+        loader_path,
+        <<~RUBY
+          require_relative "../lib/sample"
+        RUBY
+      )
+
+      subject = Henitai::SubjectResolver.new.resolve_from_files([source_path]).first
+      original_node = find_nodes(subject.ast_node, :int).first
+      mutant = build_mutant(
+        subject:,
+        original_node: original_node,
+        mutated_node: Parser::AST::Node.new(:int, [2]),
+        location: location_for(original_node)
+      )
+
+      described_class.activate!(mutant)
+      load(loader_path)
+
+      expect(LoadRedefinitionSample.new.value).to eq(2)
+    end
+  end
+
   it "patches the full method body for nested mutations" do
     Dir.mktmpdir do |dir|
       path = write_source(dir, <<~RUBY)

@@ -54,6 +54,21 @@ RSpec.describe Henitai::VerdictFingerprint do
   end
 
   describe ".tests_fingerprint" do
+    it "distinguishes different path and content boundaries" do
+      allow(File).to receive(:read) do |path|
+        {
+          "ab" => "c",
+          "a" => "bc",
+          "d" => "e"
+        }.fetch(path)
+      end
+
+      fingerprint_one = described_class.tests_fingerprint(%w[ab d])
+      fingerprint_two = described_class.tests_fingerprint(%w[a d])
+
+      expect(fingerprint_one).not_to eq(fingerprint_two)
+    end
+
     it "round-trips as current while the test files are unchanged" do
       Dir.mktmpdir do |dir|
         path = File.join(dir, "a_spec.rb")

@@ -1,6 +1,6 @@
 # Smoke-Fixture Mutants Are Never Killed (Activation Clobbered by Spec Require)
 
-Status: backlog
+Status: done (2026-07-08)
 Date: 2026-07-08
 Severity: Medium
 Source: discovered while wiring an end-to-end incremental-cache assertion
@@ -41,6 +41,15 @@ already contains every subject file and the specs' requires are no-ops.
 - The incremental-verdict-cache smoke assertion (double run, expect
   `fromCache`) cannot work against these fixtures and was dropped —
   restore it once this is fixed (see the incremental ticket's notes).
+
+## Resolution
+
+- `Mutant::Activator#load_source_file` now records the loaded subject file in
+  `$LOADED_FEATURES` after a successful load, so a later `require_relative`
+  of the same source does not reload and overwrite the mutated method.
+- The smoke rake helper now requires at least one `Killed` mutant in each
+  committed smoke project, which restores real kill-path coverage for both
+  fixtures.
 
 ## Fix Sketch
 

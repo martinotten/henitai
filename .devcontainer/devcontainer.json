@@ -36,7 +36,6 @@
   "runArgs": ["--add-host=host.docker.internal:host-gateway"],
   "mounts": [
     "source=henitai-bundle,target=/usr/local/bundle,type=volume",
-    "source=${localWorkspaceFolder}/../henitai-worktrees,target=/workspaces/worktrees,type=bind",
     "source=${localWorkspaceFolder}/.henitai-pi-agent,target=/home/vscode/.pi,type=bind"
   ],
   "forwardPorts": [],

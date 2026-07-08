@@ -5,5 +5,5 @@ repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
 bundle exec rubocop --parallel
-bundle exec rspec
+HENITAI_ENFORCE_COVERAGE=1 bundle exec rspec
 bundle exec rake smoke:integration:all

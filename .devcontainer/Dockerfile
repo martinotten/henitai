@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Pi currently requires Node.js >= 22.19.0; Debian trixie ships Node.js 20.
 RUN npm install -g n && \
-    n 22 && \
+    n 22.19.0 && \
     npm cache clean --force && \
     node --version
 
@@ -47,12 +47,6 @@ RUN chmod +x /usr/local/bin/configure-pi-models
 
 RUN curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh \
     && mv ~/.local/bin/rtk /usr/local/bin/rtk
-
-# Bind-mount point for agent-created git worktrees (see devcontainer.json
-# mounts). Chowned here for portability to Linux Docker hosts, which
-# enforce real host-UID permission checks on bind mounts (macOS Docker
-# Desktop overlays this regardless).
-RUN mkdir -p /workspaces/worktrees && chown ${USER_UID}:${USER_GID} /workspaces/worktrees
 
 # Pre-create and chown Pi's state dir (sessions, models.json) so the
 # named volume mounted here (see devcontainer.json) copies up with
