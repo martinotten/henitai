@@ -12,9 +12,11 @@ test_excludes:
   - spec/henitai/cli_spec.rb
   - spec/henitai/process_worker_runner_spec.rb
   - spec/henitai/slot_scheduler_spec.rb
-  - spec/henitai/integration/rspec_spec.rb
-  - spec/henitai/integration/rspec_process_runner_spec.rb
-  - spec/henitai/integration/child_debug_support_spec.rb
+  - spec/henitai/integration/*_spec.rb
+reporters:
+  - terminal
+  - json
+  - html
 mutation:
   operators: light
   timeout: 10.0
