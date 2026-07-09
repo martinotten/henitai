@@ -13,6 +13,7 @@ module Henitai
       integration
       includes
       excludes
+      test_excludes
       mutation
       coverage_criteria
       thresholds
@@ -38,6 +39,7 @@ module Henitai
       validate_integration
       validate_includes
       validate_excludes
+      validate_test_excludes
       validate_jobs
       validate_reporters
       validate_reports_dir

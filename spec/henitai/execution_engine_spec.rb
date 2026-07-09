@@ -636,4 +636,40 @@ RSpec.describe Henitai::ExecutionEngine do
       expect(ENV.fetch("HENITAI_COVERAGE_DIR", nil)).to eq("preexisting")
     end
   end
+
+  describe "#reject_excluded_tests" do
+    def config_with(excludes)
+      Struct.new(:test_excludes).new(excludes)
+    end
+
+    it "drops tests matching a test_excludes glob, keeping the rest" do
+      engine = described_class.new
+      tests = %w[
+        spec/henitai/foo_spec.rb
+        spec/henitai/cli_spec.rb
+        spec/henitai/integration/rspec_spec.rb
+      ]
+      config = config_with(["spec/henitai/cli_spec.rb", "spec/henitai/integration/*_spec.rb"])
+
+      result = engine.send(:reject_excluded_tests, tests, config)
+
+      expect(result).to eq(["spec/henitai/foo_spec.rb"])
+    end
+
+    it "returns every test when no exclude patterns are configured" do
+      result = described_class.new.send(:reject_excluded_tests, ["a_spec.rb"], config_with([]))
+
+      expect(result).to eq(["a_spec.rb"])
+    end
+
+    it "does not let a glob wildcard cross directory boundaries" do
+      engine = described_class.new
+      tests = %w[spec/a/deep/thing_spec.rb spec/a/thing_spec.rb]
+      config = config_with(["spec/a/*_spec.rb"])
+
+      result = engine.send(:reject_excluded_tests, tests, config)
+
+      expect(result).to eq(["spec/a/deep/thing_spec.rb"])
+    end
+  end
 end

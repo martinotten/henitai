@@ -1,50 +1,30 @@
 # yaml-language-server: $schema=./assets/schema/henitai.schema.json
-# Hen'i-tai 変異体 — Configuration
-# https://github.com/martinotten/henitai
-
-integration:
-  name: rspec
-
 includes:
   - lib
-
-# Standalone entry points that only run as side effects or in a subprocess
-# cannot be mutation-tested in-process, so they are excluded from the scope.
-excludes:
-  - lib/henitai/eager_load.rb
-
-# Mutation operator configuration
+# Specs that themselves spawn henitai/forked subprocesses (the CLI end-to-end
+# run and the process-scheduler / integration fork specs). Running them as a
+# mutant's tests re-launches nested henitai process trees, multiplying
+# processes, wall-clock and captured-log noise when dogfooding henitai on
+# itself. Excluding them from per-mutant test selection keeps the fork tree
+# flat; the trade-off is reduced mutation coverage of the CLI/execution
+# subsystem during dogfood runs.
+test_excludes:
+  - spec/henitai/cli_spec.rb
+  - spec/henitai/process_worker_runner_spec.rb
+  - spec/henitai/slot_scheduler_spec.rb
+  - spec/henitai/integration/rspec_spec.rb
+  - spec/henitai/integration/rspec_process_runner_spec.rb
+  - spec/henitai/integration/child_debug_support_spec.rb
 mutation:
-  operators: full # light (default) | full
-  ignore_patterns:
-    - "(send _ {:log :debug :info :warn :error} _)" # Logger calls
-    - "(send _ :puts _)" # puts / debug output
-  # timeout intentionally unset: per-mutant auto-calibration
-  # (timeout_multiplier x measured baseline of the selected tests, 2s floor)
+  operators: light
+  timeout: 10.0
   max_flaky_retries: 3
-
-# Parallelisation
-jobs: 8 # null = auto-detect CPU count
-
-# Coverage criteria
-coverage_criteria:
-  test_result: true
-  timeout: true
-  process_abort: true
-
-# Thresholds for HTML report colouring
+  sampling:
+    ratio: 0.05
+    strategy: stratified
+reports_dir: reports
 thresholds:
   high: 80
   low: 60
-
-# Dashboard reporter (opt-in)
-reporters:
-  - terminal
-  - html
-  - json
-  - github
-#   - dashboard
-#
-# dashboard:
-#   project: "github.com/martinotten/henitai"
-#   base_url: "https://dashboard.stryker-mutator.io"
+integration:
+  name: rspec

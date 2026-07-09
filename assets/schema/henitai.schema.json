@@ -33,6 +33,12 @@
         "type": "string"
       }
     },
+    "test_excludes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "mutation": {
       "type": "object",
       "additionalProperties": false,

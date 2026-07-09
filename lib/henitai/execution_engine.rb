@@ -1,10 +1,13 @@
 # frozen_string_literal: true
 
 require_relative "process_worker_runner"
+require_relative "execution_engine/env_scope"
 
 module Henitai
   # Runs pending mutants through the selected integration.
   class ExecutionEngine
+    include EnvScope
+
     def run(mutants, integration, config, progress_reporter: nil)
       with_reports_dir(config) do
         with_coverage_dir(config) do
@@ -31,17 +34,6 @@ module Henitai
 
       warn_flaky_mutants(pending_mutants.size)
       mutants
-    end
-
-    # Linear-path children inherit slot 0 so suite-side isolation code works
-    # identically in both execution modes; the parallel scheduler overwrites
-    # the value per spawn. Restored afterwards like the other run-scoped vars.
-    def with_worker_slot
-      original = ENV.fetch(SlotScheduler::WORKER_SLOT_ENV, nil)
-      ENV[SlotScheduler::WORKER_SLOT_ENV] = "0"
-      yield
-    ensure
-      restore_env(SlotScheduler::WORKER_SLOT_ENV, original)
     end
 
     def parallel_execution?(config, mutants)
@@ -93,13 +85,28 @@ module Henitai
     end
 
     def prioritized_tests_for(mutant, integration, config)
-      tests = integration.select_tests(mutant.subject)
+      tests = reject_excluded_tests(integration.select_tests(mutant.subject), config)
       tests = per_test_coverage_selector.filter(
         tests,
         mutant,
         reports_dir: config.reports_dir
       )
       test_prioritizer(config).sort(tests, mutant, test_history(config))
+    end
+
+    # Drops test files matching any config.test_excludes glob. Used to keep a
+    # mutant child from re-running tests that themselves spawn henitai/forked
+    # subprocesses (e.g. the CLI and process-scheduler specs when dogfooding
+    # henitai on itself), which otherwise multiplies processes and log noise.
+    def reject_excluded_tests(tests, config)
+      patterns = config.respond_to?(:test_excludes) ? Array(config.test_excludes) : []
+      return tests if patterns.empty?
+
+      expanded = patterns.map { |pattern| File.expand_path(pattern) }
+      tests.reject do |path|
+        candidate = File.expand_path(path)
+        expanded.any? { |pattern| File.fnmatch?(pattern, candidate, File::FNM_PATHNAME) }
+      end
     end
 
     def test_prioritizer(config)
@@ -209,49 +216,6 @@ module Henitai
         total: total_mutants,
         ratio: flaky_ratio * 100.0
       )
-    end
-
-    def with_reports_dir(config)
-      original = ENV.fetch("HENITAI_REPORTS_DIR", nil)
-      ENV["HENITAI_REPORTS_DIR"] = config.reports_dir
-      yield
-    ensure
-      restore_env("HENITAI_REPORTS_DIR", original)
-    end
-
-    def with_max_log_bytes(config)
-      cap = config.respond_to?(:max_log_bytes) ? config.max_log_bytes : nil
-      return yield if cap.nil?
-
-      env_key = Integration::ScenarioLogSupport::MAX_LOG_BYTES_ENV
-      original = ENV.fetch(env_key, nil)
-      ENV[env_key] = cap.to_s
-      yield
-    ensure
-      restore_env(env_key, original) if cap
-    end
-
-    def restore_env(key, original)
-      if original.nil?
-        ENV.delete(key)
-      else
-        ENV[key] = original
-      end
-    end
-
-    def with_coverage_dir(config)
-      original = ENV.fetch("HENITAI_COVERAGE_DIR", nil)
-      ENV["HENITAI_COVERAGE_DIR"] = mutation_coverage_dir(config)
-      yield
-    ensure
-      restore_env("HENITAI_COVERAGE_DIR", original)
-    end
-
-    def mutation_coverage_dir(config)
-      base_dir = config.respond_to?(:reports_dir) ? config.reports_dir : nil
-      base_dir = "reports" if base_dir.nil? || base_dir.empty?
-
-      File.join(base_dir, "mutation-coverage")
     end
 
     def max_flaky_retries(config)

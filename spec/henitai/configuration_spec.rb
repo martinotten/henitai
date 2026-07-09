@@ -276,6 +276,28 @@ RSpec.describe Henitai::Configuration do
     expect(config.reports_dir).to eq("custom-reports")
   end
 
+  it "defaults test_excludes to an empty array" do
+    config = load_configuration("integration:\n  name: rspec\n")
+
+    expect(config.test_excludes).to eq([])
+  end
+
+  it "loads test_excludes globs" do
+    config = load_configuration(<<~YAML)
+      test_excludes:
+        - spec/henitai/cli_spec.rb
+        - spec/henitai/integration/*_spec.rb
+    YAML
+
+    expect(config.test_excludes).to eq(["spec/henitai/cli_spec.rb", "spec/henitai/integration/*_spec.rb"])
+  end
+
+  it "aborts on a non-array test_excludes" do
+    expect do
+      load_configuration("test_excludes: nope\n")
+    end.to raise_error(Henitai::ConfigurationError, /test_excludes/)
+  end
+
   it "loads the all_logs flag" do
     config = load_configuration(<<~YAML)
       all_logs: true

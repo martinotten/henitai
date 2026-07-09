@@ -157,6 +157,7 @@ module Henitai
     attr_reader integration: untyped
     attr_reader includes: Array[String]
     attr_reader excludes: Array[String]
+    attr_reader test_excludes: Array[String]
     attr_reader operators: Symbol
     attr_reader timeout: Float
     attr_reader timeout_multiplier: Float
