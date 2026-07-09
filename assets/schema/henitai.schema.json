@@ -59,7 +59,7 @@
         },
         "max_log_bytes": {
           "type": "integer",
-          "minimum": 0
+          "exclusiveMinimum": 0
         },
         "max_timeout": {
           "type": "number",

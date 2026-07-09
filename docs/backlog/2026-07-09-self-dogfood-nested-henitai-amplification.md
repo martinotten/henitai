@@ -52,10 +52,11 @@ CLI and process-forking specs above, keeping the fork tree flat.
 - Filter matches on `File.expand_path` + `File.fnmatch?(…, File::FNM_PATHNAME)`
   so a `*` glob does not cross directory boundaries.
 - **Trade-off:** mutants in the CLI / execution-scheduler subsystem lose the
-  coverage those excluded specs provided during dogfood runs — some may report
-  `NoCoverage`/`Survived` that a full run would kill. Acceptable for dogfooding
-  (those subsystems are integration-heavy and awkward to mutation-test in-process
-  anyway); `test_excludes` is opt-in and empty by default, so other projects are
+  coverage those excluded specs provided during dogfood runs. When every
+  selected test is excluded, Henitai reports the mutant as `NoCoverage` without
+  spawning an empty test run. Acceptable for dogfooding (those subsystems are
+  integration-heavy and awkward to mutation-test in-process anyway);
+  `test_excludes` is opt-in and empty by default, so other projects are
   unaffected.
 
 ## Deeper hardening (still open)
@@ -72,6 +73,8 @@ covers the practical need now.
 
 - Unit: `ExecutionEngine#reject_excluded_tests` drops matching globs, keeps the
   rest, and respects `FNM_PATHNAME` (glob does not cross `/`). ✅
+- Execution: linear and parallel paths classify an empty post-exclusion
+  selection as `NoCoverage` without spawning a child. ✅
 - Config: `test_excludes` loads, defaults to `[]`, rejects a non-array. ✅
 - Schema: `test_excludes` documented; sample `.henitai.yml` stays within the
   documented top-level keys. ✅

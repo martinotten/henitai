@@ -535,6 +535,7 @@ module Henitai
 
   module MutantIdentity
     def self.stable_id: (Mutant) -> String
+    def self.legacy_stable_id: (Mutant) -> String
   end
 
   class MutantHistoryStore
@@ -938,6 +939,7 @@ module Henitai
     def duration_for: (Mutant) -> Integer?
     def status_reason_for: (Mutant) -> String?
     def from_cache_for: (Mutant) -> bool?
+    def legacy_stable_id_for: (Mutant) -> String?
     def equivalence_uncertainty: () -> String?
     def stryker_status: (Symbol) -> String
   end

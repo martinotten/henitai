@@ -351,6 +351,12 @@ RSpec.describe Henitai::Configuration do
     end.to raise_error(Henitai::ConfigurationError, /mutation\.max_log_bytes/)
   end
 
+  it "aborts when max_log_bytes is zero" do
+    expect do
+      load_configuration("mutation:\n  max_log_bytes: 0\n")
+    end.to raise_error(Henitai::ConfigurationError, /mutation\.max_log_bytes/)
+  end
+
   it "aborts on a non-positive max_timeout" do
     expect do
       load_configuration("mutation:\n  max_timeout: 0\n")

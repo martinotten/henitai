@@ -89,6 +89,16 @@ RSpec.describe Henitai::CanonicalReportMerger do
       )
     end
 
+    it "replaces a prior mutant identified by the current mutant's legacy stable id" do
+      prior_path = write_prior(schema({ "x.rb" => file_entry(mutant_schema("legacy-x1", status: "Survived")) }))
+      replacement = mutant_schema("x1", status: "Killed").merge(legacyStableId: "legacy-x1")
+      current = schema({ "x.rb" => file_entry(replacement) })
+
+      merged = described_class.merge(current, prior_path)
+
+      expect(merged["files"]["x.rb"]["mutants"]).to eq([JSON.parse(JSON.generate(replacement))])
+    end
+
     it "drops a file left with zero mutants after its only mutant is overlaid elsewhere" do
       prior_path = write_prior(schema({ "x.rb" => file_entry(mutant_schema("x1")) }))
       current = schema({ "moved.rb" => file_entry(mutant_schema("x1")) })

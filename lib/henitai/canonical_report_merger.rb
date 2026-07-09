@@ -77,8 +77,8 @@ module Henitai
 
     def self.mutant_ids(schema)
       schema.fetch("files", {}).each_value.flat_map do |file|
-        file.fetch("mutants", []).map do |m|
-          m["stableId"]
+        file.fetch("mutants", []).flat_map do |mutant|
+          [mutant["stableId"], mutant["legacyStableId"]].compact
         end
       end.to_set
     end

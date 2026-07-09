@@ -95,10 +95,10 @@ module Henitai
 
       def validate_max_log_bytes(value)
         return if value.nil?
-        return if value.is_a?(Integer) && value >= 0
+        return if value.is_a?(Integer) && value.positive?
 
         Rules.configuration_error(
-          "Invalid configuration value for mutation.max_log_bytes: expected Integer >= 0, got #{value.inspect}"
+          "Invalid configuration value for mutation.max_log_bytes: expected Integer > 0, got #{value.inspect}"
         )
       end
 

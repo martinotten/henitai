@@ -263,6 +263,37 @@ RSpec.describe Henitai::ExecutionEngine do
     expect(result.map(&:status)).to eq(%i[killed ignored])
   end
 
+  it "marks a mutant as no coverage when test exclusions remove every selected test" do
+    pending = build_mutant(:pending, "Foo#bar")
+    integration = build_integration
+    config = build_config
+    config.define_singleton_method(:test_excludes) { ["spec/foo_spec.rb"] }
+
+    described_class.new.run([pending], integration, config)
+
+    expect(
+      [pending.status, pending.covered_by, pending.tests_completed, integration.calls[:run_mutant]]
+    ).to eq([:no_coverage, [], 0, 0])
+  end
+
+  it "does not spawn parallel workers when test exclusions remove every selected test" do
+    mutants = [build_mutant(:pending, "Foo#bar"), build_mutant(:pending, "Foo#baz")]
+    integration = instance_double(Henitai::Integration::Rspec)
+    spawn_calls = 0
+    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
+    allow(integration).to receive(:spawn_mutant) do
+      spawn_calls += 1
+      raise "should not spawn"
+    end
+    config = build_config
+    config.jobs = 2
+    config.define_singleton_method(:test_excludes) { ["spec/foo_spec.rb"] }
+
+    described_class.new.run(mutants, integration, config)
+
+    expect([mutants.map(&:status), spawn_calls]).to eq([%i[no_coverage no_coverage], 0])
+  end
+
   it "reports progress for pending mutants when a reporter is provided" do
     pending = build_mutant(:pending, "Foo#bar")
     skipped = build_mutant(:ignored, "Foo#baz")
