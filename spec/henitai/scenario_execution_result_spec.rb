@@ -425,4 +425,30 @@ RSpec.describe Henitai::ScenarioExecutionResult do
       )
     end
   end
+
+  describe "#release_output!" do
+    it "frees the captured output while preserving status and log path", :aggregate_failures do
+      result = described_class.new(
+        status: :killed,
+        stdout: "a" * 1_000,
+        stderr: "b" * 1_000,
+        log_path: "/tmp/run.log",
+        exit_status: 0
+      )
+
+      result.release_output!
+
+      expect(result.stdout).to eq("")
+      expect(result.stderr).to eq("")
+      expect(result.status).to eq(:killed)
+      expect(result.log_path).to eq("/tmp/run.log")
+      expect(result.exit_status).to eq(0)
+    end
+
+    it "returns self so it can be chained" do
+      result = described_class.new(status: :killed, stdout: "x", stderr: "y", log_path: "/tmp/run.log")
+
+      expect(result.release_output!).to be(result)
+    end
+  end
 end

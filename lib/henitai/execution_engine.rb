@@ -8,8 +8,10 @@ module Henitai
     def run(mutants, integration, config, progress_reporter: nil)
       with_reports_dir(config) do
         with_coverage_dir(config) do
-          with_worker_slot do
-            execute(mutants, integration, config, progress_reporter)
+          with_max_log_bytes(config) do
+            with_worker_slot do
+              execute(mutants, integration, config, progress_reporter)
+            end
           end
         end
       end
@@ -39,11 +41,7 @@ module Henitai
       ENV[SlotScheduler::WORKER_SLOT_ENV] = "0"
       yield
     ensure
-      if original.nil?
-        ENV.delete(SlotScheduler::WORKER_SLOT_ENV)
-      else
-        ENV[SlotScheduler::WORKER_SLOT_ENV] = original
-      end
+      restore_env(SlotScheduler::WORKER_SLOT_ENV, original)
     end
 
     def parallel_execution?(config, mutants)
@@ -120,10 +118,19 @@ module Henitai
       return config.timeout unless calibration_enabled?(config)
 
       calibrated = timeout_calibrator(config).timeout_for(test_files)
-      return calibrated if calibrated
+      return [calibrated, max_timeout(config)].min if calibrated
 
       warn_timeout_fallback_once
       Configuration::DEFAULT_TIMEOUT
+    end
+
+    # Ceiling on the auto-calibrated timeout so a runaway mutant is killed in
+    # seconds instead of running for minutes when the calibrated value (derived
+    # from a slow baseline) is large. A fixed mutation.timeout bypasses this.
+    def max_timeout(config)
+      return config.max_timeout if config.respond_to?(:max_timeout) && config.max_timeout
+
+      Configuration::DEFAULT_MAX_TIMEOUT
     end
 
     def calibration_enabled?(config)
@@ -205,27 +212,39 @@ module Henitai
     end
 
     def with_reports_dir(config)
-      original_reports_dir = ENV.fetch("HENITAI_REPORTS_DIR", nil)
+      original = ENV.fetch("HENITAI_REPORTS_DIR", nil)
       ENV["HENITAI_REPORTS_DIR"] = config.reports_dir
       yield
     ensure
-      if original_reports_dir.nil?
-        ENV.delete("HENITAI_REPORTS_DIR")
+      restore_env("HENITAI_REPORTS_DIR", original)
+    end
+
+    def with_max_log_bytes(config)
+      cap = config.respond_to?(:max_log_bytes) ? config.max_log_bytes : nil
+      return yield if cap.nil?
+
+      env_key = Integration::ScenarioLogSupport::MAX_LOG_BYTES_ENV
+      original = ENV.fetch(env_key, nil)
+      ENV[env_key] = cap.to_s
+      yield
+    ensure
+      restore_env(env_key, original) if cap
+    end
+
+    def restore_env(key, original)
+      if original.nil?
+        ENV.delete(key)
       else
-        ENV["HENITAI_REPORTS_DIR"] = original_reports_dir
+        ENV[key] = original
       end
     end
 
     def with_coverage_dir(config)
-      original_coverage_dir = ENV.fetch("HENITAI_COVERAGE_DIR", nil)
+      original = ENV.fetch("HENITAI_COVERAGE_DIR", nil)
       ENV["HENITAI_COVERAGE_DIR"] = mutation_coverage_dir(config)
       yield
     ensure
-      if original_coverage_dir.nil?
-        ENV.delete("HENITAI_COVERAGE_DIR")
-      else
-        ENV["HENITAI_COVERAGE_DIR"] = original_coverage_dir
-      end
+      restore_env("HENITAI_COVERAGE_DIR", original)
     end
 
     def mutation_coverage_dir(config)

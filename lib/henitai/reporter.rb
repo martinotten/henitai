@@ -290,9 +290,7 @@ module Henitai
       private
 
       def write_canonical(schema, authoritative:)
-        output = authoritative ? schema : CanonicalReportMerger.merge(schema, canonical_path)
-        FileUtils.mkdir_p(File.dirname(canonical_path))
-        File.write(canonical_path, JSON.pretty_generate(output))
+        CanonicalReportWriter.write(schema, path: canonical_path, authoritative:)
       end
 
       def write_session_snapshot(schema)
@@ -389,7 +387,11 @@ module Henitai
 
       def escaped_report_json(result)
         schema = result.to_stryker_schema
-        output = authoritative?(result) ? schema : CanonicalReportMerger.merge(schema, canonical_path)
+        output = if authoritative?(result)
+                   schema
+                 else
+                   CanonicalReportMerger.merge(schema, canonical_path, prune_missing: true)
+                 end
         JSON.pretty_generate(output)
             .gsub("&", "\\u0026")
             .gsub("<", "\\u003c")

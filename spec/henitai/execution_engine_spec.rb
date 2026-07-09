@@ -120,6 +120,19 @@ RSpec.describe Henitai::ExecutionEngine do
       end
     end
 
+    it "clamps a calibrated timeout above the configured ceiling" do
+      Dir.mktmpdir do |dir|
+        config = build_calibrating_config(dir, timeout_configured: false)
+        config.define_singleton_method(:max_timeout) { 30.0 }
+        write_timing_report(dir, "spec/foo_spec.rb" => 20.0) # 20 * 3.0 = 60s calibrated
+        integration = build_integration
+
+        described_class.new.run([build_mutant(:pending, "Foo#bar")], integration, config)
+
+        expect(integration.calls[:last_timeout]).to eq(30.0)
+      end
+    end
+
     it "falls back to the default timeout when timing data is missing" do
       Dir.mktmpdir do |dir|
         config = build_calibrating_config(dir, timeout_configured: false)

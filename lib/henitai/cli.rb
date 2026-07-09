@@ -34,12 +34,19 @@ module Henitai
     include OperatorCommand
 
     REPORT_CLEANUP_PATHS = [
-      %w[mutation-logs baseline.log],
-      %w[mutation-logs baseline.stdout.log],
-      %w[mutation-logs baseline.stderr.log],
       %w[coverage .resultset.json],
       %w[coverage .last_run.json],
       ["henitai_per_test.json"]
+    ].freeze
+
+    # Whole directories of per-mutant scratch artifacts, removed recursively.
+    # `mutation-logs` accumulates one stdout/stderr/combined log trio per
+    # mutant (and baseline) and `mutation-coverage` one dir per mutant, so both
+    # grow to GBs on a large run; deleting the tree is the only way to reclaim
+    # it (rm_f cannot remove a directory).
+    REPORT_CLEANUP_DIRS = [
+      %w[mutation-logs],
+      %w[mutation-coverage]
     ].freeze
 
     def self.start(argv)

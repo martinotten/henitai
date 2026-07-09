@@ -186,13 +186,13 @@ RSpec.describe Henitai::Integration::ScenarioLogSupport do
       end
     end
 
-    it "returns the four output file handles from open_child_output" do
+    it "returns the stream handles from open_child_output" do
       Dir.mktmpdir do |dir|
         support = described_class.new
         output_files = support.open_child_output(log_paths(dir))
 
         expect(output_files.keys).to contain_exactly(
-          :original_stdout, :original_stderr, :stdout_file, :stderr_file
+          :original_stdout, :original_stderr, :stdout, :stderr
         )
       ensure
         support.close_child_output(output_files)
@@ -204,10 +204,41 @@ RSpec.describe Henitai::Integration::ScenarioLogSupport do
         support = described_class.new
         paths = log_paths(dir)
         output_files = support.open_child_output(paths)
-        output_files[:stdout_file].write("captured out")
+        output_files[:stdout][:writer].write("captured out")
         support.close_child_output(output_files)
 
         expect(File.read(paths[:stdout_path])).to eq("captured out")
+      end
+    end
+
+    it "caps captured stdout at max_log_bytes and appends a truncation marker", :aggregate_failures do
+      with_env(described_class::MAX_LOG_BYTES_ENV, "100") do
+        Dir.mktmpdir do |dir|
+          support = described_class.new
+          paths = log_paths(dir)
+          output_files = support.open_child_output(paths)
+          output_files[:stdout][:writer].write("a" * 5_000)
+          support.close_child_output(output_files)
+
+          content = File.read(paths[:stdout_path])
+          expect(content).to start_with("a" * 100)
+          expect(content).not_to start_with("a" * 101)
+          expect(content).to include("truncated at 100 bytes")
+        end
+      end
+    end
+
+    it "does not append a truncation marker when output stays under the cap" do
+      with_env(described_class::MAX_LOG_BYTES_ENV, "1000") do
+        Dir.mktmpdir do |dir|
+          support = described_class.new
+          paths = log_paths(dir)
+          output_files = support.open_child_output(paths)
+          output_files[:stdout][:writer].write("small")
+          support.close_child_output(output_files)
+
+          expect(File.read(paths[:stdout_path])).to eq("small")
+        end
       end
     end
 

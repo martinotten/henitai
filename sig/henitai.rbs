@@ -145,6 +145,10 @@ module Henitai
     DEFAULT_JOBS: untyped
     DEFAULT_MAX_MUTANTS_PER_LINE: Integer
     DEFAULT_MAX_FLAKY_RETRIES: Integer
+    DEFAULT_MAX_LOG_BYTES: Integer
+    DEFAULT_MAX_TIMEOUT: Float
+    DEFAULT_CHECKPOINT_EVERY: Integer
+    DEFAULT_CHECKPOINT_INTERVAL: Float
     DEFAULT_REPORTS_DIR: String
     DEFAULT_COVERAGE_CRITERIA: Hash[Symbol, bool]
     DEFAULT_THRESHOLDS: Hash[Symbol, Integer]
@@ -159,12 +163,17 @@ module Henitai
     attr_reader ignore_patterns: Array[untyped]
     attr_reader max_mutants_per_line: Integer
     attr_reader max_flaky_retries: Integer
+    attr_reader max_log_bytes: Integer
+    attr_reader max_timeout: Float
     attr_reader sampling: untyped
     attr_reader jobs: untyped
     attr_reader coverage_criteria: Hash[Symbol, untyped]
     attr_reader thresholds: Hash[Symbol, Integer]
     attr_reader reporters: Array[String]
     attr_reader reports_dir: String
+    attr_reader checkpoint_enabled: bool
+    attr_reader checkpoint_every: Integer
+    attr_reader checkpoint_interval: Float
     attr_reader dashboard: Hash[Symbol, untyped]
     attr_reader all_logs: bool
 
@@ -179,6 +188,8 @@ module Henitai
     def apply_defaults: (Hash[Symbol, untyped]) -> void
     def apply_general_defaults: (Hash[Symbol, untyped]) -> void
     def apply_mutation_defaults: (Hash[Symbol, untyped]) -> void
+    def apply_mutation_limit_defaults: (Hash[Symbol, untyped]) -> void
+    def apply_reports_defaults: (Hash[Symbol, untyped]) -> void
     def apply_analysis_defaults: (Hash[Symbol, untyped]) -> void
     def merge_defaults: (Hash[Symbol, untyped], Hash[Symbol, untyped]?) -> Hash[Symbol, untyped]
     def resolve_integration_default: (untyped) -> untyped
@@ -633,7 +644,22 @@ module Henitai
   end
 
   module CanonicalReportMerger
-    def self.merge: (Hash[Symbol, untyped], String) -> Hash[String, untyped]
+    def self.merge: (Hash[Symbol, untyped], String, ?prune_missing: bool) -> Hash[String, untyped]
+  end
+
+  module CanonicalReportWriter
+    def self.write: (Hash[Symbol, untyped], path: String, authoritative: bool) -> void
+  end
+
+  class CheckpointReporter
+    def initialize: (config: untyped, source_provider: untyped, authoritative: bool, ?started_at: untyped, ?clock: untyped) -> void
+    def progress: (untyped, ?scenario_result: untyped) -> void
+  end
+
+  class CompositeProgressReporter
+    def self.for: (config: untyped, source_provider: untyped, full_run: bool) -> untyped?
+    def initialize: (Array[untyped]) -> void
+    def progress: (untyped, ?scenario_result: untyped) -> void
   end
 
   class MutationSkipDirectives

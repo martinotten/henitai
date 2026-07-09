@@ -93,6 +93,42 @@ module Henitai
         )
       end
 
+      def validate_max_log_bytes(value)
+        return if value.nil?
+        return if value.is_a?(Integer) && value >= 0
+
+        Rules.configuration_error(
+          "Invalid configuration value for mutation.max_log_bytes: expected Integer >= 0, got #{value.inspect}"
+        )
+      end
+
+      def validate_max_timeout(value)
+        return if value.nil?
+        return if value.is_a?(Numeric) && value.positive?
+
+        Rules.configuration_error(
+          "Invalid configuration value for mutation.max_timeout: expected positive Numeric, got #{value.inspect}"
+        )
+      end
+
+      def validate_checkpoint_every(value)
+        return if value.nil?
+        return if value.is_a?(Integer) && value.positive?
+
+        Rules.configuration_error(
+          "Invalid configuration value for reports.checkpoint_every: expected Integer > 0, got #{value.inspect}"
+        )
+      end
+
+      def validate_checkpoint_interval(value)
+        return if value.nil?
+        return if value.is_a?(Numeric) && value.positive?
+
+        Rules.configuration_error(
+          "Invalid configuration value for reports.checkpoint_interval: expected positive Numeric, got #{value.inspect}"
+        )
+      end
+
       def validate_sampling_ratio(value)
         return if value.nil?
         return if value.is_a?(Numeric) && value >= 0.0 && value <= 1.0

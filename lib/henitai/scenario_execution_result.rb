@@ -23,6 +23,18 @@ module Henitai
       @exit_status = exit_status
     end
 
+    # Frees the captured child output once it has been consumed (e.g. by the
+    # progress reporter). The scheduler retains one result per mutant for the
+    # whole run; without this a runaway mutant's multi-hundred-MB output would
+    # stay resident until the run ends. Status/log_path/exit_status are kept so
+    # the result stays usable for scoring and log lookups.
+    def release_output!
+      @stdout = ""
+      @stderr = ""
+      @log_text = nil
+      self
+    end
+
     def survived?
       status == :survived
     end

@@ -18,11 +18,15 @@ module Henitai
       thresholds
       reporters
       reports_dir
+      reports
       all_logs
       dashboard
       jobs
     ].freeze
-    VALID_MUTATION_KEYS = %i[operators timeout timeout_multiplier ignore_patterns max_flaky_retries sampling].freeze
+    VALID_MUTATION_KEYS = %i[
+      operators timeout timeout_multiplier ignore_patterns max_flaky_retries max_log_bytes max_timeout sampling
+    ].freeze
+    VALID_REPORTS_KEYS = %i[checkpoint checkpoint_every checkpoint_interval].freeze
     VALID_SAMPLING_KEYS = %i[ratio strategy].freeze
     VALID_COVERAGE_CRITERIA_KEYS = %i[test_result timeout process_abort].freeze
     VALID_THRESHOLDS_KEYS = %i[high low].freeze
@@ -37,6 +41,7 @@ module Henitai
       validate_jobs
       validate_reporters
       validate_reports_dir
+      validate_reports
       validate_all_logs
       validate_dashboard
       validate_mutation

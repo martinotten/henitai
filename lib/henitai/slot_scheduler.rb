@@ -164,6 +164,7 @@ module Henitai
         slot.mutant.status = result.status
         results << result
         progress_reporter&.progress(slot.mutant, scenario_result: result)
+        result.release_output! if result.respond_to?(:release_output!)
       end
     end
 

@@ -284,6 +284,63 @@ RSpec.describe Henitai::Configuration do
     expect(config.all_logs).to be(true)
   end
 
+  it "defaults the output cap and calibrated-timeout ceiling", :aggregate_failures do
+    config = load_configuration("integration:\n  name: rspec\n")
+
+    expect(config.max_log_bytes).to eq(described_class::DEFAULT_MAX_LOG_BYTES)
+    expect(config.max_timeout).to eq(described_class::DEFAULT_MAX_TIMEOUT)
+  end
+
+  it "loads a custom output cap and timeout ceiling", :aggregate_failures do
+    config = load_configuration(<<~YAML)
+      mutation:
+        max_log_bytes: 1048576
+        max_timeout: 15
+    YAML
+
+    expect(config.max_log_bytes).to eq(1_048_576)
+    expect(config.max_timeout).to eq(15)
+  end
+
+  it "defaults the checkpoint settings", :aggregate_failures do
+    config = load_configuration("integration:\n  name: rspec\n")
+
+    expect(config.checkpoint_enabled).to be(true)
+    expect(config.checkpoint_every).to eq(described_class::DEFAULT_CHECKPOINT_EVERY)
+    expect(config.checkpoint_interval).to eq(described_class::DEFAULT_CHECKPOINT_INTERVAL)
+  end
+
+  it "loads custom checkpoint settings", :aggregate_failures do
+    config = load_configuration(<<~YAML)
+      reports:
+        checkpoint: false
+        checkpoint_every: 50
+        checkpoint_interval: 10
+    YAML
+
+    expect(config.checkpoint_enabled).to be(false)
+    expect(config.checkpoint_every).to eq(50)
+    expect(config.checkpoint_interval).to eq(10)
+  end
+
+  it "aborts on a non-positive max_log_bytes" do
+    expect do
+      load_configuration("mutation:\n  max_log_bytes: -1\n")
+    end.to raise_error(Henitai::ConfigurationError, /mutation\.max_log_bytes/)
+  end
+
+  it "aborts on a non-positive max_timeout" do
+    expect do
+      load_configuration("mutation:\n  max_timeout: 0\n")
+    end.to raise_error(Henitai::ConfigurationError, /mutation\.max_timeout/)
+  end
+
+  it "aborts on a non-positive checkpoint_every" do
+    expect do
+      load_configuration("reports:\n  checkpoint_every: 0\n")
+    end.to raise_error(Henitai::ConfigurationError, /reports\.checkpoint_every/)
+  end
+
   it "aborts on invalid mutation operators" do
     expect do
       load_configuration(<<~YAML)

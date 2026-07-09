@@ -51,6 +51,14 @@
           "type": "integer",
           "minimum": 0
         },
+        "max_log_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_timeout": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
         "ignore_patterns": {
           "type": "array",
           "items": {
@@ -109,6 +117,23 @@
     },
     "reports_dir": {
       "type": "string"
+    },
+    "reports": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "checkpoint": {
+          "type": "boolean"
+        },
+        "checkpoint_every": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "checkpoint_interval": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
     },
     "dashboard": {
       "type": "object",

@@ -167,4 +167,29 @@ RSpec.describe Henitai::CanonicalReportMerger do
       )
     end
   end
+
+  describe ".merge with prune_missing: true" do
+    it "drops a prior file entry whose source file no longer exists on disk" do
+      prior_path = write_prior(schema({
+                                        "gone.rb" => file_entry(mutant_schema("g1")),
+                                        "kept.rb" => file_entry(mutant_schema("k1"))
+                                      }))
+      File.write("kept.rb", "# still here\n")
+      current = schema({ "other.rb" => file_entry(mutant_schema("o1")) })
+      File.write("other.rb", "# current run\n")
+
+      merged = described_class.merge(current, prior_path, prune_missing: true)
+
+      expect(merged["files"].keys).to contain_exactly("kept.rb", "other.rb")
+    end
+
+    it "keeps a missing prior file entry when pruning is off (default)" do
+      prior_path = write_prior(schema({ "gone.rb" => file_entry(mutant_schema("g1")) }))
+      current = schema({ "other.rb" => file_entry(mutant_schema("o1")) })
+
+      merged = described_class.merge(current, prior_path)
+
+      expect(merged["files"].keys).to contain_exactly("gone.rb", "other.rb")
+    end
+  end
 end

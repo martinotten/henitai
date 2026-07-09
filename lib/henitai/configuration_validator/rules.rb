@@ -50,6 +50,17 @@ module Henitai
         Scalars.validate_optional_string(raw[:reports_dir], "reports_dir")
       end
 
+      def validate_reports(raw)
+        value = raw[:reports]
+        return if value.nil?
+
+        ensure_hash!(value, "reports")
+        warn_unknown_keys(value, VALID_REPORTS_KEYS, "reports")
+        Scalars.validate_boolean(value[:checkpoint], "reports.checkpoint") unless value[:checkpoint].nil?
+        Scalars.validate_checkpoint_every(value[:checkpoint_every])
+        Scalars.validate_checkpoint_interval(value[:checkpoint_interval])
+      end
+
       def validate_all_logs(raw)
         value = raw[:all_logs]
         return if value.nil?
@@ -83,6 +94,8 @@ module Henitai
         Scalars.validate_timeout(value[:timeout])
         Scalars.validate_timeout_multiplier(value[:timeout_multiplier])
         Scalars.validate_max_flaky_retries(value[:max_flaky_retries])
+        Scalars.validate_max_log_bytes(value[:max_log_bytes])
+        Scalars.validate_max_timeout(value[:max_timeout])
       end
 
       def validate_mutation_filters(value)
