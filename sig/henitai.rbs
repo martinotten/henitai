@@ -632,6 +632,10 @@ module Henitai
     def self?.combined_content_sha: (untyped) -> String?
   end
 
+  module CanonicalReportMerger
+    def self.merge: (Hash[Symbol, untyped], String) -> Hash[String, untyped]
+  end
+
   class MutationSkipDirectives
     def skip?: (Mutant) -> bool
     def directive_for: (Mutant) -> untyped
@@ -727,6 +731,8 @@ module Henitai
 
       def config: () -> Configuration
       def history_store: () -> MutantHistoryStore?
+      def authoritative?: (untyped) -> bool
+      def canonical_path: () -> String
     end
 
     class Terminal < Base
@@ -770,13 +776,12 @@ module Henitai
 
       private
 
-      def write_canonical: (Hash[Symbol, untyped]) -> void
+      def write_canonical: (Hash[Symbol, untyped], authoritative: bool) -> void
       def write_session_snapshot: (Hash[Symbol, untyped]) -> void
       def write_activation_recipes: (untyped) -> void
       def survived_mutants_for: (untyped) -> Array[Mutant]
       def session_snapshot_path: (String) -> String
       def session_recipe_path: (String) -> String
-      def canonical_path: () -> String
       def write_history_report: () -> void
       def default_history_store: () -> MutantHistoryStore
       def history_report_path: () -> String
@@ -880,8 +885,9 @@ module Henitai
     attr_reader session_id: String
     attr_reader git_sha: String?
 
-    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time, ?thresholds: Hash[Symbol, Integer]?, ?partial_rerun: bool, ?survivor_stats: Hash[Symbol, untyped]?, ?session_id: String, ?git_sha: String?, ?source_provider: ^(String) -> String) -> void
+    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time, ?thresholds: Hash[Symbol, Integer]?, ?partial_rerun: bool, ?survivor_stats: Hash[Symbol, untyped]?, ?session_id: String, ?git_sha: String?, ?source_provider: ^(String) -> String, ?authoritative: bool) -> void
     def partial_rerun?: () -> bool
+    def authoritative?: () -> bool
     def killed: () -> Integer
     def survived: () -> Integer
     def equivalent: () -> Integer
@@ -988,6 +994,7 @@ module Henitai
     private
 
     def build_result: (Array[Mutant], Time, Time) -> Result
+    def build_result_object: (Array[Mutant], Time, Time) -> Result
     def pipeline_mutants: () -> Array[Mutant]
     def apply_incremental_filter: (Array[Mutant]) -> Array[Mutant]
     def dry_run_result: (Array[Mutant], Time, Time) -> Result
@@ -999,6 +1006,7 @@ module Henitai
     def with_reports_dir: () { () -> untyped } -> untyped
     def result_thresholds: () -> Hash[Symbol, Integer]?
     def survivor_rerun?: () -> bool
+    def full_run?: () -> bool
     def survivor_strategy: () -> SurvivorRerunStrategy
     def safe_head_sha: () -> String?
   end

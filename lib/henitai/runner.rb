@@ -79,16 +79,7 @@ module Henitai
     # a Result without executing tests, persisting history or running the
     # configured reporters — reports/ stays untouched.
     def dry_run_result(mutants, started_at, finished_at)
-      @result = Result.new(
-        mutants:,
-        started_at:,
-        finished_at:,
-        thresholds: result_thresholds,
-        partial_rerun: survivor_rerun?,
-        survivor_stats: survivor_strategy.survivor_stats,
-        git_sha: safe_head_sha,
-        source_provider: source_provider
-      )
+      @result = build_result_object(mutants, started_at, finished_at)
       Reporter::DryRun.new(config:).report(@result)
       @result
     end
@@ -156,7 +147,14 @@ module Henitai
     end
 
     def build_result(mutants, started_at, finished_at)
-      @result = Result.new(
+      @result = build_result_object(mutants, started_at, finished_at)
+      persist_history(@result, finished_at)
+      report(@result)
+      @result
+    end
+
+    def build_result_object(mutants, started_at, finished_at)
+      Result.new(
         mutants:,
         started_at:,
         finished_at:,
@@ -164,11 +162,9 @@ module Henitai
         partial_rerun: survivor_rerun?,
         survivor_stats: survivor_strategy.survivor_stats,
         git_sha: safe_head_sha,
-        source_provider: source_provider
+        source_provider: source_provider,
+        authoritative: full_run?
       )
-      persist_history(@result, finished_at)
-      report(@result)
-      @result
     end
 
     # Reads each source file once and caches it, so Result consumes source
@@ -296,6 +292,12 @@ module Henitai
 
     def survivor_rerun?
       !@survivors_from.nil?
+    end
+
+    # Mutation-scope full run, controlling Result#authoritative? — distinct
+    # from the per-test-coverage plan's test-suite-scope "full run".
+    def full_run?
+      pattern_subjects.empty? && @since.nil? && !survivor_rerun?
     end
 
     def survivor_strategy

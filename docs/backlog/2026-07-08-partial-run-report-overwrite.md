@@ -1,6 +1,6 @@
 # Scoped/Partial Runs Overwrite the Canonical Report Instead of Merging
 
-Status: backlog
+Status: done (2026-07-09)
 Date: 2026-07-08
 Severity: Medium
 Source: discovered while fixing survived mutants in `AvailableCpuCount` with a subject-scoped run
@@ -84,3 +84,19 @@ resolution cover 100% of configured `includes`."
   rerun mutants' entries update in place.
 - HTML reporter gets the same merge behavior (or explicitly documented
   as JSON-only if scoping the fix).
+
+## Resolution (2026-07-09)
+
+Implemented per the plan: new `Henitai::CanonicalReportMerger` (pure,
+`stableId`-keyed, fail-safe — any anomaly, including a merge that would end
+up thinner than the current run alone, falls back to the current schema
+alone). `Result#authoritative?` (default `true`) and `Runner#full_run?`
+(`pattern_subjects.empty? && @since.nil? && !survivor_rerun?`) gate whether
+`Reporter::Json`/`Html` fully replace `mutation-report.json` or merge into
+it; session snapshots and activation recipes stay current-run-only as
+planned. Both reporters share the merge via `Reporter::Base`.
+
+Verified end-to-end on the dogfood repo: two sequential subject-scoped runs
+(`CanonicalReportMerger`, then `Result*`) grew the canonical report from 2
+files/277 mutants to 3 files/594 mutants, with the first run's files
+byte-unchanged — no data lost across scoped runs.

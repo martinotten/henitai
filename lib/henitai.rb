@@ -43,6 +43,7 @@ module Henitai
   autoload :IncrementalFilter, "henitai/incremental_filter"
   autoload :VerdictFingerprint, "henitai/verdict_fingerprint"
   autoload :StillbornFilter, "henitai/stillborn_filter"
+  autoload :CanonicalReportMerger, "henitai/canonical_report_merger"
   autoload :SurvivorLoader,          "henitai/survivor_loader"
   autoload :SurvivorSelector,        "henitai/survivor_selector"
   autoload :SurvivorTestFilter,      "henitai/survivor_test_filter"

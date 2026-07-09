@@ -14,8 +14,8 @@ RSpec.describe Henitai::Reporter::Json do
     Struct.new(:reports_dir).new(reports_dir)
   end
 
-  def build_result(schema:)
-    Struct.new(:to_stryker_schema).new(schema)
+  def build_result(schema:, authoritative: true)
+    Struct.new(:to_stryker_schema, :authoritative?).new(schema, authoritative)
   end
 
   def build_history_mutant
@@ -99,6 +99,65 @@ RSpec.describe Henitai::Reporter::Json do
       report_path = File.join(reports_dir, "mutation-report.json")
 
       expect(JSON.parse(File.read(report_path), symbolize_names: true)).to eq(schema)
+    end
+  end
+
+  it "fully replaces the canonical report when the run is authoritative, even if one exists" do
+    Dir.mktmpdir do |dir|
+      reports_dir = File.join(dir, "reports")
+      report_path = File.join(reports_dir, "mutation-report.json")
+      FileUtils.mkdir_p(reports_dir)
+      File.write(report_path, JSON.pretty_generate(
+                                { schemaVersion: "1.0", thresholds: { high: 80, low: 60 },
+                                  files: { "stale.rb" => { mutants: [] } } }
+                              ))
+      schema = { schemaVersion: "1.0", thresholds: { high: 80, low: 60 }, files: {} }
+
+      described_class.new(config: build_config(reports_dir:)).report(build_result(schema:, authoritative: true))
+
+      expect(JSON.parse(File.read(report_path), symbolize_names: true)).to eq(schema)
+    end
+  end
+
+  it "merges into the existing canonical report when the run is not authoritative" do
+    Dir.mktmpdir do |dir|
+      reports_dir = File.join(dir, "reports")
+      report_path = File.join(reports_dir, "mutation-report.json")
+      FileUtils.mkdir_p(reports_dir)
+      File.write(report_path, JSON.pretty_generate(
+                                { schemaVersion: "1.0", thresholds: { high: 80, low: 60 },
+                                  files: { "old.rb" => { language: "ruby", source: "", mutants: [
+                                    { id: "1", stableId: "old1", mutatorName: "X", status: "Killed" }
+                                  ] } } }
+                              ))
+      schema = { schemaVersion: "1.0", thresholds: { high: 80, low: 60 },
+                 files: { "new.rb" => { language: "ruby", source: "", mutants: [
+                   { id: "2", stableId: "new1", mutatorName: "X", status: "Killed" }
+                 ] } } }
+
+      described_class.new(config: build_config(reports_dir:)).report(build_result(schema:, authoritative: false))
+
+      merged = JSON.parse(File.read(report_path))
+      expect(merged["files"].keys).to contain_exactly("old.rb", "new.rb")
+    end
+  end
+
+  it "does not merge the session snapshot even when the canonical report is merged" do
+    Dir.mktmpdir do |dir|
+      reports_dir = File.join(dir, "reports")
+      FileUtils.mkdir_p(reports_dir)
+      File.write(File.join(reports_dir, "mutation-report.json"), JSON.pretty_generate(
+                                                                   { schemaVersion: "1.0",
+                                                                     thresholds: { high: 80, low: 60 },
+                                                                     files: { "old.rb" => { mutants: [] } } }
+                                                                 ))
+      schema = { schemaVersion: "1.0", sessionId: "sess-1", thresholds: { high: 80, low: 60 },
+                 files: { "new.rb" => { mutants: [] } } }
+
+      described_class.new(config: build_config(reports_dir:)).report(build_result(schema:, authoritative: false))
+
+      snapshot_path = File.join(reports_dir, "sessions", "sess-1", "mutation-report.json")
+      expect(JSON.parse(File.read(snapshot_path))).to eq(JSON.parse(JSON.generate(schema)))
     end
   end
 

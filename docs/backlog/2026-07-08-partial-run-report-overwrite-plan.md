@@ -1,7 +1,6 @@
 # Implementation Plan: Merge Canonical Report on Scoped/Partial Runs
 
-Status: plan (designed by an Opus subagent, informed by the per-test-coverage
-completeness verification pass)
+Status: implemented (2026-07-09, see Resolution in the parent ticket)
 Parent ticket: `docs/backlog/2026-07-08-partial-run-report-overwrite.md`
 Date: 2026-07-08
 

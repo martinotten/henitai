@@ -22,11 +22,16 @@ module Henitai
     #   already knows the file paths) supplies the contents. The default
     #   provider returns "" for every file — callers that need real source in
     #   the schema (e.g. the runner) inject a provider primed with file content.
+    # @param authoritative [Boolean] whether this run covers the full
+    #   configured mutation scope. Authoritative runs fully replace the
+    #   canonical report; non-authoritative (subject-scoped, --since,
+    #   --survivors-from) runs are merged into it instead — see
+    #   CanonicalReportMerger.
     # rubocop:disable Metrics/ParameterLists
     def initialize(mutants:, started_at:, finished_at:, thresholds: nil,
                    partial_rerun: false, survivor_stats: nil,
                    session_id: SecureRandom.uuid, git_sha: nil,
-                   source_provider: ->(_file) { "" })
+                   source_provider: ->(_file) { "" }, authoritative: true)
       @mutants         = mutants
       @started_at      = started_at
       @finished_at     = finished_at
@@ -36,10 +41,12 @@ module Henitai
       @session_id      = session_id
       @git_sha         = git_sha
       @source_provider = source_provider
+      @authoritative   = authoritative
     end
     # rubocop:enable Metrics/ParameterLists
 
     def partial_rerun? = @partial_rerun
+    def authoritative? = @authoritative
 
     # @return [Integer] number of killed mutants
     def killed   = mutants.count(&:killed?)

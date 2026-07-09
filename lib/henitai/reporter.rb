@@ -56,6 +56,21 @@ module Henitai
       private
 
       attr_reader :config, :history_store
+
+      # Authoritative (full) runs fully replace the canonical report;
+      # scoped/partial runs merge into it (CanonicalReportMerger) so
+      # findings for files outside this run's scope aren't lost.
+      def authoritative?(result)
+        return true unless result.respond_to?(:authoritative?)
+
+        result.authoritative?
+      end
+
+      # The merge source of truth is always the JSON canonical report, even
+      # for the HTML reporter, which embeds the same merged schema.
+      def canonical_path
+        File.join(config.reports_dir, "mutation-report.json")
+      end
     end
 
     # Terminal reporter.
@@ -266,7 +281,7 @@ module Henitai
     class Json < Base
       def report(result)
         schema = result.to_stryker_schema
-        write_canonical(schema)
+        write_canonical(schema, authoritative: authoritative?(result))
         write_session_snapshot(schema)
         write_activation_recipes(result)
         write_history_report
@@ -274,9 +289,10 @@ module Henitai
 
       private
 
-      def write_canonical(schema)
+      def write_canonical(schema, authoritative:)
+        output = authoritative ? schema : CanonicalReportMerger.merge(schema, canonical_path)
         FileUtils.mkdir_p(File.dirname(canonical_path))
-        File.write(canonical_path, JSON.pretty_generate(schema))
+        File.write(canonical_path, JSON.pretty_generate(output))
       end
 
       def write_session_snapshot(schema)
@@ -313,10 +329,6 @@ module Henitai
 
       def session_recipe_path(session_id)
         File.join(config.reports_dir, "sessions", session_id, SurvivorActivationCache::FILENAME)
-      end
-
-      def canonical_path
-        File.join(config.reports_dir, "mutation-report.json")
       end
 
       def write_history_report
@@ -376,7 +388,9 @@ module Henitai
       end
 
       def escaped_report_json(result)
-        JSON.pretty_generate(result.to_stryker_schema)
+        schema = result.to_stryker_schema
+        output = authoritative?(result) ? schema : CanonicalReportMerger.merge(schema, canonical_path)
+        JSON.pretty_generate(output)
             .gsub("&", "\\u0026")
             .gsub("<", "\\u003c")
             .gsub(">", "\\u003e")

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "json"
 require "spec_helper"
 require "tmpdir"
@@ -9,8 +10,8 @@ RSpec.describe Henitai::Reporter::Html do
     Struct.new(:reports_dir).new(reports_dir)
   end
 
-  def build_result(schema:)
-    Struct.new(:to_stryker_schema).new(schema)
+  def build_result(schema:, authoritative: true)
+    Struct.new(:to_stryker_schema, :authoritative?).new(schema, authoritative)
   end
 
   def extract_report_json(html)
@@ -57,6 +58,34 @@ RSpec.describe Henitai::Reporter::Html do
           extract_report_json(html)
         ]
       ).to eq([true, schema])
+    end
+  end
+
+  it "embeds the same merged schema as the canonical JSON report when not authoritative" do
+    Dir.mktmpdir do |dir|
+      reports_dir = File.join(dir, "reports")
+      FileUtils.mkdir_p(reports_dir)
+      canonical_path = File.join(reports_dir, "mutation-report.json")
+      File.write(canonical_path, JSON.pretty_generate(
+                                   { schemaVersion: "1.0", thresholds: { high: 80, low: 60 },
+                                     files: { "old.rb" => { language: "ruby", source: "", mutants: [
+                                       { id: "1", stableId: "old1", mutatorName: "X", status: "Killed" }
+                                     ] } } }
+                                 ))
+      schema = { schemaVersion: "1.0", thresholds: { high: 80, low: 60 },
+                 files: { "new.rb" => { language: "ruby", source: "", mutants: [
+                   { id: "2", stableId: "new1", mutatorName: "X", status: "Killed" }
+                 ] } } }
+
+      result = build_result(schema:, authoritative: false)
+      Henitai::Reporter::Json.new(config: build_config(reports_dir:)).report(result)
+      described_class.new(config: build_config(reports_dir:)).report(result)
+
+      html = File.read(File.join(reports_dir, "mutation-report.html"))
+      embedded = JSON.parse(JSON.generate(extract_report_json(html)))
+      canonical = JSON.parse(File.read(canonical_path))
+
+      expect(canonical).to eq(embedded)
     end
   end
 end

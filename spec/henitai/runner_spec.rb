@@ -1537,7 +1537,7 @@ RSpec.describe Henitai::Runner do
         subject_resolver:, mutant_generator:, static_filter:,
         execution_engine:, integration:, history_store:
       )
-      allow(subject_resolver).to receive(:resolve_from_files).and_return([])
+      allow(subject_resolver).to receive_messages(resolve_from_files: [], apply_pattern: [])
       allow(mutant_generator).to receive(:generate).and_return([])
       allow(static_filter).to receive(:apply) { |m, _| m }
       allow(execution_engine).to receive(:run).and_return([])
@@ -1546,7 +1546,7 @@ RSpec.describe Henitai::Runner do
     end
     # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
 
-    it "marks the result as a partial rerun when survivors_from is given" do
+    it "marks the result as a partial, non-authoritative rerun when survivors_from is given" do
       Dir.mktmpdir do |dir|
         FileUtils.mkdir_p(File.join(dir, "lib"))
         File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
@@ -1566,13 +1566,13 @@ RSpec.describe Henitai::Runner do
           runner.run
 
           expect(Henitai::Result).to have_received(:new).with(
-            hash_including(partial_rerun: true)
+            hash_including(partial_rerun: true, authoritative: false)
           )
         end
       end
     end
 
-    it "does not mark the result as partial rerun for normal runs" do
+    it "marks the result as an authoritative full run when unscoped" do
       Dir.mktmpdir do |dir|
         FileUtils.mkdir_p(File.join(dir, "lib"))
         File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
@@ -1586,8 +1586,47 @@ RSpec.describe Henitai::Runner do
           runner.run
 
           expect(Henitai::Result).to have_received(:new).with(
-            hash_including(partial_rerun: false)
+            hash_including(partial_rerun: false, authoritative: true)
           )
+        end
+      end
+    end
+
+    it "marks the result as non-authoritative when subject patterns scope the run" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "lib"))
+        File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+        Dir.chdir(dir) do
+          config = build_config(reporters: [])
+          result = instance_double(Henitai::Result, partial_rerun?: false)
+          runner = described_class.new(config:, subjects: [Henitai::Subject.parse("Sample*")])
+          setup_runner_doubles(runner, config, result)
+
+          runner.run
+
+          expect(Henitai::Result).to have_received(:new).with(hash_including(authoritative: false))
+        end
+      end
+    end
+
+    it "marks the result as non-authoritative when --since scopes the run" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "lib"))
+        File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+        Dir.chdir(dir) do
+          config = build_config(reporters: [])
+          result = instance_double(Henitai::Result, partial_rerun?: false)
+          runner = described_class.new(config:, since: "HEAD~1")
+          setup_runner_doubles(runner, config, result)
+          allow(runner).to receive(:git_diff_analyzer).and_return(
+            instance_double(Henitai::GitDiffAnalyzer, changed_files: [], head_sha: "abc123")
+          )
+
+          runner.run
+
+          expect(Henitai::Result).to have_received(:new).with(hash_including(authoritative: false))
         end
       end
     end
