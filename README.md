@@ -275,6 +275,7 @@ git clone https://github.com/martinotten/henitai
 cd henitai
 bundle install
 bundle exec rspec        # run tests
+bundle exec ruby bin/verify-process-free-specs # verify self-mutation-safe specs
 bundle exec rake smoke:integration:all # run rspec/minitest integration smoke projects
 bundle exec rubocop      # lint
 bundle exec henitai clean # remove stale generated report artifacts

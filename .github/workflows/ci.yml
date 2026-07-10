@@ -33,6 +33,9 @@ jobs:
       - name: Run specs
         run: bundle exec rspec
 
+      - name: Verify mutation-safe specs do not spawn processes
+        run: bundle exec ruby bin/verify-process-free-specs
+
       - name: Run integration smoke projects
         run: bundle exec rake smoke:integration:all
 

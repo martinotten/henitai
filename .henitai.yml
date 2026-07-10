@@ -1,18 +1,11 @@
 # yaml-language-server: $schema=./assets/schema/henitai.schema.json
 includes:
   - lib
-# Specs that themselves spawn henitai/forked subprocesses (the CLI end-to-end
-# run and the process-scheduler / integration fork specs). Running them as a
-# mutant's tests re-launches nested henitai process trees, multiplying
-# processes, wall-clock and captured-log noise when dogfooding henitai on
-# itself. Excluding them from per-mutant test selection keeps the fork tree
-# flat; the trade-off is reduced mutation coverage of the CLI/execution
-# subsystem during dogfood runs.
+# Process-boundary specs still run in the normal suite, but not inside mutant
+# children. All other specs are verified to run without starting child
+# processes so self-mutation keeps a flat, jobs-bounded worker tree.
 test_excludes:
-  - spec/henitai/cli_spec.rb
-  - spec/henitai/process_worker_runner_spec.rb
-  - spec/henitai/slot_scheduler_spec.rb
-  - spec/henitai/integration/*_spec.rb
+  - spec/**/*_process_spec.rb
 reporters:
   - terminal
   - json

@@ -1,6 +1,6 @@
 # Self-Dogfood Runs Amplify Processes via Specs That Re-Launch henitai
 
-Status: implemented (2026-07-09, config-level mitigation; deeper guard left open)
+Status: implemented (2026-07-10, process-free spec convention and CI guard)
 Date: 2026-07-09
 Severity: Medium
 Source: observed while investigating a long-running dogfood run — a single
@@ -51,23 +51,22 @@ CLI and process-forking specs above, keeping the fork tree flat.
   array, documented in `assets/schema/henitai.schema.json` and RBS.
 - Filter matches on `File.expand_path` + `File.fnmatch?(…, File::FNM_PATHNAME)`
   so a `*` glob does not cross directory boundaries.
-- **Trade-off:** mutants in the CLI / execution-scheduler subsystem lose the
-  coverage those excluded specs provided during dogfood runs. When every
-  selected test is excluded, Henitai reports the mutant as `NoCoverage` without
-  spawning an empty test run. Acceptable for dogfooding (those subsystems are
-  integration-heavy and awkward to mutation-test in-process anyway);
-  `test_excludes` is opt-in and empty by default, so other projects are
-  unaffected.
+- Process-boundary examples now live in files named `*_process_spec.rb`; this
+  repository excludes only `spec/**/*_process_spec.rb` during self-mutation.
+- CLI, scheduler and in-process integration examples remain eligible for
+  mutation selection. Real fork/spawn/Open3 contracts still run in the normal
+  suite.
+- `bin/verify-process-free-specs` runs every mutation-eligible spec with a
+  process guard and fails on attempted child creation, including attempts whose
+  immediate exception is caught by the code under test.
 
-## Deeper hardening (still open)
+## Runtime guard decision
 
-`test_excludes` is a per-repo mitigation, not a structural guard. Each forked
-mutant child already exports `HENITAI_MUTANT_ID` (`rspec_process_runner.rb`).
-A nested henitai invocation could detect it (or a dedicated nesting-depth env)
-and refuse to start a real mutation run / real forks — capping recursion depth
-regardless of which specs are selected. That is more invasive (must not break
-the specs that legitimately test forking) and is deferred; `test_excludes`
-covers the practical need now.
+Each forked mutant child exports `HENITAI_MUTANT_ID`, but Henitai does not refuse
+nested runs in production. Such a guard could turn an accidental nested call
+into a false mutant kill and change behavior for suites that intentionally run
+Henitai. The repository instead enforces process-free mutation-eligible specs
+in CI and retains the environment variable for diagnostics.
 
 ## Test Plan
 

@@ -18,6 +18,7 @@ RSpec.describe "CI workflow" do
       "bundle exec rubocop --parallel",
       "bundle exec steep check",
       "bundle exec rspec",
+      "bundle exec ruby bin/verify-process-free-specs",
       "bundle exec rake smoke:integration:all"
     )
   end

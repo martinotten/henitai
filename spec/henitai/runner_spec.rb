@@ -30,6 +30,13 @@ RSpec.describe Henitai::Runner do
     allow(Henitai::CoverageBootstrapper).to receive(:new).and_return(
       coverage_bootstrapper
     )
+
+    git_diff_analyzer = instance_double(
+      Henitai::GitDiffAnalyzer,
+      head_sha: nil,
+      working_tree_changed_files: []
+    )
+    allow(Henitai::GitDiffAnalyzer).to receive(:new).and_return(git_diff_analyzer)
   end
 
   it "loads configuration by default" do
@@ -1816,6 +1823,7 @@ RSpec.describe Henitai::Runner do
 
   describe "#git_diff_analyzer" do
     it "instantiates a GitDiffAnalyzer" do
+      allow(Henitai::GitDiffAnalyzer).to receive(:new).and_call_original
       runner = described_class.new(config: build_config)
       expect(runner.send(:git_diff_analyzer)).to be_a(Henitai::GitDiffAnalyzer)
     end
