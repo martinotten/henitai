@@ -5,10 +5,18 @@ require "tmpdir"
 require "stringio"
 
 RSpec.describe Henitai::CLI do
+  before do
+    protected_config = File.expand_path("../../.henitai.yml", __dir__)
+    allow(File).to receive(:write).and_wrap_original do |original, path, *args, **kwargs|
+      SpecSupport::ProtectedProjectFiles.check_write!(path, [protected_config])
+      original.call(path, *args, **kwargs)
+    end
+  end
+
   # Each example that needs a workspace opens its own Dir.mktmpdir and passes
   # explicit paths (--config, reports_dir, init PATH) into the CLI, so no global
-  # Dir.chdir is needed. Mutating process-wide cwd is unsafe under random order
-  # and future parallel execution.
+  # Dir.chdir is needed. The write guard protects the tracked project config if
+  # a mutant redirects an explicit temporary path back to the default path.
   def write_configuration(dir, reports_dir: nil)
     reports_dir ||= File.join(dir, "reports")
     path = File.join(dir, ".henitai.yml")
@@ -836,6 +844,14 @@ RSpec.describe Henitai::CLI do
   # inside its own tmpdir instead of relying on (and mutating) the global cwd.
   def init_path(dir, name = ".henitai.yml")
     File.join(dir, name)
+  end
+
+  it "refuses to overwrite the repository configuration" do
+    path = File.expand_path("../../.henitai.yml", __dir__)
+
+    expect { File.write(path, "unsafe") }.to raise_error(
+      SpecSupport::ProtectedProjectFiles::ProtectedWrite
+    )
   end
 
   it "creates a default configuration file during init" do
