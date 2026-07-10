@@ -1,9 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
-require "open3"
 require "spec_helper"
-require "timeout"
 require "tmpdir"
 
 RSpec.describe Henitai::Integration::Rspec do
@@ -45,97 +43,6 @@ RSpec.describe Henitai::Integration::Rspec do
     stdout.string
   ensure
     $stdout = original_stdout
-  end
-
-  def repo_gemfile
-    File.expand_path("../../../Gemfile", __dir__)
-  end
-
-  def real_child_mutant_script(source_path, spec_path)
-    <<~RUBY
-      require "henitai"
-
-      source_path = #{source_path.dump}
-      spec_path = #{spec_path.dump}
-      require source_path
-      subject = Henitai::SubjectResolver.new.resolve_from_files([source_path]).find do |candidate|
-        candidate.expression == "IntegrationRealActivationSample.value"
-      end
-      mutant = Henitai::MutantGenerator.new.generate(
-        [subject],
-        [Henitai::Operators::ArithmeticOperator.new]
-      ).first
-      result = Henitai::Integration::Rspec.new.run_mutant(
-        mutant: mutant,
-        test_files: [spec_path],
-        timeout: 5.0
-      )
-
-      abort("unexpected=\#{result.status}\\n\#{result.combined_output}") unless result.killed?
-
-      puts result.status
-    RUBY
-  end
-
-  def real_child_zero_examples_script(source_path, spec_path)
-    <<~RUBY
-      require "henitai"
-
-      source_path = #{source_path.dump}
-      spec_path = #{spec_path.dump}
-      require source_path
-      subject = Henitai::SubjectResolver.new.resolve_from_files([source_path]).find do |candidate|
-        candidate.expression == "IntegrationRealActivationSample.value"
-      end
-      mutant = Henitai::MutantGenerator.new.generate(
-        [subject],
-        [Henitai::Operators::ArithmeticOperator.new]
-      ).first
-      result = Henitai::Integration::Rspec.new.run_mutant(
-        mutant: mutant,
-        test_files: [spec_path],
-        timeout: 5.0
-      )
-
-      zero_examples_output =
-        result.combined_output.include?("No examples found.") ||
-        result.combined_output.include?("0 examples, 0 failures")
-
-      unless result.status == :compile_error && zero_examples_output
-        abort("unexpected=\#{result.status}\\n\#{result.combined_output}")
-      end
-
-      puts result.status
-    RUBY
-  end
-
-  def run_real_child_mutant(dir, source_path, spec_path)
-    Open3.capture3(
-      { "BUNDLE_GEMFILE" => repo_gemfile },
-      "bundle", "exec", "ruby", "-e", real_child_mutant_script(source_path, spec_path),
-      chdir: dir
-    )
-  end
-
-  def run_real_child_zero_examples_mutant(dir, source_path, spec_path)
-    Open3.capture3(
-      { "BUNDLE_GEMFILE" => repo_gemfile },
-      "bundle", "exec", "ruby", "-e", real_child_zero_examples_script(source_path, spec_path),
-      chdir: dir
-    )
-  end
-
-  def run_suite_script(dir, script, spec_path)
-    Timeout.timeout(15) do
-      Open3.capture3(
-        { "BUNDLE_GEMFILE" => repo_gemfile },
-        "bundle", "exec", "ruby",
-        "-r", "henitai/rspec_coverage_formatter",
-        "-e", script,
-        spec_path,
-        chdir: dir
-      )
-    end
   end
 
   def stub_suite_run(integration, pid:, wait_result:, build_result:)
@@ -202,13 +109,6 @@ RSpec.describe Henitai::Integration::Rspec do
         it "mentions Sample#value" do
         end
       end
-    RUBY
-  end
-
-  def zero_examples_spec_source
-    <<~RUBY
-      # Intentionally defines no examples.
-      require_relative "../lib/integration_real_activation_sample"
     RUBY
   end
 
@@ -713,32 +613,6 @@ RSpec.describe Henitai::Integration::Rspec do
     )
   end
 
-  it "runs the baseline suite runner script against a minimal rspec fixture" do
-    integration = described_class.new
-
-    with_temp_workspace do |dir|
-      spec_path = write_file(
-        dir,
-        "spec/smoke_spec.rb",
-        <<~RUBY
-          RSpec.describe "suite runner" do
-            it "passes" do
-              expect(1).to eq(1)
-            end
-          end
-        RUBY
-      )
-
-      stdout, stderr, status = run_suite_script(
-        dir,
-        integration.rspec_suite_runner_script,
-        spec_path
-      )
-
-      expect(status.success?).to be(true), [stdout, stderr].reject(&:empty?).join("\n")
-    end
-  end
-
   it "returns the discovered spec files as test files" do
     integration = described_class.new
 
@@ -1227,39 +1101,6 @@ RSpec.describe Henitai::Integration::Rspec do
       ensure
         ENV["HENITAI_MUTANT_ID"] = original_env
       end
-    end
-  end
-
-  it "kills a real mutant through the forked child RSpec run" do
-    with_temp_workspace do |dir|
-      source_path = write_file(dir, "lib/integration_real_activation_sample.rb", real_activation_source)
-      spec_path = write_file(
-        dir,
-        "spec/integration_real_activation_sample_spec.rb",
-        real_activation_spec_source
-      )
-      stdout, stderr, status = run_real_child_mutant(dir, source_path, spec_path)
-
-      summary = [stdout, stderr].reject(&:empty?).join("\n")
-
-      expect(status.success? && stdout.include?("killed")).to be(true), summary
-    end
-  end
-
-  it "classifies a real zero-example mutant child run as compile_error (non-survived)" do
-    with_temp_workspace do |dir|
-      source_path = write_file(dir, "lib/integration_real_activation_sample.rb", real_activation_source)
-      spec_path = write_file(
-        dir,
-        "spec/zero_examples_spec.rb",
-        zero_examples_spec_source
-      )
-
-      stdout, stderr, status = run_real_child_zero_examples_mutant(dir, source_path, spec_path)
-
-      summary = [stdout, stderr].reject(&:empty?).join("\n")
-
-      expect(status.success? && stdout.include?("compile_error")).to be(true), summary
     end
   end
 

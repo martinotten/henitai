@@ -27,21 +27,23 @@ RSpec.describe "Lib spec coverage" do
     }
   end
 
+  def matching_spec_exists?(name)
+    stem = name.delete_suffix(".rb")
+    patterns = ["#{stem}_spec.rb", "#{stem}_process_spec.rb"]
+    patterns.any? { |pattern| File.exist?(File.join(root, "spec/henitai", pattern)) }
+  end
+
   it "gives every top-level lib file a matching spec file" do
     lib_files = Dir.glob(File.join(root, "lib/henitai/*.rb")).map { |path| File.basename(path) }
     checked = lib_files.reject { |name| allowlist.key?(name) }
 
-    missing = checked.reject do |name|
-      File.exist?(File.join(root, "spec/henitai", name.sub(/\.rb\z/, "_spec.rb")))
-    end
+    missing = checked.reject { |name| matching_spec_exists?(name) }
 
     expect(missing).to be_empty
   end
 
   it "keeps the allowlist free of files that already have a spec" do
-    stale = allowlist.keys.select do |name|
-      File.exist?(File.join(root, "spec/henitai", name.sub(/\.rb\z/, "_spec.rb")))
-    end
+    stale = allowlist.keys.select { |name| matching_spec_exists?(name) }
 
     expect(stale).to be_empty
   end

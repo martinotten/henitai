@@ -225,10 +225,11 @@ module Henitai
       @operators ||= Operator.for_set(config.operators)
     end
 
+    # Fans progress out to the terminal reporter (when enabled) and the
+    # checkpoint writer (when enabled and a file report is configured), so a
+    # long run persists partial results incrementally.
     def progress_reporter
-      return nil unless Array(config.reporters).map(&:to_s).include?("terminal")
-
-      Reporter::Terminal.new(config:)
+      CompositeProgressReporter.for(config:, source_provider:, full_run: full_run?)
     end
 
     def history_store

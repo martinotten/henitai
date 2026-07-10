@@ -89,6 +89,16 @@ RSpec.describe Henitai::CanonicalReportMerger do
       )
     end
 
+    it "replaces a prior mutant identified by the current mutant's legacy stable id" do
+      prior_path = write_prior(schema({ "x.rb" => file_entry(mutant_schema("legacy-x1", status: "Survived")) }))
+      replacement = mutant_schema("x1", status: "Killed").merge(legacyStableId: "legacy-x1")
+      current = schema({ "x.rb" => file_entry(replacement) })
+
+      merged = described_class.merge(current, prior_path)
+
+      expect(merged["files"]["x.rb"]["mutants"]).to eq([JSON.parse(JSON.generate(replacement))])
+    end
+
     it "drops a file left with zero mutants after its only mutant is overlaid elsewhere" do
       prior_path = write_prior(schema({ "x.rb" => file_entry(mutant_schema("x1")) }))
       current = schema({ "moved.rb" => file_entry(mutant_schema("x1")) })
@@ -165,6 +175,31 @@ RSpec.describe Henitai::CanonicalReportMerger do
       expect(merged["files"]).to eq(
         JSON.parse(JSON.generate(schema({ "x.rb" => file_entry(mutant_schema("x1")) }))).fetch("files")
       )
+    end
+  end
+
+  describe ".merge with prune_missing: true" do
+    it "drops a prior file entry whose source file no longer exists on disk" do
+      prior_path = write_prior(schema({
+                                        "gone.rb" => file_entry(mutant_schema("g1")),
+                                        "kept.rb" => file_entry(mutant_schema("k1"))
+                                      }))
+      File.write("kept.rb", "# still here\n")
+      current = schema({ "other.rb" => file_entry(mutant_schema("o1")) })
+      File.write("other.rb", "# current run\n")
+
+      merged = described_class.merge(current, prior_path, prune_missing: true)
+
+      expect(merged["files"].keys).to contain_exactly("kept.rb", "other.rb")
+    end
+
+    it "keeps a missing prior file entry when pruning is off (default)" do
+      prior_path = write_prior(schema({ "gone.rb" => file_entry(mutant_schema("g1")) }))
+      current = schema({ "other.rb" => file_entry(mutant_schema("o1")) })
+
+      merged = described_class.merge(current, prior_path)
+
+      expect(merged["files"].keys).to contain_exactly("gone.rb", "other.rb")
     end
   end
 end

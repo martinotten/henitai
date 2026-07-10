@@ -1,50 +1,25 @@
 # yaml-language-server: $schema=./assets/schema/henitai.schema.json
-# Hen'i-tai 変異体 — Configuration
-# https://github.com/martinotten/henitai
-
-integration:
-  name: rspec
-
 includes:
   - lib
-
-# Standalone entry points that only run as side effects or in a subprocess
-# cannot be mutation-tested in-process, so they are excluded from the scope.
-excludes:
-  - lib/henitai/eager_load.rb
-
-# Mutation operator configuration
+# Process-boundary specs still run in the normal suite, but not inside mutant
+# children. All other specs are verified to run without starting child
+# processes so self-mutation keeps a flat, jobs-bounded worker tree.
+test_excludes:
+  - spec/**/*_process_spec.rb
+reporters:
+  - terminal
+  - json
+  - html
 mutation:
-  operators: full # light (default) | full
-  ignore_patterns:
-    - "(send _ {:log :debug :info :warn :error} _)" # Logger calls
-    - "(send _ :puts _)" # puts / debug output
-  # timeout intentionally unset: per-mutant auto-calibration
-  # (timeout_multiplier x measured baseline of the selected tests, 2s floor)
+  operators: light
+  timeout: 10.0
   max_flaky_retries: 3
-
-# Parallelisation
-jobs: 8 # null = auto-detect CPU count
-
-# Coverage criteria
-coverage_criteria:
-  test_result: true
-  timeout: true
-  process_abort: true
-
-# Thresholds for HTML report colouring
+  sampling:
+    ratio: 0.05
+    strategy: stratified
+reports_dir: reports
 thresholds:
   high: 80
   low: 60
-
-# Dashboard reporter (opt-in)
-reporters:
-  - terminal
-  - html
-  - json
-  - github
-#   - dashboard
-#
-# dashboard:
-#   project: "github.com/martinotten/henitai"
-#   base_url: "https://dashboard.stryker-mutator.io"
+integration:
+  name: rspec

@@ -10,20 +10,35 @@ module Henitai
   # session UUID or source coordinates, so it survives ordinary line shifts.
   module MutantIdentity
     def self.stable_id(mutant)
-      Digest::SHA256.hexdigest(identity_components(mutant).join("\0"))
+      digest(identity_components(mutant))
+    end
+
+    # Stable id formula used before site offsets were introduced. Emitted as a
+    # temporary report alias so scoped runs can replace pre-migration entries.
+    def self.legacy_stable_id(mutant)
+      digest(legacy_identity_components(mutant))
     end
 
     def self.identity_components(mutant)
+      legacy_identity_components(mutant) + [site_offset(mutant)]
+    end
+    private_class_method :identity_components
+
+    def self.legacy_identity_components(mutant)
       [
         mutant.subject.expression,
         mutant.operator,
         mutant.description,
         mutant.location[:file],
-        mutation_signature(mutant),
-        site_offset(mutant)
+        mutation_signature(mutant)
       ]
     end
-    private_class_method :identity_components
+    private_class_method :legacy_identity_components
+
+    def self.digest(components)
+      Digest::SHA256.hexdigest(components.join("\0"))
+    end
+    private_class_method :digest
 
     # Position of the mutation site relative to its subject's own start,
     # not the file's absolute line/column — this still disambiguates two

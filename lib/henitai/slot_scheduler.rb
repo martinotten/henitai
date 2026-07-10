@@ -104,6 +104,8 @@ module Henitai
       test_files = resolve_test_files(mutant)
       mutant.covered_by = test_files if mutant.respond_to?(:covered_by=)
       mutant.tests_completed = test_files.size if mutant.respond_to?(:tests_completed=)
+      return record_no_coverage(mutant) if resolved_selection_empty?(test_files)
+
       worker_index = next_free_worker_index
       with_worker_slot(worker_index) do
         handle = integration.spawn_mutant(mutant: mutant, test_files: test_files)
@@ -164,6 +166,7 @@ module Henitai
         slot.mutant.status = result.status
         results << result
         progress_reporter&.progress(slot.mutant, scenario_result: result)
+        result.release_output! if result.respond_to?(:release_output!)
       end
     end
 
@@ -210,6 +213,15 @@ module Henitai
       mutant.status = result.status
       results << result
       progress_reporter&.progress(mutant, scenario_result: result)
+    end
+
+    def record_no_coverage(mutant)
+      mutant.status = :no_coverage
+      progress_reporter&.progress(mutant, scenario_result: nil)
+    end
+
+    def resolved_selection_empty?(test_files)
+      options.key?(:test_file_resolver) && test_files.empty?
     end
 
     def remaining_slot_timeout(slot, now)

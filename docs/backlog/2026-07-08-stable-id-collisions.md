@@ -64,9 +64,11 @@ doesn't happen for real resolved subjects).
 
 This changes every stable id (migration story from the Fix Sketch): old
 `mutation-history.sqlite3` rows won't match new ids, so per-mutant history
-restarts — accepted, matches the ticket's documented trade-off; no
-schema/migration code needed since ids are opaque hash strings, not schema
-fields.
+restarts — accepted, matching the ticket's documented trade-off. Canonical
+reports need a narrower migration because scoped merges preserve prior entries:
+generated mutants expose the pre-site-offset hash as `legacyStableId`, and the
+canonical merger treats either id as an overlay key. Recipe mutants already
+carry the report's opaque id and therefore omit the migration alias.
 
 Verified: `spec/henitai/mutant_identity_spec.rb` covers same-subject
 distinct-call-site disambiguation and continued drift-stability under a

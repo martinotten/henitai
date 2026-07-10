@@ -5,10 +5,18 @@ require "tmpdir"
 require "stringio"
 
 RSpec.describe Henitai::CLI do
+  before do
+    protected_config = File.expand_path("../../.henitai.yml", __dir__)
+    allow(File).to receive(:write).and_wrap_original do |original, path, *args, **kwargs|
+      SpecSupport::ProtectedProjectFiles.check_write!(path, [protected_config])
+      original.call(path, *args, **kwargs)
+    end
+  end
+
   # Each example that needs a workspace opens its own Dir.mktmpdir and passes
   # explicit paths (--config, reports_dir, init PATH) into the CLI, so no global
-  # Dir.chdir is needed. Mutating process-wide cwd is unsafe under random order
-  # and future parallel execution.
+  # Dir.chdir is needed. The write guard protects the tracked project config if
+  # a mutant redirects an explicit temporary path back to the default path.
   def write_configuration(dir, reports_dir: nil)
     reports_dir ||= File.join(dir, "reports")
     path = File.join(dir, ".henitai.yml")
@@ -27,16 +35,23 @@ RSpec.describe Henitai::CLI do
   end
 
   def write_minimal_report_artifacts(reports_dir)
-    paths = Henitai::CLI::REPORT_CLEANUP_PATHS.map do |relative_path|
+    file_paths = Henitai::CLI::REPORT_CLEANUP_PATHS.map do |relative_path|
       File.join(reports_dir, *relative_path)
     end
-
-    paths.each do |path|
+    file_paths.each do |path|
       FileUtils.mkdir_p(File.dirname(path))
       File.write(path, "stale")
     end
 
-    paths
+    dir_paths = Henitai::CLI::REPORT_CLEANUP_DIRS.map do |relative_path|
+      File.join(reports_dir, *relative_path)
+    end
+    dir_paths.each do |path|
+      FileUtils.mkdir_p(path)
+      File.write(File.join(path, "mutant-1.stdout.log"), "stale")
+    end
+
+    dir_paths + file_paths
   end
 
   def configuration_snapshot(config)
@@ -195,7 +210,7 @@ RSpec.describe Henitai::CLI do
       aggregate_failures do
         expect do
           described_class.new(["clean", "--config", config_path]).run
-        end.to output(/Removed 6 generated report artifacts/).to_stdout
+        end.to output(/Removed 5 generated report artifacts/).to_stdout
         expect(cleanup_paths.all? { |path| !File.exist?(path) }).to be(true)
         expect(File).to exist(sentinel_path)
       end
@@ -217,6 +232,24 @@ RSpec.describe Henitai::CLI do
         end.to output(/Removed 1 generated report artifact/).to_stdout
         expect(File).not_to exist(existing_path)
       end
+    end
+  end
+
+  it "removes the whole per-mutant log and coverage trees with clean", :aggregate_failures do
+    Dir.mktmpdir do |dir|
+      reports_dir = File.join(dir, "reports")
+      config_path = write_configuration(dir, reports_dir:)
+      mutant_log = File.join(reports_dir, "mutation-logs", "mutant-abc.stdout.log")
+      mutant_cov = File.join(reports_dir, "mutation-coverage", "mutant-abc", ".resultset.json")
+      [mutant_log, mutant_cov].each do |path|
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, "stale")
+      end
+
+      described_class.new(["clean", "--config", config_path]).run
+
+      expect(File).not_to exist(File.join(reports_dir, "mutation-logs"))
+      expect(File).not_to exist(File.join(reports_dir, "mutation-coverage"))
     end
   end
 
@@ -811,6 +844,14 @@ RSpec.describe Henitai::CLI do
   # inside its own tmpdir instead of relying on (and mutating) the global cwd.
   def init_path(dir, name = ".henitai.yml")
     File.join(dir, name)
+  end
+
+  it "refuses to overwrite the repository configuration" do
+    path = File.expand_path("../../.henitai.yml", __dir__)
+
+    expect { File.write(path, "unsafe") }.to raise_error(
+      SpecSupport::ProtectedProjectFiles::ProtectedWrite
+    )
   end
 
   it "creates a default configuration file during init" do

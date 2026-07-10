@@ -140,6 +140,26 @@ RSpec.describe Henitai::ProcessWorkerRunner do
     )
   end
 
+  def stub_fake_spawn_sequence(integration, sequence)
+    values = sequence.dup
+    allow(integration).to receive(:select_tests).and_return([])
+    allow(integration).to receive(:spawn_mutant) do |**|
+      value = values.shift
+      raise value if value.is_a?(Exception)
+
+      build_fake_handle(value)
+    end
+  end
+
+  def build_fake_runner(worker_count:, wait2_results:)
+    runtime, = build_fake_runtime(
+      clock_times: Array.new(20, 0.0),
+      wait2_results: { -1 => wait2_results }
+    )
+    wakeup, = build_fake_wakeup
+    described_class.new(worker_count:, runtime:, wakeup:)
+  end
+
   def stub_result_builder(integration)
     allow(integration).to receive(:build_result) do |wait_result, log_paths|
       Henitai::ScenarioExecutionResult.build(
@@ -149,73 +169,6 @@ RSpec.describe Henitai::ProcessWorkerRunner do
         log_path: log_paths[:log_path]
       )
     end
-  end
-
-  def fake_log_paths
-    { stdout_path: "/dev/null", stderr_path: "/dev/null", log_path: "/dev/null" }
-  end
-
-  def barrier_timeout
-    5.0
-  end
-
-  # An integration stub that forks a real child process and returns results.
-  # Children exit immediately with the configured exit code (no work sleep);
-  # callers that need concurrency overlap use build_barrier_integration.
-  def build_integration(results_map)
-    integration = instance_double(Henitai::Integration::Rspec)
-    allow(integration).to receive(:select_tests) { |subject| ["spec/#{subject.expression}_spec.rb"] }
-    allow(integration).to receive(:spawn_mutant) do |mutant:, **|
-      exit_code = results_map.fetch(mutant.id, {}).fetch(:exit_code, 0)
-      pid = Process.fork { Process.exit(exit_code) }
-      Henitai::Integration::ChildHandle.new(pid, fake_log_paths)
-    end
-    stub_result_builder(integration)
-    integration
-  end
-
-  # Forks children that rendezvous at a filesystem barrier before exiting.
-  # Each child writes its marker, then polls (bounded) until `expected`
-  # markers exist, guaranteeing all children are simultaneously alive. This
-  # proves real concurrency deterministically without wall-clock timing.
-  def build_barrier_integration(barrier_dir:, expected:)
-    integration = instance_double(Henitai::Integration::Rspec)
-    allow(integration).to receive(:select_tests).and_return([])
-    allow(integration).to receive(:spawn_mutant) do |mutant:, **|
-      pid = Process.fork { run_barrier_child(barrier_dir, expected, mutant.id) }
-      Henitai::Integration::ChildHandle.new(pid, fake_log_paths)
-    end
-    stub_result_builder(integration)
-    integration
-  end
-
-  # Forks a child that blocks reading `release_reader` until the parent closes
-  # the matching writer, then exits. Keeps the child reliably alive while the
-  # runner is waiting, with no timing guess.
-  def build_pipe_blocking_integration(release_reader, release_writer)
-    integration = instance_double(Henitai::Integration::Rspec)
-    allow(integration).to receive(:select_tests).and_return([])
-    allow(integration).to receive(:spawn_mutant) do |**|
-      pid = Process.fork do
-        release_writer.close # drop the inherited writer so read sees EOF
-        release_reader.read
-        Process.exit(0)
-      end
-      Henitai::Integration::ChildHandle.new(pid, fake_log_paths)
-    end
-    stub_result_builder(integration)
-    integration
-  end
-
-  def run_barrier_child(barrier_dir, expected, marker_id)
-    File.write(File.join(barrier_dir, marker_id.to_s), "")
-    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + barrier_timeout
-    until Dir.children(barrier_dir).size >= expected
-      break if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
-
-      Thread.pass
-    end
-    Process.exit(0)
   end
 
   describe "empty queue" do
@@ -234,9 +187,14 @@ RSpec.describe Henitai::ProcessWorkerRunner do
     it "runs all mutants to completion and returns results" do # rubocop:disable RSpec/MultipleExpectations
       mutant_a = build_mutant("a")
       mutant_b = build_mutant("b")
-      integration = build_integration("a" => { exit_code: 1 }, "b" => { exit_code: 0 })
+      integration = instance_double(Henitai::Integration::Rspec)
+      stub_fake_spawn_sequence(integration, [10, 11])
+      stub_result_builder(integration)
       config = Struct.new(:timeout, :max_flaky_retries).new(10.0, 0)
-      runner = described_class.new(worker_count: 2)
+      runner = build_fake_runner(
+        worker_count: 2,
+        wait2_results: [[10, build_wait_status(1)], [11, build_wait_status(0)]]
+      )
 
       results = runner.run([mutant_a, mutant_b], integration, config, nil)
 
@@ -258,66 +216,19 @@ RSpec.describe Henitai::ProcessWorkerRunner do
 
       mutant_a = build_mutant("a")
       mutant_b = build_mutant("b")
-      integration = build_integration("a" => { exit_code: 0 }, "b" => { exit_code: 0 })
+      integration = instance_double(Henitai::Integration::Rspec)
+      stub_fake_spawn_sequence(integration, [10, 11])
+      stub_result_builder(integration)
       config = Struct.new(:timeout, :max_flaky_retries).new(10.0, 0)
-      runner = described_class.new(worker_count: 1)
+      runner = build_fake_runner(
+        worker_count: 1,
+        wait2_results: [[10, build_wait_status(0)], nil, [11, build_wait_status(0)]]
+      )
 
       results = runner.run([mutant_a, mutant_b], integration, config, nil)
 
       expect(results.size).to eq(2)
       expect(Henitai::Integration::SchedulerDiagnostics.summary[:max_concurrent]).to eq(1)
-    end
-  end
-
-  describe "concurrency proof" do
-    # All four children rendezvous at a filesystem barrier before any exits, so
-    # the runner must hold four live OS children at once. A serial runner would
-    # deadlock at the barrier (the child times out instead), so a clean
-    # max_concurrent == 4 is a deterministic proof of real concurrency with no
-    # reliance on wall-clock timing.
-    it "runs 4 mutants concurrently with real OS-level overlap" do # rubocop:disable RSpec/MultipleExpectations
-      allow(ENV).to receive(:[]).and_call_original
-      allow(ENV).to receive(:[]).with("HENITAI_DEBUG_SCHEDULER").and_return("1")
-      Henitai::Integration::SchedulerDiagnostics.reset!
-
-      Dir.mktmpdir do |barrier_dir|
-        mutants = (1..4).map { |i| build_mutant("m#{i}") }
-        integration = build_barrier_integration(barrier_dir: barrier_dir, expected: 4)
-        config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 0)
-        runner = described_class.new(worker_count: 4)
-
-        results = runner.run(mutants, integration, config, nil)
-
-        expect(results.size).to eq(4)
-        expect(Henitai::Integration::SchedulerDiagnostics.summary[:max_concurrent]).to eq(4)
-      end
-    end
-  end
-
-  describe "wakeup loop" do
-    # The child blocks reading a pipe until the parent closes the write end, so
-    # it is provably still alive when the runner reaches IO.select. The stub
-    # releases the child on the first real select call, replacing the former
-    # fixed child sleep with a deterministic, race-free handshake.
-    it "waits on a wakeup io while children are active" do
-      release_reader, release_writer = IO.pipe
-      mutant = build_mutant("wakeup")
-      integration = build_pipe_blocking_integration(release_reader, release_writer)
-      config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 0)
-      runner = described_class.new(worker_count: 1)
-
-      allow(IO).to receive(:select).and_wrap_original do |original, *args|
-        release_writer.close unless release_writer.closed?
-        original.call(*args)
-      end
-
-      runner.run([mutant], integration, config, nil)
-
-      expect(IO).to have_received(:select).with(
-        array_including(instance_of(IO)), nil, nil, kind_of(Numeric)
-      )
-    ensure
-      [release_reader, release_writer].each { |io| io.close unless io.closed? }
     end
   end
 
@@ -416,24 +327,14 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       mutant_c = build_mutant("ok_c")
 
       integration = instance_double(Henitai::Integration::Rspec)
-      allow(integration).to receive(:select_tests).and_return([])
-      allow(integration).to receive(:spawn_mutant) do |mutant:, **|
-        raise "simulated fork failure" if mutant.id == "fail"
-
-        log_paths = { stdout_path: "/dev/null", stderr_path: "/dev/null",
-                      log_path: "/dev/null" }
-        pid = Process.fork { Process.exit(1) }
-        Henitai::Integration::ChildHandle.new(pid, log_paths)
-      end
-      allow(integration).to receive(:build_result) do |wait_result, log_paths|
-        Henitai::ScenarioExecutionResult.build(
-          wait_result: wait_result, stdout: "", stderr: "",
-          log_path: log_paths[:log_path]
-        )
-      end
+      stub_fake_spawn_sequence(integration, [10, RuntimeError.new("simulated fork failure"), 11])
+      stub_result_builder(integration)
 
       config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 0)
-      runner = described_class.new(worker_count: 3)
+      runner = build_fake_runner(
+        worker_count: 3,
+        wait2_results: [[10, build_wait_status(1)], [11, build_wait_status(1)]]
+      )
 
       results = runner.run([mutant_a, mutant_b, mutant_c], integration, config, nil)
 
@@ -450,22 +351,16 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       integration = instance_double(Henitai::Integration::Rspec)
       allow(integration).to receive(:select_tests).and_return([])
       allow(integration).to receive(:spawn_mutant) do |**|
-        log_paths = { stdout_path: "/dev/null", stderr_path: "/dev/null",
-                      log_path: "/dev/null" }
         call_count += 1
-        exit_code = call_count == 1 ? 0 : 1 # survived first run, killed on retry
-        pid = Process.fork { Process.exit(exit_code) }
-        Henitai::Integration::ChildHandle.new(pid, log_paths)
+        build_fake_handle(call_count == 1 ? 10 : 11)
       end
-      allow(integration).to receive(:build_result) do |wait_result, log_paths|
-        Henitai::ScenarioExecutionResult.build(
-          wait_result: wait_result, stdout: "", stderr: "",
-          log_path: log_paths[:log_path]
-        )
-      end
+      stub_result_builder(integration)
 
       config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 1)
-      runner = described_class.new(worker_count: 1)
+      runner = build_fake_runner(
+        worker_count: 1,
+        wait2_results: [[10, build_wait_status(0)], [11, build_wait_status(1)]]
+      )
 
       results = runner.run([mutant], integration, config, nil)
 
@@ -484,24 +379,20 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       integration = instance_double(Henitai::Integration::Rspec)
       allow(integration).to receive(:select_tests).and_return([])
       allow(integration).to receive(:spawn_mutant) do |mutant:, **|
-        log_paths = { stdout_path: "/dev/null", stderr_path: "/dev/null",
-                      log_path: "/dev/null" }
         call_counts[mutant.id] += 1
-        # "flaky" survives the first run then is killed on retry; "stable"
-        # is killed immediately and never retries.
-        exit_code = mutant.id == "flaky" && call_counts[mutant.id] == 1 ? 0 : 1
-        pid = Process.fork { Process.exit(exit_code) }
-        Henitai::Integration::ChildHandle.new(pid, log_paths)
+        pid = mutant.id == "flaky" ? 9 + call_counts[mutant.id] : 12
+        build_fake_handle(pid)
       end
-      allow(integration).to receive(:build_result) do |wait_result, log_paths|
-        Henitai::ScenarioExecutionResult.build(
-          wait_result: wait_result, stdout: "", stderr: "",
-          log_path: log_paths[:log_path]
-        )
-      end
+      stub_result_builder(integration)
 
       config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 1)
-      runner = described_class.new(worker_count: 1)
+      runner = build_fake_runner(
+        worker_count: 1,
+        wait2_results: [
+          [10, build_wait_status(0)], [11, build_wait_status(1)], nil,
+          [12, build_wait_status(1)]
+        ]
+      )
 
       runner.run([flaky, stable], integration, config, nil)
 
@@ -510,9 +401,14 @@ RSpec.describe Henitai::ProcessWorkerRunner do
 
     it "reports zero retries when no mutant survives its first run" do
       stable = build_mutant("stable")
-      integration = build_integration("stable" => { exit_code: 1 })
+      integration = instance_double(Henitai::Integration::Rspec)
+      stub_fake_spawn_sequence(integration, [10])
+      stub_result_builder(integration)
       config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 3)
-      runner = described_class.new(worker_count: 1)
+      runner = build_fake_runner(
+        worker_count: 1,
+        wait2_results: [[10, build_wait_status(1)]]
+      )
 
       runner.run([stable], integration, config, nil)
 
@@ -529,18 +425,15 @@ RSpec.describe Henitai::ProcessWorkerRunner do
         call_count += 1
         raise "simulated fork failure" if call_count == 2 # fails on the retry attempt
 
-        log_paths = { stdout_path: "/dev/null", stderr_path: "/dev/null", log_path: "/dev/null" }
-        pid = Process.fork { Process.exit(0) } # survives first run, triggering a retry
-        Henitai::Integration::ChildHandle.new(pid, log_paths)
+        build_fake_handle(10)
       end
-      allow(integration).to receive(:build_result) do |wait_result, log_paths|
-        Henitai::ScenarioExecutionResult.build(
-          wait_result: wait_result, stdout: "", stderr: "", log_path: log_paths[:log_path]
-        )
-      end
+      stub_result_builder(integration)
 
       config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 1)
-      runner = described_class.new(worker_count: 1)
+      runner = build_fake_runner(
+        worker_count: 1,
+        wait2_results: [[10, build_wait_status(0)]]
+      )
 
       results = runner.run([mutant], integration, config, nil)
 

@@ -27,6 +27,15 @@ Metrics/BlockLength:
 Metrics/ClassLength:
   Max: 200
 
+# The configuration validator is decomposed into two flat rule-lists (one
+# leaf-value check / one section check per configuration key). They grow by
+# design as config keys are added; ModuleLength is a poor fit for a registry
+# of one-method-per-rule and splitting them further would only obscure them.
+Metrics/ModuleLength:
+  Exclude:
+    - "lib/henitai/configuration_validator/rules.rb"
+    - "lib/henitai/configuration_validator/scalars.rb"
+
 Metrics/MethodLength:
   Max: 15
 

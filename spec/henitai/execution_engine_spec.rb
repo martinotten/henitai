@@ -120,6 +120,19 @@ RSpec.describe Henitai::ExecutionEngine do
       end
     end
 
+    it "clamps a calibrated timeout above the configured ceiling" do
+      Dir.mktmpdir do |dir|
+        config = build_calibrating_config(dir, timeout_configured: false)
+        config.define_singleton_method(:max_timeout) { 30.0 }
+        write_timing_report(dir, "spec/foo_spec.rb" => 20.0) # 20 * 3.0 = 60s calibrated
+        integration = build_integration
+
+        described_class.new.run([build_mutant(:pending, "Foo#bar")], integration, config)
+
+        expect(integration.calls[:last_timeout]).to eq(30.0)
+      end
+    end
+
     it "falls back to the default timeout when timing data is missing" do
       Dir.mktmpdir do |dir|
         config = build_calibrating_config(dir, timeout_configured: false)
@@ -248,6 +261,37 @@ RSpec.describe Henitai::ExecutionEngine do
     result = described_class.new.run([pending, ignored], integration, build_config)
 
     expect(result.map(&:status)).to eq(%i[killed ignored])
+  end
+
+  it "marks a mutant as no coverage when test exclusions remove every selected test" do
+    pending = build_mutant(:pending, "Foo#bar")
+    integration = build_integration
+    config = build_config
+    config.define_singleton_method(:test_excludes) { ["spec/foo_spec.rb"] }
+
+    described_class.new.run([pending], integration, config)
+
+    expect(
+      [pending.status, pending.covered_by, pending.tests_completed, integration.calls[:run_mutant]]
+    ).to eq([:no_coverage, [], 0, 0])
+  end
+
+  it "does not spawn parallel workers when test exclusions remove every selected test" do
+    mutants = [build_mutant(:pending, "Foo#bar"), build_mutant(:pending, "Foo#baz")]
+    integration = instance_double(Henitai::Integration::Rspec)
+    spawn_calls = 0
+    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
+    allow(integration).to receive(:spawn_mutant) do
+      spawn_calls += 1
+      raise "should not spawn"
+    end
+    config = build_config
+    config.jobs = 2
+    config.define_singleton_method(:test_excludes) { ["spec/foo_spec.rb"] }
+
+    described_class.new.run(mutants, integration, config)
+
+    expect([mutants.map(&:status), spawn_calls]).to eq([%i[no_coverage no_coverage], 0])
   end
 
   it "reports progress for pending mutants when a reporter is provided" do
@@ -621,6 +665,42 @@ RSpec.describe Henitai::ExecutionEngine do
       described_class.new.run([pending], integration, config)
 
       expect(ENV.fetch("HENITAI_COVERAGE_DIR", nil)).to eq("preexisting")
+    end
+  end
+
+  describe "#reject_excluded_tests" do
+    def config_with(excludes)
+      Struct.new(:test_excludes).new(excludes)
+    end
+
+    it "drops tests matching a test_excludes glob, keeping the rest" do
+      engine = described_class.new
+      tests = %w[
+        spec/henitai/foo_spec.rb
+        spec/henitai/cli_spec.rb
+        spec/henitai/integration/rspec_spec.rb
+      ]
+      config = config_with(["spec/henitai/cli_spec.rb", "spec/henitai/integration/*_spec.rb"])
+
+      result = engine.send(:reject_excluded_tests, tests, config)
+
+      expect(result).to eq(["spec/henitai/foo_spec.rb"])
+    end
+
+    it "returns every test when no exclude patterns are configured" do
+      result = described_class.new.send(:reject_excluded_tests, ["a_spec.rb"], config_with([]))
+
+      expect(result).to eq(["a_spec.rb"])
+    end
+
+    it "does not let a glob wildcard cross directory boundaries" do
+      engine = described_class.new
+      tests = %w[spec/a/deep/thing_spec.rb spec/a/thing_spec.rb]
+      config = config_with(["spec/a/*_spec.rb"])
+
+      result = engine.send(:reject_excluded_tests, tests, config)
+
+      expect(result).to eq(["spec/a/deep/thing_spec.rb"])
     end
   end
 end

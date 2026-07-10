@@ -1,0 +1,205 @@
+# frozen_string_literal: true
+
+require "fileutils"
+require "open3"
+require "spec_helper"
+require "tmpdir"
+
+RSpec.describe Henitai::GitDiffAnalyzer do
+  def git(dir, ...)
+    Open3.capture3("git", "-C", dir, ...)
+  end
+
+  def git!(dir, ...)
+    stdout, stderr, status = git(dir, ...)
+    return stdout if status.success?
+
+    raise [stdout, stderr].reject(&:empty?).join("\n")
+  end
+
+  def configure_git_identity(dir)
+    git!(dir, "config", "user.email", "tester@example.com")
+    git!(dir, "config", "user.name", "Tester")
+  end
+
+  def write_file(dir, relative_path, source)
+    path = File.join(dir, relative_path)
+    FileUtils.mkdir_p(File.dirname(path))
+    File.write(path, source)
+    path
+  end
+
+  def commit_all(dir, message)
+    git!(dir, "add", ".")
+    git!(dir, "commit", "-m", message)
+    git!(dir, "rev-parse", "HEAD").strip
+  end
+
+  def sample_initial_source
+    <<~RUBY
+      class Sample
+        def alpha
+          1
+        end
+
+        def beta
+          2
+        end
+      end
+    RUBY
+  end
+
+  def sample_updated_source
+    <<~RUBY
+      class Sample
+        def alpha
+        end
+
+        def beta
+          2
+        end
+
+        def gamma = 3
+      end
+    RUBY
+  end
+
+  it "returns changed files between two refs" do
+    Dir.mktmpdir do |dir|
+      git!(dir, "init")
+      configure_git_identity(dir)
+
+      write_file(dir, "lib/sample.rb", "class Sample; end\n")
+      commit_all(dir, "Initial commit")
+
+      write_file(dir, "lib/sample.rb", "class Sample\n  def answer = 42\nend\n")
+      commit_all(dir, "Update sample")
+
+      changed_files = described_class.new.changed_files(
+        from: "HEAD~1",
+        to: "HEAD",
+        dir:
+      )
+
+      expect(changed_files).to eq(["lib/sample.rb"])
+    end
+  end
+
+  it "returns an empty array when no files changed" do
+    Dir.mktmpdir do |dir|
+      git!(dir, "init")
+      configure_git_identity(dir)
+
+      write_file(dir, "lib/sample.rb", "class Sample; end\n")
+      commit_all(dir, "Initial commit")
+
+      changed_files = described_class.new.changed_files(from: "HEAD", to: "HEAD", dir:)
+
+      expect(changed_files).to eq([])
+    end
+  end
+
+  it "returns dirty working tree files including untracked ones" do
+    Dir.mktmpdir do |dir|
+      git!(dir, "init")
+      configure_git_identity(dir)
+
+      write_file(dir, "lib/sample.rb", "class Sample; end\n")
+      commit_all(dir, "Initial commit")
+
+      write_file(dir, "lib/sample.rb", "class Sample\n  def answer = 42\nend\n")
+      write_file(dir, "spec/sample_spec.rb", "RSpec.describe Sample do; end\n")
+
+      changed_files = described_class.new.working_tree_changed_files(dir:)
+
+      expect(changed_files).to contain_exactly("lib/sample.rb", "spec/sample_spec.rb")
+    end
+  end
+
+  it "returns changed methods between two refs" do
+    Dir.mktmpdir do |dir|
+      git!(dir, "init")
+      configure_git_identity(dir)
+
+      write_file(dir, "lib/sample.rb", sample_initial_source)
+      commit_all(dir, "Initial commit")
+
+      write_file(dir, "lib/sample.rb", sample_updated_source)
+      commit_all(dir, "Update sample")
+
+      changed_methods = described_class.new.changed_methods(
+        from: "HEAD~1",
+        to: "HEAD",
+        dir:
+      )
+
+      expect(changed_methods.map(&:expression)).to eq(
+        [
+          "Sample#alpha",
+          "Sample#gamma"
+        ]
+      )
+    end
+  end
+
+  it "treats deletion-only hunks as changes to the affected subject" do
+    Dir.mktmpdir do |dir|
+      git!(dir, "init")
+      configure_git_identity(dir)
+
+      write_file(dir, "lib/sample.rb", sample_initial_source)
+      commit_all(dir, "Initial commit")
+
+      write_file(
+        dir,
+        "lib/sample.rb",
+        <<~RUBY
+          class Sample
+            def alpha
+            end
+
+            def beta
+              2
+            end
+          end
+        RUBY
+      )
+      commit_all(dir, "Delete alpha body")
+
+      changed_methods = described_class.new.changed_methods(
+        from: "HEAD~1",
+        to: "HEAD",
+        dir:
+      )
+
+      expect(changed_methods.map(&:expression)).to eq(["Sample#alpha"])
+    end
+  end
+
+  it "raises when git diff fails" do
+    Dir.mktmpdir do |dir|
+      git!(dir, "init")
+      configure_git_identity(dir)
+
+      write_file(dir, "lib/sample.rb", "class Sample; end\n")
+      commit_all(dir, "Initial commit")
+
+      expect do
+        described_class.new.changed_files(from: "HEAD", to: "missing-ref", dir:)
+      end.to raise_error(Henitai::GitDiffError, /fatal/i)
+    end
+  end
+
+  describe "#head_sha" do
+    it "returns the HEAD SHA in a git repo" do
+      Dir.mktmpdir do |dir|
+        git!(dir, "init")
+        configure_git_identity(dir)
+        write_file(dir, "lib/sample.rb", "class Sample; end\n")
+        sha = commit_all(dir, "Initial commit")
+
+        expect(described_class.new.head_sha(dir:)).to eq(sha)
+      end
+    end
+  end
+end

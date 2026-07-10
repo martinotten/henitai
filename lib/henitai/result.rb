@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "securerandom"
+require_relative "mutant_identity"
 require_relative "unparse_helper"
 
 module Henitai
@@ -155,6 +156,7 @@ module Henitai
       {
         id: mutant.id,
         stableId: mutant.stable_id,
+        legacyStableId: legacy_stable_id_for(mutant),
         mutatorName: mutant.operator,
         replacement: replacement_for(mutant),
         location: location_for(mutant),
@@ -213,6 +215,12 @@ module Henitai
       return nil unless mutant.respond_to?(:from_cache?)
 
       mutant.from_cache? || nil
+    end
+
+    def legacy_stable_id_for(mutant)
+      return if mutant.respond_to?(:precomputed_stable_id) && mutant.precomputed_stable_id
+
+      MutantIdentity.legacy_stable_id(mutant)
     end
 
     def equivalence_uncertainty

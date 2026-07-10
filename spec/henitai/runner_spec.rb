@@ -30,6 +30,13 @@ RSpec.describe Henitai::Runner do
     allow(Henitai::CoverageBootstrapper).to receive(:new).and_return(
       coverage_bootstrapper
     )
+
+    git_diff_analyzer = instance_double(
+      Henitai::GitDiffAnalyzer,
+      head_sha: nil,
+      working_tree_changed_files: []
+    )
+    allow(Henitai::GitDiffAnalyzer).to receive(:new).and_return(git_diff_analyzer)
   end
 
   it "loads configuration by default" do
@@ -1433,6 +1440,10 @@ RSpec.describe Henitai::Runner do
           allow(static_filter).to receive(:apply) { |m, _| m }
           allow(Henitai::Result).to receive(:new).and_return(result)
           allow(Henitai::Reporter).to receive(:run_all)
+          # generate stubbed to [] means the fixture's survivor id can never
+          # match, which legitimately triggers the real drift warning here;
+          # suppress it so it doesn't leak to the test run's stderr.
+          allow(runner.send(:survivor_strategy)).to receive(:warn)
 
           runner.run
 
@@ -1750,6 +1761,28 @@ RSpec.describe Henitai::Runner do
       runner = described_class.new(config:)
       expect(runner.send(:progress_reporter)).to be_a(Henitai::Reporter::Terminal)
     end
+
+    def checkpoint_config(reporters:)
+      Struct.new(:reporters, :checkpoint_enabled, :checkpoint_every, :checkpoint_interval, :reports_dir, :thresholds)
+            .new(reporters, true, 200, 30.0, "reports", { high: 80, low: 60 })
+    end
+
+    it "fans out to a composite when terminal and a file report are both enabled" do
+      runner = described_class.new(config: checkpoint_config(reporters: %w[terminal json]))
+      expect(runner.send(:progress_reporter)).to be_a(Henitai::CompositeProgressReporter)
+    end
+
+    it "returns a lone checkpoint reporter when only a file report is enabled" do
+      runner = described_class.new(config: checkpoint_config(reporters: %w[json]))
+      expect(runner.send(:progress_reporter)).to be_a(Henitai::CheckpointReporter)
+    end
+
+    it "skips the checkpoint reporter when disabled" do
+      config = checkpoint_config(reporters: %w[json])
+      config.checkpoint_enabled = false
+      runner = described_class.new(config:)
+      expect(runner.send(:progress_reporter)).to be_nil
+    end
   end
 
   describe "#source_provider" do
@@ -1790,6 +1823,7 @@ RSpec.describe Henitai::Runner do
 
   describe "#git_diff_analyzer" do
     it "instantiates a GitDiffAnalyzer" do
+      allow(Henitai::GitDiffAnalyzer).to receive(:new).and_call_original
       runner = described_class.new(config: build_config)
       expect(runner.send(:git_diff_analyzer)).to be_a(Henitai::GitDiffAnalyzer)
     end

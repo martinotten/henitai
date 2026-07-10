@@ -15,6 +15,16 @@ module Henitai
     DEFAULT_OPERATORS = :light
     DEFAULT_JOBS      = 1
     DEFAULT_MAX_FLAKY_RETRIES = 3
+    # Cap on captured child stdout/stderr per stream (bytes). A runaway mutant
+    # (e.g. one that puts henitai's own suite into a spewing recursion) can
+    # otherwise write hundreds of MB per child; overflow is discarded.
+    DEFAULT_MAX_LOG_BYTES = 5_000_000
+    # Ceiling for the per-mutant auto-calibrated timeout (seconds). Keeps a
+    # runaway from running for minutes when the calibrated value is large.
+    DEFAULT_MAX_TIMEOUT = 30.0
+    # Incremental report checkpoint cadence for long full runs.
+    DEFAULT_CHECKPOINT_EVERY = 200
+    DEFAULT_CHECKPOINT_INTERVAL = 30.0
     DEFAULT_REPORTS_DIR = "reports"
     DEFAULT_COVERAGE_CRITERIA = {
       test_result: true,
@@ -24,10 +34,12 @@ module Henitai
     DEFAULT_THRESHOLDS = { high: 80, low: 60 }.freeze
     CONFIG_FILE        = ".henitai.yml"
 
-    attr_reader :integration, :includes, :excludes, :operators, :timeout,
+    attr_reader :integration, :includes, :excludes, :test_excludes, :operators, :timeout,
                 :timeout_multiplier, :ignore_patterns, :sampling, :jobs,
-                :max_flaky_retries, :coverage_criteria, :thresholds,
+                :max_flaky_retries, :max_log_bytes, :max_timeout,
+                :coverage_criteria, :thresholds,
                 :reporters, :reports_dir,
+                :checkpoint_enabled, :checkpoint_every, :checkpoint_interval,
                 :dashboard, :all_logs
 
     # True when mutation.timeout was set explicitly (file or CLI override);
@@ -73,6 +85,7 @@ module Henitai
     def apply_defaults(raw)
       apply_general_defaults(raw)
       apply_mutation_defaults(raw)
+      apply_reports_defaults(raw)
       apply_analysis_defaults(raw)
     end
 
@@ -80,6 +93,7 @@ module Henitai
       @integration = resolve_integration_default(raw[:integration])
       @includes = raw[:includes] || ["lib"]
       @excludes = raw[:excludes] || []
+      @test_excludes = raw[:test_excludes] || []
       @jobs = raw.fetch(:jobs, DEFAULT_JOBS)
       @reporters = raw[:reporters] || ["terminal"]
       @reports_dir = raw[:reports_dir] || DEFAULT_REPORTS_DIR
@@ -95,12 +109,21 @@ module Henitai
       @timeout = mutation[:timeout] || DEFAULT_TIMEOUT
       @timeout_multiplier = mutation[:timeout_multiplier] || DEFAULT_TIMEOUT_MULTIPLIER
       @ignore_patterns = mutation[:ignore_patterns] || []
-      @max_flaky_retries = if mutation.key?(:max_flaky_retries)
-                             mutation[:max_flaky_retries]
-                           else
-                             DEFAULT_MAX_FLAKY_RETRIES
-                           end
       @sampling = mutation[:sampling]
+      apply_mutation_limit_defaults(mutation)
+    end
+
+    def apply_mutation_limit_defaults(mutation)
+      @max_flaky_retries = mutation.fetch(:max_flaky_retries, DEFAULT_MAX_FLAKY_RETRIES)
+      @max_log_bytes = mutation[:max_log_bytes] || DEFAULT_MAX_LOG_BYTES
+      @max_timeout = mutation[:max_timeout] || DEFAULT_MAX_TIMEOUT
+    end
+
+    def apply_reports_defaults(raw)
+      reports = raw[:reports] || {}
+      @checkpoint_enabled = reports.fetch(:checkpoint, true)
+      @checkpoint_every = reports[:checkpoint_every] || DEFAULT_CHECKPOINT_EVERY
+      @checkpoint_interval = reports[:checkpoint_interval] || DEFAULT_CHECKPOINT_INTERVAL
     end
 
     def apply_analysis_defaults(raw)

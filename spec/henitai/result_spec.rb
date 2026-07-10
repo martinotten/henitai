@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "digest"
 require "securerandom"
 require "parser/current"
 require "tmpdir"
@@ -205,6 +206,40 @@ RSpec.describe Henitai::Result do
 
   it "serialises the expected schema version" do
     expect(result([build_mutant(status: :pending)]).to_stryker_schema[:schemaVersion]).to eq("1.0")
+  end
+
+  it "serialises the pre-site-offset stable id for canonical report migration" do
+    mutant = build_mutant(status: :killed)
+    legacy_id = Digest::SHA256.hexdigest(
+      [
+        mutant.subject.expression,
+        mutant.operator,
+        mutant.description,
+        mutant.location[:file],
+        Unparser.unparse(mutant.mutated_node)
+      ].join("\0")
+    )
+
+    schema = result([mutant]).to_stryker_schema
+    file = schema[:files].keys.first
+
+    expect(schema[:files][file][:mutants].first[:legacyStableId]).to eq(legacy_id)
+  end
+
+  it "omits a legacy alias for a recipe mutant with a precomputed stable id" do
+    mutant = Henitai::Mutant.new(
+      subject: Henitai::Subject.new(namespace: "Sample", method_name: "value"),
+      operator: "ArithmeticOperator",
+      nodes: { original: nil, mutated: nil },
+      description: "replaced + with -",
+      location: { file: "lib/sample.rb", start_line: 1, end_line: 1, start_col: 0, end_col: 5 },
+      precomputed_stable_id: "from-report"
+    )
+
+    schema = result([mutant]).to_stryker_schema
+    serialized = schema[:files]["lib/sample.rb"][:mutants].first
+
+    expect(serialized).not_to have_key(:legacyStableId)
   end
 
   it "serialises the Stryker status vocabulary for every mutant status" do

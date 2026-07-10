@@ -121,24 +121,56 @@ RSpec.describe Henitai::Reporter::Json do
 
   it "merges into the existing canonical report when the run is not authoritative" do
     Dir.mktmpdir do |dir|
-      reports_dir = File.join(dir, "reports")
-      report_path = File.join(reports_dir, "mutation-report.json")
-      FileUtils.mkdir_p(reports_dir)
-      File.write(report_path, JSON.pretty_generate(
-                                { schemaVersion: "1.0", thresholds: { high: 80, low: 60 },
-                                  files: { "old.rb" => { language: "ruby", source: "", mutants: [
-                                    { id: "1", stableId: "old1", mutatorName: "X", status: "Killed" }
-                                  ] } } }
-                              ))
-      schema = { schemaVersion: "1.0", thresholds: { high: 80, low: 60 },
-                 files: { "new.rb" => { language: "ruby", source: "", mutants: [
-                   { id: "2", stableId: "new1", mutatorName: "X", status: "Killed" }
-                 ] } } }
+      Dir.chdir(dir) do
+        reports_dir = File.join(dir, "reports")
+        report_path = File.join(reports_dir, "mutation-report.json")
+        FileUtils.mkdir_p(reports_dir)
+        # The reporter prunes prior entries whose source file is gone, so both
+        # files must exist on disk for the merge to preserve them.
+        File.write("old.rb", "# still here\n")
+        File.write("new.rb", "# still here\n")
+        File.write(report_path, JSON.pretty_generate(
+                                  { schemaVersion: "1.0", thresholds: { high: 80, low: 60 },
+                                    files: { "old.rb" => { language: "ruby", source: "", mutants: [
+                                      { id: "1", stableId: "old1", mutatorName: "X", status: "Killed" }
+                                    ] } } }
+                                ))
+        schema = { schemaVersion: "1.0", thresholds: { high: 80, low: 60 },
+                   files: { "new.rb" => { language: "ruby", source: "", mutants: [
+                     { id: "2", stableId: "new1", mutatorName: "X", status: "Killed" }
+                   ] } } }
 
-      described_class.new(config: build_config(reports_dir:)).report(build_result(schema:, authoritative: false))
+        described_class.new(config: build_config(reports_dir:)).report(build_result(schema:, authoritative: false))
 
-      merged = JSON.parse(File.read(report_path))
-      expect(merged["files"].keys).to contain_exactly("old.rb", "new.rb")
+        merged = JSON.parse(File.read(report_path))
+        expect(merged["files"].keys).to contain_exactly("old.rb", "new.rb")
+      end
+    end
+  end
+
+  it "prunes a prior file entry whose source file no longer exists on a scoped merge" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        reports_dir = File.join(dir, "reports")
+        report_path = File.join(reports_dir, "mutation-report.json")
+        FileUtils.mkdir_p(reports_dir)
+        File.write("new.rb", "# still here\n")
+        File.write(report_path, JSON.pretty_generate(
+                                  { schemaVersion: "1.0", thresholds: { high: 80, low: 60 },
+                                    files: { "deleted.rb" => { language: "ruby", source: "", mutants: [
+                                      { id: "1", stableId: "gone1", mutatorName: "X", status: "Killed" }
+                                    ] } } }
+                                ))
+        schema = { schemaVersion: "1.0", thresholds: { high: 80, low: 60 },
+                   files: { "new.rb" => { language: "ruby", source: "", mutants: [
+                     { id: "2", stableId: "new1", mutatorName: "X", status: "Killed" }
+                   ] } } }
+
+        described_class.new(config: build_config(reports_dir:)).report(build_result(schema:, authoritative: false))
+
+        merged = JSON.parse(File.read(report_path))
+        expect(merged["files"].keys).to contain_exactly("new.rb")
+      end
     end
   end
 

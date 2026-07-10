@@ -96,6 +96,7 @@ or with the architecture docs, stop and resolve the conflict before coding.
 ## Useful Commands
 
 - `bundle exec rspec`
+- `bundle exec ruby bin/verify-process-free-specs`
 - `bundle exec rubocop --parallel`
 - `bundle exec steep check`
 - `bundle exec henitai run`

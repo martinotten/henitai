@@ -16,14 +16,19 @@ module Henitai
   # survivors for a file, so replacing that file's whole entry would drop
   # every other mutant (e.g. Killed ones) in the same file.
   module CanonicalReportMerger
-    def self.merge(current_schema, prior_path)
+    # @param prune_missing [Boolean] when true, prior file entries whose source
+    #   file no longer exists on disk are dropped from the merged report (a
+    #   deleted module, or one removed from `includes`). Off by default so the
+    #   merge stays a pure schema operation; the reporter enables it because it
+    #   runs from the project root where relative source paths resolve.
+    def self.merge(current_schema, prior_path, prune_missing: false)
       current = stringify(current_schema)
       return current unless File.exist?(prior_path)
 
       prior = JSON.parse(File.read(prior_path))
       return current unless prior.is_a?(Hash) && prior["files"].is_a?(Hash)
 
-      merged = merge_files(current, prior)
+      merged = merge_files(current, prior, prune_missing:)
       return current unless safe?(merged, current)
 
       merged
@@ -31,12 +36,22 @@ module Henitai
       stringify(current_schema)
     end
 
-    def self.merge_files(current, prior)
+    def self.merge_files(current, prior, prune_missing:)
       merged_files = overlay_current_mutants(deep_dup(prior["files"]), current)
       merged_files.reject! { |_, file| file["mutants"].empty? }
+      prune_missing_source_files(merged_files) if prune_missing
       current.merge("files" => merged_files)
     end
     private_class_method :merge_files
+
+    # Drops entries carried over from the prior report whose source file no
+    # longer exists on disk (deleted module, or dropped from `includes`). Files
+    # produced by the current run always exist, so a scoped rerun never removes
+    # in-scope-but-untouched findings -- only genuinely gone paths.
+    def self.prune_missing_source_files(merged_files)
+      merged_files.select! { |file, _| File.exist?(file) }
+    end
+    private_class_method :prune_missing_source_files
 
     def self.overlay_current_mutants(merged_files, current)
       strip_rerun_mutants(merged_files, mutant_ids(current))
@@ -62,8 +77,8 @@ module Henitai
 
     def self.mutant_ids(schema)
       schema.fetch("files", {}).each_value.flat_map do |file|
-        file.fetch("mutants", []).map do |m|
-          m["stableId"]
+        file.fetch("mutants", []).flat_map do |mutant|
+          [mutant["stableId"], mutant["legacyStableId"]].compact
         end
       end.to_set
     end

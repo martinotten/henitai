@@ -75,14 +75,28 @@ includes:
 excludes:
   - lib/henitai/eager_load.rb   # standalone entry points with no in-process coverage
 
+test_excludes:
+  - spec/end_to_end/*_spec.rb   # never select these files for individual mutants
+
 mutation:
   operators: light   # light | full
   timeout: 10.0
   max_flaky_retries: 3
+  max_log_bytes: 5000000
+  max_timeout: 30.0
   sampling:
     ratio: 0.05
     strategy: stratified
 reports_dir: reports
+reporters:
+  - terminal
+  - json
+  - html
+
+reports:
+  checkpoint: true
+  checkpoint_every: 200
+  checkpoint_interval: 30.0
 
 thresholds:
   high: 80
@@ -93,6 +107,13 @@ Henitai warns on unknown config keys and aborts with `Henitai::ConfigurationErro
 when a value is invalid.
 
 CLI flags override the corresponding values from `.henitai.yml`.
+
+`test_excludes` removes matching test files from per-mutant selection. A mutant
+with no tests left is reported as `NoCoverage` and is not executed.
+`mutation.max_log_bytes` is a positive per-stream byte cap for captured child
+output. `mutation.max_timeout` caps auto-calibrated timeouts; an explicit
+`mutation.timeout` still takes precedence. When JSON or HTML reporting is
+enabled, `reports.checkpoint*` controls periodic canonical-report checkpoints.
 
 Before mutation testing starts, Henitai checks whether the current coverage data
 covers the configured source files. If not, Henitai runs the configured test
@@ -135,6 +156,9 @@ them: a verdict is reused only when the subject's source and every covering
 test file are byte-identical to what was recorded. Reused mutants stay
 visible in the report (`fromCache: true` beside `stableId`) and count toward
 MS/MSI; the terminal prints `N of M verdicts reused from history`.
+Generated mutants temporarily include `legacyStableId` so scoped runs replace
+canonical entries written before site-offset IDs were introduced instead of
+duplicating them.
 Survivors, timeouts and errors always re-execute. `--force` bypasses reuse.
 `henitai run --dry-run` lists the post-filter mutant set without executing
 any tests and always exits `0`.
@@ -251,6 +275,7 @@ git clone https://github.com/martinotten/henitai
 cd henitai
 bundle install
 bundle exec rspec        # run tests
+bundle exec ruby bin/verify-process-free-specs # verify self-mutation-safe specs
 bundle exec rake smoke:integration:all # run rspec/minitest integration smoke projects
 bundle exec rubocop      # lint
 bundle exec henitai clean # remove stale generated report artifacts

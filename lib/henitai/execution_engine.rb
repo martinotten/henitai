@@ -1,15 +1,20 @@
 # frozen_string_literal: true
 
 require_relative "process_worker_runner"
+require_relative "execution_engine/env_scope"
 
 module Henitai
   # Runs pending mutants through the selected integration.
   class ExecutionEngine
+    include EnvScope
+
     def run(mutants, integration, config, progress_reporter: nil)
       with_reports_dir(config) do
         with_coverage_dir(config) do
-          with_worker_slot do
-            execute(mutants, integration, config, progress_reporter)
+          with_max_log_bytes(config) do
+            with_worker_slot do
+              execute(mutants, integration, config, progress_reporter)
+            end
           end
         end
       end
@@ -29,21 +34,6 @@ module Henitai
 
       warn_flaky_mutants(pending_mutants.size)
       mutants
-    end
-
-    # Linear-path children inherit slot 0 so suite-side isolation code works
-    # identically in both execution modes; the parallel scheduler overwrites
-    # the value per spawn. Restored afterwards like the other run-scoped vars.
-    def with_worker_slot
-      original = ENV.fetch(SlotScheduler::WORKER_SLOT_ENV, nil)
-      ENV[SlotScheduler::WORKER_SLOT_ENV] = "0"
-      yield
-    ensure
-      if original.nil?
-        ENV.delete(SlotScheduler::WORKER_SLOT_ENV)
-      else
-        ENV[SlotScheduler::WORKER_SLOT_ENV] = original
-      end
     end
 
     def parallel_execution?(config, mutants)
@@ -82,11 +72,26 @@ module Henitai
 
     def process_mutant(mutant, integration, config, progress_reporter, mutex)
       test_files = prioritized_tests_for(mutant, integration, config)
-      mutant.covered_by = test_files if mutant.respond_to?(:covered_by=)
-      mutant.tests_completed = test_files.size if mutant.respond_to?(:tests_completed=)
+      record_test_files(mutant, test_files)
+      return record_no_coverage(mutant, progress_reporter, mutex) if test_files.empty?
+
       scenario_result = run_with_flaky_retry(mutant, integration, config, test_files, mutex)
       mutant.status = scenario_status(scenario_result)
 
+      report_progress(mutant, scenario_result, progress_reporter, mutex)
+    end
+
+    def record_test_files(mutant, test_files)
+      mutant.covered_by = test_files if mutant.respond_to?(:covered_by=)
+      mutant.tests_completed = test_files.size if mutant.respond_to?(:tests_completed=)
+    end
+
+    def record_no_coverage(mutant, progress_reporter, mutex)
+      mutant.status = :no_coverage
+      report_progress(mutant, nil, progress_reporter, mutex)
+    end
+
+    def report_progress(mutant, scenario_result, progress_reporter, mutex)
       if mutex
         mutex.synchronize { progress_reporter&.progress(mutant, scenario_result:) }
       else
@@ -95,13 +100,28 @@ module Henitai
     end
 
     def prioritized_tests_for(mutant, integration, config)
-      tests = integration.select_tests(mutant.subject)
+      tests = reject_excluded_tests(integration.select_tests(mutant.subject), config)
       tests = per_test_coverage_selector.filter(
         tests,
         mutant,
         reports_dir: config.reports_dir
       )
       test_prioritizer(config).sort(tests, mutant, test_history(config))
+    end
+
+    # Drops test files matching any config.test_excludes glob. Used to keep a
+    # mutant child from re-running tests that themselves spawn henitai/forked
+    # subprocesses (e.g. the CLI and process-scheduler specs when dogfooding
+    # henitai on itself), which otherwise multiplies processes and log noise.
+    def reject_excluded_tests(tests, config)
+      patterns = config.respond_to?(:test_excludes) ? Array(config.test_excludes) : []
+      return tests if patterns.empty?
+
+      expanded = patterns.map { |pattern| File.expand_path(pattern) }
+      tests.reject do |path|
+        candidate = File.expand_path(path)
+        expanded.any? { |pattern| File.fnmatch?(pattern, candidate, File::FNM_PATHNAME) }
+      end
     end
 
     def test_prioritizer(config)
@@ -120,10 +140,19 @@ module Henitai
       return config.timeout unless calibration_enabled?(config)
 
       calibrated = timeout_calibrator(config).timeout_for(test_files)
-      return calibrated if calibrated
+      return [calibrated, max_timeout(config)].min if calibrated
 
       warn_timeout_fallback_once
       Configuration::DEFAULT_TIMEOUT
+    end
+
+    # Ceiling on the auto-calibrated timeout so a runaway mutant is killed in
+    # seconds instead of running for minutes when the calibrated value (derived
+    # from a slow baseline) is large. A fixed mutation.timeout bypasses this.
+    def max_timeout(config)
+      return config.max_timeout if config.respond_to?(:max_timeout) && config.max_timeout
+
+      Configuration::DEFAULT_MAX_TIMEOUT
     end
 
     def calibration_enabled?(config)
@@ -202,37 +231,6 @@ module Henitai
         total: total_mutants,
         ratio: flaky_ratio * 100.0
       )
-    end
-
-    def with_reports_dir(config)
-      original_reports_dir = ENV.fetch("HENITAI_REPORTS_DIR", nil)
-      ENV["HENITAI_REPORTS_DIR"] = config.reports_dir
-      yield
-    ensure
-      if original_reports_dir.nil?
-        ENV.delete("HENITAI_REPORTS_DIR")
-      else
-        ENV["HENITAI_REPORTS_DIR"] = original_reports_dir
-      end
-    end
-
-    def with_coverage_dir(config)
-      original_coverage_dir = ENV.fetch("HENITAI_COVERAGE_DIR", nil)
-      ENV["HENITAI_COVERAGE_DIR"] = mutation_coverage_dir(config)
-      yield
-    ensure
-      if original_coverage_dir.nil?
-        ENV.delete("HENITAI_COVERAGE_DIR")
-      else
-        ENV["HENITAI_COVERAGE_DIR"] = original_coverage_dir
-      end
-    end
-
-    def mutation_coverage_dir(config)
-      base_dir = config.respond_to?(:reports_dir) ? config.reports_dir : nil
-      base_dir = "reports" if base_dir.nil? || base_dir.empty?
-
-      File.join(base_dir, "mutation-coverage")
     end
 
     def max_flaky_retries(config)
