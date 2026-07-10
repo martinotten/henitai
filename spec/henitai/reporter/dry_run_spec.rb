@@ -37,7 +37,7 @@ RSpec.describe Henitai::Reporter::DryRun do
     )
 
     expect(output).to eq(<<~LISTING)
-      Dry run: 2 mutants (no tests executed)
+      Dry run: 2 mutants (no mutants executed)
 
       Sample#answer
         ArithmeticOperator — replaced + with -  lib/sample.rb:3  [pending]
@@ -71,7 +71,7 @@ RSpec.describe Henitai::Reporter::DryRun do
 
   it "prints an empty listing for zero mutants" do
     expect(report([])).to eq(<<~LISTING)
-      Dry run: 0 mutants (no tests executed)
+      Dry run: 0 mutants (no mutants executed)
 
       Summary: no mutants
     LISTING

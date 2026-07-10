@@ -7,9 +7,9 @@ require "spec_helper"
 require "tmpdir"
 
 RSpec.describe Henitai::CheckpointReporter do
-  def build_config(reports_dir:, every: 100, interval: 30.0)
-    Struct.new(:reports_dir, :thresholds, :checkpoint_every, :checkpoint_interval)
-          .new(reports_dir, { high: 80, low: 60 }, every, interval)
+  def build_config(reports_dir:, every: 100, interval: 30.0, reporters: ["json"])
+    Struct.new(:reports_dir, :thresholds, :checkpoint_every, :checkpoint_interval, :reporters)
+          .new(reports_dir, { high: 80, low: 60 }, every, interval, reporters)
   end
 
   def build_mutant(file:, status: :killed)
@@ -27,6 +27,14 @@ RSpec.describe Henitai::CheckpointReporter do
 
   def canonical(reports_dir)
     JSON.parse(File.read(File.join(reports_dir, "mutation-report.json")))
+  end
+
+  def embedded_html_report(reports_dir)
+    html = File.read(File.join(reports_dir, "mutation-report.html"))
+    match = html.match(
+      %r{<script type="application/json" id="henitai-report-data">(.*?)</script>}m
+    )
+    JSON.parse(match[1])
   end
 
   # A clock that returns each queued value once, then holds the last one.
@@ -60,6 +68,41 @@ RSpec.describe Henitai::CheckpointReporter do
       reporter.progress(build_mutant(file: "b.rb"))
 
       expect(canonical(reports_dir)["files"].keys).to contain_exactly("a.rb", "b.rb")
+    end
+  end
+
+  it "regenerates the HTML report from the merged checkpoint" do
+    Dir.mktmpdir do |dir|
+      reports_dir = File.join(dir, "reports")
+      reporter = described_class.new(
+        config: build_config(reports_dir:, every: 1, reporters: ["html"]),
+        source_provider: ->(_f) { "" }, authoritative: true, clock: -> { 0.0 }
+      )
+
+      reporter.progress(build_mutant(file: "a.rb"))
+
+      expect(embedded_html_report(reports_dir)).to eq(canonical(reports_dir))
+    end
+  end
+
+  it "keeps prior checkpoint results in each incremental HTML update" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        reports_dir = File.join(dir, "reports")
+        %w[a.rb b.rb].each { |file| File.write(file, "1 - 0\n") }
+        reporter = described_class.new(
+          config: build_config(reports_dir:, every: 1, reporters: ["html"]),
+          source_provider: ->(_f) { "" }, authoritative: true, clock: -> { 0.0 }
+        )
+
+        reporter.progress(build_mutant(file: "a.rb"))
+        reporter.progress(build_mutant(file: "b.rb"))
+
+        expect(embedded_html_report(reports_dir)["files"].keys).to contain_exactly(
+          "a.rb",
+          "b.rb"
+        )
+      end
     end
   end
 

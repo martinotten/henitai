@@ -125,7 +125,7 @@ RSpec.describe Henitai::CLI do
                 --survivors-from PATH        Re-run only survivors from a prior report (partial rerun; threshold checks are skipped; dirty worktrees are included)
                 --incremental                Reuse still-valid Killed verdicts from the history store instead of re-executing them
                 --force                      Bypass verdict reuse and execute every mutant (only meaningful with --incremental)
-                --dry-run                    List the post-filter mutant set without executing any tests (always exits 0)
+                --dry-run                    List the post-filter mutant set without executing mutants (always exits 0)
                 --fail-on-survivors          Exit 1 for partial reruns when any survivors remain (otherwise exits 0)
                 --strict-exit-codes          Expanded exit codes: 0 threshold met, 1 threshold miss, 2 framework error, 3 timeouts present, 4 runtime/compile errors present
             -h, --help                       Show this help
@@ -284,6 +284,33 @@ RSpec.describe Henitai::CLI do
     cli.run
 
     expect(cli).to have_received(:warn).with("Henitai::ConfigurationError: boom")
+  end
+
+  it "leaves every report artifact untouched when clean cannot acquire the lock", :aggregate_failures do
+    Dir.mktmpdir do |dir|
+      reports_dir = File.join(dir, "reports")
+      config_path = write_configuration(dir, reports_dir:)
+      artifact_path = File.join(reports_dir, "mutation-logs", "active.log")
+      FileUtils.mkdir_p(File.dirname(artifact_path))
+      File.write(artifact_path, "active")
+      error = Henitai::ConcurrentRunError.new(
+        "another henitai run is active in #{reports_dir} " \
+        "(pid 123); use a separate reports_dir or wait"
+      )
+      directory_lock = instance_double(Henitai::ReportsDirectoryLock)
+      allow(directory_lock).to receive(:synchronize).and_raise(error)
+      allow(Henitai::ReportsDirectoryLock).to receive(:new).and_return(directory_lock)
+      cli = described_class.new(["clean", "--config", config_path])
+      exit_status = nil
+      cli.define_singleton_method(:exit) { |status = nil| exit_status = status }
+      allow(cli).to receive(:warn)
+
+      cli.run
+
+      expect(exit_status).to eq(2)
+      expect(cli).to have_received(:warn).with("Henitai::ConcurrentRunError: #{error.message}")
+      expect(File).to exist(artifact_path)
+    end
   end
 
   it "does not clean report artifacts automatically during run" do

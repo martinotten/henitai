@@ -183,6 +183,7 @@ The system is organized into the following main parts:
 | Result analysis | Classify outcomes, compute scores, preserve statuses | `lib/henitai/result.rb`, result collector |
 | Reporters | Emit terminal, JSON, HTML, and dashboard outputs; keep live progress separate from captured child logs | `lib/henitai/reporter/*` |
 | Persistence | Track history and latent-mutant data across runs | `lib/henitai/mutant_history_store.rb` (SQLite-backed) |
+| Report coordination | Fail fast when a run or clean command already owns the configured reports directory | `lib/henitai/reports_directory_lock.rb` |
 
 ### 5.2 Important Interfaces
 
@@ -195,6 +196,7 @@ The most important interfaces are:
 - the reporter interface for terminal, HTML, JSON, and dashboard output
 - the output contract for child process logs, which are captured as artifacts
 - the worker isolation contract based on process-level execution
+- exclusive advisory ownership of `reports_dir` for every run and clean command
 
 Representative configuration contract:
 

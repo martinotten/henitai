@@ -53,12 +53,14 @@ module Henitai
     #
     # @return [Result]
     def run
-      started_at = Time.now
+      ReportsDirectoryLock.new(reports_dir: config.reports_dir).synchronize do
+        started_at = Time.now
 
-      mutants = pipeline_mutants
-      return dry_run_result(mutants, started_at, Time.now) if @dry_run
+        mutants = pipeline_mutants
+        return dry_run_result(mutants, started_at, Time.now) if @dry_run
 
-      build_result(execute_mutants(mutants), started_at, Time.now)
+        build_result(execute_mutants(mutants), started_at, Time.now)
+      end
     end
 
     private
@@ -76,8 +78,9 @@ module Henitai
     end
 
     # Dry run stops before Gate 4: prints the post-filter listing and returns
-    # a Result without executing tests, persisting history or running the
-    # configured reporters — reports/ stays untouched.
+    # a Result without executing mutants, persisting history or running the
+    # configured reporters. Gate 0 and lock coordination may still write under
+    # reports_dir.
     def dry_run_result(mutants, started_at, finished_at)
       @result = build_result_object(mutants, started_at, finished_at)
       Reporter::DryRun.new(config:).report(@result)

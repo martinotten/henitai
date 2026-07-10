@@ -67,6 +67,9 @@ module Henitai
   class CoverageError < StandardError
   end
 
+  class ConcurrentRunError < StandardError
+  end
+
   class GitDiffError < StandardError
   end
 
@@ -666,7 +669,22 @@ module Henitai
   end
 
   module CanonicalReportWriter
-    def self.write: (Hash[Symbol, untyped], path: String, authoritative: bool) -> void
+    def self.write: (Hash[Symbol, untyped], path: String, authoritative: bool) -> Hash[untyped, untyped]
+  end
+
+  class ReportsDirectoryLock
+    LOCK_FILENAME: String
+
+    def initialize: (reports_dir: String) -> void
+    def synchronize: () { () -> untyped } -> untyped
+
+    private
+
+    def lock_path: () -> String
+    def acquire: (File) -> void
+    def owner_pid: (File) -> (Integer | String)
+    def contention_message: (Integer | String) -> String
+    def write_owner: (File) -> untyped
   end
 
   class CheckpointReporter
@@ -856,12 +874,14 @@ module Henitai
 
     class Html < Base
       def report: (Result) -> void
+      def report_schema: (Hash[untyped, untyped]) -> void
 
       private
 
       def report_path: () -> String
-      def html_document: (Result) -> String
-      def escaped_report_json: (Result) -> String
+      def html_document: (Hash[untyped, untyped]) -> String
+      def schema_for: (Result) -> Hash[untyped, untyped]
+      def escaped_report_json: (Hash[untyped, untyped]) -> String
     end
 
     class DryRun < Base
