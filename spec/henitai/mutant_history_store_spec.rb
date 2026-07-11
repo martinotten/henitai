@@ -344,6 +344,19 @@ RSpec.describe Henitai::MutantHistoryStore do
       end
     end
 
+    it "does not cache a cache-hit mutant without stored fingerprints" do
+      Dir.mktmpdir do |dir|
+        store = store_at(dir)
+        mutant = build_cacheable_mutant(dir, status: :killed)
+        mutant.define_singleton_method(:covered_by) { nil }
+        mutant.define_singleton_method(:from_cache?) { true }
+
+        store.record(build_result([mutant], summary), version: "0.1.0")
+
+        expect(store.killed_verdict_for(Henitai::MutantIdentity.stable_id(mutant))).to be_nil
+      end
+    end
+
     it "returns nil for survived mutants" do
       Dir.mktmpdir do |dir|
         store = store_at(dir)
@@ -503,6 +516,16 @@ RSpec.describe Henitai::MutantHistoryStore do
     it "returns nil when the database does not exist yet" do
       Dir.mktmpdir do |dir|
         expect(store_at(dir).killed_verdict_for("anything")).to be_nil
+      end
+    end
+
+    it "does not create a database during a lookup" do
+      Dir.mktmpdir do |dir|
+        store = store_at(dir)
+
+        store.killed_verdict_for("anything")
+
+        expect(File).not_to exist(store.path)
       end
     end
 

@@ -14,6 +14,13 @@ RSpec.describe Henitai::ConfigurationValidator do
     expect(described_class).to matcher
   end
 
+  describe ".warn" do
+    it "writes the warning to stderr" do
+      expect { described_class.warn("configuration warning") }
+        .to output("configuration warning\n").to_stderr
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # validate!
   # ---------------------------------------------------------------------------

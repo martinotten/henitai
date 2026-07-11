@@ -35,4 +35,32 @@ RSpec.describe Henitai::ReportsDirectoryLock do
       end
     end
   end
+
+  it "rejects a second lock for the same reports directory" do
+    Dir.mktmpdir do |reports_dir|
+      lock = described_class.new(reports_dir:)
+
+      lock.synchronize do
+        expect { described_class.new(reports_dir:).synchronize { nil } }
+          .to raise_error(
+            Henitai::ConcurrentRunError,
+            /another henitai run is active.*\(pid #{Process.pid}\)/
+          )
+      end
+    end
+  end
+
+  it "reports an unknown owner for non-object metadata" do
+    Dir.mktmpdir do |reports_dir|
+      lock_path = File.join(reports_dir, ".henitai-run.lock")
+      File.write(lock_path, "[]")
+
+      File.open(lock_path, File::RDWR) do |file|
+        file.flock(File::LOCK_EX)
+
+        expect { described_class.new(reports_dir:).synchronize { nil } }
+          .to raise_error(Henitai::ConcurrentRunError, /\(pid unknown\)/)
+      end
+    end
+  end
 end

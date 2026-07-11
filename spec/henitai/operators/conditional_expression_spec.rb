@@ -244,4 +244,17 @@ RSpec.describe Henitai::Operators::ConditionalExpression do
 
     expect(mutant.mutated_node.type).to eq(:nil)
   end
+
+  it "keeps the selected case branch body" do
+    source = <<~RUBY
+      case state
+      when :ready
+        :go
+      end
+    RUBY
+
+    mutant = mutate(source).find { |candidate| candidate.description == "kept when branch 1" }
+
+    expect(Unparser.unparse(mutant.mutated_node)).to eq(":go")
+  end
 end

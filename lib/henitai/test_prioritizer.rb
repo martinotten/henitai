@@ -71,7 +71,7 @@ module Henitai
 
     def relative_history_key(path)
       pathname = Pathname.new(path)
-      return unless pathname.absolute?
+      return path unless pathname.absolute?
 
       pathname.relative_path_from(Pathname.pwd).to_s
     rescue StandardError

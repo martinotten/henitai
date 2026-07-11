@@ -137,7 +137,7 @@ module Henitai
       split[:stable] + split[:pending]
     end
 
-    def test_filter(loaded, dirty_source_files: false)
+    def test_filter(loaded, dirty_source_files:)
       SurvivorTestFilter.new(
         coverage_map: loaded.coverage_map,
         git_sha: loaded.git_sha,

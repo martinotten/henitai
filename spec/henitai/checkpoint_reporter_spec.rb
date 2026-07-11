@@ -121,11 +121,12 @@ RSpec.describe Henitai::CheckpointReporter do
     end
   end
 
-  it "replaces prior findings on the first flush of a full run, then merges", :aggregate_failures do
+  it "replaces prior findings on the first full-run flush" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
         reports_dir = File.join(dir, "reports")
         FileUtils.mkdir_p(reports_dir)
+        File.write("stale.rb", "1 - 0\n")
         File.write(File.join(reports_dir, "mutation-report.json"), JSON.pretty_generate(
                                                                      { "schemaVersion" => "1.0",
                                                                        "files" => { "stale.rb" => {
@@ -139,9 +140,25 @@ RSpec.describe Henitai::CheckpointReporter do
         )
 
         reporter.progress(build_mutant(file: "a.rb"))
-        expect(canonical(reports_dir)["files"].keys).to contain_exactly("a.rb")
 
+        expect(canonical(reports_dir)["files"].keys).to contain_exactly("a.rb")
+      end
+    end
+  end
+
+  it "merges findings from later full-run flushes" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        reports_dir = File.join(dir, "reports")
+        %w[a.rb b.rb].each { |file| File.write(file, "1 - 0\n") }
+        reporter = described_class.new(
+          config: build_config(reports_dir:, every: 1, interval: 1_000.0),
+          source_provider: ->(_f) { "" }, authoritative: true, clock: -> { 0.0 }
+        )
+
+        reporter.progress(build_mutant(file: "a.rb"))
         reporter.progress(build_mutant(file: "b.rb"))
+
         expect(canonical(reports_dir)["files"].keys).to contain_exactly("a.rb", "b.rb")
       end
     end

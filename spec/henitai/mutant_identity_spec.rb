@@ -87,4 +87,10 @@ RSpec.describe Henitai::MutantIdentity do
       expect(described_class.stable_id(first)).not_to eq(described_class.stable_id(second))
     end
   end
+
+  describe ".legacy_stable_id" do
+    it "returns a 64-character hex SHA256 string" do
+      expect(described_class.legacy_stable_id(build_mutant)).to match(/\A[0-9a-f]{64}\z/)
+    end
+  end
 end

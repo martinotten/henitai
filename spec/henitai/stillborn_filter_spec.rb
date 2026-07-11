@@ -48,4 +48,11 @@ RSpec.describe Henitai::StillbornFilter do
 
     expect(described_class.new.suppressed?(mutant)).to be(false)
   end
+
+  it "suppresses rendered source that breaks the wrapper syntax" do
+    mutant = build_mutant("1")
+    allow(Unparser).to receive(:unparse).with(mutant.mutated_node).and_return("end")
+
+    expect(described_class.new.suppressed?(mutant)).to be(true)
+  end
 end

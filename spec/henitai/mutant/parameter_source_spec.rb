@@ -96,6 +96,14 @@ RSpec.describe Henitai::Mutant::ParameterSource do
       expect(parameter_source.build(node)).to eq("a, b")
     end
 
+    it "ignores unsupported argument nodes" do
+      unsupported = Parser::AST::Node.new(:unsupported)
+      arguments = Parser::AST::Node.new(:args, [unsupported])
+      node = Parser::AST::Node.new(:def, [:foo, arguments, nil])
+
+      expect(parameter_source.build(node)).to eq("")
+    end
+
     it "wraps unparse failures on default values as Unparser::UnsupportedNodeError" do
       node = Parser::CurrentRuby.parse("def foo(a = 1); end")
       allow(Unparser).to receive(:unparse).and_raise(StandardError, "boom")

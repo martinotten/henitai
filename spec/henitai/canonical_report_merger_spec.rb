@@ -38,6 +38,15 @@ RSpec.describe Henitai::CanonicalReportMerger do
       expect(merged).to eq(JSON.parse(JSON.generate(current)))
     end
 
+    it "does not read a prior report that does not exist" do
+      current = schema({ "a.rb" => file_entry(mutant_schema("a1")) })
+      allow(File).to receive(:read).and_call_original
+
+      described_class.merge(current, "mutation-report.json")
+
+      expect(File).not_to have_received(:read)
+    end
+
     it "keeps a prior file's mutants when a scoped run only touches another file", :aggregate_failures do
       prior_path = write_prior(schema({
                                         "x.rb" => file_entry(mutant_schema("x1")),

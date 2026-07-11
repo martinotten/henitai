@@ -552,6 +552,10 @@ RSpec.describe Henitai::Integration::Rspec do
     expect { integration.test_files }.to raise_error(NotImplementedError)
   end
 
+  it "does not support per-test coverage by default" do
+    expect(Henitai::Integration::Base.new.per_test_coverage_supported?).to be(false)
+  end
+
   it "keeps the base integration mutant runner abstract" do
     integration = Henitai::Integration::Base.new
 

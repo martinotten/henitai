@@ -249,6 +249,14 @@ RSpec.describe Henitai::Configuration do
     )
   end
 
+  it "reports the root value type when configuration is not a mapping" do
+    expect { load_configuration("- item\n") }
+      .to raise_error(
+        Henitai::ConfigurationError,
+        /configuration: expected Hash, got Array/
+      )
+  end
+
   it "warns on unknown keys and still loads the known ones" do
     allow(Henitai::ConfigurationValidator).to receive(:warn)
 
@@ -280,6 +288,18 @@ RSpec.describe Henitai::Configuration do
     config = load_configuration("integration:\n  name: rspec\n")
 
     expect(config.test_excludes).to eq([])
+  end
+
+  it "defaults includes to the lib directory" do
+    config = load_configuration("integration:\n  name: rspec\n")
+
+    expect(config.includes).to eq(["lib"])
+  end
+
+  it "defaults reporters to the terminal reporter" do
+    config = load_configuration("integration:\n  name: rspec\n")
+
+    expect(config.reporters).to eq(["terminal"])
   end
 
   it "loads test_excludes globs" do

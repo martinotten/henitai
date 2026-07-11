@@ -171,7 +171,76 @@ RSpec.describe Henitai::ProcessWorkerRunner do
     end
   end
 
+  describe "Runtime" do
+    it "delegates wait2 to Process" do
+      allow(Process).to receive(:wait2).and_return(:wait_result)
+
+      result = described_class::Runtime.new.wait2(123, Process::WNOHANG)
+
+      expect(result).to eq(:wait_result)
+    end
+
+    it "delegates wait to Process" do
+      allow(Process).to receive(:wait) do |pid, _flags = nil|
+        :wait_result if pid == 123
+      end
+
+      result = described_class::Runtime.new.wait(123)
+
+      expect(result).to eq(:wait_result)
+    end
+
+    it "delegates kill to Process" do
+      allow(Process).to receive(:kill).and_return(:sent)
+
+      result = described_class::Runtime.new.kill("SIGTERM", 123)
+
+      expect(result).to eq(:sent)
+    end
+
+    it "delegates trap to Kernel" do
+      allow(Kernel).to receive(:trap).and_return(:previous)
+
+      result = described_class::Runtime.new.trap("TERM", "DEFAULT")
+
+      expect(result).to eq(:previous)
+    end
+  end
+
   describe "empty queue" do
+    it "starts without a shutdown request" do
+      runner = described_class.new(worker_count: 1)
+
+      expect(runner.shutdown_requested?).to be(false)
+    end
+
+    it "reports zero flaky retries before a run starts" do
+      runner = described_class.new(worker_count: 1)
+
+      expect(runner.flaky_retry_count).to eq(0)
+    end
+
+    it "preserves diagnostics when debug mode is disabled" do
+      diagnostics = Henitai::Integration::SchedulerDiagnostics
+      diagnostics.reset!
+      ENV["HENITAI_DEBUG_SCHEDULER"] = "1"
+      diagnostics.child_started(123)
+      ENV.delete("HENITAI_DEBUG_SCHEDULER")
+      config = Struct.new(:timeout, :max_flaky_retries).new(10.0, 0)
+
+      described_class.new(worker_count: 1).run(
+        [],
+        instance_double(Henitai::Integration::Rspec),
+        config,
+        nil
+      )
+
+      expect(diagnostics.summary.fetch(:intervals)).not_to be_empty
+    ensure
+      ENV.delete("HENITAI_DEBUG_SCHEDULER")
+      Henitai::Integration::SchedulerDiagnostics.reset!
+    end
+
     it "returns empty array immediately when given zero mutants" do
       runner = described_class.new(worker_count: 2)
       integration = instance_double(Henitai::Integration::Rspec)
@@ -317,6 +386,29 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       expect(mutant.status).to eq(:pending)
       expect(runtime_state[:kill_calls]).to eq([[:SIGTERM, -21], [:SIGKILL, -21]])
       expect(runtime_state[:wait_calls]).to eq([21])
+    end
+
+    it "does not refill a slot after shutdown is requested", :aggregate_failures do
+      mutant_a = build_mutant("first")
+      mutant_b = build_mutant("second")
+      runtime, = build_fake_runtime(
+        clock_times: [0.0, 0.0, 0.0],
+        wait2_results: { -1 => [nil, [21, build_wait_status(1)]] },
+        wait_results: { 22 => build_wait_status(0) }
+      )
+      runner = nil
+      wakeup, = build_fake_wakeup(on_wait: ->(*) { runner.request_shutdown })
+      integration = instance_double(Henitai::Integration::Rspec)
+      stub_fake_spawn_sequence(integration, [21, 22])
+      stub_result_builder(integration)
+      config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 0)
+      runner = described_class.new(worker_count: 1, runtime:, wakeup:)
+
+      expect { runner.run([mutant_a, mutant_b], integration, config, nil) }
+        .to raise_error(Interrupt)
+
+      expect(integration).to have_received(:spawn_mutant).once
+      expect(mutant_b.status).to eq(:pending)
     end
   end
 

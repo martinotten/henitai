@@ -73,4 +73,31 @@ RSpec.describe Henitai::PerTestCoverageSelector do
       ).to eq(["spec/foo_spec.rb", "spec/bar_spec.rb"])
     end
   end
+
+  it "falls back to all candidates when the mutant location is incomplete" do
+    reader = instance_double(Henitai::CoverageReportReader)
+    selector = described_class.new(coverage_report_reader: reader)
+    mutant = build_mutant(nil)
+    allow(reader).to receive(:test_lines_by_file).and_return(
+      "spec/foo_spec.rb" => { File.expand_path("lib/sample.rb") => [2] }
+    )
+
+    expect(
+      selector.filter(
+        ["spec/foo_spec.rb", "spec/bar_spec.rb"],
+        mutant,
+        reports_dir: "coverage"
+      )
+    ).to eq(["spec/foo_spec.rb", "spec/bar_spec.rb"])
+  end
+
+  it "does not read coverage when there are no candidates" do
+    reader = instance_double(Henitai::CoverageReportReader)
+    selector = described_class.new(coverage_report_reader: reader)
+    allow(reader).to receive(:test_lines_by_file)
+
+    selector.filter([], build_mutant(File.expand_path("lib/sample.rb")), reports_dir: "coverage")
+
+    expect(reader).not_to have_received(:test_lines_by_file)
+  end
 end

@@ -161,5 +161,17 @@ RSpec.describe Henitai::SourceParser do
         expect(File).to have_received(:read).once.with(path)
       end
     end
+
+    it "returns a fresh parse after clearing the cache" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "sample.rb")
+        File.write(path, "class A; end")
+        cached = described_class.parse_file(path)
+
+        described_class.clear_cache!
+
+        expect(described_class.parse_file(path)).not_to be(cached)
+      end
+    end
   end
 end

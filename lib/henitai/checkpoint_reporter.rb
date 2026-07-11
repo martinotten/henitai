@@ -36,17 +36,16 @@ module Henitai
     private
 
     def due?
-      return false if @batch.empty?
-
       @batch.size >= @config.checkpoint_every ||
         (@clock.call - @last_flush_at) >= @config.checkpoint_interval
     end
 
     def flush!
+      first_full_flush = @authoritative && !@flushed
       merged_schema = CanonicalReportWriter.write(
         build_schema(@batch),
         path: canonical_path,
-        authoritative: @authoritative && !@flushed
+        authoritative: first_full_flush
       )
       write_html(merged_schema) if html_reporter?
       @flushed = true

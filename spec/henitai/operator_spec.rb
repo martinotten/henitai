@@ -37,6 +37,16 @@ RSpec.describe Henitai::Operator do
     expect(operator_class.new.name).to eq("FakeLongName")
   end
 
+  it "requires subclasses to declare node types" do
+    expect { described_class.node_types }
+      .to raise_error(NotImplementedError, /Operator\.node_types must be defined/)
+  end
+
+  it "requires subclasses to implement mutation" do
+    expect { described_class.new.mutate(nil, subject: nil) }
+      .to raise_error(NotImplementedError, /Operator#mutate must be implemented/)
+  end
+
   it "builds a mutant without location metadata when the node has no source location" do
     operator_class = stub_const(
       "Henitai::NoLocationOperator",

@@ -76,4 +76,10 @@ RSpec.describe Henitai::Reporter::DryRun do
       Summary: no mutants
     LISTING
   end
+
+  it "uses the mutant file when the subject expression is unavailable" do
+    output = report([build_mutant(status: :pending, subject: nil)])
+
+    expect(output).to include("\nlib/sample.rb\n")
+  end
 end

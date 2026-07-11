@@ -211,6 +211,24 @@ RSpec.describe Henitai::PerTestCoverageCollector do
     end
   end
 
+  it "omits source files with no newly covered lines" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        collector = described_class.new
+        allow(Coverage).to receive(:peek_result).and_return(
+          File.expand_path("lib/sample.rb") => [nil, 1],
+          File.expand_path("lib/unchanged.rb") => [nil, 0]
+        )
+
+        collector.record_test("test/sample_test.rb")
+        collector.write_report
+
+        coverage = JSON.parse(File.read(report_path)).fetch("test/sample_test.rb").fetch("coverage")
+        expect(coverage.keys).to eq([File.expand_path("lib/sample.rb")])
+      end
+    end
+  end
+
   it "does not create a report when no test coverage was recorded" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
@@ -312,6 +330,23 @@ RSpec.describe Henitai::PerTestCoverageCollector do
         report = JSON.parse(File.read(report_path))
         source_files = report.values.flat_map(&:keys)
         expect(source_files).not_to include(include("/spec/"))
+      end
+    end
+  end
+
+  it "excludes source files outside the current directory" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        collector = described_class.new
+        external_file = File.expand_path("../outside.rb", dir)
+        allow(Coverage).to receive(:peek_result).and_return(
+          external_file => [nil, 1]
+        )
+
+        collector.record_test("test/sample_test.rb")
+        collector.write_report
+
+        expect(File).not_to exist(report_path)
       end
     end
   end

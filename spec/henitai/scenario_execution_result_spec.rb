@@ -171,6 +171,10 @@ RSpec.describe Henitai::ScenarioExecutionResult do
     )
   end
 
+  it "identifies killed results" do
+    expect(build_result(:killed)).to be_killed
+  end
+
   it "builds a killed result when the wait result has no exit status" do
     result = described_class.build(
       wait_result: Object.new,
@@ -220,6 +224,17 @@ RSpec.describe Henitai::ScenarioExecutionResult do
       stderr: "stderr",
       log_path: "/tmp/run.log"
     )
+  end
+
+  it "does not classify zero-example output as a compile error after exit 3" do
+    result = described_class.build(
+      wait_result: build_exitstatus_only_result(3),
+      stdout: "0 examples, 0 failures",
+      stderr: "",
+      log_path: "/tmp/run.log"
+    )
+
+    expect(result.status).to eq(:killed)
   end
 
   it "equals another result with the same status" do
