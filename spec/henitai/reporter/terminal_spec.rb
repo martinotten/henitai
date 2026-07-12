@@ -393,7 +393,62 @@ RSpec.describe Henitai::Reporter::Terminal do
     )
 
     expect { reporter.report(result) }.to output(
-      a_string_including("1 of 2 verdicts reused from history")
+      a_string_including("1 of 2 verdicts reused from history (1 killed, 0 survived)")
+    ).to_stdout
+  end
+
+  it "splits reused verdict counts by killed and survived" do
+    reporter = described_class.new(config: build_config, color_enabled: false)
+    # Detail-line rendering is exercised elsewhere; survived? is stubbed false
+    # so this fake only feeds the status-based reuse counters.
+    cached_mutant = Struct.new(:status) do
+      def survived? = false
+      def from_cache? = true
+    end
+    result = build_result(
+      mutants: [cached_mutant.new(:killed), cached_mutant.new(:survived), cached_mutant.new(:killed)],
+      scoring_summary: {
+        mutation_score: 100.0,
+        mutation_score_indicator: 100.0,
+        equivalence_uncertainty: nil
+      },
+      duration: 1.0
+    )
+
+    expect { reporter.report(result) }.to output(
+      a_string_including("3 of 3 verdicts reused from history (2 killed, 1 survived)")
+    ).to_stdout
+  end
+
+  def build_result_with_executed_summary(executed_scoring_summary)
+    Struct.new(:mutants, :scoring_summary, :duration, :executed_scoring_summary) do
+      def partial_rerun? = false
+      def survivor_stats = nil
+    end.new(
+      [],
+      { mutation_score: 90.0, mutation_score_indicator: 80.0, equivalence_uncertainty: nil },
+      1.0,
+      executed_scoring_summary
+    )
+  end
+
+  it "prints an executed-only score line when verdicts were reused" do
+    reporter = described_class.new(config: build_config, color_enabled: false)
+    result = build_result_with_executed_summary(
+      { mutation_score: 75.0, mutation_score_indicator: 50.0 }
+    )
+
+    expect { reporter.report(result) }.to output(
+      a_string_including("Executed-only MS 75.00% | MSI 50.00%")
+    ).to_stdout
+  end
+
+  it "omits the executed-only score line when nothing was reused" do
+    reporter = described_class.new(config: build_config, color_enabled: false)
+    result = build_result_with_executed_summary(nil)
+
+    expect { reporter.report(result) }.not_to output(
+      a_string_including("Executed-only")
     ).to_stdout
   end
 

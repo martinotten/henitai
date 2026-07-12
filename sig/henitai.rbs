@@ -826,6 +826,8 @@ module Henitai
       def score_line: (Result) -> String
       def format_row: (String, untyped) -> String
       def reused_verdicts_line: (Result) -> String?
+      def reused_mutants: (Result) -> Array[Mutant]
+      def executed_only_score_line: (Result) -> String?
       def count_status: (Result, Symbol) -> Integer
       def format_duration: (Float) -> String
       def format_percent: (Float?) -> String
@@ -959,12 +961,16 @@ module Henitai
     def detected: () -> Integer
     def mutation_score: () -> Float?
     def mutation_score_indicator: () -> Float?
+    def executed_scoring_summary: () -> Hash[Symbol, untyped]?
     def scoring_summary: () -> Hash[Symbol, untyped]
     def duration: () -> Float
     def to_stryker_schema: () -> Hash[Symbol, untyped]
 
     private
 
+    def detected_in: (Array[Mutant]) -> Integer
+    def mutation_score_for: (Array[Mutant]) -> Float?
+    def mutation_score_indicator_for: (Array[Mutant]) -> Float?
     def base_schema: () -> Hash[Symbol, untyped]
     def unmatched_survivor_ids: () -> Array[String]
     def build_files_section: () -> Hash[Symbol, untyped]
@@ -1047,6 +1053,7 @@ module Henitai
     def operators: () -> untyped
     def progress_reporter: () -> untyped?
     def history_store: () -> untyped
+    def per_test_coverage: () -> PerTestCoverage
     def history_store_path: () -> String
     def source_files: () -> Array[String]
     def included_source_files: () -> Array[String]

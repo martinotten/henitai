@@ -112,18 +112,20 @@ module Henitai
       survivor_strategy.apply_selection(filtered)
     end
 
-    # Opt-in verdict reuse (`--incremental`): still-valid Killed verdicts from
-    # the history store are marked killed + from_cache before execution. The
-    # filter is only ever constructed when the flag is set.
+    # Opt-in verdict reuse (`--incremental`): still-valid Killed and Survived
+    # verdicts from the history store are marked with their stored status +
+    # from_cache before execution. The filter is only ever constructed when
+    # the flag is set; it runs after the coverage bootstrap join in
+    # mutants_for, so the live per-test map it reads is never mid-write.
     def apply_incremental_filter(mutants)
       return mutants unless @incremental
 
-      IncrementalFilter.new(history_store:).apply(mutants)
+      IncrementalFilter.new(history_store:, per_test_coverage:,
+                            dependency_fingerprint: VerdictFingerprint.dependency_fingerprint)
+                       .apply(mutants)
     end
 
-    def bootstrap_mutants(source_files)
-      Thread.new { bootstrap_coverage(source_files) }
-    end
+    def bootstrap_mutants(source_files) = Thread.new { bootstrap_coverage(source_files) }
 
     def execute_mutants(mutants)
       execution_engine.run(
@@ -234,8 +236,15 @@ module Henitai
 
     def history_store
       @history_store ||= MutantHistoryStore.new(
-        path: File.join(config.reports_dir, Henitai::HISTORY_STORE_FILENAME)
+        path: File.join(config.reports_dir, Henitai::HISTORY_STORE_FILENAME), per_test_coverage:
       )
+    end
+
+    # One shared live view of the per-test coverage map: the incremental
+    # filter proves survivor reuse against it and the history store records
+    # the same intersection set — one implementation, one snapshot.
+    def per_test_coverage
+      @per_test_coverage ||= PerTestCoverage.new(reports_dir: config.reports_dir)
     end
 
     def source_files

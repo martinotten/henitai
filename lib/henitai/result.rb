@@ -61,7 +61,7 @@ module Henitai
     # Detected = killed + timeout + runtime_error (alle Zustände die einen Fehler beweisen)
     # @return [Integer]
     def detected
-      mutants.count { |m| %i[killed timeout runtime_error].include?(m.status) }
+      detected_in(mutants)
     end
 
     # Mutation Score (MS) — Architektur-Formel aus Abschnitt 6.1:
@@ -74,11 +74,7 @@ module Henitai
     #
     # @return [Float, nil] 0.0–100.0, nil wenn kein valider Mutant vorhanden
     def mutation_score
-      excluded = %i[ignored no_coverage compile_error equivalent]
-      valid = mutants.reject { |m| excluded.include?(m.status) }
-      return nil if valid.empty?
-
-      ((detected.to_f / valid.count) * 100.0).round(2).to_f
+      mutation_score_for(mutants)
     end
 
     # Mutation Score Indicator (MSI) — naive Berechnung ohne Äquivalenz-Bereinigung:
@@ -90,9 +86,23 @@ module Henitai
     #
     # @return [Float, nil]
     def mutation_score_indicator
-      return nil if mutants.empty?
+      mutation_score_indicator_for(mutants)
+    end
 
-      ((killed.to_f / mutants.count) * 100.0).round(2).to_f
+    # Scores over only the mutants actually executed this run — verdicts
+    # reused from the history store (`--incremental`) excluded. nil when
+    # nothing was reused: the combined scores already tell the whole story,
+    # and reporters use nil to suppress the extra line.
+    #
+    # @return [Hash, nil] { mutation_score:, mutation_score_indicator: }
+    def executed_scoring_summary
+      executed = mutants.reject { |m| m.respond_to?(:from_cache?) && m.from_cache? }
+      return nil if executed.size == mutants.size
+
+      {
+        mutation_score: mutation_score_for(executed),
+        mutation_score_indicator: mutation_score_indicator_for(executed)
+      }
     end
 
     # Compact public summary for reporters.
@@ -126,6 +136,24 @@ module Henitai
     end
 
     private
+
+    def detected_in(list)
+      list.count { |m| %i[killed timeout runtime_error].include?(m.status) }
+    end
+
+    def mutation_score_for(list)
+      excluded = %i[ignored no_coverage compile_error equivalent]
+      valid = list.reject { |m| excluded.include?(m.status) }
+      return nil if valid.empty?
+
+      ((detected_in(list).to_f / valid.count) * 100.0).round(2).to_f
+    end
+
+    def mutation_score_indicator_for(list)
+      return nil if list.empty?
+
+      ((list.count(&:killed?).to_f / list.count) * 100.0).round(2).to_f
+    end
 
     def base_schema
       { # : Hash[Symbol, untyped]

@@ -136,15 +136,41 @@ module Henitai
           format_row("Timeout", count_status(result, :timeout)),
           format_row("No coverage", count_status(result, :no_coverage)),
           format_row("Duration", format_duration(result.duration)),
-          reused_verdicts_line(result)
+          reused_verdicts_line(result),
+          executed_only_score_line(result)
         ].compact
       end
 
       def reused_verdicts_line(result)
-        reused = result.mutants.count { |mutant| mutant.respond_to?(:from_cache?) && mutant.from_cache? }
-        return nil if reused.zero?
+        reused = reused_mutants(result)
+        return nil if reused.empty?
 
-        "#{reused} of #{result.mutants.size} verdicts reused from history"
+        format(
+          "%<reused>d of %<total>d verdicts reused from history (%<killed>d killed, %<survived>d survived)",
+          reused: reused.size,
+          total: result.mutants.size,
+          killed: reused.count { |mutant| mutant.status == :killed },
+          survived: reused.count { |mutant| mutant.status == :survived }
+        )
+      end
+
+      def reused_mutants(result)
+        result.mutants.select { |mutant| mutant.respond_to?(:from_cache?) && mutant.from_cache? }
+      end
+
+      # Cached verdicts make the combined MS/MSI partly synthetic; the
+      # executed-only pair keeps this run's own signal visible.
+      def executed_only_score_line(result)
+        return nil unless result.respond_to?(:executed_scoring_summary)
+
+        summary = result.executed_scoring_summary # : Hash[Symbol, untyped]?
+        return nil unless summary
+
+        format(
+          "Executed-only MS %<score>s | MSI %<indicator>s",
+          score: format_percent(summary[:mutation_score]),
+          indicator: format_percent(summary[:mutation_score_indicator])
+        )
       end
 
       def partial_summary_lines(result)
