@@ -198,29 +198,17 @@ module Henitai
       coverage_bootstrapper.ensure!(source_files:, config:, integration:, test_files:)
     end
 
-    def subject_resolver
-      @subject_resolver ||= SubjectResolver.new
-    end
+    def subject_resolver = @subject_resolver ||= SubjectResolver.new
 
-    def git_diff_analyzer
-      @git_diff_analyzer ||= GitDiffAnalyzer.new
-    end
+    def git_diff_analyzer = @git_diff_analyzer ||= GitDiffAnalyzer.new
 
-    def mutant_generator
-      @mutant_generator ||= MutantGenerator.new
-    end
+    def mutant_generator = @mutant_generator ||= MutantGenerator.new
 
-    def static_filter
-      @static_filter ||= StaticFilter.new
-    end
+    def static_filter = @static_filter ||= StaticFilter.new
 
-    def execution_engine
-      @execution_engine ||= ExecutionEngine.new
-    end
+    def execution_engine = @execution_engine ||= ExecutionEngine.new
 
-    def coverage_bootstrapper
-      @coverage_bootstrapper ||= CoverageBootstrapper.new
-    end
+    def coverage_bootstrapper = @coverage_bootstrapper ||= CoverageBootstrapper.new
 
     def integration
       @integration ||= Integration.for(config.integration).new

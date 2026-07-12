@@ -718,9 +718,7 @@ RSpec.describe Henitai::Integration::Rspec do
       stub_process_exit(record)
       stub_process_fork(record, 4321)
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive(:run_tests).and_return(0)
-      allow(integration).to receive(:wait_with_timeout).and_return(:survived)
-      allow(integration).to receive(:build_result).and_return(:result)
+      allow(integration).to receive_messages(run_tests: 0, wait_with_timeout: :survived, build_result: :result)
       allow(integration).to receive(:cleanup_process_group)
 
       integration.run_mutant(mutant:, test_files: [], timeout: 1.0)
