@@ -133,6 +133,58 @@ RSpec.describe Henitai::PerTestCoverageCollector do
     end
   end
 
+  it "attributes a shared line to every test that executed it" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        collector = described_class.new
+        snapshots = [
+          coverage_snapshot(source_lines: [nil, 1, 0]),
+          coverage_snapshot(source_lines: [nil, 2, 0])
+        ]
+
+        allow(Coverage).to receive(:peek_result).and_return(*snapshots)
+
+        collector.record_test("test/first_test.rb")
+        collector.record_test("test/second_test.rb")
+        collector.write_report
+
+        report = JSON.parse(File.read(report_path))
+        expect(
+          [
+            report.dig("test/first_test.rb", "coverage", File.expand_path("lib/sample.rb")),
+            report.dig("test/second_test.rb", "coverage", File.expand_path("lib/sample.rb"))
+          ]
+        ).to eq([[2], [2]])
+      end
+    end
+  end
+
+  it "attributes a shared line to every test regardless of suite order" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        collector = described_class.new
+        snapshots = [
+          coverage_snapshot(source_lines: [nil, 1, 3]),
+          coverage_snapshot(source_lines: [nil, 1, 4])
+        ]
+
+        allow(Coverage).to receive(:peek_result).and_return(*snapshots)
+
+        collector.record_test("test/second_test.rb")
+        collector.record_test("test/first_test.rb")
+        collector.write_report
+
+        report = JSON.parse(File.read(report_path))
+        expect(
+          [
+            report.dig("test/second_test.rb", "coverage", File.expand_path("lib/sample.rb")),
+            report.dig("test/first_test.rb", "coverage", File.expand_path("lib/sample.rb"))
+          ]
+        ).to eq([[2, 3], [3]])
+      end
+    end
+  end
+
   it "handles symbol-keyed coverage hashes from Coverage.peek_result" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do

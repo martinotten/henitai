@@ -80,10 +80,13 @@ module Henitai
       end
     end
 
+    # Count-delta attribution: a line belongs to every test whose run
+    # incremented its cumulative count, not just the first toucher. This keeps
+    # the per-test map a complete over-approximation of reachability — the
+    # soundness precondition for survivor verdict reuse (ADR-11).
     def new_line_numbers(file_coverage, previous_counts)
       line_counts_for(file_coverage).each_with_index.filter_map do |count, index|
-        next unless count.to_i.positive?
-        next if previous_counts.fetch(index, 0).to_i.positive?
+        next unless count.to_i > previous_counts.fetch(index, 0).to_i
 
         index + 1
       end
