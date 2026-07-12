@@ -212,6 +212,26 @@ RSpec.describe Henitai::StaticFilter do
     end
   end
 
+  it "leaves already processed mutants unchanged" do
+    with_sample_file(<<~RUBY) do |dir, path|
+      class Sample
+        def value(input)
+          input + 0
+        end
+      end
+    RUBY
+
+      mutant = arithmetic_mutants(path).find do |candidate|
+        candidate.description == "replaced + with -"
+      end
+      mutant.status = :killed
+
+      apply_mutants(dir, [mutant])
+
+      expect(mutant.status).to eq(:killed)
+    end
+  end
+
   it "caches compiled ignore patterns across repeated applications" do
     mutant = build_mutant("foo.bar")
     filter = filter_with_coverage

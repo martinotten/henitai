@@ -220,6 +220,15 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       expect(runner.flaky_retry_count).to eq(0)
     end
 
+    it "signals the wakeup when a shutdown is requested" do
+      wakeup, state = build_fake_wakeup
+      runner = described_class.new(worker_count: 1, wakeup:)
+
+      runner.request_shutdown
+
+      expect([runner.shutdown_requested?, state[:signal_count]]).to eq([true, 1])
+    end
+
     it "preserves diagnostics when debug mode is disabled" do
       diagnostics = Henitai::Integration::SchedulerDiagnostics
       diagnostics.reset!

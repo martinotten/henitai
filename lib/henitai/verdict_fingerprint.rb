@@ -42,7 +42,7 @@ module Henitai
 
       lines = File.readlines(subject.source_file)
       Digest::SHA256.hexdigest(lines[(range.begin - 1)..(range.end - 1)].to_a.join)
-    rescue StandardError
+    rescue SystemCallError, IOError
       nil
     end
 

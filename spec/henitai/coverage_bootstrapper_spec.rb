@@ -515,6 +515,47 @@ RSpec.describe Henitai::CoverageBootstrapper do
       end
     end
 
+    it "skips the bootstrap when per-test coverage is also fresh" do
+      Dir.mktmpdir do |dir|
+        source = File.join(dir, "lib/sample.rb")
+        spec = File.join(dir, "spec/sample_spec.rb")
+        report = File.join(dir, "reports/coverage/.resultset.json")
+        per_test_report = File.join(dir, "reports/henitai_per_test.json")
+        now = Time.now
+
+        FileUtils.mkdir_p(File.dirname(source))
+        FileUtils.mkdir_p(File.dirname(spec))
+        FileUtils.mkdir_p(File.dirname(report))
+        File.write(source, "class Sample; end")
+        File.write(spec, "# spec")
+        File.write(report, "{}")
+        File.write(per_test_report, "{}")
+        set_mtime(source, now - 30)
+        set_mtime(spec, now - 30)
+        set_mtime(report, now - 10)
+        set_mtime(per_test_report, now - 10)
+
+        config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
+        static_filter = instance_double(Henitai::StaticFilter)
+        integration = instance_double(
+          Henitai::Integration::Rspec,
+          test_files: [spec],
+          per_test_coverage_supported?: true
+        )
+        bootstrapper = described_class.new(static_filter:)
+
+        allow(static_filter).to receive(:coverage_lines_for).and_return(
+          File.expand_path(source) => [1]
+        )
+        allow(integration).to receive(:run_suite).and_return(:survived)
+
+        bootstrapper.record_dependency_manifest(config)
+        bootstrapper.ensure!(source_files: [source], config:, integration:)
+
+        expect(integration).not_to have_received(:run_suite)
+      end
+    end
+
     it "still bootstraps when the fresh report does not cover the configured sources" do
       Dir.mktmpdir do |dir|
         source = File.join(dir, "lib/sample.rb")
@@ -628,6 +669,48 @@ RSpec.describe Henitai::CoverageBootstrapper do
         bootstrapper.ensure!(source_files: [source], config:, integration:)
 
         expect(integration).to have_received(:run_suite)
+      end
+    end
+
+    it "watches explicitly scoped test files for freshness" do
+      Dir.mktmpdir do |dir|
+        source = File.join(dir, "lib/sample.rb")
+        scoped_spec = File.join(dir, "spec/scoped_spec.rb")
+        report = File.join(dir, "reports/coverage/.resultset.json")
+        now = Time.now
+
+        FileUtils.mkdir_p(File.dirname(source))
+        FileUtils.mkdir_p(File.dirname(scoped_spec))
+        FileUtils.mkdir_p(File.dirname(report))
+        File.write(source, "class Sample; end")
+        File.write(scoped_spec, "# scoped spec")
+        File.write(report, "{}")
+        set_mtime(source, now - 30)
+        set_mtime(report, now - 20)
+        set_mtime(scoped_spec, now - 10)
+
+        config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
+        static_filter = instance_double(Henitai::StaticFilter)
+        integration = instance_double(
+          Henitai::Integration::Minitest,
+          test_files: [scoped_spec],
+          per_test_coverage_supported?: false,
+          run_suite: :survived
+        )
+        bootstrapper = build_bootstrapper(static_filter:)
+
+        allow(static_filter).to receive(:coverage_lines_for).and_return(
+          File.expand_path(source) => [1]
+        )
+
+        bootstrapper.ensure!(
+          source_files: [source],
+          config:,
+          integration:,
+          test_files: [scoped_spec]
+        )
+
+        expect(integration).to have_received(:run_suite).with([scoped_spec])
       end
     end
 

@@ -83,6 +83,40 @@ RSpec.describe Henitai::SurvivorRerunStrategy do
       end
     end
 
+    it "preserves recipe method type and location metadata" do
+      Dir.mktmpdir do |dir|
+        report_path = write_survivor_report(dir)
+        write_recipes(
+          dir,
+          recipe(
+            "methodType" => "class",
+            "location" => {
+              "file" => "lib/sample.rb",
+              "startLine" => 4,
+              "endLine" => 4,
+              "startCol" => 2,
+              "endCol" => 7
+            }
+          )
+        )
+
+        mutant = strategy_for(report_path).try_recipe_run.first
+
+        expect([mutant.subject.method_type, mutant.location]).to eq(
+          [
+            :class,
+            {
+              file: "lib/sample.rb",
+              start_line: 4,
+              end_line: 4,
+              start_col: 2,
+              end_col: 7
+            }
+          ]
+        )
+      end
+    end
+
     it "does not warn when every cached survivor is matched" do
       Dir.mktmpdir do |dir|
         report_path = write_survivor_report(dir)

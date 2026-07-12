@@ -708,6 +708,27 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  it "restores an existing subprocess environment after a child run" do
+    with_env("PARALLEL_WORKERS", "sentinel") do
+      integration = described_class.new
+      mutant = Struct.new(:id).new("mutant-env")
+      record = {}
+
+      stub_child_logging(integration)
+      stub_process_exit(record)
+      stub_process_fork(record, 4321)
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+      allow(integration).to receive(:run_tests).and_return(0)
+      allow(integration).to receive(:wait_with_timeout).and_return(:survived)
+      allow(integration).to receive(:build_result).and_return(:result)
+      allow(integration).to receive(:cleanup_process_group)
+
+      integration.run_mutant(mutant:, test_files: [], timeout: 1.0)
+
+      expect(ENV.fetch("PARALLEL_WORKERS")).to eq("sentinel")
+    end
+  end
+
   it "puts the child in its own process group before activation" do
     mutant = Struct.new(:id).new("mutant-setpgid")
     integration = described_class.new
