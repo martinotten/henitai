@@ -639,9 +639,15 @@ module Henitai
   end
 
   module VerdictFingerprint
+    DEPENDENCY_GLOBS: Array[String]
+
     def self?.subject_source_hash: (untyped) -> String?
     def self?.tests_fingerprint: (untyped) -> String?
     def self?.tests_fingerprint_current?: (String?) -> bool
+    def self?.dependency_fingerprint: (?String) -> String?
+    def self?.survivor_tests_fingerprint: (untyped, dependency_sha: String?) -> String?
+    def self?.survivor_fingerprint_current?: (String?, live_paths: Array[String], dependency_sha: String?) -> bool
+    def self?.survivor_fingerprint_matches?: (untyped, Array[String], String?) -> bool
     def self?.combined_content_sha: (untyped) -> String?
   end
 
@@ -677,9 +683,30 @@ module Henitai
     def test_lines_by_file: (?String) -> Hash[String, Hash[String, Array[Integer]]]
   end
 
+  class PerTestCoverage
+    def initialize: (reports_dir: String, ?coverage_report_reader: CoverageReportReader) -> void
+    def available?: () -> bool
+    def tests_covering: (untyped) -> Array[String]
+    def covers?: (String, untyped) -> bool
+
+    private
+
+    def reports_dir: () -> String
+    def coverage_report_reader: () -> CoverageReportReader
+    def location_available?: (untyped) -> bool
+    def coverage_lines_for: (String, untyped) -> Array[Integer]
+    def mutant_lines: (untyped) -> Array[Integer]
+    def map: () -> Hash[String, Hash[String, Array[Integer]]]
+  end
+
   class PerTestCoverageSelector
     def initialize: (?coverage_report_reader: CoverageReportReader) -> void
     def filter: (Array[String], Mutant, reports_dir: String) -> Array[String]
+
+    private
+
+    def per_test_coverage: (String) -> PerTestCoverage
+    def coverage_report_reader: () -> CoverageReportReader
   end
 
   class ExecutionEngine

@@ -2,6 +2,11 @@
 
 module Henitai
   # Narrows candidate test files using the per-test coverage report.
+  #
+  # The intersection check itself lives in {PerTestCoverage}; this class only
+  # adds the selection policy: when no candidate provably covers the mutant
+  # (or the map / location is unavailable), it falls back to all candidates —
+  # over-selection costs time, never correctness.
   class PerTestCoverageSelector
     def initialize(coverage_report_reader: CoverageReportReader.new)
       @coverage_report_reader = coverage_report_reader
@@ -10,49 +15,22 @@ module Henitai
     def filter(tests, mutant, reports_dir:)
       candidates = Array(tests)
       return candidates if candidates.empty?
-      return candidates unless location_available?(mutant)
-      return candidates unless per_test_coverage_available?(reports_dir)
 
+      coverage = per_test_coverage(reports_dir)
       covered_tests = candidates.select do |test|
-        covers_mutant?(test, mutant, reports_dir)
+        coverage.covers?(test, mutant)
       end
       covered_tests.empty? ? candidates : covered_tests
     end
 
     private
 
-    def location_available?(mutant)
-      mutant.respond_to?(:location) &&
-        mutant.location.is_a?(Hash) &&
-        mutant.location[:file] &&
-        mutant.location[:start_line] &&
-        mutant.location[:end_line]
-    end
-
-    def covers_mutant?(test, mutant, reports_dir)
-      covered_lines = coverage_lines_for(test, mutant, reports_dir)
-      mutant_lines(mutant).intersect?(covered_lines)
-    end
-
-    def coverage_lines_for(test, mutant, reports_dir)
-      source_map = per_test_coverage(reports_dir)[test.to_s] || {}
-      Array(source_map[File.expand_path(mutant.location[:file])]).uniq
-    end
-
-    def mutant_lines(mutant)
-      (mutant.location[:start_line]..mutant.location[:end_line]).to_a
-    end
-
     def per_test_coverage(reports_dir)
       @per_test_coverage ||= {}
-      @per_test_coverage[reports_dir] ||= begin
-        path = File.join(reports_dir, "henitai_per_test.json")
-        coverage_report_reader.test_lines_by_file(path)
-      end
-    end
-
-    def per_test_coverage_available?(reports_dir)
-      !per_test_coverage(reports_dir).empty?
+      @per_test_coverage[reports_dir] ||= PerTestCoverage.new(
+        reports_dir:,
+        coverage_report_reader:
+      )
     end
 
     attr_reader :coverage_report_reader
