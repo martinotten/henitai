@@ -633,14 +633,19 @@ module Henitai
   end
 
   class IncrementalFilter
-    def initialize: (history_store: untyped) -> void
+    def initialize: (history_store: untyped, ?per_test_coverage: PerTestCoverage?, ?dependency_fingerprint: String?) -> void
     def apply: (Array[Mutant]) -> Array[Mutant]
 
     private
 
     def history_store: () -> untyped
+    def per_test_coverage: () -> PerTestCoverage?
+    def dependency_fingerprint: () -> String?
     def ambiguous_stable_ids: (Array[Mutant]) -> Set[String]
-    def reusable?: (Mutant) -> bool
+    def reusable_status: (Mutant) -> Symbol?
+    def killed_reusable?: (Mutant, Hash[Symbol, untyped]) -> bool
+    def survived_reusable?: (Mutant, Hash[Symbol, untyped]) -> bool
+    def subject_source_unchanged?: (Mutant, Hash[Symbol, untyped]) -> bool
   end
 
   module VerdictFingerprint
