@@ -14,8 +14,12 @@ module Henitai
   class MutantHistoryStore
     include VerdictCache
 
-    def initialize(path:)
+    # @param per_test_coverage [PerTestCoverage, nil] live per-test coverage
+    #   view used to record the full-map intersection set for survived
+    #   verdicts; without it survived rows stay NULL (never reusable).
+    def initialize(path:, per_test_coverage: nil)
       @path = path
+      @per_test_coverage = per_test_coverage
     end
 
     attr_reader :path
@@ -35,23 +39,24 @@ module Henitai
     end
 
     # Verdict-cache lookup for `--incremental`: returns the stored hashes for
-    # a Killed row, or nil for survivors, unknown ids and legacy rows without
-    # hashes (recorded before the cache columns existed).
-    def killed_verdict_for(stable_id)
+    # the mutant's LATEST verdict when it is Killed or Survived — the upsert
+    # keeps exactly one row per stable id, so current_status is always the
+    # most recent outcome. nil for every other status, unknown ids and legacy
+    # rows without hashes (recorded before the cache columns existed).
+    def verdict_for(stable_id)
       return nil unless File.exist?(path)
 
       with_database do |db|
         ensure_schema(db)
-        row = db.get_first_row(Sql::KILLED_VERDICT, stable_id)
-        next nil unless row && row["current_status"] == "killed"
-        next nil if row["subject_source_hash"].nil? || row["covered_tests_fingerprint"].nil?
-
-        {
-          status: :killed,
-          subject_source_hash: row["subject_source_hash"],
-          covered_tests_fingerprint: row["covered_tests_fingerprint"]
-        }
+        verdict_from_row(db.get_first_row(Sql::VERDICT_LOOKUP, stable_id))
       end
+    end
+
+    # Killed-only view of {#verdict_for}, kept for the original killed reuse
+    # path.
+    def killed_verdict_for(stable_id)
+      verdict = verdict_for(stable_id)
+      verdict if verdict && verdict[:status] == :killed
     end
 
     def trend_report
@@ -66,6 +71,19 @@ module Henitai
     end
 
     private
+
+    attr_reader :per_test_coverage
+
+    def verdict_from_row(row)
+      return nil unless row && VerdictCache::CACHEABLE_STATUSES.include?(row["current_status"])
+      return nil if row["subject_source_hash"].nil? || row["covered_tests_fingerprint"].nil?
+
+      {
+        status: row["current_status"].to_sym,
+        subject_source_hash: row["subject_source_hash"],
+        covered_tests_fingerprint: row["covered_tests_fingerprint"]
+      }
+    end
 
     def partial_rerun?(result)
       result.respond_to?(:partial_rerun?) && result.partial_rerun?

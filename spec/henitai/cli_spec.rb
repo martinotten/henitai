@@ -197,6 +197,11 @@ RSpec.describe Henitai::CLI do
     ).to_stdout
   end
 
+  it "cleans the dependency manifest sidecar alongside the coverage artifacts" do
+    expect(Henitai::CLI::REPORT_CLEANUP_PATHS)
+      .to include([Henitai::CoverageBootstrapper::DEPENDENCY_MANIFEST_FILE])
+  end
+
   it "removes the minimal generated report artifacts with clean" do
     Dir.mktmpdir do |dir|
       reports_dir = File.join(dir, "custom-reports")
@@ -210,7 +215,7 @@ RSpec.describe Henitai::CLI do
       aggregate_failures do
         expect do
           described_class.new(["clean", "--config", config_path]).run
-        end.to output(/Removed 5 generated report artifacts/).to_stdout
+        end.to output(/Removed 6 generated report artifacts/).to_stdout
         expect(cleanup_paths.all? { |path| !File.exist?(path) }).to be(true)
         expect(File).to exist(sentinel_path)
       end

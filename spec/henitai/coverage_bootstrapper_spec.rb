@@ -239,6 +239,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
       )
       allow(integration).to receive(:run_suite).and_return(:survived)
 
+      bootstrapper.record_dependency_manifest(config)
       bootstrapper.ensure!(source_files: [source_a, source_b], config:, integration:)
 
       expect(integration).not_to have_received(:run_suite)
@@ -333,6 +334,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
         File.expand_path(source) => [2]
       )
 
+      bootstrapper.record_dependency_manifest(config)
       bootstrapper.ensure!(source_files: [source], config:, integration:)
 
       expect(integration).not_to have_received(:run_suite)
@@ -372,9 +374,95 @@ RSpec.describe Henitai::CoverageBootstrapper do
         )
         allow(bootstrapper).to receive(:per_test_coverage_fresh?).and_return(true)
 
+        bootstrapper.record_dependency_manifest(config)
         bootstrapper.ensure!(source_files: [source], config:, integration:)
 
         expect(integration).not_to have_received(:run_suite)
+      end
+    end
+
+    it "still bootstraps when a dependency file is newer than the coverage report" do
+      Dir.mktmpdir do |dir|
+        source  = File.join(dir, "lib/sample.rb")
+        spec    = File.join(dir, "spec/sample_spec.rb")
+        support = File.join(dir, "spec/support/helpers.rb")
+        report  = File.join(dir, "reports/coverage/.resultset.json")
+
+        [source, spec, support, report].each { |path| FileUtils.mkdir_p(File.dirname(path)) }
+
+        File.write(source, "class Sample; end")
+        File.write(spec,   "# spec")
+        File.write(report, "{}")
+        bump_mtime(report)
+        File.write(support, "# support edited after the report")
+        bump_mtime(support)
+
+        config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
+        static_filter = instance_double(Henitai::StaticFilter)
+        integration = instance_double(
+          Henitai::Integration::Rspec,
+          test_files: [spec],
+          run_suite: :survived
+        )
+        bootstrapper = build_bootstrapper(static_filter:)
+
+        allow(static_filter).to receive(:coverage_lines_for).and_return(
+          { File.expand_path(source) => [1] }
+        )
+        allow(bootstrapper).to receive(:per_test_coverage_fresh?).and_return(true)
+
+        Dir.chdir(dir) do
+          # Manifest matches — only the support file's mtime makes it stale.
+          bootstrapper.record_dependency_manifest(config)
+          bootstrapper.ensure!(source_files: [source], config:, integration:)
+        end
+
+        expect(integration).to have_received(:run_suite)
+      end
+    end
+
+    it "still bootstraps when a dependency file was deleted after the coverage report" do
+      Dir.mktmpdir do |dir|
+        source  = File.join(dir, "lib/sample.rb")
+        spec    = File.join(dir, "spec/sample_spec.rb")
+        support = File.join(dir, "spec/support/helpers.rb")
+        report  = File.join(dir, "reports/coverage/.resultset.json")
+
+        [source, spec, support, report].each { |path| FileUtils.mkdir_p(File.dirname(path)) }
+
+        File.write(source, "class Sample; end")
+        File.write(spec,   "# spec")
+        File.write(support, "# support")
+        File.write(report, "{}")
+
+        config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
+        static_filter = instance_double(Henitai::StaticFilter)
+        integration = instance_double(
+          Henitai::Integration::Rspec,
+          test_files: [spec],
+          run_suite: :survived
+        )
+        bootstrapper = build_bootstrapper(static_filter:)
+
+        allow(static_filter).to receive(:coverage_lines_for).and_return(
+          { File.expand_path(source) => [1] }
+        )
+        allow(bootstrapper).to receive(:per_test_coverage_fresh?).and_return(true)
+
+        Dir.chdir(dir) do
+          # Manifest recorded while the support file existed, report fresh.
+          bootstrapper.record_dependency_manifest(config)
+          bump_mtime(report)
+
+          # Deleting the dependency must invalidate the coverage artifacts
+          # even though every *remaining* watched file is older than the
+          # report — the path set changed, not a surviving file's mtime.
+          FileUtils.rm(support)
+
+          bootstrapper.ensure!(source_files: [source], config:, integration:)
+        end
+
+        expect(integration).to have_received(:run_suite)
       end
     end
 
@@ -411,6 +499,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
         allow(bootstrapper).to receive(:per_test_coverage_fresh?).and_return(true)
         allow(integration).to receive(:run_suite).and_return(:survived)
 
+        bootstrapper.record_dependency_manifest(config)
         bootstrapper.ensure!(source_files: [source], config:, integration:)
 
         expect(integration).to have_received(:run_suite)
@@ -654,6 +743,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
         # Only the scoped spec is watched — the newer unrelated spec is ignored
         allow(integration).to receive(:run_suite)
 
+        bootstrapper.record_dependency_manifest(config)
         bootstrapper.ensure!(
           source_files: [source],
           config:,

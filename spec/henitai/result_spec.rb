@@ -378,6 +378,43 @@ RSpec.describe Henitai::Result do
     expect(schema[:files][file][:mutants].first[:fromCache]).to be(true)
   end
 
+  it "serialises reused survivors with status Survived and fromCache" do
+    mutant = build_mutant(status: :survived)
+    mutant.from_cache = true
+    schema = result([mutant]).to_stryker_schema
+    file = schema[:files].keys.first
+    serialized = schema[:files][file][:mutants].first
+
+    expect([serialized[:status], serialized[:fromCache]]).to eq(["Survived", true])
+  end
+
+  describe "#executed_scoring_summary" do
+    it "returns nil when no verdicts were reused" do
+      expect(result([build_mutant(status: :killed)]).executed_scoring_summary).to be_nil
+    end
+
+    it "scores only the executed mutants when verdicts were reused" do
+      reused = build_mutant(status: :killed)
+      reused.from_cache = true
+      executed = [build_mutant(status: :killed), build_mutant(status: :survived)]
+
+      expect(result([reused, *executed]).executed_scoring_summary).to eq(
+        mutation_score: 50.0,
+        mutation_score_indicator: 50.0
+      )
+    end
+
+    it "returns nil scores when every mutant was reused" do
+      reused = build_mutant(status: :killed)
+      reused.from_cache = true
+
+      expect(result([reused]).executed_scoring_summary).to eq(
+        mutation_score: nil,
+        mutation_score_indicator: nil
+      )
+    end
+  end
+
   it "omits fromCache for executed mutants" do
     schema = result([build_mutant(status: :killed)]).to_stryker_schema
     file = schema[:files].keys.first

@@ -1,10 +1,28 @@
 # frozen_string_literal: true
 
+require "fileutils"
+require "json"
+
+require_relative "verdict_fingerprint"
+
 module Henitai
   # Ensures coverage data exists before the mutation pipeline starts.
   class CoverageBootstrapper
+    # Sidecar recording which dependency files existed when the coverage
+    # artifacts were produced. Deletions drop a path from the current set but
+    # leave every surviving file's mtime untouched, so freshness must compare
+    # the recorded path set, not just watch existing files.
+    DEPENDENCY_MANIFEST_FILE = "henitai_dependency_manifest.json"
+
     def initialize(static_filter: StaticFilter.new)
       @static_filter = static_filter
+    end
+
+    # Writes the current dependency path set next to the coverage artifacts.
+    # Called after every bootstrap; exposed so tests can seed a manifest.
+    def record_dependency_manifest(config)
+      FileUtils.mkdir_p(reports_dir(config))
+      File.write(dependency_manifest_path(config), JSON.generate(current_dependency_paths))
     end
 
     # Runs the test suite to collect coverage, unless a fresh report already
@@ -62,14 +80,38 @@ module Henitai
       Array(source_files).map { |path| File.expand_path(path) }
     end
 
-    # Returns true when a coverage report already exists and is newer than
-    # every watched source and test file. Stale or absent reports return false.
+    # Returns true when a coverage report already exists, is newer than every
+    # watched source and test file, and the dependency path set is unchanged
+    # since the report was produced. Stale or absent reports return false.
     def coverage_fresh?(source_files, config, test_files)
       watched_files_fresh?(
         coverage_report_path(config),
         source_files,
         test_files
-      )
+      ) && dependency_manifest_current?(config)
+    end
+
+    # False when the manifest is missing, unreadable, or lists a different
+    # path set than the files currently on disk — conservative: a deleted
+    # dependency invalidates the coverage artifacts just like an edit.
+    def dependency_manifest_current?(config)
+      recorded = JSON.parse(File.read(dependency_manifest_path(config)))
+      recorded == current_dependency_paths
+    rescue StandardError
+      false
+    end
+
+    def dependency_manifest_path(config)
+      File.join(reports_dir(config), DEPENDENCY_MANIFEST_FILE)
+    end
+
+    # Paths stored relative to the working directory so the manifest survives
+    # a repository move.
+    def current_dependency_paths
+      root = Dir.pwd
+      VerdictFingerprint.dependency_files(root).map do |path|
+        path.delete_prefix("#{root}#{File::SEPARATOR}")
+      end
     end
 
     def coverage_report_path(config)
@@ -86,7 +128,10 @@ module Henitai
       with_reports_dir(config) do
         with_coverage_dir(config) do
           result = integration.run_suite(test_files)
-          return if result == :survived
+          if result == :survived
+            record_dependency_manifest(config)
+            return
+          end
 
           raise CoverageError, build_bootstrap_error(result)
         end
@@ -172,8 +217,12 @@ module Henitai
       end
     end
 
+    # Dependency files (helpers, support, fixtures, lockfile, tool config)
+    # are watched alongside sources and tests: they shape which tests cover
+    # what, so a stale per-test map after a dependency edit would let the
+    # test selector omit a newly covering test (ADR-11).
     def watched_files(source_files, test_files)
-      Array(source_files) + Array(test_files)
+      Array(source_files) + Array(test_files) + VerdictFingerprint.dependency_files
     end
 
     def resolve_test_files(integration, test_files)

@@ -142,11 +142,15 @@ RSpec.describe Henitai::Runner do
   # integration and history persistence). Result and Reporter are left real so
   # examples can assert on observable output. The backgrounded bootstrap thread
   # is exercised for real; its join synchronizes the pipeline without sleeps.
-  def stub_pipeline(runner, history_store:, resolved: [], generated: [], executed: [])
+  def stub_pipeline(runner, history_store:, **stubs)
+    resolved = stubs.fetch(:resolved, [])
+    generated = stubs.fetch(:generated, [])
+    executed = stubs.fetch(:executed, [])
     subject_resolver = instance_double(Henitai::SubjectResolver, resolve_from_files: resolved)
     mutant_generator = instance_double(Henitai::MutantGenerator, generate: generated)
     static_filter = instance_double(Henitai::StaticFilter, apply: generated)
-    coverage_bootstrapper = instance_double(Henitai::CoverageBootstrapper, ensure!: nil)
+    coverage_bootstrapper = stubs[:coverage_bootstrapper] ||
+                            instance_double(Henitai::CoverageBootstrapper, ensure!: nil)
     execution_engine = instance_double(Henitai::ExecutionEngine, run: executed)
     integration = instance_double(Henitai::Integration::Rspec)
 
@@ -422,10 +426,10 @@ RSpec.describe Henitai::Runner do
           allow(Henitai::Reporter).to receive(:run_all)
 
           filter = instance_double(Henitai::IncrementalFilter)
-          captured_store = nil
+          captured = nil
           apply_calls = 0
-          allow(Henitai::IncrementalFilter).to receive(:new) do |history_store:|
-            captured_store = history_store
+          allow(Henitai::IncrementalFilter).to receive(:new) do |**kwargs|
+            captured = kwargs
             filter
           end
           allow(filter).to receive(:apply) do |mutants|
@@ -435,7 +439,47 @@ RSpec.describe Henitai::Runner do
 
           runner.run
 
-          expect([captured_store, apply_calls]).to eq([history_store, 1])
+          expect(
+            [
+              captured[:history_store],
+              captured[:per_test_coverage].class,
+              captured[:dependency_fingerprint].is_a?(String),
+              apply_calls
+            ]
+          ).to eq([history_store, Henitai::PerTestCoverage, true, 1])
+        end
+      end
+    end
+
+    it "applies the incremental filter only after the coverage bootstrap finished" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "lib"))
+        File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+        Dir.chdir(dir) do
+          runner = described_class.new(config: build_config(reporters: []), mode: { incremental: true })
+          generated = [executed_mutant(:killed)]
+          bootstrap_finished = false
+          coverage_bootstrapper = instance_double(Henitai::CoverageBootstrapper)
+          allow(coverage_bootstrapper).to receive(:ensure!) do
+            sleep(0.05)
+            bootstrap_finished = true
+          end
+          stub_pipeline(runner, history_store: build_history_store, generated:, executed: generated,
+                                coverage_bootstrapper:)
+          allow(Henitai::Reporter).to receive(:run_all)
+
+          filter = instance_double(Henitai::IncrementalFilter)
+          bootstrap_finished_at_apply = nil
+          allow(Henitai::IncrementalFilter).to receive(:new).and_return(filter)
+          allow(filter).to receive(:apply) do |mutants|
+            bootstrap_finished_at_apply = bootstrap_finished
+            mutants
+          end
+
+          runner.run
+
+          expect(bootstrap_finished_at_apply).to be(true)
         end
       end
     end

@@ -150,16 +150,26 @@ and the terminal only shows progress plus a concise summary. Pass
 when the mutation score meets the low threshold, `1` when it does not, and `2`
 for framework errors.
 
-`henitai run --incremental` reuses still-valid `Killed` verdicts from the
-history store (`reports/mutation-history.sqlite3`) instead of re-executing
-them: a verdict is reused only when the subject's source and every covering
-test file are byte-identical to what was recorded. Reused mutants stay
-visible in the report (`fromCache: true` beside `stableId`) and count toward
-MS/MSI; the terminal prints `N of M verdicts reused from history`.
+`henitai run --incremental` reuses still-valid `Killed` and `Survived`
+verdicts from the history store (`reports/mutation-history.sqlite3`) instead
+of re-executing them. A `Killed` verdict is reused when the subject's source
+and every covering test file are byte-identical to what was recorded. A
+`Survived` verdict needs more proof, because a *new* test could now kill it:
+it is reused only when, additionally, the live covering set derived from the
+current per-test coverage map matches the recorded set exactly (no test
+added, dropped, or changed) and the dependency fingerprint (spec helpers,
+`spec/support`, fixtures/factories, `Gemfile.lock`, `.henitai.yml`, `.rspec`)
+is unchanged. When per-test coverage is unavailable, survivors simply
+re-execute — reuse never happens on doubt (see ADR-11).
+Reused mutants stay visible in the report (`fromCache: true` beside
+`stableId`) and count toward MS/MSI; the terminal prints
+`N of M verdicts reused from history (K killed, S survived)` plus an
+executed-only MS/MSI line so cached verdicts are never mistaken for fresh
+results.
 Generated mutants temporarily include `legacyStableId` so scoped runs replace
 canonical entries written before site-offset IDs were introduced instead of
 duplicating them.
-Survivors, timeouts and errors always re-execute. `--force` bypasses reuse.
+Timeouts and errors always re-execute. `--force` bypasses reuse.
 `henitai run --dry-run` lists the post-filter mutant set without executing
 any tests and always exits `0`.
 

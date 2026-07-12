@@ -541,8 +541,9 @@ module Henitai
   class MutantHistoryStore
     attr_reader path: String
 
-    def initialize: (path: String) -> void
+    def initialize: (path: String, ?per_test_coverage: PerTestCoverage?) -> void
     def record: (untyped, version: String, ?recorded_at: Time) -> void
+    def verdict_for: (String) -> Hash[Symbol, untyped]?
     def killed_verdict_for: (String) -> Hash[Symbol, untyped]?
     def trend_report: () -> Hash[Symbol, untyped]
 
@@ -552,7 +553,11 @@ module Henitai
       MIGRATION_COLUMNS: Hash[String, String]
       INSERT_RUN: String
       UPSERT_MUTANT: String
-      KILLED_VERDICT: String
+      VERDICT_LOOKUP: String
+    end
+
+    module VerdictCache
+      CACHEABLE_STATUSES: Array[String]
     end
   end
 
@@ -628,20 +633,31 @@ module Henitai
   end
 
   class IncrementalFilter
-    def initialize: (history_store: untyped) -> void
+    def initialize: (history_store: untyped, ?per_test_coverage: PerTestCoverage?, ?dependency_fingerprint: String?) -> void
     def apply: (Array[Mutant]) -> Array[Mutant]
 
     private
 
     def history_store: () -> untyped
+    def per_test_coverage: () -> PerTestCoverage?
+    def dependency_fingerprint: () -> String?
     def ambiguous_stable_ids: (Array[Mutant]) -> Set[String]
-    def reusable?: (Mutant) -> bool
+    def reusable_status: (Mutant) -> Symbol?
+    def killed_reusable?: (Mutant, Hash[Symbol, untyped]) -> bool
+    def survived_reusable?: (Mutant, Hash[Symbol, untyped]) -> bool
+    def subject_source_unchanged?: (Mutant, Hash[Symbol, untyped]) -> bool
   end
 
   module VerdictFingerprint
+    DEPENDENCY_GLOBS: Array[String]
+
     def self?.subject_source_hash: (untyped) -> String?
     def self?.tests_fingerprint: (untyped) -> String?
     def self?.tests_fingerprint_current?: (String?) -> bool
+    def self?.dependency_fingerprint: (?String) -> String?
+    def self?.survivor_tests_fingerprint: (untyped, dependency_sha: String?) -> String?
+    def self?.survivor_fingerprint_current?: (String?, live_paths: Array[String], dependency_sha: String?) -> bool
+    def self?.survivor_fingerprint_matches?: (untyped, Array[String], String?) -> bool
     def self?.combined_content_sha: (untyped) -> String?
   end
 
@@ -677,9 +693,30 @@ module Henitai
     def test_lines_by_file: (?String) -> Hash[String, Hash[String, Array[Integer]]]
   end
 
+  class PerTestCoverage
+    def initialize: (reports_dir: String, ?coverage_report_reader: CoverageReportReader) -> void
+    def available?: () -> bool
+    def tests_covering: (untyped) -> Array[String]
+    def covers?: (String, untyped) -> bool
+
+    private
+
+    def reports_dir: () -> String
+    def coverage_report_reader: () -> CoverageReportReader
+    def location_available?: (untyped) -> bool
+    def coverage_lines_for: (String, untyped) -> Array[Integer]
+    def mutant_lines: (untyped) -> Array[Integer]
+    def map: () -> Hash[String, Hash[String, Array[Integer]]]
+  end
+
   class PerTestCoverageSelector
     def initialize: (?coverage_report_reader: CoverageReportReader) -> void
     def filter: (Array[String], Mutant, reports_dir: String) -> Array[String]
+
+    private
+
+    def per_test_coverage: (String) -> PerTestCoverage
+    def coverage_report_reader: () -> CoverageReportReader
   end
 
   class ExecutionEngine
@@ -789,6 +826,8 @@ module Henitai
       def score_line: (Result) -> String
       def format_row: (String, untyped) -> String
       def reused_verdicts_line: (Result) -> String?
+      def reused_mutants: (Result) -> Array[Mutant]
+      def executed_only_score_line: (Result) -> String?
       def count_status: (Result, Symbol) -> Integer
       def format_duration: (Float) -> String
       def format_percent: (Float?) -> String
@@ -922,12 +961,16 @@ module Henitai
     def detected: () -> Integer
     def mutation_score: () -> Float?
     def mutation_score_indicator: () -> Float?
+    def executed_scoring_summary: () -> Hash[Symbol, untyped]?
     def scoring_summary: () -> Hash[Symbol, untyped]
     def duration: () -> Float
     def to_stryker_schema: () -> Hash[Symbol, untyped]
 
     private
 
+    def detected_in: (Array[Mutant]) -> Integer
+    def mutation_score_for: (Array[Mutant]) -> Float?
+    def mutation_score_indicator_for: (Array[Mutant]) -> Float?
     def base_schema: () -> Hash[Symbol, untyped]
     def unmatched_survivor_ids: () -> Array[String]
     def build_files_section: () -> Hash[Symbol, untyped]
@@ -1010,6 +1053,7 @@ module Henitai
     def operators: () -> untyped
     def progress_reporter: () -> untyped?
     def history_store: () -> untyped
+    def per_test_coverage: () -> PerTestCoverage
     def history_store_path: () -> String
     def source_files: () -> Array[String]
     def included_source_files: () -> Array[String]

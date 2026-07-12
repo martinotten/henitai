@@ -80,7 +80,7 @@ module Henitai
           covered_tests_fingerprint = excluded.covered_tests_fingerprint
       SQL
 
-      KILLED_VERDICT = <<~SQL
+      VERDICT_LOOKUP = <<~SQL
         SELECT current_status, subject_source_hash, covered_tests_fingerprint
         FROM mutants
         WHERE mutant_id = ?
