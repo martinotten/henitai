@@ -68,14 +68,21 @@ module Henitai
       false
     end
 
+    # Existing dependency files resolved against +root+, sorted. Shared by
+    # the fingerprint below and by the coverage freshness watch — a stale
+    # per-test map after a dependency edit would let the test selector omit
+    # a newly covering test.
+    def dependency_files(root = Dir.pwd)
+      DEPENDENCY_GLOBS
+        .flat_map { |pattern| Dir.glob(File.join(root, pattern)) }
+        .select { |path| File.file?(path) }
+        .sort
+    end
+
     # Run-level combined SHA over the dependency file set. Missing files are
     # simply excluded (not an error); a read failure yields nil — no reuse.
     def dependency_fingerprint(root = Dir.pwd)
-      paths = DEPENDENCY_GLOBS
-              .flat_map { |pattern| Dir.glob(File.join(root, pattern)) }
-              .select { |path| File.file?(path) }
-              .sort
-      combined_content_sha(paths)
+      combined_content_sha(dependency_files(root))
     end
 
     # Fingerprint recorded for a Survived verdict: the sorted full-map

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "verdict_fingerprint"
+
 module Henitai
   # Ensures coverage data exists before the mutation pipeline starts.
   class CoverageBootstrapper
@@ -172,8 +174,12 @@ module Henitai
       end
     end
 
+    # Dependency files (helpers, support, fixtures, lockfile, tool config)
+    # are watched alongside sources and tests: they shape which tests cover
+    # what, so a stale per-test map after a dependency edit would let the
+    # test selector omit a newly covering test (ADR-11).
     def watched_files(source_files, test_files)
-      Array(source_files) + Array(test_files)
+      Array(source_files) + Array(test_files) + VerdictFingerprint.dependency_files
     end
 
     def resolve_test_files(integration, test_files)
