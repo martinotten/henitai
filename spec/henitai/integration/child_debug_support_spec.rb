@@ -47,14 +47,22 @@ RSpec.describe Henitai::Integration::ChildDebugSupport do
   describe "#debug_child_puts" do
     before { allow(integration).to receive(:debug_child_puts).and_call_original }
 
-    it "writes the message to stdout and flushes it", :aggregate_failures do
+    it "writes the message to stdout and flushes it when debug mode is on", :aggregate_failures do
       allow($stdout).to receive(:puts)
       allow($stdout).to receive(:flush)
 
-      integration.send(:debug_child_puts, "hello")
+      with_debug_child("1") { integration.send(:debug_child_puts, "hello") }
 
       expect($stdout).to have_received(:puts).with("hello")
       expect($stdout).to have_received(:flush)
+    end
+
+    it "stays silent when debug mode is off so unguarded callers cannot leak into child logs" do
+      allow($stdout).to receive(:puts)
+
+      with_debug_child(nil) { integration.send(:debug_child_puts, "hello") }
+
+      expect($stdout).not_to have_received(:puts)
     end
   end
 
@@ -137,7 +145,7 @@ RSpec.describe Henitai::Integration::ChildDebugSupport do
   describe "#debug_child_example_count" do
     before do
       world = instance_double(RSpec::Core::World, example_count: 7)
-      allow(RSpec).to receive(:__send__).with(:world).and_return(world)
+      allow(RSpec).to receive(:world).and_return(world)
     end
 
     it "does not log when debug mode is off" do
@@ -365,13 +373,13 @@ RSpec.describe Henitai::Integration::ChildDebugSupport do
   describe "#rspec_world_example_count" do
     it "returns the world's example count" do
       world = instance_double(RSpec::Core::World, example_count: 42)
-      allow(RSpec).to receive(:__send__).with(:world).and_return(world)
+      allow(RSpec).to receive(:world).and_return(world)
 
       expect(integration.send(:rspec_world_example_count)).to eq(42)
     end
 
     it "returns nil when RSpec raises an error" do
-      allow(RSpec).to receive(:__send__).with(:world).and_raise(StandardError, "rspec not loaded")
+      allow(RSpec).to receive(:world).and_raise(StandardError, "rspec not loaded")
 
       expect(integration.send(:rspec_world_example_count)).to be_nil
     end

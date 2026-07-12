@@ -63,9 +63,18 @@ module Henitai
 
     def warn_missing_coverage
       return if @warned_missing_coverage
+      return if coverage_suppressed?
 
       warn "Per-test coverage unavailable; skipping coverage formatter output"
       @warned_missing_coverage = true
+    end
+
+    # Mutant children deliberately suppress coverage startup
+    # (CoverageRuntimeSuppressors), so missing coverage is expected there and
+    # warning on every child run is pure noise.
+    def coverage_suppressed?
+      defined?(Henitai::Integration::CoverageRuntimeSuppressors) &&
+        Henitai::Integration::CoverageRuntimeSuppressors.active?
     end
 
     def new_lines(snapshot)

@@ -266,6 +266,11 @@ RSpec.describe Henitai::PerTestCoverageCollector do
       Dir.chdir(dir) do
         collector = described_class.new
 
+        # Other examples exercise child-run suppression in-process; the
+        # module flag would leak into this one, so pin it off.
+        allow(Henitai::Integration::CoverageRuntimeSuppressors)
+          .to receive(:active?).and_return(false)
+
         allow(Coverage).to receive(:peek_result).and_raise(RuntimeError)
 
         expect do
@@ -275,6 +280,20 @@ RSpec.describe Henitai::PerTestCoverageCollector do
         end.to output(
           "Per-test coverage unavailable; skipping coverage formatter output\n"
         ).to_stderr
+      end
+    end
+  end
+
+  it "stays silent about unavailable coverage when child suppression is active" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        collector = described_class.new
+
+        allow(Coverage).to receive(:peek_result).and_raise(RuntimeError)
+        allow(Henitai::Integration::CoverageRuntimeSuppressors)
+          .to receive(:active?).and_return(true)
+
+        expect { collector.record_test("test/sample_test.rb") }.not_to output.to_stderr
       end
     end
   end

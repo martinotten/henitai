@@ -154,6 +154,11 @@ RSpec.describe Henitai::CoverageFormatter do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
         formatter = described_class.new(StringIO.new)
+
+        # Other examples exercise child-run suppression in-process; the
+        # module flag would leak into this one, so pin it off.
+        allow(Henitai::Integration::CoverageRuntimeSuppressors)
+          .to receive(:active?).and_return(false)
         notification = build_notification("spec/models/sample_spec.rb")
 
         allow(Coverage).to receive(:peek_result).and_raise(RuntimeError)
