@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "digest"
+require "json"
 require "spec_helper"
 require "sqlite3"
 require "tmpdir"
@@ -292,12 +293,18 @@ RSpec.describe Henitai::MutantHistoryStore do
       mutant
     end
 
-    def store_at(dir)
-      described_class.new(path: File.join(dir, "mutation-history.sqlite3"))
+    def store_at(dir, per_test_coverage: nil)
+      described_class.new(path: File.join(dir, "mutation-history.sqlite3"), per_test_coverage:)
     end
 
     def summary
       { mutation_score: 100.0, mutation_score_indicator: 100.0, equivalence_uncertainty: nil }
+    end
+
+    def coverage_double(covering_tests)
+      coverage = instance_double(Henitai::PerTestCoverage)
+      allow(coverage).to receive(:tests_covering).and_return(covering_tests)
+      coverage
     end
 
     it "returns the stored hashes for a killed mutant" do
@@ -344,6 +351,143 @@ RSpec.describe Henitai::MutantHistoryStore do
         store.record(build_result([mutant], summary), version: "0.1.0")
 
         expect(store.killed_verdict_for(Henitai::MutantIdentity.stable_id(mutant))).to be_nil
+      end
+    end
+
+    describe "survived verdicts" do
+      it "persists the full-map intersection set for survived mutants, not covered_by" do
+        Dir.mktmpdir do |dir|
+          mutant = build_cacheable_mutant(dir, status: :survived)
+          covering_test = File.join(dir, "sample_spec.rb")
+          mutant.define_singleton_method(:covered_by) { ["not/the/intersection_spec.rb"] }
+          store = store_at(dir, per_test_coverage: coverage_double([covering_test]))
+
+          store.record(build_result([mutant], summary), version: "0.1.0")
+          verdict = store.verdict_for(Henitai::MutantIdentity.stable_id(mutant))
+
+          expect(
+            status: verdict[:status],
+            subject_hash: verdict[:subject_source_hash],
+            recorded_paths: JSON.parse(verdict[:covered_tests_fingerprint]).fetch("paths"),
+            dependencies_present: !JSON.parse(verdict[:covered_tests_fingerprint])["dependencies"].nil?
+          ).to eq(
+            status: :survived,
+            subject_hash: Henitai::VerdictFingerprint.subject_source_hash(mutant),
+            recorded_paths: [covering_test],
+            dependencies_present: true
+          )
+        end
+      end
+
+      it "records no survived fingerprint when the live intersection set is empty" do
+        Dir.mktmpdir do |dir|
+          mutant = build_cacheable_mutant(dir, status: :survived)
+          store = store_at(dir, per_test_coverage: coverage_double([]))
+
+          store.record(build_result([mutant], summary), version: "0.1.0")
+
+          expect(store.verdict_for(Henitai::MutantIdentity.stable_id(mutant))).to be_nil
+        end
+      end
+
+      it "records no survived fingerprint without a per-test coverage collaborator" do
+        Dir.mktmpdir do |dir|
+          mutant = build_cacheable_mutant(dir, status: :survived)
+          store = store_at(dir)
+
+          store.record(build_result([mutant], summary), version: "0.1.0")
+
+          expect(store.verdict_for(Henitai::MutantIdentity.stable_id(mutant))).to be_nil
+        end
+      end
+
+      it "keeps stored fingerprints when a survived fingerprint cannot be recomputed" do
+        Dir.mktmpdir do |dir|
+          mutant = build_cacheable_mutant(dir, status: :survived)
+          covering_test = File.join(dir, "sample_spec.rb")
+          store = store_at(dir, per_test_coverage: coverage_double([covering_test]))
+          store.record(build_result([mutant], summary), version: "0.1.0")
+          stored = store.verdict_for(Henitai::MutantIdentity.stable_id(mutant))
+
+          restored = build_cacheable_mutant(dir, status: :survived)
+          restored.define_singleton_method(:covered_by) { ["restored_by_survivors_from_spec.rb"] }
+          degraded = store_at(dir, per_test_coverage: coverage_double([]))
+          degraded.record(build_result([restored], summary), version: "0.1.1")
+
+          expect(degraded.verdict_for(Henitai::MutantIdentity.stable_id(mutant))).to eq(stored)
+        end
+      end
+
+      it "carries stored fingerprints forward for cache-hit survivors" do
+        Dir.mktmpdir do |dir|
+          mutant = build_cacheable_mutant(dir, status: :survived)
+          covering_test = File.join(dir, "sample_spec.rb")
+          store = store_at(dir, per_test_coverage: coverage_double([covering_test]))
+          store.record(build_result([mutant], summary), version: "0.1.0")
+          stored = store.verdict_for(Henitai::MutantIdentity.stable_id(mutant))
+
+          cached = build_cacheable_mutant(dir, status: :survived)
+          cached.define_singleton_method(:covered_by) { nil }
+          cached.define_singleton_method(:from_cache?) { true }
+          bare = store_at(dir)
+          bare.record(build_result([cached], summary), version: "0.1.1")
+
+          expect(bare.verdict_for(Henitai::MutantIdentity.stable_id(mutant))).to eq(stored)
+        end
+      end
+    end
+
+    describe "#verdict_for" do
+      it "resolves the latest verdict when a killed mutant later survives" do
+        Dir.mktmpdir do |dir|
+          covering_test = File.join(dir, "sample_spec.rb")
+          store = store_at(dir, per_test_coverage: coverage_double([covering_test]))
+          killed = build_cacheable_mutant(dir, status: :killed)
+          store.record(build_result([killed], summary), version: "0.1.0")
+
+          survived = build_cacheable_mutant(dir, status: :survived)
+          store.record(build_result([survived], summary), version: "0.1.1")
+
+          expect(
+            store.verdict_for(Henitai::MutantIdentity.stable_id(killed))[:status]
+          ).to eq(:survived)
+        end
+      end
+
+      it "resolves the latest verdict when a survived mutant later gets killed" do
+        Dir.mktmpdir do |dir|
+          covering_test = File.join(dir, "sample_spec.rb")
+          store = store_at(dir, per_test_coverage: coverage_double([covering_test]))
+          survived = build_cacheable_mutant(dir, status: :survived)
+          store.record(build_result([survived], summary), version: "0.1.0")
+
+          killed = build_cacheable_mutant(dir, status: :killed)
+          store.record(build_result([killed], summary), version: "0.1.1")
+
+          expect(
+            store.verdict_for(Henitai::MutantIdentity.stable_id(survived))[:status]
+          ).to eq(:killed)
+        end
+      end
+
+      it "returns nil for statuses that are never reusable" do
+        Dir.mktmpdir do |dir|
+          store = store_at(dir, per_test_coverage: coverage_double([File.join(dir, "sample_spec.rb")]))
+          mutant = build_cacheable_mutant(dir, status: :timeout)
+          store.record(build_result([mutant], summary), version: "0.1.0")
+
+          expect(store.verdict_for(Henitai::MutantIdentity.stable_id(mutant))).to be_nil
+        end
+      end
+
+      it "returns nil for unknown ids and missing databases" do
+        Dir.mktmpdir do |dir|
+          missing = store_at(dir).verdict_for("anything")
+          store = store_at(dir)
+          store.record(build_result([build_cacheable_mutant(dir, status: :killed)], summary), version: "0.1.0")
+
+          expect([missing, store.verdict_for("nope")]).to eq([nil, nil])
+        end
       end
     end
 

@@ -541,8 +541,9 @@ module Henitai
   class MutantHistoryStore
     attr_reader path: String
 
-    def initialize: (path: String) -> void
+    def initialize: (path: String, ?per_test_coverage: PerTestCoverage?) -> void
     def record: (untyped, version: String, ?recorded_at: Time) -> void
+    def verdict_for: (String) -> Hash[Symbol, untyped]?
     def killed_verdict_for: (String) -> Hash[Symbol, untyped]?
     def trend_report: () -> Hash[Symbol, untyped]
 
@@ -552,7 +553,11 @@ module Henitai
       MIGRATION_COLUMNS: Hash[String, String]
       INSERT_RUN: String
       UPSERT_MUTANT: String
-      KILLED_VERDICT: String
+      VERDICT_LOOKUP: String
+    end
+
+    module VerdictCache
+      CACHEABLE_STATUSES: Array[String]
     end
   end
 
