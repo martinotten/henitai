@@ -44,6 +44,12 @@ RSpec.describe Henitai::Operators::StringLiteral do
     end
   end
 
+  it "uses an empty replacement for fully interpolated strings" do
+    node = find_nodes(parse("\"\#{name}\""), :dstr).first
+
+    expect(mutate(node).first.mutated_node.children).to eq([""])
+  end
+
   it "mutates strings inside percent-w arrays" do
     mutants = find_nodes(parse("%w[foo bar]"), :str).flat_map { |node| mutate(node) }
 

@@ -175,6 +175,10 @@ RSpec.describe Henitai::ScenarioExecutionResult do
     expect(build_result(:killed)).to be_killed
   end
 
+  it "identifies survived results" do
+    expect(build_result(:survived)).to be_survived
+  end
+
   it "builds a killed result when the wait result has no exit status" do
     result = described_class.build(
       wait_result: Object.new,

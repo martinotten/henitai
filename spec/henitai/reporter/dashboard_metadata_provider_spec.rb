@@ -37,6 +37,30 @@ RSpec.describe Henitai::Reporter::DashboardMetadataProvider do
       expect(provider(git_executor: executor).project).to eq("github.com/acme/app")
     end
 
+    it "invokes git with the remote lookup command" do
+      status = Struct.new(:success?).new(true)
+      executor = class_double(Open3)
+      allow(executor).to receive(:capture2)
+        .with("git", "remote", "get-url", "origin")
+        .and_return(["git@github.com:acme/app.git", status])
+
+      provider(git_executor: executor).project
+
+      expect(executor).to have_received(:capture2).with("git", "remote", "get-url", "origin")
+    end
+
+    it "invokes git with the branch lookup command" do
+      status = Struct.new(:success?).new(true)
+      executor = class_double(Open3)
+      allow(executor).to receive(:capture2)
+        .with("git", "rev-parse", "--abbrev-ref", "HEAD")
+        .and_return(["feature", status])
+
+      provider(git_executor: executor).version
+
+      expect(executor).to have_received(:capture2).with("git", "rev-parse", "--abbrev-ref", "HEAD")
+    end
+
     it "returns nil when neither configuration nor git remote resolve" do
       expect(provider.project).to be_nil
     end

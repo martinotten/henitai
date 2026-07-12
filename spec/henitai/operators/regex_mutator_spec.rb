@@ -102,6 +102,18 @@ RSpec.describe Henitai::Operators::RegexMutator do
     expect(mutate(node)).to eq([])
   end
 
+  it "ignores malformed regexp children without raising" do
+    node = Parser::AST::Node.new(:regexp, ["source"])
+
+    expect(mutate(node)).to eq([])
+  end
+
+  it "ignores non-string AST children without raising" do
+    node = Parser::AST::Node.new(:regexp, [Parser::AST::Node.new(:int, [1])])
+
+    expect(mutate(node)).to eq([])
+  end
+
   it "preserves regex flags in mutated nodes" do
     node = find_nodes(parse("/foo+/i"), :regexp).first
     mutant = mutate(node).find { |m| m.description.include?("+") }

@@ -48,4 +48,13 @@ RSpec.describe Henitai::Reporter do
         .to raise_error(ArgumentError, /Unknown reporter: bogus/)
     end
   end
+
+  describe Henitai::Reporter::Base do
+    it "requires concrete reporters to implement report" do
+      reporter = described_class.new(config: instance_double(Henitai::Configuration))
+
+      expect { reporter.report(instance_double(Henitai::Result)) }
+        .to raise_error(NotImplementedError, "Henitai::Reporter::Base#report must be implemented")
+    end
+  end
 end
