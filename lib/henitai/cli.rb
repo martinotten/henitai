@@ -36,7 +36,8 @@ module Henitai
     REPORT_CLEANUP_PATHS = [
       %w[coverage .resultset.json],
       %w[coverage .last_run.json],
-      ["henitai_per_test.json"]
+      ["henitai_per_test.json"],
+      [CoverageBootstrapper::DEPENDENCY_MANIFEST_FILE]
     ].freeze
 
     # Whole directories of per-mutant scratch artifacts, removed recursively.
