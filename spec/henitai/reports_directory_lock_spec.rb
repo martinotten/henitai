@@ -50,6 +50,36 @@ RSpec.describe Henitai::ReportsDirectoryLock do
     end
   end
 
+  it "flags a dead recorded owner so orphaned lock holders are diagnosable" do
+    Dir.mktmpdir do |reports_dir|
+      lock_path = File.join(reports_dir, ".henitai-run.lock")
+      File.write(lock_path, JSON.generate(pid: 4217, started_at: "2026-07-12T21:20:34+02:00"))
+      allow(Process).to receive(:kill).with(0, 4217).and_raise(Errno::ESRCH)
+
+      File.open(lock_path, File::RDWR) do |file|
+        file.flock(File::LOCK_EX)
+
+        expect { described_class.new(reports_dir:).synchronize { nil } }
+          .to raise_error(
+            Henitai::ConcurrentRunError,
+            /recorded owner pid 4217 is not running.*orphaned child/m
+          )
+      end
+    end
+  end
+
+  it "keeps the plain contention message when the recorded owner is alive" do
+    Dir.mktmpdir do |reports_dir|
+      lock = described_class.new(reports_dir:)
+
+      lock.synchronize do
+        # Anchored at end-of-message: no dead-owner hint appended.
+        expect { described_class.new(reports_dir:).synchronize { nil } }
+          .to raise_error(Henitai::ConcurrentRunError, /use a separate reports_dir or wait\z/)
+      end
+    end
+  end
+
   it "reports an unknown owner for non-object metadata" do
     Dir.mktmpdir do |reports_dir|
       lock_path = File.join(reports_dir, ".henitai-run.lock")

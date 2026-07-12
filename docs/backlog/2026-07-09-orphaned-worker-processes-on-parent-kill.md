@@ -84,3 +84,26 @@ orphan lifetime is fine given the timeout ceiling already bounds active work.
   interfere with normal child stdout capture or exit status).
 - Manual: start a run, `kill -9` the parent pid, confirm `ps` shows no surviving
   `ruby` workers after the poll window.
+
+## Live repro (2026-07-12)
+
+Reproduced in the wild during a dogfood `henitai run --incremental`:
+
+- Ctrl-C killed the foreground parent (pid 4217), but one forked child
+  (`henitai run --incremental`, pid 40441) survived, was reparented to
+  launchd (ppid 1), and kept executing detached.
+- The child inherited the parent's flock fd on `reports/.henitai-run.lock`,
+  so every subsequent run failed with `ConcurrentRunError` naming the *dead*
+  parent pid from the lock metadata — misleading until
+  `lsof reports/.henitai-run.lock` exposed the orphan.
+- The orphan ignored SIGTERM and required SIGKILL.
+
+Two consequences for this ticket:
+
+1. The Ctrl-C path (SIGINT to the foreground process group) is not
+   sufficient — at least one child survived it, so the watchdog must not
+   assume signal delivery ever reached the child.
+2. Interim diagnosability shipped separately: `ReportsDirectoryLock`
+   now detects a dead recorded owner via `Process.kill(0, pid)` and appends
+   an orphaned-child hint (incl. the `lsof` command) to the contention
+   message.

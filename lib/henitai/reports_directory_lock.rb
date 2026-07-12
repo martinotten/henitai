@@ -44,8 +44,26 @@ module Henitai
     end
 
     def contention_message(pid)
-      "another henitai run is active in #{@reports_dir} " \
-        "(pid #{pid}); use a separate reports_dir or wait"
+      message = "another henitai run is active in #{@reports_dir} " \
+                "(pid #{pid}); use a separate reports_dir or wait"
+      return message unless dead_owner?(pid)
+
+      "#{message}. The recorded owner pid #{pid} is not running — an " \
+        "orphaned child may still hold the lock " \
+        "(check: lsof #{lock_path})"
+    end
+
+    # True only when the recorded owner pid provably no longer exists. EPERM
+    # means the process is alive but owned by someone else — treated as alive.
+    def dead_owner?(pid)
+      return false unless pid.is_a?(Integer)
+
+      Process.kill(0, pid)
+      false
+    rescue Errno::ESRCH
+      true
+    rescue StandardError
+      false
     end
 
     def write_owner(file)
