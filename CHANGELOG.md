@@ -7,6 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-13
+
+### Added
+- `henitai run --incremental`: verdict reuse from the history store. Killed
+  verdicts are reused when the subject's source and every covering test file
+  are byte-identical to what was recorded; Survived verdicts are additionally
+  gated on the live per-test covering set (membership and content) plus a
+  run-level dependency fingerprint over spec helpers, support files,
+  fixtures/factories, `Gemfile.lock`, `.henitai.yml`, and `.rspec` (ADR-11).
+  Reused mutants carry `fromCache: true` in the JSON report; the terminal
+  prints the reused split and an executed-only MS/MSI line. `--force` bypasses
+  reuse; every doubt (missing per-test map, ambiguous ids, legacy rows,
+  timeout/error verdicts) resolves to re-execution
+- Canonical report merge: scoped and partial runs (`--since`, subject
+  patterns, `--survivors-from`) merge into `reports/mutation-report.json`
+  keyed by `stableId` instead of overwriting it; full runs still replace it
+- Checkpoint reporting: long runs persist partial JSON/HTML results
+  incrementally, so a crashed or aborted run keeps its finished verdicts
+- Reports-directory locking: concurrent runs against the same `reports_dir`
+  fail fast with `ConcurrentRunError`; when the recorded owner pid is dead the
+  error names the likely orphaned child and the `lsof` command to find it
+- `henitai run --dry-run`: list the post-filter mutant set without executing
+  any tests (always exits 0)
+- `--strict-exit-codes` (opt-in): exit 3 when mutants timed out, 4 on
+  runtime/compile errors; precedence 2 > 3 > 4 > 1 > 0
+- Auto-calibrated per-mutant timeout from the measured test baseline
+  (`--timeout-multiplier`, default 3.0) when `mutation.timeout` is unset
+- Runtime-aware test ordering: per-test durations from the coverage pass
+  prioritize fast tests within a mutant run
+- Richer `# henitai:disable` directives: operator lists, reasons, and
+  `begin`/`end` regions
+- GitHub Actions annotation reporter
+- `HENITAI_WORKER_SLOT` environment variable for per-worker resource
+  isolation in parallel runs
+- `EqualityIdentityOperator`: the hard-to-kill `==`/`eql?`/`equal?` pairing
+  moved out of the default light set into its own operator (ADR-10)
+
+### Fixed
+- Mutants in `module_function` modules were unkillable: `module_function`
+  copies the method onto the module's singleton and activation only replaced
+  the instance side, so callers kept running original code and every such
+  mutant falsely survived. Activation now re-copies the injected method when
+  the pre-injection shape proves a `module_function` copy
+- Per-test coverage attributed each line only to the first test that executed
+  it; the map now credits every test whose run increments a line's hit count,
+  fixing silent test under-selection (a latent false-Survived risk)
+- Coverage freshness now watches the dependency file set as well: edits are
+  detected by mtime, deletions via a recorded path manifest
+  (`henitai_dependency_manifest.json`); `henitai clean` removes the sidecar
+- Stable-id collisions between same-signature mutants are disambiguated with
+  a site offset (`legacyStableId` is emitted temporarily so scoped runs
+  replace pre-offset canonical entries instead of duplicating them)
+- Child stdout/stderr capture is capped (`max_log_bytes`) so runaway mutants
+  cannot exhaust memory on long runs
+- Flaky-retry counter no longer inflates when a respawned child fails again
+
+### Changed
+- Terminal reporter renders original nodes from their source slice and reuses
+  a memoized unparse of the mutated node shared with the JSON reporter
+  (a dogfood profile spent 27% of wall time re-unparsing survivors)
+- The survivor dependency fingerprint prunes generated artifact trees
+  (fixture projects' `reports/`, `coverage/`, `mutation-logs/`) during the
+  scan — only on evidence of actual output, never by directory name alone —
+  cutting fingerprint time from ~0.7s to ~1.5ms and keeping smoke runs from
+  invalidating survivor reuse
+- Mutant children no longer emit unconditional debug lines, coverage-formatter
+  warnings for deliberately suppressed coverage, or rspec-mocks `__send__`
+  redefinition warnings into their logs
+
+### Internal
+- Architecture documentation gained §8.11 (incremental verdict reuse) and
+  ADR-11 (content-fingerprint verdict reuse, not git scoping); new backlog
+  tickets for CI warm verdict cache, child null formatter, and auto-`--since`
+- Spec writes into the repository checkout are rejected wholesale — mutants
+  that reroute CLI dispatch into `init` now count as kills instead of
+  littering the working tree
+- `.henitai-pi-agent/` session transcripts untracked
+
 ## [0.2.1] - 2026-06-25
 
 ### Fixed
@@ -302,7 +380,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI critical path: `henitai run` now executes the full pipeline, supports `--since`, returns CI-friendly exit codes, and `henitai version` prints `Henitai::VERSION`
 - RSpec per-test coverage output: `henitai/coverage_formatter` now writes `coverage/henitai_per_test.json`
 
-[Unreleased]: https://github.com/martinotten/henitai/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/martinotten/henitai/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/martinotten/henitai/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/martinotten/henitai/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/martinotten/henitai/compare/v0.1.10...v0.2.0
 [0.1.10]: https://github.com/martinotten/henitai/compare/v0.1.9...v0.1.10
