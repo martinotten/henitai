@@ -263,6 +263,31 @@ RSpec.describe Henitai::VerdictFingerprint do
       end
     end
 
+    it "resolves non-glob patterns literally instead of walking their directory" do
+      Dir.mktmpdir do |dir|
+        File.write(File.join(dir, "Gemfile.lock"), "GEM\n")
+        # Lives next to Gemfile.lock but matches no dependency pattern — a
+        # tree walk from the literal pattern's directory would pick it up.
+        File.write(File.join(dir, "README.md"), "unrelated\n")
+
+        expect(described_class.dependency_files(dir)).to eq([File.join(dir, "Gemfile.lock")])
+      end
+    end
+
+    it "frames each entry with length prefixes and separators (golden sha)" do
+      Dir.mktmpdir do |dir|
+        Dir.chdir(dir) do
+          File.write("f.txt", "abc")
+
+          # SHA256 of "5:f.txt3:abc" — the framing ("<path bytes>:<path>
+          # <content bytes>:<content>") prevents boundary collisions between
+          # adjacent entries; a changed separator must change the digest.
+          expect(described_class.combined_content_sha(["f.txt"]))
+            .to eq("3aaea57c1705a41413c50f276db2c94f68220df9c3a6ce953516a6dac289a882")
+        end
+      end
+    end
+
     it "simply excludes missing dependency files instead of failing" do
       Dir.mktmpdir do |dir|
         expect(described_class.dependency_fingerprint(dir)).to be_a(String)

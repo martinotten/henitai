@@ -69,6 +69,74 @@ RSpec.describe Henitai::Mutant::Activator do
     end
   end
 
+  it "patches the singleton copy of a module_function method", :aggregate_failures do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, <<~RUBY)
+        module SampleFunctions
+          module_function
+
+          def value
+            1
+          end
+        end
+      RUBY
+
+      stub_const("SampleFunctions", Module.new do
+        module_function
+
+        def value
+          1
+        end
+      end)
+
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      original_node = find_nodes(subject.ast_node, :int).first
+      mutant = build_mutant(
+        subject:,
+        original_node: original_node,
+        mutated_node: Parser::AST::Node.new(:int, [2]),
+        location: location_for(original_node)
+      )
+
+      described_class.activate!(mutant)
+
+      # module_function copies the method onto the singleton; the mutation
+      # must reach that copy or every mutant in such modules falsely survives.
+      expect(SampleFunctions.value).to eq(2)
+      expect(SampleFunctions.private_method_defined?(:value)).to be(true)
+    end
+  end
+
+  it "does not clobber a distinct singleton method sharing an instance method's name" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, <<~RUBY)
+        class SamplePair
+          def value
+            1
+          end
+        end
+      RUBY
+
+      stub_const("SamplePair", Class.new do
+        def value = 1
+        def self.value = :class_level
+      end)
+
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      original_node = find_nodes(subject.ast_node, :int).first
+      mutant = build_mutant(
+        subject:,
+        original_node: original_node,
+        mutated_node: Parser::AST::Node.new(:int, [2]),
+        location: location_for(original_node)
+      )
+
+      described_class.activate!(mutant)
+
+      expect([SamplePair.new.value, SamplePair.value]).to eq([2, :class_level])
+    end
+  end
+
   it "passes the activator file and line to class_eval" do
     activator = described_class.new
     target = Class.new

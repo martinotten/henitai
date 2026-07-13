@@ -50,6 +50,12 @@ RSpec.describe Henitai::GeneratedArtifacts do
       end
     end
 
+    it "keeps a mutation-logs directory holding only unrelated entries" do
+      Dir.mktmpdir do |base|
+        expect(described_class.generated_dir?(dir_with("mutation-logs", %w[notes.txt], base))).to be(false)
+      end
+    end
+
     it "never flags directories with unrelated names" do
       Dir.mktmpdir do |base|
         expect(described_class.generated_dir?(dir_with("support", %w[.resultset.json], base))).to be(false)
