@@ -150,7 +150,15 @@ and the terminal only shows progress plus a concise summary. Pass
 
 `henitai version` prints the installed version. `henitai run` exits with `0`
 when the mutation score meets the low threshold, `1` when it does not, and `2`
-for framework errors.
+for framework errors. With `--strict-exit-codes` (opt-in, additive) it also
+exits `3` when one or more mutants timed out and `4` when runtime/compile
+errors are present; precedence `2` > `3` > `4` > `1` > `0`. The timeout code
+is informational — a run can pass its threshold and still exit `3`.
+
+For pull-request feedback, add the `github` reporter to `reporters:` in
+`.henitai.yml`: it prints one `::warning file=...,line=...` workflow command
+per survived mutant, so survivors appear as inline annotations on the PR diff
+in GitHub Actions. All other statuses stay silent.
 
 `henitai run --incremental` reuses still-valid `Killed` and `Survived`
 verdicts from the history store (`reports/mutation-history.sqlite3`) instead
