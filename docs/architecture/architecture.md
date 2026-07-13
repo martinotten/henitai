@@ -179,6 +179,7 @@ The system is organized into the following main parts:
 | Mutant generation | Walk the AST and create candidate mutants | `lib/henitai/operator.rb`, `lib/henitai/operators/*` |
 | Coverage validation | Ensure baseline coverage exists before mutation | `lib/henitai/coverage_bootstrapper.rb`, `lib/henitai/static_filter.rb` |
 | Survivor selection | Load prior survivor reports and filter the current mutants to a rerun subset | `lib/henitai/survivor_loader.rb`, `lib/henitai/survivor_selector.rb` |
+| Incremental verdict reuse | Skip mutants whose stored Killed/Survived verdict is provably still valid | `lib/henitai/incremental_filter.rb`, `lib/henitai/verdict_fingerprint.rb`, `lib/henitai/per_test_coverage.rb`, `lib/henitai/generated_artifacts.rb` |
 | Execution engine | Run the relevant tests in isolated processes | pipeline execution engine, integration adapters |
 | Result analysis | Classify outcomes, compute scores, preserve statuses | `lib/henitai/result.rb`, result collector |
 | Reporters | Emit terminal, JSON, HTML, and dashboard outputs; keep live progress separate from captured child logs | `lib/henitai/reporter/*` |
@@ -193,6 +194,8 @@ The most important interfaces are:
 - the CLI subject syntax, including longest-prefix selection for RSpec-style names
 - the Stryker-compatible JSON report schema
 - the `stableId` vendor extension and `partialRerun` marker used by survivor reruns
+- the `fromCache` vendor extension marking verdicts reused by `--incremental`
+- the dependency-manifest sidecar (`henitai_dependency_manifest.json`) recording which dependency files existed when coverage was produced
 - the reporter interface for terminal, HTML, JSON, and dashboard output
 - the output contract for child process logs, which are captured as artifacts
 - the worker isolation contract based on process-level execution
@@ -266,6 +269,7 @@ The implementation maps onto the following module layout:
 6. A small mutant subset is executed in isolated worker processes.
 7. The terminal report highlights only the meaningful survivors.
 8. If the developer provides `--survivors-from`, Henitai loads a prior JSON report, filters the current mutants to the survivor subset, and labels the run as partial so threshold checks and trend analytics are not treated as full-run results.
+9. If the developer provides `--incremental`, still-valid Killed and Survived verdicts from the history store are reused instead of re-executed (section 8.11); the terminal summary reports the reused split and an executed-only score line.
 
 ### 6.2 Pull Request Run
 
@@ -353,7 +357,10 @@ These gates exist to reduce noise before test execution, not after it.
 This is the cost-reduction view of the pipeline. The `Runner` comments use an
 execution-order view that includes Gate 0 (coverage bootstrap) and Gate 5
 (reporting), while stillborn filtering is enforced inside `SyntaxValidator`
-after operator application rather than as a standalone runtime phase.
+after operator application rather than as a standalone runtime phase. With
+`--incremental`, an additional Gate 3.5 (verdict reuse, section 8.11) marks
+mutants with still-valid stored verdicts before the execution engine sees
+them.
 
 The original research-backed pipeline can be summarized as:
 
@@ -496,6 +503,8 @@ Persistent mutant history allows a mutant that survives now but disappears in a 
 
 The store is intentionally lightweight and file-based: no external service, no migration tool, inspectable with standard SQLite clients.
 
+Beyond trend analytics, the store doubles as the verdict cache for `--incremental` (section 8.11): two nullable columns (`subject_source_hash`, `covered_tests_fingerprint`) are populated for Killed and Survived rows and carried forward for cache-hit mutants that were never executed in the current run. Legacy rows stay NULL and are never reusable.
+
 ### 8.8 Report Formats
 
 The reporting stack is layered:
@@ -530,7 +539,7 @@ The bootstrap sequence is:
 
 1. Inspect the configured coverage artifacts for lines that overlap the current source files.
 2. If usable coverage already exists, proceed with the normal mutation pipeline.
-3. If coverage is missing or stale, run the configured test suite once to bootstrap fresh coverage.
+3. If coverage is missing or stale, run the configured test suite once to bootstrap fresh coverage. Staleness covers source files, test files, and the dependency file set (helpers, support, fixtures, lockfile, tool config): edits are detected by mtime, deletions by comparing the recorded dependency manifest against disk.
 4. Re-check the coverage artifacts.
 5. If coverage is still missing or unusable, raise `Henitai::CoverageError`.
 
@@ -568,6 +577,23 @@ The trade-off is straightforward:
 
 It should stay opt-in so the default mode remains easy to reason about.
 
+### 8.11 Incremental Verdict Reuse (ADR-11)
+
+`henitai run --incremental` reuses stored verdicts instead of re-executing mutants whose inputs provably did not change. Content fingerprints are the mechanism that decides reuse; git is never trusted for that proof (ADR-11).
+
+The reuse rules exploit an asymmetry in monotonicity:
+
+- **Killed is monotone**: an unchanged killing test still kills. A Killed verdict is reused when the subject's source hash and every recorded covering test file are byte-identical to what was recorded.
+- **Survived is not monotone**: a new or edited test can kill a previous survivor. A Survived verdict is additionally gated on the **live covering set** — the set of test files whose current per-test coverage intersects the mutant's line range must equal the recorded set in membership and content — plus a run-level **dependency fingerprint** over files that influence test behavior but never appear in a covering set (spec/rails helpers, `spec/support/**`, fixtures, factories, `Gemfile.lock`, `.henitai.yml`, `.rspec`).
+
+Every doubt resolves to re-execution: missing or empty per-test map, integrations without per-test coverage support, ambiguous stable ids, legacy history rows, timeout/error verdicts, and any fingerprint read failure. `--force` bypasses reuse entirely.
+
+Soundness rests on the per-test map being a complete over-approximation of reachability. The collector therefore uses count-delta attribution (every test whose run increments a line's hit count is credited, not just the first toucher), and coverage freshness watches the dependency file set as well: edits via mtime, deletions via a recorded path manifest (`henitai_dependency_manifest.json`) compared against disk. Generated artifact trees inside fixture projects are excluded from the dependency scan only on **evidence** of actual output (`GeneratedArtifacts`: known artifact files such as `.resultset.json` or `mutation-report.json`, per-mutant entries in `mutation-logs/`); a conventionally named directory without evidence stays in the scan, because wrongly excluding a real dependency would let an obsolete Survived verdict be reused.
+
+Reused mutants stay visible: `fromCache: true` beside `stableId` in the JSON report, a `N of M verdicts reused from history (K killed, S survived)` terminal line, and an executed-only MS/MSI line so cached verdicts are never mistaken for fresh results. Documented blindness (accepted, mirrors Stryker): non-subject production files in the call graph, test order/seed effects on state-leaking tests, and environment drift not reflected in the fingerprinted files.
+
+Mutant activation covers `module_function` subjects: `module_function` copies the private instance method onto the module's singleton, and `define_method` alone only replaces the instance side, so the activator re-runs `module_function` for the injected method when the pre-injection shape proves such a copy — without this, every mutant in a `module_function` module falsely survives.
+
 ## 9. Architecture Decisions
 
 | Decision | Alternatives considered | Status | Rationale |
@@ -581,6 +607,7 @@ It should stay opt-in so the default mode remains easy to reason about.
 | Method coverage as the static-filter signal (ADR-07) | line-only check; `Subject#source_range` heuristic; remove the gate entirely; explicit test-to-subject mapping | accepted | addresses the root cause of false `NoCoverage` classifications on interior hash/array lines without relying on a heuristic surrogate |
 | Remove per-line mutation cap (ADR-08) | keep the default cap; make it configurable only; use sampling instead | accepted | every other major mutation framework emits all mutations per node; the cap silently discarded granular operator output and made coverage metrics dishonest |
 | Split `EqualityOperator` into relational vs identity-method mutations (ADR-10) | thread operator-set context into `Operator#mutate`; rely solely on `EquivalenceDetector`; drop `eql?`/`equal?` mutations entirely | accepted | `==`/`eql?`/`equal?` is the hardest equality pairing to kill in practice (precedent: the `mutant` gem excludes it from its default operator set); partitioning by class fits the existing `Operator.for_set` model used by every other operator |
+| Content-fingerprint verdict reuse, not git scoping (ADR-11) | auto-`--since` from recorded HEAD as the only mechanism; killed-only reuse forever | accepted | git proves a scope boundary, not per-mutant validity; fingerprints over subject source, covering-set membership/content, and dependency files make Survived reuse sound, with every doubt resolving to re-execution |
 
 Formal ADRs live in `docs/architecture/adr/` and use the same English terminology.
 
