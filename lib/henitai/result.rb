@@ -207,6 +207,8 @@ module Henitai
     end
 
     def replacement_for(mutant)
+      return mutant.mutated_source if mutant.respond_to?(:mutated_source)
+
       safe_unparse(mutant.mutated_node)
     end
 

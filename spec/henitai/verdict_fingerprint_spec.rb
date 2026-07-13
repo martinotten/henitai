@@ -200,6 +200,22 @@ RSpec.describe Henitai::VerdictFingerprint do
       end
     end
 
+    it "ignores generated artifacts inside fixture projects", :aggregate_failures do
+      Dir.mktmpdir do |dir|
+        fixture = File.join(dir, "spec", "fixtures", "smoke")
+        FileUtils.mkdir_p(File.join(fixture, "reports", "mutation-logs"))
+        FileUtils.mkdir_p(File.join(fixture, "coverage"))
+        File.write(File.join(dir, "Gemfile.lock"), "GEM\n")
+
+        before = described_class.dependency_fingerprint(dir)
+        File.write(File.join(fixture, "reports", "mutation-logs", "mutant-1.log"), "churn")
+        File.write(File.join(fixture, "coverage", ".resultset.json"), "{}")
+
+        expect(described_class.dependency_fingerprint(dir)).to eq(before)
+        expect(described_class.dependency_files(dir)).to eq([File.join(dir, "Gemfile.lock")])
+      end
+    end
+
     it "simply excludes missing dependency files instead of failing" do
       Dir.mktmpdir do |dir|
         expect(described_class.dependency_fingerprint(dir)).to be_a(String)

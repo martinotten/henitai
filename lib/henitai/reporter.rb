@@ -224,19 +224,43 @@ module Henitai
       end
 
       def mutated_line(mutant)
-        format("+ %s", display_unparse(mutant.mutated_node))
+        format("+ %s", display_mutated_source(mutant))
+      end
+
+      # Prefer the mutant's memoized unparse (shared with the JSON reporter);
+      # string literals keep the visible-escape rendering below.
+      def display_mutated_source(mutant)
+        node = mutant.mutated_node
+        return node.children.first.inspect if str_node?(node)
+        return mutant.mutated_source if mutant.respond_to?(:mutated_source)
+
+        display_unparse(node)
       end
 
       # Like safe_unparse but makes invisible characters visible in terminal
       # output. For string literal nodes the inner value is shown via #inspect
-      # so that e.g. "" vs " " vs "\n" are unambiguous. Other nodes unparse
-      # normally.
+      # so that e.g. "" vs " " vs "\n" are unambiguous. Nodes parsed from real
+      # source render their original source slice — unparsing is expensive and
+      # this path runs once per survivor; synthetic nodes unparse as before.
       def display_unparse(node)
-        if node.respond_to?(:type) && node.respond_to?(:children) && node.type == :str
-          node.children.first.inspect
-        else
-          safe_unparse(node)
-        end
+        return node.children.first.inspect if str_node?(node)
+
+        source_slice(node) || safe_unparse(node)
+      end
+
+      def str_node?(node)
+        node.respond_to?(:type) && node.respond_to?(:children) && node.type == :str
+      end
+
+      # Single-line original source of a parsed node; nil for synthetic nodes
+      # or multi-line slices (those fall back to normalized unparsing).
+      def source_slice(node)
+        return nil unless node.respond_to?(:location)
+
+        source = node.location&.expression&.source
+        source unless source.nil? || source.include?("\n")
+      rescue StandardError
+        nil
       end
 
       def score_line(result)

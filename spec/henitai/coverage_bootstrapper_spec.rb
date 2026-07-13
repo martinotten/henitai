@@ -532,8 +532,11 @@ RSpec.describe Henitai::CoverageBootstrapper do
         File.write(per_test_report, "{}")
         set_mtime(source, now - 30)
         set_mtime(spec, now - 30)
-        set_mtime(report, now - 10)
-        set_mtime(per_test_report, now - 10)
+        # Future-dated: the watch list also covers the repo's own dependency
+        # files (Dir.pwd-based), which other examples in this suite may touch
+        # moments earlier — a merely "recent" report mtime would flake.
+        set_mtime(report, now + 60)
+        set_mtime(per_test_report, now + 60)
 
         config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
         static_filter = instance_double(Henitai::StaticFilter)

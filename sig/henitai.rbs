@@ -243,6 +243,8 @@ module Henitai
   end
 
   class Mutant
+    include UnparseHelper
+
     STATUSES: Array[Symbol]
 
     attr_reader id: String
@@ -265,6 +267,7 @@ module Henitai
 
     def initialize: (subject: Subject, operator: String, nodes: Hash[Symbol, untyped], description: String, location: Hash[Symbol, untyped], ?precomputed_stable_id: String?, ?precomputed_activation_source: String?) -> void
     def stable_id: () -> String
+    def mutated_source: () -> String
     def from_cache?: () -> bool
     def killed?: () -> bool
     def survived?: () -> bool
@@ -841,6 +844,9 @@ module Henitai
       def original_line: (Mutant) -> String
       def mutated_line: (Mutant) -> String
       def display_unparse: (untyped) -> String
+      def display_mutated_source: (untyped) -> String
+      def str_node?: (untyped) -> bool
+      def source_slice: (untyped) -> String?
       def score_line: (Result) -> String
       def format_row: (String, untyped) -> String
       def reused_verdicts_line: (Result) -> String?
