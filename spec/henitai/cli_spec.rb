@@ -6,17 +6,18 @@ require "stringio"
 
 RSpec.describe Henitai::CLI do
   before do
-    protected_config = File.expand_path("../../.henitai.yml", __dir__)
     allow(File).to receive(:write).and_wrap_original do |original, path, *args, **kwargs|
-      SpecSupport::ProtectedProjectFiles.check_write!(path, [protected_config])
+      SpecSupport::ProtectedProjectFiles.check_write_outside_project!(path)
       original.call(path, *args, **kwargs)
     end
   end
 
   # Each example that needs a workspace opens its own Dir.mktmpdir and passes
   # explicit paths (--config, reports_dir, init PATH) into the CLI, so no global
-  # Dir.chdir is needed. The write guard protects the tracked project config if
-  # a mutant redirects an explicit temporary path back to the default path.
+  # Dir.chdir is needed. The write guard rejects every write into the repo
+  # checkout: mutants that reroute CLI dispatch (e.g. "operator list" into
+  # init, which writes a file named "list" into the cwd) raise instead of
+  # littering the checkout — and thereby count as killed.
   def write_configuration(dir, reports_dir: nil)
     reports_dir ||= File.join(dir, "reports")
     path = File.join(dir, ".henitai.yml")
