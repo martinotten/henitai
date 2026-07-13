@@ -106,6 +106,53 @@ RSpec.describe Henitai::PerTestCoverage do
     end
   end
 
+  describe "#source_files_covered_by" do
+    it "returns the source files recorded for the given test file" do
+      Dir.mktmpdir do |dir|
+        file = File.expand_path("lib/sample.rb")
+        other = File.expand_path("lib/other.rb")
+        write_report(
+          dir,
+          "spec/a_spec.rb" => { file => [2], other => [3] },
+          "spec/b_spec.rb" => { file => [9] }
+        )
+
+        coverage = described_class.new(reports_dir: dir)
+
+        expect(coverage.source_files_covered_by("spec/a_spec.rb")).to eq([file, other].sort)
+      end
+    end
+
+    it "matches test paths regardless of relative or absolute form" do
+      Dir.mktmpdir do |dir|
+        file = File.expand_path("lib/sample.rb")
+        write_report(dir, "spec/a_spec.rb" => { file => [2] })
+
+        coverage = described_class.new(reports_dir: dir)
+
+        expect(coverage.source_files_covered_by(File.expand_path("spec/a_spec.rb"))).to eq([file])
+      end
+    end
+
+    it "returns an empty set for a file the map does not know" do
+      Dir.mktmpdir do |dir|
+        write_report(dir, "spec/a_spec.rb" => { File.expand_path("lib/sample.rb") => [2] })
+
+        coverage = described_class.new(reports_dir: dir)
+
+        expect(coverage.source_files_covered_by("lib/sample.rb")).to eq([])
+      end
+    end
+
+    it "returns an empty set when the per-test report is missing" do
+      Dir.mktmpdir do |dir|
+        coverage = described_class.new(reports_dir: dir)
+
+        expect(coverage.source_files_covered_by("spec/a_spec.rb")).to eq([])
+      end
+    end
+  end
+
   describe "#available?" do
     it "reflects whether the per-test map holds any entries" do
       Dir.mktmpdir do |dir|

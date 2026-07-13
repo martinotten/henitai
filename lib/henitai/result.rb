@@ -16,7 +16,7 @@ module Henitai
     DEFAULT_THRESHOLDS = { high: 80, low: 60 }.freeze
 
     attr_reader :mutants, :started_at, :finished_at, :thresholds, :survivor_stats,
-                :session_id, :git_sha
+                :session_id, :git_sha, :since
 
     # @param source_provider [#call] maps a file path to its source string.
     #   Injected so the domain object performs no disk IO; the caller (which
@@ -32,7 +32,8 @@ module Henitai
     def initialize(mutants:, started_at:, finished_at:, thresholds: nil,
                    partial_rerun: false, survivor_stats: nil,
                    session_id: SecureRandom.uuid, git_sha: nil,
-                   source_provider: ->(_file) { "" }, authoritative: true)
+                   source_provider: ->(_file) { "" }, authoritative: true,
+                   since: nil)
       @mutants         = mutants
       @started_at      = started_at
       @finished_at     = finished_at
@@ -43,6 +44,7 @@ module Henitai
       @git_sha         = git_sha
       @source_provider = source_provider
       @authoritative   = authoritative
+      @since           = since
     end
     # rubocop:enable Metrics/ParameterLists
 
