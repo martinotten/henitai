@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-13
+
+### Fixed
+- Per-mutant log capture no longer crashes with
+  `Encoding::UndefinedConversionError` when the host app sets
+  `Encoding.default_internal` (as Rails test environments do) and a child
+  process prints multibyte output: the capped log streams are opened in
+  binary mode, so pipe chunks are written byte-for-byte. Also keeps a
+  multibyte character split across drain chunks (or truncated at the cap)
+  from corrupting the file.
+
+### Changed
+- `--since REF` now includes the working tree: tracked files with
+  uncommitted changes and untracked files count as changed, matching what
+  actually gets tested. Previously only committed changes in `REF..HEAD`
+  were considered, so pre-commit runs silently selected nothing.
+- `--since REF` is test-aware: a changed test file selects the source files
+  it covers, using the per-test coverage map from the previous run
+  (`henitai_per_test.json`). Editing only a test now re-tests the subjects
+  that test can kill. First run without a map: no expansion.
+- An empty `--since` run now says why: the terminal summary appends
+  `No mutants: no configured source files changed since REF.` instead of
+  printing an unexplained all-zero table. `Result` gained a `since`
+  attribute to carry the scope.
+
 ## [0.3.0] - 2026-07-13
 
 ### Added
@@ -380,7 +405,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI critical path: `henitai run` now executes the full pipeline, supports `--since`, returns CI-friendly exit codes, and `henitai version` prints `Henitai::VERSION`
 - RSpec per-test coverage output: `henitai/coverage_formatter` now writes `coverage/henitai_per_test.json`
 
-[Unreleased]: https://github.com/martinotten/henitai/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/martinotten/henitai/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/martinotten/henitai/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/martinotten/henitai/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/martinotten/henitai/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/martinotten/henitai/compare/v0.1.10...v0.2.0

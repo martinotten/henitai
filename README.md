@@ -51,7 +51,8 @@ gem install henitai
 # Run mutation testing on the entire project
 bundle exec henitai run
 
-# Run only on subjects changed since main (CI-friendly)
+# Run only on subjects changed since main (CI-friendly). Includes uncommitted
+# working-tree changes; changed test files select the sources they cover.
 bundle exec henitai run --since origin/main
 
 # Run on a specific subject pattern
