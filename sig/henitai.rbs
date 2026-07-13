@@ -718,6 +718,7 @@ module Henitai
     def initialize: (reports_dir: String, ?coverage_report_reader: CoverageReportReader) -> void
     def available?: () -> bool
     def tests_covering: (untyped) -> Array[String]
+    def source_files_covered_by: (untyped) -> Array[String]
     def covers?: (String, untyped) -> bool
 
     private
@@ -852,6 +853,7 @@ module Henitai
       def reused_verdicts_line: (Result) -> String?
       def reused_mutants: (Result) -> Array[Mutant]
       def executed_only_score_line: (Result) -> String?
+      def empty_since_scope_line: (Result) -> String?
       def count_status: (Result, Symbol) -> Integer
       def format_duration: (Float) -> String
       def format_percent: (Float?) -> String
@@ -977,8 +979,9 @@ module Henitai
     attr_reader survivor_stats: Hash[Symbol, untyped]?
     attr_reader session_id: String
     attr_reader git_sha: String?
+    attr_reader since: String?
 
-    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time, ?thresholds: Hash[Symbol, Integer]?, ?partial_rerun: bool, ?survivor_stats: Hash[Symbol, untyped]?, ?session_id: String, ?git_sha: String?, ?source_provider: ^(String) -> String, ?authoritative: bool) -> void
+    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time, ?thresholds: Hash[Symbol, Integer]?, ?partial_rerun: bool, ?survivor_stats: Hash[Symbol, untyped]?, ?session_id: String, ?git_sha: String?, ?source_provider: ^(String) -> String, ?authoritative: bool, ?since: String?) -> void
     def partial_rerun?: () -> bool
     def authoritative?: () -> bool
     def killed: () -> Integer
@@ -1086,6 +1089,8 @@ module Henitai
     def reject_excluded: (Array[String]) -> Array[String]
     def excluded_source_files: () -> Array[String]
     def filter_changed: (Array[String]) -> Array[String]
+    def changed_paths_since: () -> Array[String]
+    def covered_sources_for_changed_tests: (Array[String]) -> Array[String]
     def pattern_subjects: () -> Array[Subject]
     def unique_subjects: (Array[Subject]) -> Array[Subject]
     def normalize_path: (String) -> String

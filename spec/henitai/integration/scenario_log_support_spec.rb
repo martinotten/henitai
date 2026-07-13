@@ -22,6 +22,22 @@ RSpec.describe Henitai::Integration::ScenarioLogSupport do
     end
   end
 
+  def with_default_internal(encoding)
+    original = Encoding.default_internal
+    silence_encoding_warning { Encoding.default_internal = encoding }
+    yield
+  ensure
+    silence_encoding_warning { Encoding.default_internal = original }
+  end
+
+  def silence_encoding_warning
+    original_verbose = $VERBOSE
+    $VERBOSE = nil
+    yield
+  ensure
+    $VERBOSE = original_verbose
+  end
+
   it "restores the original coverage dir after yielding" do
     with_env("HENITAI_COVERAGE_DIR", "existing-dir") do
       events = []
@@ -171,6 +187,36 @@ RSpec.describe Henitai::Integration::ScenarioLogSupport do
         support.close_child_output(output_files)
 
         expect(File.read(paths[:stdout_path])).to eq("captured out")
+      end
+    end
+
+    # Rails apps set Encoding.default_internal to UTF-8, which makes IO#write
+    # transcode ASCII-8BIT pipe chunks and raise Encoding::UndefinedConversionError
+    # on multibyte output unless the log file is opened in binary mode.
+    it "captures multibyte UTF-8 output when Encoding.default_internal is set" do
+      with_default_internal(Encoding::UTF_8) do
+        Dir.mktmpdir do |dir|
+          support = described_class.new
+          paths = log_paths(dir)
+          output_files = support.open_child_output(paths)
+          output_files[:stdout][:writer].write("Häuser überall\n")
+          support.close_child_output(output_files)
+
+          expect(File.read(paths[:stdout_path])).to eq("Häuser überall\n")
+        end
+      end
+    end
+
+    it "captures a multibyte character split across drain chunks intact" do
+      Dir.mktmpdir do |dir|
+        support = described_class.new
+        paths = log_paths(dir)
+        output_files = support.open_child_output(paths)
+        payload = "#{'a' * (described_class::DRAIN_CHUNK_BYTES - 1)}é"
+        output_files[:stdout][:writer].write(payload.b)
+        support.close_child_output(output_files)
+
+        expect(File.read(paths[:stdout_path])).to eq(payload)
       end
     end
 

@@ -527,6 +527,21 @@ RSpec.describe Henitai::Result do
     end
   end
 
+  describe "since" do
+    it "is nil by default" do
+      expect(result([]).since).to be_nil
+    end
+
+    it "exposes the --since ref the run was scoped with" do
+      scoped_result = described_class.new(
+        mutants: [], started_at: Time.at(0), finished_at: Time.at(1),
+        since: "origin/main"
+      )
+
+      expect(scoped_result.since).to eq("origin/main")
+    end
+  end
+
   describe "session identity" do
     it "has a session_id that is a UUID" do
       expect(result([]).session_id).to match(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/)

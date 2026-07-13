@@ -168,7 +168,8 @@ module Henitai
         survivor_stats: survivor_strategy.survivor_stats,
         git_sha: safe_head_sha,
         source_provider: source_provider,
-        authoritative: full_run?
+        authoritative: full_run?,
+        since: @since
       )
     end
 
@@ -267,10 +268,26 @@ module Henitai
     def filter_changed(files)
       return files unless @since
 
-      changed_file_set = git_diff_analyzer
-                         .changed_files(from: @since, to: "HEAD")
-                         .map { |path| normalize_path(path) }
+      changed_file_set = changed_paths_since.map { |path| normalize_path(path) }
+      changed_file_set += covered_sources_for_changed_tests(changed_file_set)
       files.select { |path| changed_file_set.include?(normalize_path(path)) }
+    end
+
+    # Committed changes since the ref plus the current working tree (tracked
+    # dirty and untracked files): the working tree is what gets tested, so it
+    # is always part of "changed since REF".
+    def changed_paths_since
+      git_diff_analyzer.changed_files(from: @since, to: "HEAD") +
+        git_diff_analyzer.working_tree_changed_files
+    end
+
+    # Changed test files select the source files they cover, so an edited
+    # test re-tests the subjects it can kill. Uses the per-test map from the
+    # previous run — Gate 1 runs before this run's bootstrap finishes.
+    def covered_sources_for_changed_tests(changed_paths)
+      changed_paths
+        .flat_map { |path| per_test_coverage.source_files_covered_by(path) }
+        .map { |path| normalize_path(path) }
     end
 
     def pattern_subjects

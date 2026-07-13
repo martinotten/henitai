@@ -30,14 +30,15 @@ RSpec.describe Henitai::Reporter::Terminal do
     Struct.new(:thresholds, :all_logs).new(thresholds, true)
   end
 
-  def build_result(mutants:, scoring_summary:, duration:)
-    Struct.new(:mutants, :scoring_summary, :duration) do
+  def build_result(mutants:, scoring_summary:, duration:, since: nil)
+    Struct.new(:mutants, :scoring_summary, :duration, :since) do
       def partial_rerun? = false
       def survivor_stats = nil
     end.new(
       mutants,
       scoring_summary,
-      duration
+      duration,
+      since
     )
   end
 
@@ -340,6 +341,33 @@ RSpec.describe Henitai::Reporter::Terminal do
     OUTPUT
 
     expect { reporter.report(result) }.to output(expected_output).to_stdout
+  end
+
+  it "explains an empty result when the run was scoped with --since" do
+    reporter = described_class.new(config: build_config, color_enabled: false)
+    result = build_result(
+      mutants: [],
+      scoring_summary: { mutation_score: nil, mutation_score_indicator: nil },
+      duration: 0.13,
+      since: "origin/main"
+    )
+
+    expect { reporter.report(result) }.to output(
+      include("No mutants: no configured source files changed since origin/main")
+    ).to_stdout
+  end
+
+  it "prints no empty-run explanation without a --since scope" do
+    reporter = described_class.new(config: build_config, color_enabled: false)
+    result = build_result(
+      mutants: [],
+      scoring_summary: { mutation_score: nil, mutation_score_indicator: nil },
+      duration: 0.13
+    )
+
+    expect { reporter.report(result) }.to output(
+      satisfy { |output| !output.include?("No mutants:") }
+    ).to_stdout
   end
 
   it "uses default thresholds when the config does not define any" do

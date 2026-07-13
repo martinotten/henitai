@@ -137,8 +137,18 @@ module Henitai
           format_row("No coverage", count_status(result, :no_coverage)),
           format_row("Duration", format_duration(result.duration)),
           reused_verdicts_line(result),
-          executed_only_score_line(result)
+          executed_only_score_line(result),
+          empty_since_scope_line(result)
         ].compact
+      end
+
+      # A zero-mutant summary with every counter at 0 and n/a scores is
+      # baffling without its cause; name it when the run was scoped by --since.
+      def empty_since_scope_line(result)
+        return nil unless result.mutants.empty?
+        return nil unless result.respond_to?(:since) && result.since
+
+        "No mutants: no configured source files changed since #{result.since}."
       end
 
       def reused_verdicts_line(result)

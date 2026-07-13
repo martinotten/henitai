@@ -62,8 +62,11 @@ module Henitai
 
       # One capture channel: a pipe whose read end is drained (capped) into the
       # log file by a dedicated thread. Returns the pieces close needs.
+      # Binary mode: readpartial yields ASCII-8BIT chunks, and a text-mode file
+      # would transcode them (raising Encoding::UndefinedConversionError on
+      # multibyte output when Encoding.default_internal is set, as Rails does).
       def open_capped_stream(path, cap)
-        file = File.new(path, "w")
+        file = File.new(path, "wb")
         file.sync = true
         reader, writer = IO.pipe
         thread = Thread.new { drain_capped(reader, file, cap) }

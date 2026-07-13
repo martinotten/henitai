@@ -28,6 +28,21 @@ module Henitai
       map.keys.select { |test| covers?(test, mutant) }.sort
     end
 
+    # The source files the given test file's recorded coverage reaches.
+    # Test keys are matched path-insensitively (relative or absolute form);
+    # returned source paths are absolute, as recorded.
+    #
+    # @return [Array<String>] sorted; empty when the test is unknown or the
+    #   map is unavailable.
+    def source_files_covered_by(test_file)
+      wanted = File.expand_path(test_file.to_s)
+      map.select { |test, _| File.expand_path(test) == wanted }
+         .values
+         .flat_map(&:keys)
+         .uniq
+         .sort
+    end
+
     # True when the given test file's recorded coverage intersects the
     # mutant's current line range.
     def covers?(test, mutant)
