@@ -20,6 +20,9 @@ module Henitai
   # Raised when coverage data cannot be bootstrapped or validated.
   class CoverageError < StandardError; end
 
+  # Raised when another process is using the configured reports directory.
+  class ConcurrentRunError < StandardError; end
+
   autoload :Configuration, "henitai/configuration"
   autoload :CoverageBootstrapper, "henitai/coverage_bootstrapper"
   autoload :CoverageReportReader, "henitai/coverage_report_reader"
@@ -48,6 +51,7 @@ module Henitai
   autoload :CanonicalReportWriter, "henitai/canonical_report_writer"
   autoload :CheckpointReporter, "henitai/checkpoint_reporter"
   autoload :CompositeProgressReporter, "henitai/composite_progress_reporter"
+  autoload :ReportsDirectoryLock, "henitai/reports_directory_lock"
   autoload :SurvivorLoader,          "henitai/survivor_loader"
   autoload :SurvivorSelector,        "henitai/survivor_selector"
   autoload :SurvivorTestFilter,      "henitai/survivor_test_filter"

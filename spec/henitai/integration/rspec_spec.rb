@@ -552,6 +552,14 @@ RSpec.describe Henitai::Integration::Rspec do
     expect { integration.test_files }.to raise_error(NotImplementedError)
   end
 
+  it "does not support per-test coverage by default" do
+    expect(Henitai::Integration::Base.new.per_test_coverage_supported?).to be(false)
+  end
+
+  it "supports per-test coverage" do
+    expect(described_class.new.per_test_coverage_supported?).to be(true)
+  end
+
   it "keeps the base integration mutant runner abstract" do
     integration = Henitai::Integration::Base.new
 
@@ -697,6 +705,25 @@ RSpec.describe Henitai::Integration::Rspec do
       )
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env
+    end
+  end
+
+  it "restores an existing subprocess environment after a child run" do
+    with_env("PARALLEL_WORKERS", "sentinel") do
+      integration = described_class.new
+      mutant = Struct.new(:id).new("mutant-env")
+      record = {}
+
+      stub_child_logging(integration)
+      stub_process_exit(record)
+      stub_process_fork(record, 4321)
+      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
+      allow(integration).to receive_messages(run_tests: 0, wait_with_timeout: :survived, build_result: :result)
+      allow(integration).to receive(:cleanup_process_group)
+
+      integration.run_mutant(mutant:, test_files: [], timeout: 1.0)
+
+      expect(ENV.fetch("PARALLEL_WORKERS")).to eq("sentinel")
     end
   end
 

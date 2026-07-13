@@ -205,6 +205,20 @@ RSpec.describe Henitai::Integration::ScenarioLogSupport do
       end
     end
 
+    it "uses the default cap for a non-positive environment value" do
+      with_env(described_class::MAX_LOG_BYTES_ENV, "-1") do
+        Dir.mktmpdir do |dir|
+          support = described_class.new
+          paths = log_paths(dir)
+          output_files = support.open_child_output(paths)
+          output_files[:stdout][:writer].write("small")
+          support.close_child_output(output_files)
+
+          expect(File.read(paths[:stdout_path])).to eq("small")
+        end
+      end
+    end
+
     it "does nothing when close_child_output is given nil" do
       expect { described_class.new.close_child_output(nil) }.not_to raise_error
     end

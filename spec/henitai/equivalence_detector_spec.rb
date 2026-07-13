@@ -308,6 +308,16 @@ RSpec.describe Henitai::EquivalenceDetector do
     expect(mutant.status).to eq(:equivalent)
   end
 
+  it "keeps non-parser logical nodes pending" do
+    receiver = lvar(:value)
+    original = Struct.new(:type, :children).new(:or, [boolean(false), receiver])
+    mutant = build_mutant(original_node: original, mutated_node: receiver)
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
   # ---------------------------------------------------------------------------
   # Singleton equality: == <-> equal? on singleton RHS
   # ---------------------------------------------------------------------------
@@ -431,6 +441,33 @@ RSpec.describe Henitai::EquivalenceDetector do
     mutant = build_mutant(
       original_node: Parser::AST::Node.new(:send, [receiver, :==, receiver, extra_argument]),
       mutated_node: Parser::AST::Node.new(:send, [receiver, :equal?, receiver, extra_argument])
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps singleton equality with a non-singleton rhs pending" do
+    receiver = sym(:ok)
+    rhs = lvar(:value)
+    mutant = build_mutant(
+      original_node: binary_send(receiver, :==, rhs),
+      mutated_node: binary_send(receiver, :equal?, rhs)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps duck-typed equality sends pending" do
+    receiver = sym(:ok)
+    rhs = sym(:value)
+    node = Struct.new(:type, :children)
+    mutant = build_mutant(
+      original_node: node.new(:send, [receiver, :==, rhs]),
+      mutated_node: node.new(:send, [receiver, :equal?, rhs])
     )
 
     described_class.new.analyze(mutant)
@@ -578,6 +615,20 @@ RSpec.describe Henitai::EquivalenceDetector do
     described_class.new.analyze(mutant)
 
     expect(mutant.status).to eq(:equivalent)
+  end
+
+  it "keeps duck-typed string equality sends pending" do
+    receiver = str("hello")
+    rhs = lvar(:value)
+    node = Struct.new(:type, :children)
+    mutant = build_mutant(
+      original_node: node.new(:send, [receiver, :==, rhs]),
+      mutated_node: node.new(:send, [receiver, :eql?, rhs])
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
   end
 
   it "marks `x.eql?(\"str\")` mutated to `x == \"str\"` as equivalent" do

@@ -18,7 +18,15 @@ module Henitai
     # mutant child runs. Coverage artifacts are only required during the
     # dedicated bootstrap phase.
     module CoverageRuntimeSuppressors
+      # True once coverage startup has been suppressed in this process —
+      # consumers (e.g. PerTestCoverageCollector) can then treat missing
+      # coverage as expected instead of warning about it.
+      def self.active? = @active ? true : false
+
+      def self.activate! = @active = true
+
       def self.suppress_simplecov!
+        activate!
         require "simplecov"
         sc = Object.const_get(:SimpleCov) # steep:ignore Ruby::UnknownConstant
         sc.external_at_exit = true if sc.respond_to?(:external_at_exit=)
@@ -30,6 +38,7 @@ module Henitai
       end
 
       def self.suppress_coverage!
+        activate!
         require "coverage"
         cov = Object.const_get(:Coverage) # steep:ignore Ruby::UnknownConstant
         return if cov.singleton_class.ancestors.include?(CoverageStartSuppressor)

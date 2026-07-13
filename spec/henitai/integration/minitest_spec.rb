@@ -104,7 +104,14 @@ RSpec.describe Henitai::Integration::Minitest do
   def stub_minitest_fork(order)
     allow(Process).to receive(:fork) do |&block|
       order << :fork
-      block.call
+      # The inline "child" mutates ENV (e.g. HENITAI_MUTANT_ID); a real fork
+      # would isolate that, so restore the parent environment afterwards.
+      parent_env = ENV.to_h
+      begin
+        block.call
+      ensure
+        ENV.replace(parent_env)
+      end
       12_345
     end
   end

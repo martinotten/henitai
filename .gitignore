@@ -8,3 +8,4 @@ henitai-*.gem
 graphify-out/
 .graphify_*
 *.original.md
+.henitai-pi-agent/

@@ -67,6 +67,9 @@ module Henitai
   class CoverageError < StandardError
   end
 
+  class ConcurrentRunError < StandardError
+  end
+
   class GitDiffError < StandardError
   end
 
@@ -240,6 +243,8 @@ module Henitai
   end
 
   class Mutant
+    include UnparseHelper
+
     STATUSES: Array[Symbol]
 
     attr_reader id: String
@@ -262,6 +267,7 @@ module Henitai
 
     def initialize: (subject: Subject, operator: String, nodes: Hash[Symbol, untyped], description: String, location: Hash[Symbol, untyped], ?precomputed_stable_id: String?, ?precomputed_activation_source: String?) -> void
     def stable_id: () -> String
+    def mutated_source: () -> String
     def from_cache?: () -> bool
     def killed?: () -> bool
     def survived?: () -> bool
@@ -666,7 +672,22 @@ module Henitai
   end
 
   module CanonicalReportWriter
-    def self.write: (Hash[Symbol, untyped], path: String, authoritative: bool) -> void
+    def self.write: (Hash[Symbol, untyped], path: String, authoritative: bool) -> Hash[untyped, untyped]
+  end
+
+  class ReportsDirectoryLock
+    LOCK_FILENAME: String
+
+    def initialize: (reports_dir: String) -> void
+    def synchronize: () { () -> untyped } -> untyped
+
+    private
+
+    def lock_path: () -> String
+    def acquire: (File) -> void
+    def owner_pid: (File) -> (Integer | String)
+    def contention_message: (Integer | String) -> String
+    def write_owner: (File) -> untyped
   end
 
   class CheckpointReporter
@@ -823,6 +844,9 @@ module Henitai
       def original_line: (Mutant) -> String
       def mutated_line: (Mutant) -> String
       def display_unparse: (untyped) -> String
+      def display_mutated_source: (untyped) -> String
+      def str_node?: (untyped) -> bool
+      def source_slice: (untyped) -> String?
       def score_line: (Result) -> String
       def format_row: (String, untyped) -> String
       def reused_verdicts_line: (Result) -> String?
@@ -856,12 +880,14 @@ module Henitai
 
     class Html < Base
       def report: (Result) -> void
+      def report_schema: (Hash[untyped, untyped]) -> void
 
       private
 
       def report_path: () -> String
-      def html_document: (Result) -> String
-      def escaped_report_json: (Result) -> String
+      def html_document: (Hash[untyped, untyped]) -> String
+      def schema_for: (Result) -> Hash[untyped, untyped]
+      def escaped_report_json: (Hash[untyped, untyped]) -> String
     end
 
     class DryRun < Base

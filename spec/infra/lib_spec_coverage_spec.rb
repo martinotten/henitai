@@ -22,8 +22,7 @@ RSpec.describe "Lib spec coverage" do
       "version.rb" =>
         "single VERSION constant; a spec would be tautological " \
         "(see docs/backlog/2026-06-16-review-test-overmocking-and-gaps.md)",
-      "integration.rb" => "facade tested via spec/henitai/integration/ and callers",
-      "survivor_rerun_strategy.rb" => "instantiated and exercised directly in runner_spec.rb"
+      "integration.rb" => "facade tested via spec/henitai/integration/ and callers"
     }
   end
 

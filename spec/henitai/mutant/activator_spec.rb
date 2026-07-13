@@ -398,7 +398,13 @@ RSpec.describe Henitai::Mutant::Activator do
       }
     )
 
-    expect { described_class.activate!(mutant) }.to raise_error(NameError)
+    error = begin
+      described_class.activate!(mutant)
+    rescue StandardError => e
+      e
+    end
+
+    expect(error.class).to be(NameError)
   end
 
   it "raises when AST metadata has no expression location" do
@@ -580,6 +586,40 @@ RSpec.describe Henitai::Mutant::Activator do
     end
   end
 
+  it "leaves the method unchanged when the original range is invalid" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, <<~RUBY)
+        class ActivatorInvalidRangeSample
+          def value
+            1
+          end
+        end
+      RUBY
+
+      stub_const("ActivatorInvalidRangeSample", Class.new)
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      original_node = find_nodes(subject.ast_node, :int).first
+      expression = original_node.location.expression
+      invalid_range = Struct.new(:begin_pos, :end_pos).new(
+        expression.begin_pos + 1,
+        expression.begin_pos
+      )
+      malformed_original = Struct.new(:location).new(
+        Struct.new(:expression).new(invalid_range)
+      )
+      mutant = build_mutant(
+        subject:,
+        original_node: malformed_original,
+        mutated_node: Parser::AST::Node.new(:int, [2]),
+        location: location_for(original_node)
+      )
+
+      described_class.activate!(mutant)
+
+      expect(ActivatorInvalidRangeSample.new.value).to eq(1)
+    end
+  end
+
   it "leaves the method unchanged when the original node lacks location metadata" do
     Dir.mktmpdir do |dir|
       path = write_source(dir, <<~RUBY)
@@ -647,6 +687,47 @@ RSpec.describe Henitai::Mutant::Activator do
       described_class.activate!(mutant)
 
       expect(RealTransientSample.new.value).to eq(2)
+    end
+  end
+
+  it "infers the source file from the AST after a target lookup miss" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, <<~RUBY)
+        class ActivatorAstFallbackSample
+          def value
+            1
+          end
+        end
+      RUBY
+      resolved = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      subject = Henitai::Subject.new(
+        namespace: resolved.namespace,
+        method_name: resolved.method_name,
+        method_type: resolved.method_type,
+        source_location: nil,
+        ast_node: resolved.ast_node
+      )
+      original_node = find_nodes(subject.ast_node, :int).first
+      mutant = build_mutant(
+        subject:,
+        original_node:,
+        mutated_node: Parser::AST::Node.new(:int, [2]),
+        location: location_for(original_node)
+      )
+
+      lookup_count = 0
+      allow(Object).to receive(:const_get).and_wrap_original do |original, *args|
+        if args == ["ActivatorAstFallbackSample"]
+          lookup_count += 1
+          raise NameError, "Not found" if lookup_count == 1
+        end
+
+        original.call(*args)
+      end
+
+      described_class.activate!(mutant)
+
+      expect(ActivatorAstFallbackSample.new.value).to eq(2)
     end
   end
 

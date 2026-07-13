@@ -224,19 +224,43 @@ module Henitai
       end
 
       def mutated_line(mutant)
-        format("+ %s", display_unparse(mutant.mutated_node))
+        format("+ %s", display_mutated_source(mutant))
+      end
+
+      # Prefer the mutant's memoized unparse (shared with the JSON reporter);
+      # string literals keep the visible-escape rendering below.
+      def display_mutated_source(mutant)
+        node = mutant.mutated_node
+        return node.children.first.inspect if str_node?(node)
+        return mutant.mutated_source if mutant.respond_to?(:mutated_source)
+
+        display_unparse(node)
       end
 
       # Like safe_unparse but makes invisible characters visible in terminal
       # output. For string literal nodes the inner value is shown via #inspect
-      # so that e.g. "" vs " " vs "\n" are unambiguous. Other nodes unparse
-      # normally.
+      # so that e.g. "" vs " " vs "\n" are unambiguous. Nodes parsed from real
+      # source render their original source slice — unparsing is expensive and
+      # this path runs once per survivor; synthetic nodes unparse as before.
       def display_unparse(node)
-        if node.respond_to?(:type) && node.respond_to?(:children) && node.type == :str
-          node.children.first.inspect
-        else
-          safe_unparse(node)
-        end
+        return node.children.first.inspect if str_node?(node)
+
+        source_slice(node) || safe_unparse(node)
+      end
+
+      def str_node?(node)
+        node.respond_to?(:type) && node.respond_to?(:children) && node.type == :str
+      end
+
+      # Single-line original source of a parsed node; nil for synthetic nodes
+      # or multi-line slices (those fall back to normalized unparsing).
+      def source_slice(node)
+        return nil unless node.respond_to?(:location)
+
+        source = node.location&.expression&.source
+        source unless source.nil? || source.include?("\n")
+      rescue StandardError
+        nil
       end
 
       def score_line(result)
@@ -377,8 +401,12 @@ module Henitai
     # HTML reporter.
     class Html < Base
       def report(result)
+        report_schema(schema_for(result))
+      end
+
+      def report_schema(schema)
         FileUtils.mkdir_p(File.dirname(report_path))
-        File.write(report_path, html_document(result))
+        File.write(report_path, html_document(schema))
       end
 
       private
@@ -387,7 +415,7 @@ module Henitai
         File.join(config.reports_dir, "mutation-report.html")
       end
 
-      def html_document(result)
+      def html_document(schema)
         <<~HTML
           <!DOCTYPE html>
           <html lang="en">
@@ -399,7 +427,7 @@ module Henitai
             <body>
               <mutation-test-report-app titlePostfix="Henitai"></mutation-test-report-app>
               <script src="https://www.unpkg.com/mutation-testing-elements"></script>
-              <script type="application/json" id="henitai-report-data">#{escaped_report_json(result)}</script>
+              <script type="application/json" id="henitai-report-data">#{escaped_report_json(schema)}</script>
               <script>
                 const report = JSON.parse(
                   document.getElementById("henitai-report-data").textContent
@@ -411,14 +439,15 @@ module Henitai
         HTML
       end
 
-      def escaped_report_json(result)
+      def schema_for(result)
         schema = result.to_stryker_schema
-        output = if authoritative?(result)
-                   schema
-                 else
-                   CanonicalReportMerger.merge(schema, canonical_path, prune_missing: true)
-                 end
-        JSON.pretty_generate(output)
+        return schema if authoritative?(result)
+
+        CanonicalReportMerger.merge(schema, canonical_path, prune_missing: true)
+      end
+
+      def escaped_report_json(schema)
+        JSON.pretty_generate(schema)
             .gsub("&", "\\u0026")
             .gsub("<", "\\u003c")
             .gsub(">", "\\u003e")
@@ -443,7 +472,7 @@ module Henitai
       attr_reader :io
 
       def listing_lines(mutants)
-        header = ["Dry run: #{mutants.size} mutants (no tests executed)"]
+        header = ["Dry run: #{mutants.size} mutants (no mutants executed)"]
         return header + ["", summary_line(mutants)] if mutants.empty?
 
         header + grouped_lines(mutants) + ["", summary_line(mutants)]

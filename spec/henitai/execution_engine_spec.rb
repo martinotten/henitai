@@ -371,6 +371,23 @@ RSpec.describe Henitai::ExecutionEngine do
     expect(call_count).to eq(2)
   end
 
+  it "uses the default flaky retry budget when config omits it" do
+    pending = build_mutant(:pending, "Foo#bar")
+    integration = build_integration
+    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", 1)
+    call_count = 0
+
+    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
+    allow(integration).to receive(:run_mutant) do
+      call_count += 1
+      :survived
+    end
+
+    described_class.new.run([pending], integration, config)
+
+    expect(call_count).to eq(4)
+  end
+
   it "warns when a significant share of mutants required retries" do
     pending = build_mutant(:pending, "Foo#bar")
     integration = build_integration

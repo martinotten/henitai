@@ -51,6 +51,16 @@ RSpec.describe Henitai::Operators::HashLiteral do
     )
   end
 
+  it "changes only one symbol key in each key mutant" do
+    key_mutants = mutate("{ foo: 1, bar: 2 }").drop(1)
+
+    key_types = key_mutants.map do |mutant|
+      mutant.mutated_node.children.map { |pair| pair.children.first.type }
+    end
+
+    expect(key_types).to contain_exactly(%i[str sym], %i[sym str])
+  end
+
   it "mutates only symbol-keyed pairs in mixed hashes" do
     mutants = mutate('{ foo: 1, "bar" => 2 }')
 

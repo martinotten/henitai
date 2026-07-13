@@ -42,7 +42,7 @@ module Henitai
 
       lines = File.readlines(subject.source_file)
       Digest::SHA256.hexdigest(lines[(range.begin - 1)..(range.end - 1)].to_a.join)
-    rescue StandardError
+    rescue SystemCallError, IOError
       nil
     end
 
@@ -68,15 +68,41 @@ module Henitai
       false
     end
 
+    # Generated artifacts that can live under the dependency globs (e.g.
+    # fixture projects carrying their own reports/ and coverage/ output).
+    # They churn on every run without influencing test behavior — including
+    # them would both slow the fingerprint down and invalidate all survivor
+    # reuse after any smoke/fixture run.
+    GENERATED_DIR_SEGMENTS = %w[reports mutation-logs mutation-coverage coverage].freeze
+
     # Existing dependency files resolved against +root+, sorted. Shared by
     # the fingerprint below and by the coverage freshness watch — a stale
     # per-test map after a dependency edit would let the test selector omit
-    # a newly covering test.
+    # a newly covering test. Uses Find with pruning instead of Dir.glob so
+    # generated subtrees (thousands of mutation-log files under fixture
+    # projects) are never walked at all.
     def dependency_files(root = Dir.pwd)
-      DEPENDENCY_GLOBS
-        .flat_map { |pattern| Dir.glob(File.join(root, pattern)) }
-        .select { |path| File.file?(path) }
-        .sort
+      files = DEPENDENCY_GLOBS.flat_map do |pattern|
+        base = File.join(root, pattern)
+        pattern.include?("*") ? pruned_tree_files(File.dirname(base.sub("/**/*", "/x"))) : [base]
+      end
+      files.select { |path| File.file?(path) }.uniq.sort
+    end
+
+    def pruned_tree_files(dir)
+      return [] unless File.directory?(dir)
+
+      require "find"
+      collected = [] # : Array[String]
+      Find.find(dir) do |path|
+        Find.prune if File.directory?(path) && generated_artifact_dir?(path)
+        collected << path if File.file?(path)
+      end
+      collected
+    end
+
+    def generated_artifact_dir?(path)
+      GENERATED_DIR_SEGMENTS.include?(File.basename(path))
     end
 
     # Run-level combined SHA over the dependency file set. Missing files are

@@ -114,6 +114,8 @@ with no tests left is reported as `NoCoverage` and is not executed.
 output. `mutation.max_timeout` caps auto-calibrated timeouts; an explicit
 `mutation.timeout` still takes precedence. When JSON or HTML reporting is
 enabled, `reports.checkpoint*` controls periodic canonical-report checkpoints.
+Each checkpoint updates `mutation-report.json`; when the HTML reporter is
+configured, it also regenerates `mutation-report.html` from that merged JSON.
 
 Before mutation testing starts, Henitai checks whether the current coverage data
 covers the configured source files. If not, Henitai runs the configured test
@@ -171,7 +173,16 @@ canonical entries written before site-offset IDs were introduced instead of
 duplicating them.
 Timeouts and errors always re-execute. `--force` bypasses reuse.
 `henitai run --dry-run` lists the post-filter mutant set without executing
-any tests and always exits `0`.
+mutants and always exits `0`. Gate 0 may still run the configured test suite to
+refresh baseline coverage.
+
+Every `henitai run`, including a dry run, acquires a fail-fast advisory lock at
+`<reports_dir>/.henitai-run.lock`. `henitai clean` uses the same lock, so it
+cannot delete artifacts from a live run. Contention is a framework error (exit
+code `2`); direct `Runner#run` callers receive `Henitai::ConcurrentRunError`.
+The persistent JSON lock file records the last owner's PID and start time. It
+is coordination metadata, not evidence of an active run: the kernel lock is
+authoritative, and the file may be the only artifact a dry run creates.
 
 `henitai run --survivors-from ...` performs a partial rerun: it reports only
 the selected survivors, skips threshold-based exit checks, and does not update

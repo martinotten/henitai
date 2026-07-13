@@ -158,6 +158,42 @@ RSpec.describe Henitai::Runner do
       subject_resolver:, mutant_generator:, static_filter:,
       coverage_bootstrapper:, execution_engine:, integration:, history_store:
     )
+
+    { coverage_bootstrapper:, execution_engine: }
+  end
+
+  describe "reports directory locking" do
+    it "does not bootstrap coverage or execute mutants when the directory is locked" do
+      config = build_config(reporters: [])
+      runner = described_class.new(config:)
+      collaborators = stub_pipeline(runner, history_store: build_history_store)
+      directory_lock = instance_double(Henitai::ReportsDirectoryLock)
+      error = Henitai::ConcurrentRunError.new("locked")
+
+      allow(directory_lock).to receive(:synchronize).and_raise(error)
+      allow(Henitai::ReportsDirectoryLock).to receive(:new).and_return(directory_lock)
+
+      expect { runner.run }.to raise_error(error)
+      expect(collaborators[:coverage_bootstrapper]).not_to have_received(:ensure!)
+      expect(collaborators[:execution_engine]).not_to have_received(:run)
+    end
+
+    it "also locks dry runs before coverage bootstrap" do
+      config = build_config(reporters: [])
+      runner = described_class.new(config:, mode: { dry_run: true })
+      collaborators = stub_pipeline(runner, history_store: build_history_store)
+      directory_lock = instance_double(Henitai::ReportsDirectoryLock)
+
+      allow(directory_lock).to receive(:synchronize).and_raise(
+        Henitai::ConcurrentRunError,
+        "locked"
+      )
+      allow(Henitai::ReportsDirectoryLock).to receive(:new).and_return(directory_lock)
+
+      expect { runner.run }.to raise_error(Henitai::ConcurrentRunError, "locked")
+      expect(collaborators[:coverage_bootstrapper]).not_to have_received(:ensure!)
+      expect(collaborators[:execution_engine]).not_to have_received(:run)
+    end
   end
 
   describe "public collaborator seams" do
@@ -385,9 +421,10 @@ RSpec.describe Henitai::Runner do
           runner = described_class.new(config: build_config(reports_dir:), mode: { dry_run: true })
           mutants = [dry_run_mutant(:pending), dry_run_mutant(:ignored)]
           stub_dry_run_pipeline(runner, generated: mutants)
+          lock_acquired_at = Time.at(5)
           started_at = Time.at(10)
           finished_at = Time.at(20)
-          allow(Time).to receive(:now).and_return(started_at, finished_at)
+          allow(Time).to receive(:now).and_return(lock_acquired_at, started_at, finished_at)
           run_all_called = false
           allow(Henitai::Reporter).to receive(:run_all) { run_all_called = true }
 
@@ -398,12 +435,12 @@ RSpec.describe Henitai::Runner do
               output.include?("[pending]") && output.include?("[ignored]"),
             result_mutants: runner.result.mutants,
             configured_reporters_run: run_all_called,
-            reports_dir_written: Dir.exist?(reports_dir) && !Dir.empty?(reports_dir)
+            report_artifacts: Dir.children(reports_dir)
           ).to eq(
             listing: true,
             result_mutants: mutants,
             configured_reporters_run: false,
-            reports_dir_written: false
+            report_artifacts: [".henitai-run.lock"]
           )
           expect(runner.result.started_at).to eq(started_at)
           expect(runner.result.finished_at).to eq(finished_at)

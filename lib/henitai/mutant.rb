@@ -2,6 +2,7 @@
 
 require "securerandom"
 require_relative "mutant_identity"
+require_relative "unparse_helper"
 
 module Henitai
   # Represents a single syntactic mutation applied to a Subject.
@@ -16,6 +17,8 @@ module Henitai
   #   :pending, :killed, :survived, :timeout, :compile_error, :runtime_error,
   #   :ignored, :no_coverage
   class Mutant
+    include UnparseHelper
+
     autoload :Activator, "henitai/mutant/activator"
     autoload :ParameterSource, "henitai/mutant/parameter_source"
 
@@ -67,6 +70,10 @@ module Henitai
     def stable_id
       @stable_id ||= @precomputed_stable_id || MutantIdentity.stable_id(self)
     end
+
+    # Unparsing is expensive and the value is needed by both the JSON and
+    # the terminal reporter — compute once per mutant.
+    def mutated_source = @mutated_source ||= safe_unparse(mutated_node)
 
     def killed?      = @status == :killed
     def from_cache?  = @from_cache == true

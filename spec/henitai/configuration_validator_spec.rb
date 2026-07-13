@@ -14,6 +14,13 @@ RSpec.describe Henitai::ConfigurationValidator do
     expect(described_class).to matcher
   end
 
+  describe ".warn" do
+    it "writes the warning to stderr" do
+      expect { described_class.warn("configuration warning") }
+        .to output("configuration warning\n").to_stderr
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # validate!
   # ---------------------------------------------------------------------------
@@ -393,6 +400,18 @@ RSpec.describe Henitai::ConfigurationValidator do
     it "accepts a valid ratio + strategy pair" do
       expect do
         described_class.validate!({ mutation: { sampling: { ratio: 0.5, strategy: "stratified" } } })
+      end.not_to raise_error
+    end
+
+    it "accepts a zero ratio with the stratified strategy" do
+      expect do
+        described_class.validate!({ mutation: { sampling: { ratio: 0.0, strategy: "stratified" } } })
+      end.not_to raise_error
+    end
+
+    it "accepts a ratio of one with the stratified strategy" do
+      expect do
+        described_class.validate!({ mutation: { sampling: { ratio: 1.0, strategy: "stratified" } } })
       end.not_to raise_error
     end
 

@@ -127,6 +127,53 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  it "returns no fallback specs when the subject has no source file" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "spec/models"))
+      File.write(File.join(dir, "spec/models/sample_spec.rb"), <<~RUBY)
+        RSpec.describe Unrelated do
+        end
+      RUBY
+
+      Dir.chdir(dir) do
+        subject = Henitai::Subject.new(namespace: "Unknown", method_name: "value")
+
+        expect(described_class.new.select_tests(subject)).to eq([])
+      end
+    end
+  end
+
+  it "handles cyclic fallback requires without widening the match" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "spec/models"))
+      FileUtils.mkdir_p(File.join(dir, "spec/support"))
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "spec/models/cyclic_spec.rb"), <<~RUBY)
+        require_relative "../support/cycle_helper"
+
+        RSpec.describe Other do
+        end
+      RUBY
+      File.write(File.join(dir, "spec/support/cycle_helper.rb"), <<~RUBY)
+        require_relative "../models/cyclic_spec"
+        require_relative "../../lib/sample"
+      RUBY
+      File.write(File.join(dir, "spec/models/unrelated_spec.rb"), "RSpec.describe Unrelated; end\n")
+      source_file = File.join(dir, "lib/sample.rb")
+      File.write(source_file, "class Sample::Thing; end\n")
+
+      Dir.chdir(dir) do
+        subject = Henitai::Subject.new(
+          namespace: "Unknown",
+          method_name: "value",
+          source_location: { file: source_file, range: nil }
+        )
+
+        expect(described_class.new.select_tests(subject)).to eq(["spec/models/cyclic_spec.rb"])
+      end
+    end
+  end
+
   it "follows plain requires through the load path during fallback selection" do
     Dir.mktmpdir do |dir|
       FileUtils.mkdir_p(File.join(dir, "spec/models"))

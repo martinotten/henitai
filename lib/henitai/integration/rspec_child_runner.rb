@@ -42,17 +42,17 @@ module Henitai
 
       def load_rspec_spec_files(test_files)
         debug_child_puts("[henitai-debug-child] load_spec_files_start")
-        ::RSpec.__send__(:configuration).files_to_run = test_files.map do |file|
+        ::RSpec.configuration.files_to_run = test_files.map do |file|
           File.expand_path(file)
         end
-        ::RSpec.__send__(:configuration).load_spec_files
+        ::RSpec.configuration.load_spec_files
         debug_child_example_count("after_load")
         debug_child_puts("[henitai-debug-child] load_spec_files_return")
       end
 
       def run_rspec_specs(runner)
         debug_child_puts("[henitai-debug-child] run_specs_start")
-        result = runner.send(:run_specs, ::RSpec.__send__(:world).ordered_example_groups)
+        result = runner.send(:run_specs, ::RSpec.world.ordered_example_groups)
         debug_child_puts("[henitai-debug-child] run_specs_return result=#{result.inspect}")
         result
       end

@@ -261,4 +261,44 @@ RSpec.describe Henitai::Integration::RspecProcessRunner do
     end
   end
   # rubocop:enable Metrics/AbcSize, Metrics/MethodLength, Metrics/ParameterLists
+  describe Henitai::Integration::SchedulerDiagnostics do
+    around do |example|
+      original = ENV.fetch("HENITAI_DEBUG_SCHEDULER", nil)
+      ENV.delete("HENITAI_DEBUG_SCHEDULER")
+      described_class.reset!
+      example.run
+    ensure
+      described_class.reset!
+      if original.nil?
+        ENV.delete("HENITAI_DEBUG_SCHEDULER")
+      else
+        ENV["HENITAI_DEBUG_SCHEDULER"] = original
+      end
+    end
+
+    it "does not track child activity when diagnostics are disabled" do
+      described_class.child_started(123)
+      described_class.child_ended(123)
+
+      expect(described_class.summary).to eq(max_concurrent: 0, intervals: [])
+    end
+
+    it "closes a tracked interval when a child ends" do
+      ENV["HENITAI_DEBUG_SCHEDULER"] = "1"
+      described_class.child_started(123)
+
+      described_class.child_ended(123)
+
+      interval = described_class.summary.fetch(:intervals).fetch(0)
+      expect(interval).to include(pid: 123).and(have_key(:ended_at))
+    end
+
+    it "ignores a child end without a pid" do
+      ENV["HENITAI_DEBUG_SCHEDULER"] = "1"
+      described_class.child_ended(nil)
+      described_class.child_started(123)
+
+      expect(described_class.summary.fetch(:max_concurrent)).to eq(1)
+    end
+  end
 end

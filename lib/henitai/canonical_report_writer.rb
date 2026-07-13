@@ -16,6 +16,7 @@ module Henitai
       output = authoritative ? schema : CanonicalReportMerger.merge(schema, path, prune_missing: true)
       FileUtils.mkdir_p(File.dirname(path))
       File.write(path, JSON.pretty_generate(output))
+      output
     end
   end
 end

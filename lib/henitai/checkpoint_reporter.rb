@@ -6,9 +6,9 @@ module Henitai
   # grows visibly mid-run instead of appearing only at the end (Gate 5).
   #
   # Each flush serialises only the mutants completed since the previous flush
-  # and folds them into the on-disk report, so the cost per flush is bounded by
-  # the batch size rather than the whole run. Reuses {Result#to_stryker_schema}
-  # and {CanonicalReportWriter}.
+  # and folds them into the on-disk JSON report. When HTML reporting is active,
+  # the self-contained HTML report is regenerated from that merged JSON schema.
+  # Reuses {Result#to_stryker_schema} and {CanonicalReportWriter}.
   #
   # On a full (authoritative) run the first flush replaces the report — wiping
   # entries left by earlier runs, including deleted files — and later flushes
@@ -36,18 +36,18 @@ module Henitai
     private
 
     def due?
-      return false if @batch.empty?
-
       @batch.size >= @config.checkpoint_every ||
         (@clock.call - @last_flush_at) >= @config.checkpoint_interval
     end
 
     def flush!
-      CanonicalReportWriter.write(
+      first_full_flush = @authoritative && !@flushed
+      merged_schema = CanonicalReportWriter.write(
         build_schema(@batch),
         path: canonical_path,
-        authoritative: @authoritative && !@flushed
+        authoritative: first_full_flush
       )
+      write_html(merged_schema) if html_reporter?
       @flushed = true
       @batch = []
       @last_flush_at = @clock.call
@@ -66,6 +66,14 @@ module Henitai
 
     def canonical_path
       File.join(@config.reports_dir, "mutation-report.json")
+    end
+
+    def html_reporter?
+      Array(@config.reporters).map(&:to_s).include?("html")
+    end
+
+    def write_html(schema)
+      Reporter::Html.new(config: @config).report_schema(schema)
     end
   end
 end

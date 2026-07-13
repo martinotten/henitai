@@ -61,7 +61,7 @@ module Henitai
       def add_dry_run_option(opts, options)
         opts.on(
           "--dry-run",
-          "List the post-filter mutant set without executing any tests (always exits 0)"
+          "List the post-filter mutant set without executing mutants (always exits 0)"
         ) do
           options[:dry_run] = true
         end

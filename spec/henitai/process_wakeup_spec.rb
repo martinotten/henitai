@@ -50,6 +50,17 @@ RSpec.describe Henitai::ProcessWakeup do
   end
 
   describe "#install" do
+    it "traps CHLD by default" do
+      allow(Signal).to receive(:trap).and_return("DEFAULT")
+      wakeup = described_class.new
+
+      wakeup.install
+
+      expect(Signal).to have_received(:trap).with("CHLD")
+    ensure
+      wakeup&.close
+    end
+
     it "installs a handler that wakes the pipe when the signal is delivered" do
       previous = Signal.trap(signal_name, "DEFAULT")
       with_wakeup do |wakeup|
@@ -90,6 +101,15 @@ RSpec.describe Henitai::ProcessWakeup do
 
       wakeup.close
       expect { wakeup.close }.not_to raise_error
+    end
+
+    it "does not restore a handler when none was installed" do
+      allow(Signal).to receive(:trap)
+      wakeup = described_class.new(signal_name:)
+
+      wakeup.close
+
+      expect(Signal).not_to have_received(:trap)
     end
   end
 end

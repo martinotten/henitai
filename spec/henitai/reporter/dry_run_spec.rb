@@ -37,7 +37,7 @@ RSpec.describe Henitai::Reporter::DryRun do
     )
 
     expect(output).to eq(<<~LISTING)
-      Dry run: 2 mutants (no tests executed)
+      Dry run: 2 mutants (no mutants executed)
 
       Sample#answer
         ArithmeticOperator — replaced + with -  lib/sample.rb:3  [pending]
@@ -71,9 +71,15 @@ RSpec.describe Henitai::Reporter::DryRun do
 
   it "prints an empty listing for zero mutants" do
     expect(report([])).to eq(<<~LISTING)
-      Dry run: 0 mutants (no tests executed)
+      Dry run: 0 mutants (no mutants executed)
 
       Summary: no mutants
     LISTING
+  end
+
+  it "uses the mutant file when the subject expression is unavailable" do
+    output = report([build_mutant(status: :pending, subject: nil)])
+
+    expect(output).to include("\nlib/sample.rb\n")
   end
 end

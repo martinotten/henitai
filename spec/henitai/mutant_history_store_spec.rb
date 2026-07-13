@@ -280,7 +280,7 @@ RSpec.describe Henitai::MutantHistoryStore do
   end
 
   describe "verdict cache" do
-    def build_cacheable_mutant(dir, status:)
+    def build_cacheable_mutant(dir, status:, covered_by: :default)
       source = File.join(dir, "sample.rb")
       File.write(source, "class Sample\n  def value = 1\nend\n")
       test = File.join(dir, "sample_spec.rb")
@@ -289,7 +289,8 @@ RSpec.describe Henitai::MutantHistoryStore do
       mutant = build_mutant(status:)
       mutant.subject.instance_variable_set(:@source_file, source)
       mutant.subject.instance_variable_set(:@source_range, 2..2)
-      mutant.define_singleton_method(:covered_by) { [test] }
+      covering = covered_by == :default ? [test] : covered_by
+      mutant.define_singleton_method(:covered_by) { covering }
       mutant
     end
 
@@ -335,12 +336,23 @@ RSpec.describe Henitai::MutantHistoryStore do
         mutant = build_cacheable_mutant(dir, status: :killed)
         store.record(build_result([mutant], summary), version: "0.1.0")
 
-        cached = build_cacheable_mutant(dir, status: :killed)
-        cached.define_singleton_method(:covered_by) { nil }
+        cached = build_cacheable_mutant(dir, status: :killed, covered_by: nil)
         cached.define_singleton_method(:from_cache?) { true }
         store.record(build_result([cached], summary), version: "0.1.1")
 
         expect(store.killed_verdict_for(Henitai::MutantIdentity.stable_id(mutant))).not_to be_nil
+      end
+    end
+
+    it "does not cache a cache-hit mutant without stored fingerprints" do
+      Dir.mktmpdir do |dir|
+        store = store_at(dir)
+        mutant = build_cacheable_mutant(dir, status: :killed, covered_by: nil)
+        mutant.define_singleton_method(:from_cache?) { true }
+
+        store.record(build_result([mutant], summary), version: "0.1.0")
+
+        expect(store.killed_verdict_for(Henitai::MutantIdentity.stable_id(mutant))).to be_nil
       end
     end
 
@@ -357,9 +369,8 @@ RSpec.describe Henitai::MutantHistoryStore do
     describe "survived verdicts" do
       it "persists the full-map intersection set for survived mutants, not covered_by" do
         Dir.mktmpdir do |dir|
-          mutant = build_cacheable_mutant(dir, status: :survived)
+          mutant = build_cacheable_mutant(dir, status: :survived, covered_by: ["not/the/intersection_spec.rb"])
           covering_test = File.join(dir, "sample_spec.rb")
-          mutant.define_singleton_method(:covered_by) { ["not/the/intersection_spec.rb"] }
           store = store_at(dir, per_test_coverage: coverage_double([covering_test]))
 
           store.record(build_result([mutant], summary), version: "0.1.0")
@@ -409,8 +420,8 @@ RSpec.describe Henitai::MutantHistoryStore do
           store.record(build_result([mutant], summary), version: "0.1.0")
           stored = store.verdict_for(Henitai::MutantIdentity.stable_id(mutant))
 
-          restored = build_cacheable_mutant(dir, status: :survived)
-          restored.define_singleton_method(:covered_by) { ["restored_by_survivors_from_spec.rb"] }
+          restored = build_cacheable_mutant(dir, status: :survived,
+                                                 covered_by: ["restored_by_survivors_from_spec.rb"])
           degraded = store_at(dir, per_test_coverage: coverage_double([]))
           degraded.record(build_result([restored], summary), version: "0.1.1")
 
@@ -426,8 +437,7 @@ RSpec.describe Henitai::MutantHistoryStore do
           store.record(build_result([mutant], summary), version: "0.1.0")
           stored = store.verdict_for(Henitai::MutantIdentity.stable_id(mutant))
 
-          cached = build_cacheable_mutant(dir, status: :survived)
-          cached.define_singleton_method(:covered_by) { nil }
+          cached = build_cacheable_mutant(dir, status: :survived, covered_by: nil)
           cached.define_singleton_method(:from_cache?) { true }
           bare = store_at(dir)
           bare.record(build_result([cached], summary), version: "0.1.1")
@@ -503,6 +513,16 @@ RSpec.describe Henitai::MutantHistoryStore do
     it "returns nil when the database does not exist yet" do
       Dir.mktmpdir do |dir|
         expect(store_at(dir).killed_verdict_for("anything")).to be_nil
+      end
+    end
+
+    it "does not create a database during a lookup" do
+      Dir.mktmpdir do |dir|
+        store = store_at(dir)
+
+        store.killed_verdict_for("anything")
+
+        expect(File).not_to exist(store.path)
       end
     end
 

@@ -10,7 +10,11 @@ module Henitai
 
       def debug_child? = ENV["HENITAI_DEBUG_CHILD"] == "1"
 
+      # Gated here (not only at call sites) so no unguarded caller can leak
+      # debug lines into every child log by default.
       def debug_child_puts(message)
+        return unless debug_child?
+
         $stdout.puts(message)
         $stdout.flush
       end
@@ -105,7 +109,7 @@ module Henitai
       end
 
       def rspec_world_example_count # steep:ignore Ruby::UndeclaredMethodDefinition
-        world = ::RSpec.__send__(:world)
+        world = ::RSpec.world
         world.example_count
       rescue StandardError
         nil

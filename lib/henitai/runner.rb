@@ -53,12 +53,14 @@ module Henitai
     #
     # @return [Result]
     def run
-      started_at = Time.now
+      ReportsDirectoryLock.new(reports_dir: config.reports_dir).synchronize do
+        started_at = Time.now
 
-      mutants = pipeline_mutants
-      return dry_run_result(mutants, started_at, Time.now) if @dry_run
+        mutants = pipeline_mutants
+        return dry_run_result(mutants, started_at, Time.now) if @dry_run
 
-      build_result(execute_mutants(mutants), started_at, Time.now)
+        build_result(execute_mutants(mutants), started_at, Time.now)
+      end
     end
 
     private
@@ -76,8 +78,9 @@ module Henitai
     end
 
     # Dry run stops before Gate 4: prints the post-filter listing and returns
-    # a Result without executing tests, persisting history or running the
-    # configured reporters — reports/ stays untouched.
+    # a Result without executing mutants, persisting history or running the
+    # configured reporters. Gate 0 and lock coordination may still write under
+    # reports_dir.
     def dry_run_result(mutants, started_at, finished_at)
       @result = build_result_object(mutants, started_at, finished_at)
       Reporter::DryRun.new(config:).report(@result)
@@ -195,29 +198,17 @@ module Henitai
       coverage_bootstrapper.ensure!(source_files:, config:, integration:, test_files:)
     end
 
-    def subject_resolver
-      @subject_resolver ||= SubjectResolver.new
-    end
+    def subject_resolver = @subject_resolver ||= SubjectResolver.new
 
-    def git_diff_analyzer
-      @git_diff_analyzer ||= GitDiffAnalyzer.new
-    end
+    def git_diff_analyzer = @git_diff_analyzer ||= GitDiffAnalyzer.new
 
-    def mutant_generator
-      @mutant_generator ||= MutantGenerator.new
-    end
+    def mutant_generator = @mutant_generator ||= MutantGenerator.new
 
-    def static_filter
-      @static_filter ||= StaticFilter.new
-    end
+    def static_filter = @static_filter ||= StaticFilter.new
 
-    def execution_engine
-      @execution_engine ||= ExecutionEngine.new
-    end
+    def execution_engine = @execution_engine ||= ExecutionEngine.new
 
-    def coverage_bootstrapper
-      @coverage_bootstrapper ||= CoverageBootstrapper.new
-    end
+    def coverage_bootstrapper = @coverage_bootstrapper ||= CoverageBootstrapper.new
 
     def integration
       @integration ||= Integration.for(config.integration).new

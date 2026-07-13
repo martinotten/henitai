@@ -98,7 +98,7 @@ RSpec.describe Henitai::SurvivorLoader do
       path = File.join(dir, "bad.json")
       File.write(path, "not json")
       expect { described_class.new(path).load }
-        .to raise_error(Henitai::SurvivorLoader::InvalidReportError)
+        .to raise_error(Henitai::SurvivorLoader::InvalidReportError, /bad\.json/)
     end
   end
 
@@ -157,6 +157,16 @@ RSpec.describe Henitai::SurvivorLoader do
     Dir.mktmpdir do |dir|
       path = write_report(dir, build_report(file: "other/lib/foo.rb", mutants: []))
       expect { described_class.new(path).load }.not_to raise_error
+    end
+  end
+
+  it "does not treat an empty include path as every absolute path" do
+    Dir.mktmpdir do |dir|
+      report_file = File.join(File::SEPARATOR, "other_project", "lib", "foo.rb")
+      path = write_report(dir, build_report(file: report_file, mutants: []))
+
+      expect { described_class.new(path, include_paths: [""]).load }
+        .to raise_error(Henitai::SurvivorLoader::ScopeMismatchError)
     end
   end
 

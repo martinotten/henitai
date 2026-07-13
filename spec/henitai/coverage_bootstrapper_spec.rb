@@ -294,6 +294,55 @@ RSpec.describe Henitai::CoverageBootstrapper do
     )
   end
 
+  it "includes the failing suite log path and tail in the bootstrap error" do
+    static_filter = instance_double(Henitai::StaticFilter)
+    failure = Struct.new(:log_path) do
+      def tail(_line_count)
+        "failure tail"
+      end
+    end.new("reports/baseline.log")
+    integration = build_integration(
+      test_files: ["spec/sample_spec.rb"],
+      run_suite_result: failure
+    )
+    bootstrapper = build_bootstrapper(static_filter:)
+
+    allow(static_filter).to receive(:coverage_lines_for).and_return({})
+
+    expect do
+      bootstrapper.ensure!(
+        source_files: [File.expand_path("lib/sample.rb")],
+        config: build_config,
+        integration:
+      )
+    end.to raise_error(
+      Henitai::CoverageError,
+      %r{reports/baseline\.log.*failure tail}m
+    )
+  end
+
+  it "uses a generic bootstrap error when the suite has no log path" do
+    static_filter = instance_double(Henitai::StaticFilter)
+    integration = build_integration(
+      test_files: ["spec/sample_spec.rb"],
+      run_suite_result: :failed
+    )
+    bootstrapper = build_bootstrapper(static_filter:)
+
+    allow(static_filter).to receive(:coverage_lines_for).and_return({})
+
+    expect do
+      bootstrapper.ensure!(
+        source_files: [File.expand_path("lib/sample.rb")],
+        config: build_config,
+        integration:
+      )
+    end.to raise_error(
+      Henitai::CoverageError,
+      "Configured test suite failed while generating coverage"
+    )
+  end
+
   it "does not require per-test coverage for integrations that do not support it" do
     Dir.mktmpdir do |dir|
       source = File.join(dir, "lib/sample.rb")
@@ -466,6 +515,50 @@ RSpec.describe Henitai::CoverageBootstrapper do
       end
     end
 
+    it "skips the bootstrap when per-test coverage is also fresh" do
+      Dir.mktmpdir do |dir|
+        source = File.join(dir, "lib/sample.rb")
+        spec = File.join(dir, "spec/sample_spec.rb")
+        report = File.join(dir, "reports/coverage/.resultset.json")
+        per_test_report = File.join(dir, "reports/henitai_per_test.json")
+        now = Time.now
+
+        FileUtils.mkdir_p(File.dirname(source))
+        FileUtils.mkdir_p(File.dirname(spec))
+        FileUtils.mkdir_p(File.dirname(report))
+        File.write(source, "class Sample; end")
+        File.write(spec, "# spec")
+        File.write(report, "{}")
+        File.write(per_test_report, "{}")
+        set_mtime(source, now - 30)
+        set_mtime(spec, now - 30)
+        # Future-dated: the watch list also covers the repo's own dependency
+        # files (Dir.pwd-based), which other examples in this suite may touch
+        # moments earlier — a merely "recent" report mtime would flake.
+        set_mtime(report, now + 60)
+        set_mtime(per_test_report, now + 60)
+
+        config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
+        static_filter = instance_double(Henitai::StaticFilter)
+        integration = instance_double(
+          Henitai::Integration::Rspec,
+          test_files: [spec],
+          per_test_coverage_supported?: true
+        )
+        bootstrapper = described_class.new(static_filter:)
+
+        allow(static_filter).to receive(:coverage_lines_for).and_return(
+          File.expand_path(source) => [1]
+        )
+        allow(integration).to receive(:run_suite).and_return(:survived)
+
+        bootstrapper.record_dependency_manifest(config)
+        bootstrapper.ensure!(source_files: [source], config:, integration:)
+
+        expect(integration).not_to have_received(:run_suite)
+      end
+    end
+
     it "still bootstraps when the fresh report does not cover the configured sources" do
       Dir.mktmpdir do |dir|
         source = File.join(dir, "lib/sample.rb")
@@ -579,6 +672,48 @@ RSpec.describe Henitai::CoverageBootstrapper do
         bootstrapper.ensure!(source_files: [source], config:, integration:)
 
         expect(integration).to have_received(:run_suite)
+      end
+    end
+
+    it "watches explicitly scoped test files for freshness" do
+      Dir.mktmpdir do |dir|
+        source = File.join(dir, "lib/sample.rb")
+        scoped_spec = File.join(dir, "spec/scoped_spec.rb")
+        report = File.join(dir, "reports/coverage/.resultset.json")
+        now = Time.now
+
+        FileUtils.mkdir_p(File.dirname(source))
+        FileUtils.mkdir_p(File.dirname(scoped_spec))
+        FileUtils.mkdir_p(File.dirname(report))
+        File.write(source, "class Sample; end")
+        File.write(scoped_spec, "# scoped spec")
+        File.write(report, "{}")
+        set_mtime(source, now - 30)
+        set_mtime(report, now - 20)
+        set_mtime(scoped_spec, now - 10)
+
+        config = Struct.new(:reports_dir).new(File.join(dir, "reports"))
+        static_filter = instance_double(Henitai::StaticFilter)
+        integration = instance_double(
+          Henitai::Integration::Minitest,
+          test_files: [scoped_spec],
+          per_test_coverage_supported?: false,
+          run_suite: :survived
+        )
+        bootstrapper = build_bootstrapper(static_filter:)
+
+        allow(static_filter).to receive(:coverage_lines_for).and_return(
+          File.expand_path(source) => [1]
+        )
+
+        bootstrapper.ensure!(
+          source_files: [source],
+          config:,
+          integration:,
+          test_files: [scoped_spec]
+        )
+
+        expect(integration).to have_received(:run_suite).with([scoped_spec])
       end
     end
 
@@ -705,6 +840,29 @@ RSpec.describe Henitai::CoverageBootstrapper do
         test_files: nil
       )
 
+      expect(integration).to have_received(:run_suite).with(["spec/sample_spec.rb"])
+    end
+
+    it "uses the coverage directory when config has no reports_dir", :aggregate_failures do
+      static_filter = instance_double(Henitai::StaticFilter)
+      integration = build_integration(
+        test_files: ["spec/sample_spec.rb"],
+        run_suite_result: :survived
+      )
+      bootstrapper = build_bootstrapper(static_filter:)
+      config = Struct.new(:timeout).new(10.0)
+
+      allow(static_filter).to receive(:coverage_lines_for).and_return(
+        { File.expand_path("lib/sample.rb") => [1] }
+      )
+
+      expect do
+        bootstrapper.ensure!(
+          source_files: [File.expand_path("lib/sample.rb")],
+          config:,
+          integration:
+        )
+      end.not_to raise_error
       expect(integration).to have_received(:run_suite).with(["spec/sample_spec.rb"])
     end
 

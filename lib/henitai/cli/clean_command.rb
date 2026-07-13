@@ -16,7 +16,9 @@ module Henitai
         return if @command_halted
 
         config = load_config(options)
-        removed_paths = cleanup_report_artifacts(config)
+        removed_paths = ReportsDirectoryLock.new(reports_dir: config.reports_dir).synchronize do
+          cleanup_report_artifacts(config)
+        end
         puts clean_summary(removed_paths)
       rescue StandardError => e
         handle_run_error(e)

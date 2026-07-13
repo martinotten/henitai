@@ -53,6 +53,13 @@ RSpec.describe Henitai::VerdictFingerprint do
 
       expect(described_class.subject_source_hash(mutant)).to be_nil
     end
+
+    it "returns nil when subject has no source_file or source_range" do
+      bare_subject = Struct.new.new
+      mutant = Struct.new(:subject).new(bare_subject)
+
+      expect(described_class.subject_source_hash(mutant)).to be_nil
+    end
   end
 
   describe ".tests_fingerprint" do
@@ -106,7 +113,8 @@ RSpec.describe Henitai::VerdictFingerprint do
       end
     end
 
-    it "returns nil for an empty test list" do
+    it "returns nil for an empty test list without calling File.read" do
+      allow(File).to receive(:read) { raise "unexpected File.read call" }
       expect(described_class.tests_fingerprint([])).to be_nil
     end
 
@@ -114,8 +122,43 @@ RSpec.describe Henitai::VerdictFingerprint do
       expect(described_class.tests_fingerprint(["/no/such/spec.rb"])).to be_nil
     end
 
-    it "treats a nil fingerprint as not current" do
-      expect(described_class.tests_fingerprint_current?(nil)).to be(false)
+    it "returns false for a valid fingerprint when files are modified" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "a_spec.rb")
+        File.write(path, "it works\n")
+
+        fingerprint = described_class.tests_fingerprint([path])
+        File.write(path, "modified\n")
+
+        expect(described_class.tests_fingerprint_current?(fingerprint)).to be(false)
+      end
+    end
+
+    it "detects separator collisions in combined content hash" do
+      Dir.mktmpdir do |dir|
+        path1 = File.join(dir, "a_spec.rb")
+        path2 = File.join(dir, "b_spec.rb")
+        File.write(path1, "x\n")
+        File.write(path2, "y\n")
+
+        # Two separate files produce a different hash than a single file
+        # whose path+content concatenation would otherwise collide.
+        fingerprint_two = described_class.tests_fingerprint([path1, path2])
+
+        # A crafted single-path fingerprint that would collide if ":" were
+        # absent from the digest input.
+        fake_single_path = File.join(dir, "a_spec.rb")
+        fake_content = "xy\n"
+        File.write(fake_single_path, fake_content)
+
+        # The two-file fingerprint must differ from any single-file variant.
+        expect(described_class.tests_fingerprint([fake_single_path]))
+          .not_to eq(fingerprint_two)
+      end
+    end
+
+    it "returns false for malformed fingerprint JSON" do
+      expect(described_class.tests_fingerprint_current?("not-json")).to be(false)
     end
   end
 
@@ -154,6 +197,22 @@ RSpec.describe Henitai::VerdictFingerprint do
         File.write(helper, "require 'rspec'\nSETTING = true\n")
 
         expect(described_class.dependency_fingerprint(dir)).not_to eq(before)
+      end
+    end
+
+    it "ignores generated artifacts inside fixture projects", :aggregate_failures do
+      Dir.mktmpdir do |dir|
+        fixture = File.join(dir, "spec", "fixtures", "smoke")
+        FileUtils.mkdir_p(File.join(fixture, "reports", "mutation-logs"))
+        FileUtils.mkdir_p(File.join(fixture, "coverage"))
+        File.write(File.join(dir, "Gemfile.lock"), "GEM\n")
+
+        before = described_class.dependency_fingerprint(dir)
+        File.write(File.join(fixture, "reports", "mutation-logs", "mutant-1.log"), "churn")
+        File.write(File.join(fixture, "coverage", ".resultset.json"), "{}")
+
+        expect(described_class.dependency_fingerprint(dir)).to eq(before)
+        expect(described_class.dependency_files(dir)).to eq([File.join(dir, "Gemfile.lock")])
       end
     end
 

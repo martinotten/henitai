@@ -19,6 +19,16 @@ RSpec.describe Henitai::Mutant do
     )
   end
 
+  describe "#mutated_source" do
+    it "unparses the mutated node once and memoizes the result", :aggregate_failures do
+      mutant = build_mutant
+      allow(Unparser).to receive(:unparse).and_call_original
+
+      expect([mutant.mutated_source, mutant.mutated_source]).to eq(%w[2 2])
+      expect(Unparser).to have_received(:unparse).once
+    end
+  end
+
   it "reports killed status" do
     mutant = build_mutant
     mutant.status = :killed
