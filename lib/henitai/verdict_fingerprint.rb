@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "digest"
+require "find"
 require "json"
 
 module Henitai
@@ -89,10 +90,14 @@ module Henitai
       files.select { |path| File.file?(path) }.uniq.sort
     end
 
+    # Marker files identifying a directory as a project root — a
+    # generated-named directory is only pruned when it sits directly inside
+    # one, i.e. it is that project's own output directory.
+    PROJECT_MARKERS = %w[Gemfile Gemfile.lock .henitai.yml Rakefile .git].freeze
+
     def pruned_tree_files(dir)
       return [] unless File.directory?(dir)
 
-      require "find"
       collected = [] # : Array[String]
       Find.find(dir) do |path|
         Find.prune if File.directory?(path) && generated_artifact_dir?(path)
@@ -101,15 +106,19 @@ module Henitai
       collected
     end
 
+    # A directory counts as generated output only when it carries a known
+    # artifact name AND its parent looks like a project root. A plain
+    # spec/support/coverage/ full of helpers must stay in the fingerprint —
+    # wrongly excluding a real dependency would let an obsolete Survived
+    # verdict be reused (unsound); wrongly including junk merely re-runs.
     def generated_artifact_dir?(path)
-      GENERATED_DIR_SEGMENTS.include?(File.basename(path))
+      GENERATED_DIR_SEGMENTS.include?(File.basename(path)) &&
+        PROJECT_MARKERS.any? { |marker| File.exist?(File.join(File.dirname(path), marker)) }
     end
 
     # Run-level combined SHA over the dependency file set. Missing files are
     # simply excluded (not an error); a read failure yields nil — no reuse.
-    def dependency_fingerprint(root = Dir.pwd)
-      combined_content_sha(dependency_files(root))
-    end
+    def dependency_fingerprint(root = Dir.pwd) = combined_content_sha(dependency_files(root))
 
     # Fingerprint recorded for a Survived verdict: the sorted full-map
     # intersection set (paths + combined content sha) plus the run-level

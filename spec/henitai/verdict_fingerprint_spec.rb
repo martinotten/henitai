@@ -205,6 +205,9 @@ RSpec.describe Henitai::VerdictFingerprint do
         fixture = File.join(dir, "spec", "fixtures", "smoke")
         FileUtils.mkdir_p(File.join(fixture, "reports", "mutation-logs"))
         FileUtils.mkdir_p(File.join(fixture, "coverage"))
+        # Project markers make reports/ and coverage/ recognizable as the
+        # fixture project's own generated output directories.
+        File.write(File.join(fixture, "Gemfile"), "source 'https://rubygems.org'\n")
         File.write(File.join(dir, "Gemfile.lock"), "GEM\n")
 
         before = described_class.dependency_fingerprint(dir)
@@ -212,7 +215,35 @@ RSpec.describe Henitai::VerdictFingerprint do
         File.write(File.join(fixture, "coverage", ".resultset.json"), "{}")
 
         expect(described_class.dependency_fingerprint(dir)).to eq(before)
-        expect(described_class.dependency_files(dir)).to eq([File.join(dir, "Gemfile.lock")])
+        expect(described_class.dependency_files(dir)).to eq(
+          [File.join(dir, "Gemfile.lock"), File.join(fixture, "Gemfile")]
+        )
+      end
+    end
+
+    it "keeps legitimate support directories that share generated-artifact names" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "spec", "support", "coverage"))
+        FileUtils.mkdir_p(File.join(dir, "spec", "factories", "reports"))
+        helper = File.join(dir, "spec", "support", "coverage", "helper.rb")
+        factory = File.join(dir, "spec", "factories", "reports", "factory.rb")
+        File.write(helper, "module CoverageHelper; end\n")
+        File.write(factory, "module ReportFactory; end\n")
+
+        expect(described_class.dependency_files(dir)).to contain_exactly(helper, factory)
+      end
+    end
+
+    it "invalidates when a legitimately named support file changes" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "spec", "support", "coverage"))
+        helper = File.join(dir, "spec", "support", "coverage", "helper.rb")
+        File.write(helper, "A = 1\n")
+
+        before = described_class.dependency_fingerprint(dir)
+        File.write(helper, "A = 2\n")
+
+        expect(described_class.dependency_fingerprint(dir)).not_to eq(before)
       end
     end
 
