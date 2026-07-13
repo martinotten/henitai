@@ -205,14 +205,86 @@ RSpec.describe Henitai::VerdictFingerprint do
         fixture = File.join(dir, "spec", "fixtures", "smoke")
         FileUtils.mkdir_p(File.join(fixture, "reports", "mutation-logs"))
         FileUtils.mkdir_p(File.join(fixture, "coverage"))
+        # Artifact evidence marks reports/ and coverage/ as the fixture
+        # project's own generated output directories.
+        File.write(File.join(fixture, "reports", "mutation-report.json"), "{}")
+        File.write(File.join(fixture, "coverage", ".resultset.json"), "{}")
+        File.write(File.join(fixture, "Gemfile"), "source 'https://rubygems.org'\n")
         File.write(File.join(dir, "Gemfile.lock"), "GEM\n")
 
         before = described_class.dependency_fingerprint(dir)
         File.write(File.join(fixture, "reports", "mutation-logs", "mutant-1.log"), "churn")
-        File.write(File.join(fixture, "coverage", ".resultset.json"), "{}")
+        File.write(File.join(fixture, "coverage", ".last_run.json"), "{}")
 
         expect(described_class.dependency_fingerprint(dir)).to eq(before)
+        expect(described_class.dependency_files(dir)).to eq(
+          [File.join(dir, "Gemfile.lock"), File.join(fixture, "Gemfile")]
+        )
+      end
+    end
+
+    it "keeps a fixture project's reports directory that holds only test input" do
+      Dir.mktmpdir do |dir|
+        fixture = File.join(dir, "spec", "fixtures", "smoke")
+        FileUtils.mkdir_p(File.join(fixture, "reports"))
+        # Project marker present, but no henitai artifact evidence — the
+        # directory is fixture input, not generated output.
+        File.write(File.join(fixture, "Gemfile"), "source 'https://rubygems.org'\n")
+        template = File.join(fixture, "reports", "template.yml")
+        File.write(template, "threshold: 80\n")
+
+        expect(described_class.dependency_files(dir)).to include(template)
+      end
+    end
+
+    it "keeps legitimate support directories that share generated-artifact names" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "spec", "support", "coverage"))
+        FileUtils.mkdir_p(File.join(dir, "spec", "factories", "reports"))
+        helper = File.join(dir, "spec", "support", "coverage", "helper.rb")
+        factory = File.join(dir, "spec", "factories", "reports", "factory.rb")
+        File.write(helper, "module CoverageHelper; end\n")
+        File.write(factory, "module ReportFactory; end\n")
+
+        expect(described_class.dependency_files(dir)).to contain_exactly(helper, factory)
+      end
+    end
+
+    it "invalidates when a legitimately named support file changes" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "spec", "support", "coverage"))
+        helper = File.join(dir, "spec", "support", "coverage", "helper.rb")
+        File.write(helper, "A = 1\n")
+
+        before = described_class.dependency_fingerprint(dir)
+        File.write(helper, "A = 2\n")
+
+        expect(described_class.dependency_fingerprint(dir)).not_to eq(before)
+      end
+    end
+
+    it "resolves non-glob patterns literally instead of walking their directory" do
+      Dir.mktmpdir do |dir|
+        File.write(File.join(dir, "Gemfile.lock"), "GEM\n")
+        # Lives next to Gemfile.lock but matches no dependency pattern — a
+        # tree walk from the literal pattern's directory would pick it up.
+        File.write(File.join(dir, "README.md"), "unrelated\n")
+
         expect(described_class.dependency_files(dir)).to eq([File.join(dir, "Gemfile.lock")])
+      end
+    end
+
+    it "frames each entry with length prefixes and separators (golden sha)" do
+      Dir.mktmpdir do |dir|
+        Dir.chdir(dir) do
+          File.write("f.txt", "abc")
+
+          # SHA256 of "5:f.txt3:abc" — the framing ("<path bytes>:<path>
+          # <content bytes>:<content>") prevents boundary collisions between
+          # adjacent entries; a changed separator must change the digest.
+          expect(described_class.combined_content_sha(["f.txt"]))
+            .to eq("3aaea57c1705a41413c50f276db2c94f68220df9c3a6ce953516a6dac289a882")
+        end
       end
     end
 

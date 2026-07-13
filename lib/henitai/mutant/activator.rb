@@ -57,15 +57,27 @@ module Henitai
         subject.method_type == :class ? target.singleton_class : target
       end
 
+      # The trailing module_function re-copy handles module_function subjects:
+      # module_function copies the (private) instance method onto the module's
+      # singleton, and define_method only replaces the instance side — without
+      # the re-copy, callers of Module.method keep running the original code
+      # and every mutant in such modules falsely survives. The guard checks
+      # the pre-injection shape (private instance + singleton method on a
+      # non-Class module) so a class-level method that merely shares an
+      # instance method's name is never clobbered.
       def method_source(mutant)
         method_name = mutant.subject.method_name
         parameters = parameter_source(mutant)
         replacement = body_source(mutant)
 
         <<~RUBY
+          __henitai_module_function__ = !is_a?(Class) &&
+            private_method_defined?(:#{method_name}) &&
+            singleton_class.method_defined?(:#{method_name})
           define_method(:#{method_name}) do |#{parameters}|
             #{replacement}
           end
+          module_function :#{method_name} if __henitai_module_function__
         RUBY
       end
 

@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
 require "digest"
+require "find"
 require "json"
+
+require_relative "generated_artifacts"
 
 module Henitai
   # Content fingerprints that decide whether a stored verdict is still
@@ -68,13 +71,6 @@ module Henitai
       false
     end
 
-    # Generated artifacts that can live under the dependency globs (e.g.
-    # fixture projects carrying their own reports/ and coverage/ output).
-    # They churn on every run without influencing test behavior — including
-    # them would both slow the fingerprint down and invalidate all survivor
-    # reuse after any smoke/fixture run.
-    GENERATED_DIR_SEGMENTS = %w[reports mutation-logs mutation-coverage coverage].freeze
-
     # Existing dependency files resolved against +root+, sorted. Shared by
     # the fingerprint below and by the coverage freshness watch — a stale
     # per-test map after a dependency edit would let the test selector omit
@@ -92,24 +88,17 @@ module Henitai
     def pruned_tree_files(dir)
       return [] unless File.directory?(dir)
 
-      require "find"
       collected = [] # : Array[String]
       Find.find(dir) do |path|
-        Find.prune if File.directory?(path) && generated_artifact_dir?(path)
+        Find.prune if File.directory?(path) && GeneratedArtifacts.generated_dir?(path)
         collected << path if File.file?(path)
       end
       collected
     end
 
-    def generated_artifact_dir?(path)
-      GENERATED_DIR_SEGMENTS.include?(File.basename(path))
-    end
-
     # Run-level combined SHA over the dependency file set. Missing files are
     # simply excluded (not an error); a read failure yields nil — no reuse.
-    def dependency_fingerprint(root = Dir.pwd)
-      combined_content_sha(dependency_files(root))
-    end
+    def dependency_fingerprint(root = Dir.pwd) = combined_content_sha(dependency_files(root))
 
     # Fingerprint recorded for a Survived verdict: the sorted full-map
     # intersection set (paths + combined content sha) plus the run-level
