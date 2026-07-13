@@ -4,6 +4,8 @@ require "digest"
 require "find"
 require "json"
 
+require_relative "generated_artifacts"
+
 module Henitai
   # Content fingerprints that decide whether a stored verdict is still
   # trustworthy: the subject's source (method body) and the covering test
@@ -69,13 +71,6 @@ module Henitai
       false
     end
 
-    # Generated artifacts that can live under the dependency globs (e.g.
-    # fixture projects carrying their own reports/ and coverage/ output).
-    # They churn on every run without influencing test behavior — including
-    # them would both slow the fingerprint down and invalidate all survivor
-    # reuse after any smoke/fixture run.
-    GENERATED_DIR_SEGMENTS = %w[reports mutation-logs mutation-coverage coverage].freeze
-
     # Existing dependency files resolved against +root+, sorted. Shared by
     # the fingerprint below and by the coverage freshness watch — a stale
     # per-test map after a dependency edit would let the test selector omit
@@ -90,30 +85,15 @@ module Henitai
       files.select { |path| File.file?(path) }.uniq.sort
     end
 
-    # Marker files identifying a directory as a project root — a
-    # generated-named directory is only pruned when it sits directly inside
-    # one, i.e. it is that project's own output directory.
-    PROJECT_MARKERS = %w[Gemfile Gemfile.lock .henitai.yml Rakefile .git].freeze
-
     def pruned_tree_files(dir)
       return [] unless File.directory?(dir)
 
       collected = [] # : Array[String]
       Find.find(dir) do |path|
-        Find.prune if File.directory?(path) && generated_artifact_dir?(path)
+        Find.prune if File.directory?(path) && GeneratedArtifacts.generated_dir?(path)
         collected << path if File.file?(path)
       end
       collected
-    end
-
-    # A directory counts as generated output only when it carries a known
-    # artifact name AND its parent looks like a project root. A plain
-    # spec/support/coverage/ full of helpers must stay in the fingerprint —
-    # wrongly excluding a real dependency would let an obsolete Survived
-    # verdict be reused (unsound); wrongly including junk merely re-runs.
-    def generated_artifact_dir?(path)
-      GENERATED_DIR_SEGMENTS.include?(File.basename(path)) &&
-        PROJECT_MARKERS.any? { |marker| File.exist?(File.join(File.dirname(path), marker)) }
     end
 
     # Run-level combined SHA over the dependency file set. Missing files are

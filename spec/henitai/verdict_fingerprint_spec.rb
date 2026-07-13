@@ -205,19 +205,35 @@ RSpec.describe Henitai::VerdictFingerprint do
         fixture = File.join(dir, "spec", "fixtures", "smoke")
         FileUtils.mkdir_p(File.join(fixture, "reports", "mutation-logs"))
         FileUtils.mkdir_p(File.join(fixture, "coverage"))
-        # Project markers make reports/ and coverage/ recognizable as the
-        # fixture project's own generated output directories.
+        # Artifact evidence marks reports/ and coverage/ as the fixture
+        # project's own generated output directories.
+        File.write(File.join(fixture, "reports", "mutation-report.json"), "{}")
+        File.write(File.join(fixture, "coverage", ".resultset.json"), "{}")
         File.write(File.join(fixture, "Gemfile"), "source 'https://rubygems.org'\n")
         File.write(File.join(dir, "Gemfile.lock"), "GEM\n")
 
         before = described_class.dependency_fingerprint(dir)
         File.write(File.join(fixture, "reports", "mutation-logs", "mutant-1.log"), "churn")
-        File.write(File.join(fixture, "coverage", ".resultset.json"), "{}")
+        File.write(File.join(fixture, "coverage", ".last_run.json"), "{}")
 
         expect(described_class.dependency_fingerprint(dir)).to eq(before)
         expect(described_class.dependency_files(dir)).to eq(
           [File.join(dir, "Gemfile.lock"), File.join(fixture, "Gemfile")]
         )
+      end
+    end
+
+    it "keeps a fixture project's reports directory that holds only test input" do
+      Dir.mktmpdir do |dir|
+        fixture = File.join(dir, "spec", "fixtures", "smoke")
+        FileUtils.mkdir_p(File.join(fixture, "reports"))
+        # Project marker present, but no henitai artifact evidence — the
+        # directory is fixture input, not generated output.
+        File.write(File.join(fixture, "Gemfile"), "source 'https://rubygems.org'\n")
+        template = File.join(fixture, "reports", "template.yml")
+        File.write(template, "threshold: 80\n")
+
+        expect(described_class.dependency_files(dir)).to include(template)
       end
     end
 
