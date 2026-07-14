@@ -33,7 +33,7 @@ module Henitai
     VALID_THRESHOLDS_KEYS = %i[high low].freeze
     VALID_DASHBOARD_KEYS = %i[project base_url].freeze
     VALID_INTEGRATION_KEYS = %i[name].freeze
-    VALID_OPERATORS = %i[light full].freeze
+    VALID_OPERATORS = %i[light full hard].freeze
     VALIDATION_STEPS = %i[
       validate_top_level_keys
       validate_integration

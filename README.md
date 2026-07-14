@@ -271,7 +271,17 @@ The repository ships a JSON Schema at [`assets/schema/henitai.schema.json`](/wor
 - `AssignmentExpression` — mutate compound assignment
 - `UnaryOperator` — remove unary `-` and `~`
 - `UpdateOperator` — swap compound assignments (`+=`↔`-=`, `*=`↔`/=`, `||=`↔`&&=`)
+
+**Hard** — adds usually-unkillable mutations on top of full, for hunting the
+last survivors (see [ADR-12](docs/architecture/adr/ADR-12-hard-operator-set.md)):
+
 - `EqualityIdentityOperator` — `==` ↔ `eql?`/`equal?` (hardest equality pairing to kill; see [ADR-10](docs/architecture/adr/ADR-10-split-equality-identity-mutations.md))
+- `HashKeyType` — `{ a: 1 }` → `{ "a" => 1 }` (frameworks that normalize key
+  types, e.g. ActiveRecord `order`/`where`, make these mutants equivalent at
+  many call sites; disable per site with `# henitai:disable HashKeyType`)
+
+`HashLiteral` (full set) empties the hash and removes one pair at a time
+(`{ a: 1, b: 2 }` → `{}` / `{ b: 2 }`).
 
 ## Stryker Dashboard integration
 

@@ -119,7 +119,7 @@ RSpec.describe Henitai::CLI do
                 --since GIT_REF              Only mutate subjects changed since GIT_REF
                 --use INTEGRATION            Test framework integration (rspec)
                 --config PATH                Path to .henitai.yml
-                --operators SET              Operator set: light | full
+                --operators SET              Operator set: light | full | hard
                 --timeout-multiplier N       Multiplier applied to the measured per-mutant test baseline when mutation.timeout is unset (default: 3.0)
                 --jobs N                     Number of parallel workers (default: 1)
                 --all-logs, --verbose        Print all captured child logs

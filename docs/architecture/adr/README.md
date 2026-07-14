@@ -15,6 +15,7 @@ This directory contains one ADR per accepted architecture decision.
 - [ADR-09: Survivor-only reruns with stable mutant identity](ADR-09-survivor-only-reruns-with-stable-mutant-identity.md)
 - [ADR-10: Split equality operator into relational and identity mutations](ADR-10-split-equality-identity-mutations.md)
 - [ADR-11: Content-fingerprint verdict reuse, not git scoping, as the skip mechanism](ADR-11-verdict-reuse-fingerprints-over-git-scoping.md)
+- [ADR-12: Hard operator set for usually-unkillable mutations](ADR-12-hard-operator-set.md)
 
 ## Maintenance Rule
 

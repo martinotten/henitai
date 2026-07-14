@@ -44,7 +44,7 @@
       "additionalProperties": false,
       "properties": {
         "operators": {
-          "enum": ["light", "full"]
+          "enum": ["light", "full", "hard"]
         },
         "timeout": {
           "type": "number"

@@ -476,7 +476,7 @@ RSpec.describe Henitai::ConfigurationValidator do
     it "reports the rejected operator value in the error message" do
       expect { described_class.validate!({ mutation: { operators: "heavy" } }) }.to raise_error(
         Henitai::ConfigurationError,
-        "Invalid configuration value for mutation.operators: expected one of light, full, got \"heavy\""
+        "Invalid configuration value for mutation.operators: expected one of light, full, hard, got \"heavy\""
       )
     end
   end

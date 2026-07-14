@@ -353,6 +353,8 @@ module Henitai
   class Operator
     LIGHT_SET: Array[String]
     FULL_SET: Array[String]
+    HARD_SET: Array[String]
+    SETS: Hash[Symbol, Array[String]]
 
     def self.for_set: (Symbol) -> Array[untyped]
     def self.node_types: () -> Array[Symbol]

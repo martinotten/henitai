@@ -44,13 +44,23 @@ module Henitai
       AssignmentExpression
       UnaryOperator
       UpdateOperator
-      EqualityIdentityOperator
     ]).freeze
 
-    # @param set [Symbol] :light or :full
+    # Usually-unkillable operators on top of full: mutations whose survival
+    # rarely indicates a test gap (framework key normalization, the
+    # ==/eql?/equal? pairing). Opt in when hunting the last survivors
+    # (ADR-12).
+    HARD_SET = (FULL_SET + %w[
+      EqualityIdentityOperator
+      HashKeyType
+    ]).freeze
+
+    SETS = { light: LIGHT_SET, full: FULL_SET, hard: HARD_SET }.freeze
+
+    # @param set [Symbol] :light, :full or :hard
     # @return [Array<Operator>] operator instances for the given set
     def self.for_set(set)
-      names = set.to_sym == :full ? FULL_SET : LIGHT_SET
+      names = SETS.fetch(set.to_sym, LIGHT_SET)
       names.map { |name| Henitai::Operators.const_get(name).new }
     end
 
