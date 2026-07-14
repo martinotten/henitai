@@ -16,6 +16,7 @@ module Henitai
     autoload :ReturnValue, "henitai/operators/return_value"
     autoload :ArrayDeclaration, "henitai/operators/array_declaration"
     autoload :HashLiteral, "henitai/operators/hash_literal"
+    autoload :HashKeyType, "henitai/operators/hash_key_type"
     autoload :RangeLiteral, "henitai/operators/range_literal"
     autoload :SafeNavigation, "henitai/operators/safe_navigation"
     autoload :PatternMatch, "henitai/operators/pattern_match"

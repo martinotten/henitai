@@ -32,7 +32,7 @@ RSpec.describe "Configuration schema" do
 
   it "documents the mutation operator set" do
     expect(properties.fetch("mutation").fetch("properties").fetch("operators").fetch("enum")).to eq(
-      %w[light full]
+      %w[light full hard]
     )
   end
 

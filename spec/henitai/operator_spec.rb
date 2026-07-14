@@ -32,6 +32,26 @@ RSpec.describe Henitai::Operator do
     )
   end
 
+  it "returns hard set operator instances in the documented order" do
+    stub_operator_constants(described_class::HARD_SET)
+
+    operators = described_class.for_set(:hard)
+
+    expect(operators.map { |operator| operator.class.name }).to eq(
+      described_class::HARD_SET.map { |name| "Henitai::Operators::#{name}" }
+    )
+  end
+
+  it "nests the sets: light within full within hard", :aggregate_failures do
+    expect(described_class::FULL_SET).to include(*described_class::LIGHT_SET)
+    expect(described_class::HARD_SET).to include(*described_class::FULL_SET)
+  end
+
+  it "keeps the usually-unkillable operators out of the full set", :aggregate_failures do
+    expect(described_class::FULL_SET).not_to include("EqualityIdentityOperator", "HashKeyType")
+    expect(described_class::HARD_SET).to include("EqualityIdentityOperator", "HashKeyType")
+  end
+
   it "returns the short class name as the operator name" do
     operator_class = stub_const("Henitai::Operators::FakeLongName", Class.new(described_class))
     expect(operator_class.new.name).to eq("FakeLongName")

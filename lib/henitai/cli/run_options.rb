@@ -21,7 +21,7 @@ module Henitai
       end
 
       def add_operator_option(opts, options)
-        opts.on("--operators SET", "Operator set: light | full") do |set|
+        opts.on("--operators SET", "Operator set: light | full | hard") do |set|
           options[:operators] = set
         end
       end

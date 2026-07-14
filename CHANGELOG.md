@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `hard` operator set (`mutation.operators: hard` / `--operators hard`), a
+  strict superset of `full` for usually-unkillable mutations (ADR-12):
+  currently `EqualityIdentityOperator` and the new `HashKeyType`
+  (`{ a: 1 }` -> `{ "a" => 1 }`) — framework key normalization (e.g.
+  ActiveRecord `order`/`where`) makes key-type mutants frequently equivalent
+- `HashLiteral` gains per-pair removal (`{ a: 1, b: 2 }` -> `{ b: 2 }`);
+  single-pair hashes and double-splat entries are skipped
+
+### Changed
+- `full` now means "usually killable": the symbol-key -> string-key mutation
+  moved from `HashLiteral` into the new hard-set `HashKeyType`, and
+  `EqualityIdentityOperator` moved from `full` to `hard` — `full` runs emit
+  fewer, higher-signal mutants
+
 ## [0.3.1] - 2026-07-13
 
 ### Fixed
