@@ -90,8 +90,17 @@ Checked and **not** filed:
   `verdict_for`, so affected mutants re-execute; no stale verdict can be reused.
   Only the trend export keeps the orphans, which is the (Low) finding filed.
 
+## Follow-up experiment
+
+Because the environment blocked the suite, the Ruby version floor itself was
+tested: [[2026-07-27-ruby-4-requirement-necessity]] — the whole suite, linter,
+type checker, and both smoke projects pass on Ruby 3.3.6 after replacing a single
+4.0-only API call (`Enumerable#rfind`, 3 sites). The `>= 4.0.0` requirement is a
+policy choice, not a technical one, and it is undocumented.
+
 ## Related
 
 - ADR-12: `docs/architecture/adr/ADR-12-hard-operator-set.md`
+- [[2026-07-27-ruby-4-requirement-necessity]]
 - [[2026-06-23-review-index]] — previous round
 - [[2026-06-16-review-index]]
