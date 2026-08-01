@@ -16,6 +16,7 @@ This directory contains one ADR per accepted architecture decision.
 - [ADR-10: Split equality operator into relational and identity mutations](ADR-10-split-equality-identity-mutations.md)
 - [ADR-11: Content-fingerprint verdict reuse, not git scoping, as the skip mechanism](ADR-11-verdict-reuse-fingerprints-over-git-scoping.md)
 - [ADR-12: Hard operator set for usually-unkillable mutations](ADR-12-hard-operator-set.md)
+- [ADR-13: Supported Ruby range starts at 3.3.6, not 4.0](ADR-13-supported-ruby-range.md)
 
 ## Maintenance Rule
 
