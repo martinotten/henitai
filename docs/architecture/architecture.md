@@ -16,7 +16,7 @@ Research basis: 39 mutation-testing papers collected in `docs/research/summaries
 
 ### 1.1 Requirements Overview
 
-Henitai is an AST-based mutation-testing framework for Ruby 4.0.2. The architecture has to support:
+Henitai is an AST-based mutation-testing framework for Ruby 3.3.6+. The architecture has to support:
 
 - actionable mutation feedback for developers
 - cost control through phase gates and incremental analysis
@@ -57,7 +57,7 @@ The ISO 25010 quality dimensions used as a guide are shown here:
 
 The most important constraints are:
 
-- Ruby 4.0.2 is the target runtime
+- Ruby 3.3.6 is the minimum supported runtime; the repo develops and releases on 4.0.x
 - mutation must be AST-based; regex-based mutation is explicitly forbidden
 - the primary report format is the Stryker `mutation-testing-report-schema` JSON
 - report and documentation terminology are canonical in English
@@ -297,7 +297,7 @@ Henitai does not require a dedicated service runtime. The deployment is usually 
 
 | Environment | Components |
 |---|---|
-| Local development | Ruby 4.0.2, bundled gems, local repository, local test suite |
+| Local development | Ruby 3.3.6+ (repo develops on 4.0.2), bundled gems, local repository, local test suite |
 | Dev container | same as local development, but reproducible toolchain |
 | CI runner | repository checkout, environment variables, test artifacts, JSON/HTML reports |
 | Optional dashboard | external Stryker Dashboard instance or hosted service |

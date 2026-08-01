@@ -65,7 +65,7 @@ module Henitai
         body = method_node.children.last
         return body unless body&.type == :begin
 
-        body.children.rfind { |child| child.is_a?(Parser::AST::Node) }
+        body.children.reverse_each.find { |child| child.is_a?(Parser::AST::Node) }
       end
 
       # rubocop:disable Lint/BooleanSymbol

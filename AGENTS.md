@@ -2,7 +2,7 @@
 
 ## Repository Intent
 
-Hen'i-tai is a Ruby 4 mutation-testing framework.
+Hen'i-tai is a Ruby mutation-testing framework (Ruby 3.3.6+).
 
 `CODE_PRINCIPLES.md` is the authoritative source for coding rules in this
 repository. Follow it strictly. If a requested change conflicts with that file
@@ -42,7 +42,7 @@ or with the architecture docs, stop and resolve the conflict before coding.
 
 ## Ruby And Style
 
-- Target Ruby 4.0.x.
+- Target Ruby 3.3.6+ (`.rubocop.yml` TargetRubyVersion 3.3); the repo itself develops on 4.0.x.
 - Follow the repo RuboCop rules in `.rubocop.yml`.
 - Use double-quoted strings and frozen string literals.
 - Keep lines short and methods small.
