@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../parser_current"
+
 module Henitai
   module Operators
     # Mutates symbol hash keys into string keys, one pair at a time
