@@ -18,8 +18,8 @@ This directory contains one ADR per accepted architecture decision.
 - [ADR-12: Hard operator set for usually-unkillable mutations](ADR-12-hard-operator-set.md)
 - [ADR-13: `def` injection in the original lexical nesting](ADR-13-def-injection-in-lexical-nesting.md) (supersedes ADR-04)
 - [ADR-14: Detected verdicts must be caused by the mutation](ADR-14-detected-verdicts-must-be-caused-by-the-mutation.md)
-
 - [ADR-15: Fork-server execution model](ADR-15-fork-server-execution-model.md)
+- [ADR-16: Supported Ruby range starts at 3.3.6, not 4.0](ADR-16-supported-ruby-range.md)
 
 ## Maintenance Rule
 

@@ -80,7 +80,7 @@ test_excludes:
   - spec/end_to_end/*_spec.rb   # never run these files, mutants or coverage baseline
 
 mutation:
-  operators: light   # light | full
+  operators: light   # light | full | hard
   timeout: 10.0
   timeout_multiplier: 3.0
   max_flaky_retries: 3

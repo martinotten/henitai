@@ -7,6 +7,8 @@ module Henitai
   # Operator names follow the Stryker-compatible naming convention so that the
   # JSON report is compatible with stryker-dashboard filters and HTML reports.
   #
+  # The sets nest: light ⊂ full ⊂ hard.
+  #
   # Built-in operators (light set):
   #   ArithmeticOperator, EqualityOperator, LogicalOperator, BooleanLiteral,
   #   ConditionalExpression, StringLiteral, ReturnValue
@@ -14,8 +16,10 @@ module Henitai
   # Additional operators (full set):
   #   ArrayDeclaration, HashLiteral, RangeLiteral, SafeNavigation,
   #   PatternMatch, BlockStatement, MethodExpression, AssignmentExpression,
-  #   UnaryOperator, UpdateOperator, RegexMutator, MethodChainUnwrap,
-  #   EqualityIdentityOperator
+  #   UnaryOperator, UpdateOperator, RegexMutator, MethodChainUnwrap
+  #
+  # Usually-unkillable operators (hard set, ADR-12):
+  #   EqualityIdentityOperator, HashKeyType
   #
   # Each operator subclass must implement:
   #   - .node_types  → Array<Symbol>  AST node types this operator handles
