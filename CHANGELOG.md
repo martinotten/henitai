@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   4.0-only form), and CI runs the floor alongside 4.0.2
 
 ### Fixed
+- `henitai operator list` gains a `Hard set` section, so `HashKeyType` and
+  `EqualityIdentityOperator` are discoverable again (`EqualityIdentityOperator`
+  was listed in 0.3.1 and nowhere in 0.4.0). Sets now nest in the output —
+  each section lists only what it adds to the previous one, instead of
+  re-printing the light operators in every set
+- `HashKeyType` requires `parser_current` itself instead of relying on a
+  sibling operator having loaded the parser first
 - `# henitai:disable HashKeyType` and `# henitai:disable
   EqualityIdentityOperator` no longer raise `ConfigurationError` and abort the
   run. The directive whitelist validated names against `full` rather than the

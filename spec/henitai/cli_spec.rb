@@ -1095,10 +1095,32 @@ RSpec.describe Henitai::CLI do
     ).to_stdout
   end
 
+  it "lists the hard set with its own section" do
+    expect { described_class.new(%w[operator list]).run }.to output(
+      /Hard set \(adds to full\)\n.*HashKeyType/m
+    ).to_stdout
+  end
+
+  it "lists a hard-set-only operator with its metadata" do
+    expect { described_class.new(%w[operator list]).run }.to output(
+      /EqualityIdentityOperator: Identity-method comparisons/
+    ).to_stdout
+  end
+
+  it "lists each registered operator exactly once across the set sections" do
+    listed_once = satisfy("list every operator exactly once") do |text|
+      Henitai::Operator::HARD_SET.all? do |name|
+        text.scan(/^- #{Regexp.escape(name)}:/).length == 1
+      end
+    end
+
+    expect { described_class.new(%w[operator list]).run }.to output(listed_once).to_stdout
+  end
+
   it "warns and exits when operator metadata is missing" do
     stub_const(
-      "Henitai::Operator::FULL_SET",
-      Henitai::Operator::FULL_SET + ["MissingOperator"]
+      "Henitai::Operator::HARD_SET",
+      Henitai::Operator::HARD_SET + ["MissingOperator"]
     )
 
     cli = described_class.new(%w[operator list])
@@ -1164,8 +1186,8 @@ RSpec.describe Henitai::CLI do
 
   it "warns when multiple operators are missing metadata" do
     stub_const(
-      "Henitai::Operator::FULL_SET",
-      Henitai::Operator::FULL_SET + %w[MissingOperatorA MissingOperatorB]
+      "Henitai::Operator::HARD_SET",
+      Henitai::Operator::HARD_SET + %w[MissingOperatorA MissingOperatorB]
     )
 
     cli = described_class.new(%w[operator list])
@@ -1181,8 +1203,8 @@ RSpec.describe Henitai::CLI do
 
   it "exits non-zero when multiple operators are missing metadata" do
     stub_const(
-      "Henitai::Operator::FULL_SET",
-      Henitai::Operator::FULL_SET + %w[MissingOperatorA MissingOperatorB]
+      "Henitai::Operator::HARD_SET",
+      Henitai::Operator::HARD_SET + %w[MissingOperatorA MissingOperatorB]
     )
 
     cli = described_class.new(%w[operator list])
