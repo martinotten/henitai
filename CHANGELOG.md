@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Minimum supported Ruby lowered from 4.0.0 to 3.3.6, making henitai usable by
+  projects not yet on Ruby 4. The only Ruby 4-only API in use was
+  `Enumerable#rfind`, replaced by `reverse_each.find`; `TargetRubyVersion` is
+  now `3.3` (a 4.0 target made RuboCop's `Style/ReverseFind` demand the
+  4.0-only form), and CI runs the floor alongside 4.0.2
+
+### Fixed
+- `# henitai:disable HashKeyType` and `# henitai:disable
+  EqualityIdentityOperator` no longer raise `ConfigurationError` and abort the
+  run. The directive whitelist validated names against `full` rather than the
+  operator registry, so the hard-set names 0.4.0 introduced — the very ones
+  ADR-12 and the README tell users to suppress per site — were rejected as
+  unknown operators. `# henitai:disable EqualityIdentityOperator` worked in
+  0.3.1; this restores it
+
 ## [0.4.0] - 2026-07-14
 
 ### Added
