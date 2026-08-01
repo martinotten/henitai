@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   4.0-only form), and CI runs the floor alongside 4.0.2
 
 ### Fixed
+- `HashLiteral` pair-removal descriptions no longer leak AST s-expressions
+  into reports. Only literal keys are named (string keys now quoted, so
+  `{ "a" => 1, a: 2 }` yields two distinguishable descriptions); variable,
+  array, nested-hash and interpolated-symbol keys fall back to a positional
+  label such as `removed hash pair #1`. A nested-hash key previously produced
+  a multi-line description, which broke every single-line output surface and
+  reached `stableId` in the JSON report and the SQLite history. Affected
+  mutants get new stable ids and re-execute once under `--incremental`
 - `henitai operator list` gains a `Hard set` section, so `HashKeyType` and
   `EqualityIdentityOperator` are discoverable again (`EqualityIdentityOperator`
   was listed in 0.3.1 and nowhere in 0.4.0). Sets now nest in the output —

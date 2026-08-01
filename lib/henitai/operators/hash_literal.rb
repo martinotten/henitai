@@ -11,6 +11,14 @@ module Henitai
     class HashLiteral < Henitai::Operator
       NODE_TYPES = [:hash].freeze
 
+      # Key node types whose first child is the literal value itself.
+      SCALAR_KEY_TYPES = %i[sym int float].freeze
+      # Same, but rendered quoted so a string key stays distinguishable from
+      # the symbol key of the same name.
+      QUOTED_KEY_TYPES = [:str].freeze
+      # Keyword literals carry no children; the node type is the label.
+      KEYWORD_KEY_TYPES = %i[true false nil].freeze
+
       def self.node_types
         NODE_TYPES
       end
@@ -45,7 +53,7 @@ module Henitai
             subject:,
             original_node: node,
             mutated_node: hash_without_pair(node, index),
-            description: "removed hash pair #{pair_key_label(pair)}"
+            description: "removed hash pair #{pair_key_label(pair, index)}"
           )
         end
       end
@@ -55,10 +63,20 @@ module Henitai
         Parser::AST::Node.new(:hash, remaining)
       end
 
-      # Pair keys are always AST nodes (sym/str/…); their first child is the
-      # literal value used purely as a human-readable label.
-      def pair_key_label(pair)
-        pair.children.first.children.first
+      # Only literal keys have a meaningful name. Anything else — a variable,
+      # a method call, an array, a nested hash, an interpolated symbol — falls
+      # back to its position: rendering those nodes would put a raw
+      # s-expression (and, for a nested hash, embedded newlines) into every
+      # report surface and into MutantIdentity.stable_id.
+      def pair_key_label(pair, index)
+        key = pair.children.first
+
+        case key.type
+        when *SCALAR_KEY_TYPES then key.children.first.to_s
+        when *QUOTED_KEY_TYPES then key.children.first.inspect
+        when *KEYWORD_KEY_TYPES then key.type.to_s
+        else "##{index + 1}"
+        end
       end
     end
   end
