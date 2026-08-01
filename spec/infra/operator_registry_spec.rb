@@ -72,6 +72,50 @@ RSpec.describe "Operator registry" do
     expect(Henitai::ConfigurationValidator::VALID_OPERATORS).to match_array(Henitai::Operator::SETS.keys)
   end
 
+  # Descriptions reach the terminal summary, the survivor list, the JSON
+  # report and MutantIdentity.stable_id. A newline breaks every single-line
+  # surface at once, and the way it gets in is an operator rendering an AST
+  # node it assumed was a simple literal (see HashLiteral pair labels).
+  # Exercised against a fixture broad enough to trip most operators; an
+  # operator that emits nothing here is simply not covered by this guard.
+  def description_fixture
+    <<~RUBY
+      def sample(a, b)
+        config = { { x: 1 } => 2, [3] => 4, "s" => 5, k: 6 }
+        total = a + b - 1
+        total += 1
+        flag = a == b && a != b || !a
+        list = [1, 2].map { |value| value * 2 }
+        a&.deep&.chain
+        return "text" if a > 1 && (1..5).cover?(b)
+        /foo+/.match?("bar")
+        case config
+        in { k: Integer } then true
+        else false
+        end
+      end
+    RUBY
+  end
+
+  def all_descriptions_for(operator_class)
+    root = Henitai::SourceParser.parse(description_fixture)
+    subject = Henitai::Subject.new(namespace: "Example", method_name: "sample")
+
+    operator_class.node_types.flat_map do |type|
+      find_nodes(root, type).flat_map do |node|
+        operator_class.new.mutate(node, subject:).map(&:description)
+      end
+    end
+  end
+
+  it "emits only single-line mutant descriptions" do
+    multiline = registry.select do |name|
+      all_descriptions_for(operator_class(name)).any? { |description| description.include?("\n") }
+    end
+
+    expect(multiline).to be_empty
+  end
+
   # Every operator building Parser AST nodes must pull the parser in itself:
   # relying on a sibling operator or SourceParser to have loaded it first
   # makes the file a NameError waiting for a lazily-loaded consumer.
