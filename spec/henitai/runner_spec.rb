@@ -1817,6 +1817,61 @@ RSpec.describe Henitai::Runner do
       expect(resolver).to have_received(:resolve_from_files).with(["lib/sample.rb"])
       expect(resolver).to have_received(:apply_pattern).with([subj], "Sample*")
     end
+
+    # The other examples resolve to an empty subject list, where returning
+    # early and falling through to the (empty) pattern loop are
+    # indistinguishable. A non-empty list is what makes the early return
+    # observable.
+    it "returns every resolved subject when no pattern was given" do
+      runner = described_class.new(config: build_config)
+      resolver = instance_double(Henitai::SubjectResolver)
+      subj = build_subject("Sample#answer", source_file: "lib/sample.rb")
+      allow(resolver).to receive(:resolve_from_files).and_return([subj])
+      allow(runner).to receive_messages(
+        source_files: ["lib/sample.rb"],
+        subject_resolver: resolver
+      )
+
+      expect(runner.send(:resolve_subjects)).to eq([subj])
+    end
+
+    it "narrows a non-empty subject list to the pattern matches" do
+      subject_pattern = double(expression: "Other*")
+      runner = described_class.new(config: build_config, subjects: [subject_pattern])
+      resolver = instance_double(Henitai::SubjectResolver)
+      kept = build_subject("Other#answer", source_file: "lib/other.rb")
+      dropped = build_subject("Sample#answer", source_file: "lib/sample.rb")
+      allow(resolver).to receive(:resolve_from_files).and_return([kept, dropped])
+      allow(resolver).to receive(:apply_pattern).with([kept, dropped], "Other*").and_return([kept])
+      allow(runner).to receive_messages(
+        source_files: ["lib/other.rb"],
+        subject_resolver: resolver
+      )
+
+      expect(runner.send(:resolve_subjects)).to eq([kept])
+    end
+  end
+
+  describe "#bootstrap_coverage" do
+    it "passes the test files through to the coverage bootstrapper" do
+      bootstrapper = instance_double(Henitai::CoverageBootstrapper, ensure!: nil)
+      allow(Henitai::CoverageBootstrapper).to receive(:new).and_return(bootstrapper)
+      runner = described_class.new(config: build_config)
+
+      runner.send(:bootstrap_coverage, ["lib/sample.rb"], ["spec/sample_spec.rb"])
+
+      expect(bootstrapper).to have_received(:ensure!) do |**kwargs|
+        expect(kwargs[:test_files]).to eq(["spec/sample_spec.rb"])
+      end
+    end
+  end
+
+  describe "#integration" do
+    it "instantiates the configured integration rather than returning its class" do
+      runner = described_class.new(config: build_config(integration: "rspec"))
+
+      expect(runner.send(:integration)).to be_an_instance_of(Henitai::Integration::Rspec)
+    end
   end
 
   describe "#mutants_for" do
@@ -1904,6 +1959,31 @@ RSpec.describe Henitai::Runner do
     it "fans out to a composite when terminal and a file report are both enabled" do
       runner = described_class.new(config: checkpoint_config(reporters: %w[terminal json]))
       expect(runner.send(:progress_reporter)).to be_a(Henitai::CompositeProgressReporter)
+    end
+
+    it "tells the reporter the run is full when nothing narrows it" do
+      runner = described_class.new(config: checkpoint_config(reporters: %w[terminal json]))
+      allow(Henitai::CompositeProgressReporter).to receive(:for)
+
+      runner.send(:progress_reporter)
+
+      expect(Henitai::CompositeProgressReporter).to have_received(:for) do |**kwargs|
+        expect(kwargs[:full_run]).to be(true)
+      end
+    end
+
+    it "tells the reporter the run is not full when a subject pattern narrows it" do
+      runner = described_class.new(
+        config: checkpoint_config(reporters: %w[terminal json]),
+        subjects: [double(expression: "Sample*")]
+      )
+      allow(Henitai::CompositeProgressReporter).to receive(:for)
+
+      runner.send(:progress_reporter)
+
+      expect(Henitai::CompositeProgressReporter).to have_received(:for) do |**kwargs|
+        expect(kwargs[:full_run]).to be(false)
+      end
     end
 
     it "returns a lone checkpoint reporter when only a file report is enabled" do

@@ -158,6 +158,10 @@ module Henitai
         )
       end
 
+      # The result is only ever interpolated into an error message, and
+      # Class#to_s returns exactly Class#name for the named classes a config
+      # value can hold — so dropping `.name` produces identical output.
+      # henitai:disable MethodChainUnwrap: `.class` and `.class.name` interpolate identically
       def describe_array_type(value)
         return value.class.name unless value.is_a?(Array)
 
