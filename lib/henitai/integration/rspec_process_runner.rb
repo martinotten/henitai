@@ -32,7 +32,7 @@ module Henitai
           ended_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           @mutex.synchronize do
             @live_count -= 1
-            entry = @intervals.rfind { |i| i[:pid] == pid && i[:ended_at].nil? }
+            entry = @intervals.reverse_each.find { |i| i[:pid] == pid && i[:ended_at].nil? }
             entry[:ended_at] = ended_at if entry
           end
         end

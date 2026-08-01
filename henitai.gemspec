@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
 
   spec.summary     = "Mutation testing for Ruby"
   spec.description = <<~DESC
-    Hen'i-tai (変異体) is a mutation testing framework for Ruby 4+.
+    Hen'i-tai (変異体) is a mutation testing framework for Ruby 3.3.6+.
     It produces Stryker-compatible mutation-testing-report-schema JSON,
     integrates with the Stryker Dashboard, and ships with a standalone
     HTML report powered by mutation-testing-elements.
@@ -23,7 +23,7 @@ Gem::Specification.new do |spec|
   spec.homepage = "https://github.com/martinotten/henitai"
   spec.license  = "MIT"
 
-  spec.required_ruby_version = ">= 4.0.0"
+  spec.required_ruby_version = ">= 3.3.6"
 
   spec.metadata = {
     "bug_tracker_uri" => "https://github.com/martinotten/henitai/issues",
@@ -49,7 +49,7 @@ Gem::Specification.new do |spec|
 
   # Runtime dependencies
   spec.add_dependency "minitest", "~> 5.25" # Required under Bundler for the Minitest integration
-  spec.add_dependency "prism", "~> 1.5" # Ruby 4 parser
+  spec.add_dependency "prism", "~> 1.5" # Ruby parser
   spec.add_dependency "simplecov", "~> 0.22" # Coverage collection for Minitest integration
   spec.add_dependency "sqlite3", "~> 1.7" # Lightweight persistent history store
   spec.add_dependency "unparser", "~> 0.6" # AST → source code reconstruction

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Hen'i-tai (`henitai`) is an AST-based mutation-testing framework for Ruby 4.0+. It mutates source code (e.g. `>` -> `>=`, `true` -> `false`) and re-runs the test suite to measure whether tests actually catch the change. Output is Stryker-compatible JSON, consumable by Stryker Dashboard and `mutation-testing-elements` HTML reports.
+Hen'i-tai (`henitai`) is an AST-based mutation-testing framework for Ruby 3.3.6+. It mutates source code (e.g. `>` -> `>=`, `true` -> `false`) and re-runs the test suite to measure whether tests actually catch the change. Output is Stryker-compatible JSON, consumable by Stryker Dashboard and `mutation-testing-elements` HTML reports.
 
 `CODE_PRINCIPLES.md` is the authoritative source for coding rules (TDD, clean architecture, clean code). Follow it strictly; if a change conflicts with it or with `docs/architecture/architecture.md`, resolve the conflict before coding. `AGENTS.md` carries the same rules plus the full RuboCop default-cop checklist this repo is expected to satisfy.
 

@@ -373,7 +373,7 @@ RSpec.describe Henitai::CLI do
 
   it "prints the exact top-level help text when no command is given" do
     expect { described_class.new([]).run }.to output(<<~HELP).to_stdout
-      Hen'i-tai 変異体 #{Henitai::VERSION} — Ruby 4 Mutation Testing
+      Hen'i-tai 変異体 #{Henitai::VERSION} — Ruby Mutation Testing
 
       Usage:
         henitai run [options] [SUBJECT_PATTERN...]

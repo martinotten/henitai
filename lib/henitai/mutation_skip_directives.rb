@@ -25,7 +25,13 @@ module Henitai
   # Matching mutants are reported as ignored by {StaticFilter}, not dropped.
   class MutationSkipDirectives
     DIRECTIVE = /\A#\s*henitai:disable(?<kind>-start|-end)?(?<rest>[:\s].*)?\z/
-    VALID_OPERATOR_NAMES = Operator::FULL_SET
+
+    # The whitelist is the operator *registry*, not the configured set: the
+    # widest set names every operator henitai knows. Narrowing it to the
+    # configured set would reject a directive for a registered operator the
+    # current run happens not to enable — hard-set names above all, which is
+    # precisely where the escape hatch is needed (ADR-12).
+    VALID_OPERATOR_NAMES = Operator::HARD_SET
 
     # A parsed directive: +operators+ is nil (all) or a Set of canonical
     # operator names; +reason+ is optional free text shown in reports.

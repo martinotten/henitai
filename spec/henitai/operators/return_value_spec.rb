@@ -36,7 +36,7 @@ RSpec.describe Henitai::Operators::ReturnValue do
     method_body = method_body_node(source)
     return method_body unless method_body.type == :begin
 
-    method_body.children.rfind { |child| child.respond_to?(:type) }
+    method_body.children.reverse_each.find { |child| child.respond_to?(:type) }
   end
 
   def mutate(node, subject:)

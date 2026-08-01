@@ -78,7 +78,7 @@ module Henitai
 
     def help_text
       <<~HELP
-        Hen'i-tai 変異体 #{Henitai::VERSION} — Ruby 4 Mutation Testing
+        Hen'i-tai 変異体 #{Henitai::VERSION} — Ruby Mutation Testing
 
         Usage:
           henitai run [options] [SUBJECT_PATTERN...]

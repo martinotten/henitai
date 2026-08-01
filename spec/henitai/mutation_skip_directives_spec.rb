@@ -11,7 +11,7 @@ RSpec.describe Henitai::MutationSkipDirectives do
     path
   end
 
-  def build_mutant(file:, start_line:, subject_range: nil)
+  def build_mutant(file:, start_line:, subject_range: nil, operator: "ArithmeticOperator")
     node = Henitai::SourceParser.parse("1 + 1")
 
     Henitai::Mutant.new(
@@ -20,7 +20,7 @@ RSpec.describe Henitai::MutationSkipDirectives do
         method_name: "value",
         source_location: subject_range && { file:, range: subject_range }
       ),
-      operator: "ArithmeticOperator",
+      operator:,
       nodes: { original: node, mutated: node },
       description: "example mutation",
       location: { file:, start_line:, end_line: start_line, start_col: 0, end_col: 1 }
@@ -187,19 +187,13 @@ RSpec.describe Henitai::MutationSkipDirectives do
       RUBY
     end
 
-    def build_operator_mutant(file:, start_line:, operator:, subject_range: nil)
-      mutant = build_mutant(file:, start_line:, subject_range:)
-      mutant.instance_variable_set(:@operator, operator)
-      mutant
-    end
-
     it "restricts a trailing directive to the named operator" do
       Dir.mktmpdir do |dir|
         path = write_two_operator_source(dir, "# henitai:disable ArithmeticOperator")
         directives = described_class.new
 
         results = %w[ArithmeticOperator StringLiteral].map do |operator|
-          directives.skip?(build_operator_mutant(file: path, start_line: 3, operator:))
+          directives.skip?(build_mutant(file: path, start_line: 3, operator:))
         end
 
         expect(results).to eq([true, false])
@@ -212,7 +206,7 @@ RSpec.describe Henitai::MutationSkipDirectives do
         directives = described_class.new
 
         results = %w[ArithmeticOperator StringLiteral LogicalOperator].map do |operator|
-          directives.skip?(build_operator_mutant(file: path, start_line: 3, operator:))
+          directives.skip?(build_mutant(file: path, start_line: 3, operator:))
         end
 
         expect(results).to eq([true, true, false])
@@ -223,7 +217,7 @@ RSpec.describe Henitai::MutationSkipDirectives do
       Dir.mktmpdir do |dir|
         path = write_two_operator_source(dir, "# henitai:disable ArithmeticOperator: log-format noise")
         directive = described_class.new.directive_for(
-          build_operator_mutant(file: path, start_line: 3, operator: "ArithmeticOperator")
+          build_mutant(file: path, start_line: 3, operator: "ArithmeticOperator")
         )
 
         expect([directive.reason, directive.operators.to_a]).to eq(
@@ -236,7 +230,7 @@ RSpec.describe Henitai::MutationSkipDirectives do
       Dir.mktmpdir do |dir|
         path = write_two_operator_source(dir, "# henitai:disable: timing-sensitive")
         directive = described_class.new.directive_for(
-          build_operator_mutant(file: path, start_line: 3, operator: "StringLiteral")
+          build_mutant(file: path, start_line: 3, operator: "StringLiteral")
         )
 
         expect([directive.reason, directive.operators]).to eq(["timing-sensitive", nil])
@@ -257,7 +251,7 @@ RSpec.describe Henitai::MutationSkipDirectives do
 
         results = %w[RegexMutator ArithmeticOperator].map do |operator|
           directives.skip?(
-            build_operator_mutant(file: path, start_line: 4, operator:, subject_range: 3..5)
+            build_mutant(file: path, start_line: 4, operator:, subject_range: 3..5)
           )
         end
 
@@ -287,11 +281,94 @@ RSpec.describe Henitai::MutationSkipDirectives do
     end
   end
 
+  # Hard-set operators (ADR-12) are registered operators that no configured
+  # set enables by default. Naming one in a directive must work in every
+  # scope — it is the documented escape hatch for their usual survivors.
+  describe "hard-set operator names" do
+    it "restricts a trailing directive to a hard-set operator" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, <<~RUBY)
+          class Sample
+            def value(input)
+              { order: :asc } # henitai:disable HashKeyType
+            end
+          end
+        RUBY
+        directives = described_class.new
+
+        results = %w[HashKeyType HashLiteral].map do |operator|
+          directives.skip?(build_mutant(file: path, start_line: 3, operator:))
+        end
+
+        expect(results).to eq([true, false])
+      end
+    end
+
+    it "restricts a method-scoped directive to a hard-set operator" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, <<~RUBY)
+          class Sample
+            # henitai:disable EqualityIdentityOperator
+            def value(input)
+              input == 2
+            end
+          end
+        RUBY
+        directives = described_class.new
+
+        results = %w[EqualityIdentityOperator EqualityOperator].map do |operator|
+          directives.skip?(build_mutant(file: path, start_line: 4, operator:, subject_range: 3..5))
+        end
+
+        expect(results).to eq([true, false])
+      end
+    end
+
+    it "restricts a region directive to a hard-set operator" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, <<~RUBY)
+          class Sample
+            def value(input)
+              # henitai:disable-start HashKeyType
+              { order: :asc }
+              # henitai:disable-end
+            end
+          end
+        RUBY
+        directives = described_class.new
+
+        results = %w[HashKeyType HashLiteral].map do |operator|
+          directives.skip?(build_mutant(file: path, start_line: 4, operator:))
+        end
+
+        expect(results).to eq([true, false])
+      end
+    end
+
+    it "captures a reason given after a hard-set operator name" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, <<~RUBY)
+          class Sample
+            def value(input)
+              { order: :asc } # henitai:disable HashKeyType: framework normalizes keys
+            end
+          end
+        RUBY
+
+        directive = described_class.new.directive_for(
+          build_mutant(file: path, start_line: 3, operator: "HashKeyType")
+        )
+
+        expect([directive.reason, directive.operators.to_a]).to eq(
+          ["framework normalizes keys", ["HashKeyType"]]
+        )
+      end
+    end
+  end
+
   describe "regions" do
     def region_mutant(path, start_line, operator: "ArithmeticOperator")
-      mutant = build_mutant(file: path, start_line:)
-      mutant.instance_variable_set(:@operator, operator)
-      mutant
+      build_mutant(file: path, start_line:, operator:)
     end
 
     it "covers every line between disable-start and disable-end" do
