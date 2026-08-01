@@ -7,11 +7,13 @@ require "sqlite3"
 require "time"
 require_relative "mutant_identity"
 require_relative "mutant_history_store/sql"
+require_relative "mutant_history_store/subject_scans"
 require_relative "mutant_history_store/verdict_cache"
 
 module Henitai
   # Persists mutant outcomes across runs in a lightweight SQLite database.
   class MutantHistoryStore
+    include SubjectScans
     include VerdictCache
 
     # @param per_test_coverage [PerTestCoverage, nil] live per-test coverage
@@ -30,7 +32,10 @@ module Henitai
       with_database do |db|
         ensure_schema(db)
         db.transaction do
-          insert_run(db, result, version, recorded_at) unless partial_rerun?(result)
+          unless partial_rerun?(result)
+            insert_run(db, result, version, recorded_at)
+            record_subject_scans(db, result, recorded_at)
+          end
           Array(result.mutants).each do |mutant|
             upsert_mutant(db, mutant, version, recorded_at)
           end
@@ -100,6 +105,7 @@ module Henitai
     def ensure_schema(db)
       db.execute_batch(Sql::RUNS_TABLE)
       db.execute_batch(Sql::MUTANTS_TABLE)
+      db.execute_batch(Sql::SUBJECT_SCANS_TABLE)
       migrate_mutants_table(db)
     end
 
@@ -201,7 +207,7 @@ module Henitai
     end
 
     def load_mutants(db)
-      db.execute("SELECT * FROM mutants ORDER BY first_seen_at, mutant_id").map do |row|
+      db.execute(Sql::LOAD_MUTANTS).map do |row|
         {
           mutantId: row["mutant_id"],
           firstSeenVersion: row["first_seen_version"],
@@ -243,7 +249,8 @@ module Henitai
         mutant.status.to_s,
         JSON.generate(data.fetch(:history)),
         data.fetch(:days_alive),
-        *verdict_cache_bindings(mutant, data[:existing_row])
+        *verdict_cache_bindings(mutant, data[:existing_row]),
+        mutant_subject_expression(mutant)
       ]
     end
   end

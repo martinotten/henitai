@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   4.0-only form), and CI runs the floor alongside 4.0.2
 
 ### Fixed
+- Retired mutant identities no longer linger in `mutation-history.json`.
+  When a description or operator changes, the old stable id can never match
+  again; those rows kept appearing in the trend export with a frozen
+  `lastSeenVersion` and a meaningless `daysAlive`. Retirement is decided per
+  subject — a mutant is retired only once its own subject has been mutated
+  in full without it — so narrow `--since` runs and `--survivors-from`
+  partial reruns cannot retire mutants they simply did not re-record. Rows
+  stay in the SQLite database as an audit trail; only the export filters
 - `HashLiteral` pair-removal descriptions no longer leak AST s-expressions
   into reports. Only literal keys are named (string keys now quoted, so
   `{ "a" => 1, a: 2 }` yields two distinguishable descriptions); variable,
