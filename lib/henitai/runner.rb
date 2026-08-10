@@ -167,11 +167,17 @@ module Henitai
       history_store.record(
         result,
         version: Henitai::VERSION,
-        recorded_at:
+        recorded_at:,
+        operators: config.operators,
+        full_scan: full_mutant_set?
       )
     rescue StandardError => e
       warn "henitai: could not record mutation history (#{e.class}: #{e.message}); reports are still written"
     end
+
+    # A sampled run generates a fraction of each subject's mutants, so it
+    # cannot stand as evidence that the ones it omitted no longer exist.
+    def full_mutant_set? = config.respond_to?(:sampling) && config.sampling.to_h[:ratio].nil?
 
     def build_result(mutants, started_at, finished_at)
       @result = build_result_object(mutants, started_at, finished_at)

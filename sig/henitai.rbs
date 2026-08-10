@@ -1263,6 +1263,7 @@ module Henitai
     def operators: () -> untyped
     def progress_reporter: () -> untyped?
     def history_store: () -> untyped
+    def full_mutant_set?: () -> bool
     def per_test_coverage: () -> PerTestCoverage
     def reuse_filter: () -> IncrementalFilter
     def source_selection_coverage: () -> PerTestCoverage
