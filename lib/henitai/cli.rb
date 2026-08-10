@@ -17,7 +17,7 @@ module Henitai
   #   --since GIT_REF   Only mutate subjects changed since GIT_REF
   #   --use INTEGRATION Override integration from config (e.g. rspec)
   #   --config PATH     Path to .henitai.yml (default: .henitai.yml)
-  #   --operators SET   Operator set: light (default) | full
+  #   --operators SET   Operator set: light (default) | full | hard
   #   --jobs N          Number of parallel workers (default: 1)
   #   --all-logs        Print all captured child logs
   #   -h, --help        Show this help message

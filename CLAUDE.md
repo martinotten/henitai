@@ -100,7 +100,7 @@ MSI = killed / total
 
 ### Operators
 
-Canonical operator names are public API; don't alias them. Light set (default, `mutation.operators: light`): `ArithmeticOperator`, `EqualityOperator`, `LogicalOperator`, `BooleanLiteral`, `ConditionalExpression`, `StringLiteral`, `ReturnValue`. Full set adds `SafeNavigation`, `RangeLiteral`, `HashLiteral`, `PatternMatch`, `ArrayDeclaration`, `BlockStatement`, `MethodExpression`, `AssignmentExpression`, `UnaryOperator`, `UpdateOperator`, `RegexMutator`, `MethodChainUnwrap`. Hard set adds the usually-unkillable `EqualityIdentityOperator` and `HashKeyType` on top of full (ADR-12). This repo's own `.henitai.yml` dogfoods with `operators: full`.
+Canonical operator names are public API; don't alias them. Light set (default, `mutation.operators: light`): `ArithmeticOperator`, `EqualityOperator`, `LogicalOperator`, `BooleanLiteral`, `ConditionalExpression`, `StringLiteral`, `ReturnValue`. Full set adds `SafeNavigation`, `RangeLiteral`, `HashLiteral`, `PatternMatch`, `ArrayDeclaration`, `BlockStatement`, `MethodExpression`, `AssignmentExpression`, `UnaryOperator`, `UpdateOperator`, `RegexMutator`, `MethodChainUnwrap`. Hard set adds the usually-unkillable `EqualityIdentityOperator` and `HashKeyType` on top of full (ADR-12). This repo's own `.henitai.yml` currently dogfoods with `operators: light`.
 
 `# henitai:disable` magic comments skip mutation at the call site (trailing comment = line-scoped, standalone comment directly above a `def` = method-scoped); handled by `MutationSkipDirectives` inside `StaticFilter`, matches are reported as `Ignored`, not dropped.
 

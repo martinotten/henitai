@@ -80,7 +80,7 @@ test_excludes:
   - spec/end_to_end/*_spec.rb   # never select these files for individual mutants
 
 mutation:
-  operators: light   # light | full
+  operators: light   # light | full | hard
   timeout: 10.0
   max_flaky_retries: 3
   max_log_bytes: 5000000

@@ -30,6 +30,71 @@ RSpec.describe Henitai::Operators::HashLiteral do
     )
   end
 
+  # Descriptions reach the terminal summary, the JSON report, and
+  # MutantIdentity.stable_id, so a non-literal key must never leak an AST
+  # s-expression (or its newlines) into them.
+  describe "pair labels for non-literal keys" do
+    def pair_removal_descriptions(source)
+      mutate(source).map(&:description).drop(1)
+    end
+
+    it "labels variable keys by position rather than emitting a blank label" do
+      expect(pair_removal_descriptions("{ foo => 1, bar => 2 }")).to eq(
+        ["removed hash pair #1", "removed hash pair #2"]
+      )
+    end
+
+    it "labels an array key by position rather than leaking an s-expression" do
+      expect(pair_removal_descriptions("{ [1] => 2, x: 3 }")).to eq(
+        ["removed hash pair #1", "removed hash pair x"]
+      )
+    end
+
+    it "labels a nested-hash key by position rather than emitting a multi-line description" do
+      expect(pair_removal_descriptions("{ { a: 1 } => 2, x: 3 }")).to eq(
+        ["removed hash pair #1", "removed hash pair x"]
+      )
+    end
+
+    it "labels an interpolated symbol key by position rather than naming one fragment" do
+      interpolated_key_hash = <<~'RUBY'.strip
+        { "a#{x}": 1, y: 2 }
+      RUBY
+
+      expect(pair_removal_descriptions(interpolated_key_hash)).to eq(
+        ["removed hash pair #1", "removed hash pair y"]
+      )
+    end
+
+    it "labels a symbol key containing a newline by position" do
+      newline_key_hash = <<~'RUBY'.strip
+        { :"a\nb" => 1, x: 2 }
+      RUBY
+
+      expect(pair_removal_descriptions(newline_key_hash)).to eq(
+        ["removed hash pair #1", "removed hash pair x"]
+      )
+    end
+
+    it "keeps every description single-line" do
+      descriptions = pair_removal_descriptions("{ { a: 1 } => 2, [1] => 3, x: 4 }")
+
+      expect(descriptions.grep(/\n/)).to be_empty
+    end
+
+    it "distinguishes a string key from the same-named symbol key" do
+      expect(pair_removal_descriptions('{ "a" => 1, a: 2 }')).to eq(
+        ['removed hash pair "a"', "removed hash pair a"]
+      )
+    end
+
+    it "labels keyword literal keys by their keyword" do
+      expect(pair_removal_descriptions("{ nil => 1, true => 2, 3 => 4 }")).to eq(
+        ["removed hash pair nil", "removed hash pair true", "removed hash pair 3"]
+      )
+    end
+  end
+
   it "removes each pair independently" do
     mutants = mutate("{ foo: 1, bar: 2 }")
 
@@ -56,14 +121,14 @@ RSpec.describe Henitai::Operators::HashLiteral do
     )
   end
 
-  it "removes string-keyed pairs too" do
+  it "removes string-keyed pairs too, labelling them quoted" do
     mutants = mutate('{ foo: 1, "bar" => 2 }')
 
     expect(mutants.map(&:description)).to eq(
       [
         "replaced hash with empty hash",
         "removed hash pair foo",
-        "removed hash pair bar"
+        'removed hash pair "bar"'
       ]
     )
   end

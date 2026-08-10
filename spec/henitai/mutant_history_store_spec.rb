@@ -130,6 +130,144 @@ RSpec.describe Henitai::MutantHistoryStore do
     ]
   end
 
+  # An operator rename or a description change retires a mutant identity: the
+  # stable id can never match again, so the row would otherwise sit in the
+  # trend export forever with a frozen lastSeenVersion and a daysAlive
+  # counter that stopped meaning anything. Retirement is scoped per subject —
+  # a run that never mutated a subject says nothing about that subject's
+  # mutants, so narrow `--since` runs must not retire the whole database.
+  describe "retired mutant identities" do
+    def scan_summary
+      { mutation_score: 100.0, mutation_score_indicator: 100.0, equivalence_uncertainty: nil }
+    end
+
+    def record_scan(store, mutants, version:, recorded_at:, **scan)
+      store.record(
+        build_result(mutants, scan_summary),
+        version:, recorded_at:, operators: scan.fetch(:operators, :light),
+        full_scan: scan.fetch(:full_scan, true)
+      )
+    end
+
+    def subject_mutant(subject_name, description, status: :survived)
+      mutant = build_mutant(status:)
+      mutant.subject = Henitai::Subject.new(namespace: subject_name, method_name: "value")
+      mutant.description = description
+      mutant
+    end
+
+    def exported_ids(store)
+      store.trend_report[:mutants].map { |entry| entry[:mutantId] }
+    end
+
+    it "drops a mutant whose subject was scanned again without it" do
+      Dir.mktmpdir do |dir|
+        store = described_class.new(path: File.join(dir, "history.sqlite3"))
+        retired = subject_mutant("Sample", "replaced symbol key with string key")
+        current = subject_mutant("Sample", "removed hash pair foo")
+        record_scan(store, [retired], version: "0.4.0", recorded_at: Time.utc(2026, 1, 1))
+        record_scan(store, [current], version: "0.5.0", recorded_at: Time.utc(2026, 1, 2))
+
+        expect(exported_ids(store)).to eq([Henitai::MutantIdentity.stable_id(current)])
+      end
+    end
+
+    it "keeps mutants of a subject that the later scan never touched" do
+      Dir.mktmpdir do |dir|
+        store = described_class.new(path: File.join(dir, "history.sqlite3"))
+        untouched = subject_mutant("Other", "replaced + with -")
+        rescanned = subject_mutant("Sample", "removed hash pair foo")
+        record_scan(store, [untouched, rescanned], version: "0.4.0", recorded_at: Time.utc(2026, 1, 1))
+        record_scan(store, [rescanned], version: "0.5.0", recorded_at: Time.utc(2026, 1, 2))
+
+        expect(exported_ids(store)).to include(Henitai::MutantIdentity.stable_id(untouched))
+      end
+    end
+
+    it "keeps the retired row in the database as an audit trail" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "history.sqlite3")
+        store = described_class.new(path:)
+        retired = subject_mutant("Sample", "replaced symbol key with string key")
+        record_scan(store, [retired], version: "0.4.0", recorded_at: Time.utc(2026, 1, 1))
+        record_scan(store, [subject_mutant("Sample", "removed hash pair foo")],
+                    version: "0.5.0", recorded_at: Time.utc(2026, 1, 2))
+
+        db = SQLite3::Database.new(path)
+        stored = begin
+          db.get_first_value("SELECT COUNT(*) FROM mutants WHERE mutant_id = ?",
+                             Henitai::MutantIdentity.stable_id(retired))
+        ensure
+          db.close
+        end
+
+        expect(stored).to eq(1)
+      end
+    end
+
+    # Sampling shrinks the generated set at generation time, so a sampled run
+    # re-records a fraction of a subject's mutants. Advancing the baseline
+    # there would retire everything it happened not to sample.
+    it "does not retire mutants a sampled run left out" do
+      Dir.mktmpdir do |dir|
+        store = described_class.new(path: File.join(dir, "history.sqlite3"))
+        sampled_out = subject_mutant("Sample", "replaced + with -")
+        sampled_in = subject_mutant("Sample", "replaced * with /")
+        record_scan(store, [sampled_out, sampled_in], version: "0.4.0", recorded_at: Time.utc(2026, 1, 1))
+        record_scan(store, [sampled_in], version: "0.5.0", recorded_at: Time.utc(2026, 1, 2), full_scan: false)
+
+        expect(exported_ids(store)).to include(Henitai::MutantIdentity.stable_id(sampled_out))
+      end
+    end
+
+    # A `light` run cannot speak for mutants only a `full` run generates.
+    it "does not retire mutants recorded under a wider operator set" do
+      Dir.mktmpdir do |dir|
+        store = described_class.new(path: File.join(dir, "history.sqlite3"))
+        full_only = subject_mutant("Sample", "removed hash pair foo")
+        light_one = subject_mutant("Sample", "replaced + with -")
+        record_scan(store, [full_only, light_one], version: "0.4.0",
+                                                   recorded_at: Time.utc(2026, 1, 1), operators: :full)
+        record_scan(store, [light_one], version: "0.5.0",
+                                        recorded_at: Time.utc(2026, 1, 2), operators: :light)
+
+        expect(exported_ids(store)).to include(Henitai::MutantIdentity.stable_id(full_only))
+      end
+    end
+
+    it "rebuilds a subject_scans table predating the operators column" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "history.sqlite3")
+        legacy = SQLite3::Database.new(path)
+        legacy.execute(
+          "CREATE TABLE subject_scans (subject_expression TEXT PRIMARY KEY, last_scanned_at TEXT NOT NULL)"
+        )
+        legacy.close
+        store = described_class.new(path:)
+
+        expect do
+          record_scan(store, [subject_mutant("Sample", "replaced + with -")],
+                      version: "0.5.0", recorded_at: Time.utc(2026, 1, 1))
+        end.not_to raise_error
+      end
+    end
+
+    it "does not retire mutants a partial rerun left untouched" do
+      Dir.mktmpdir do |dir|
+        store = described_class.new(path: File.join(dir, "history.sqlite3"))
+        killed = subject_mutant("Sample", "replaced + with -", status: :killed)
+        survivor = subject_mutant("Sample", "replaced * with /", status: :survived)
+        record_scan(store, [killed, survivor], version: "0.4.0", recorded_at: Time.utc(2026, 1, 1))
+        partial = Struct.new(:mutants, :scoring_summary) do
+          def partial_rerun? = true
+        end.new([survivor], scan_summary)
+        store.record(partial, version: "0.4.1", recorded_at: Time.utc(2026, 1, 2))
+
+        expect(exported_ids(store)).to include(Henitai::MutantIdentity.stable_id(killed))
+      end
+    end
+  end
+
   it "returns an empty report before any runs are recorded" do
     Dir.mktmpdir do |dir|
       report = described_class.new(path: File.join(dir, "mutation-history.sqlite3")).trend_report

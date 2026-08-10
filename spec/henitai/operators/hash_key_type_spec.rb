@@ -30,7 +30,9 @@ RSpec.describe Henitai::Operators::HashKeyType do
     )
   end
 
-  it "mutates each symbol key independently" do
+  # Independence is asserted by the following example; this one pins the
+  # mutant count and the description text they are reported under.
+  it "emits one mutant per symbol key, each described as a key replacement" do
     expect(mutate("{ foo: 1, bar: 2 }").map(&:description)).to eq(
       [
         "replaced symbol key with string key",

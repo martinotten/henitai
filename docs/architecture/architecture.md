@@ -147,12 +147,13 @@ directly rather than a first-class profile object:
 | ci-nightly | deeper scheduled runs | broader coverage, more mutants, latent tracking |
 | full | release or research runs | complete mutation set, fewer shortcuts |
 
-The canonical operator model uses a small light set first and then grows to a Ruby-specific full set:
+The canonical operator model is three nested sets, `light` ⊂ `full` ⊂ `hard`, selected by `mutation.operators`:
 
-| Phase | Canonical operators |
-|---|---|
-| Phase 1 | `ArithmeticOperator`, `EqualityOperator`, `LogicalOperator`, `BooleanLiteral`, `ConditionalExpression`, `StringLiteral`, `ReturnValue` |
-| Phase 2 | `SafeNavigation`, `RangeLiteral`, `HashLiteral`, `PatternMatch`, `ArrayDeclaration`, `BlockStatement`, `MethodExpression`, `AssignmentExpression` |
+| Set | Adds | Canonical operators |
+|---|---|---|
+| `light` (default) | — | `ArithmeticOperator`, `EqualityOperator`, `LogicalOperator`, `BooleanLiteral`, `ConditionalExpression`, `StringLiteral`, `ReturnValue` |
+| `full` | broader Ruby coverage | `ArrayDeclaration`, `HashLiteral`, `MethodChainUnwrap`, `RangeLiteral`, `RegexMutator`, `SafeNavigation`, `PatternMatch`, `BlockStatement`, `MethodExpression`, `AssignmentExpression`, `UnaryOperator`, `UpdateOperator` |
+| `hard` | usually-unkillable mutations (ADR-12) | `EqualityIdentityOperator`, `HashKeyType` |
 
 Ruby-specific execution notes:
 
@@ -308,9 +309,9 @@ Latent-mutant persistence uses a local SQLite file (`mutation-history.sqlite3`) 
 
 ### 8.1 Mutation Operators
 
-The operator system is split into a light set for MVP stability and a full set for broader Ruby coverage. Operator names are canonical and should not be aliased in public output.
+The operator system is three nested sets: `light` for stable defaults, `full` for broader Ruby coverage, and `hard` for mutations whose survival rarely indicates a test gap (ADR-12). Each set is a strict superset of the previous one, so `--operators hard` runs everything. Operator names are canonical and should not be aliased in public output.
 
-#### Phase 1 light set
+#### Light set (default)
 
 | Canonical name | Purpose | Ruby example |
 |---|---|---|
@@ -322,13 +323,13 @@ The operator system is split into a light set for MVP stability and a full set f
 | `StringLiteral` | Replace string literals with empty or neutral values | `"foo"` -> `""` |
 | `ReturnValue` | Replace return expressions with neutral values | `return x` -> `return nil` |
 
-#### Phase 2 full set
+#### Full set (adds to light)
 
 | Canonical name | Purpose | Ruby example |
 |---|---|---|
 | `SafeNavigation` | Remove the nil guard from safe navigation | `user&.name` -> `user.name` |
 | `RangeLiteral` | Flip inclusive and exclusive ranges | `1..5` <-> `1...5` |
-| `HashLiteral` | Replace hash literals with empty or reduced variants | `{ a: 1 }` -> `{}` |
+| `HashLiteral` | Empty the hash, and remove one pair at a time | `{ a: 1, b: 2 }` -> `{}` / `{ b: 2 }` |
 | `PatternMatch` | Mutate `in` arms and guards | `in { x: Integer }` -> `in { x: String }` |
 | `ArrayDeclaration` | Remove array elements or replace the array entirely | `[1, 2]` -> `[]` |
 | `BlockStatement` | Remove block content | `{ do_work }` -> `{}` |
@@ -338,9 +339,17 @@ The operator system is split into a light set for MVP stability and a full set f
 | `UpdateOperator` | Swap compound-assignment operators in arithmetic and logical pairs | `x += 1` -> `x -= 1`, `x \|\|= v` -> `x &&= v` |
 | `RegexMutator` | Mutate regex quantifiers (`+`/`*` swap) and anchors (`^`/`$` removal) | `/\d+/` -> `/\d*/` |
 | `MethodChainUnwrap` | Remove a link from a method chain by replacing the outer call with its receiver | `arr.sort.first` -> `arr.first` |
-| `EqualityIdentityOperator` | Replace a relational operator with `eql?`/`equal?`, or replace `eql?`/`equal?` with any other comparison method | `a == b` -> `a.eql?(b)` |
 
-`EqualityOperator` and `EqualityIdentityOperator` partition the same operator space along a signal/noise line (ADR-10): `==`/`eql?`/`equal?` is the hardest equality pairing to kill in practice, so it moved out of the default light set while the rest of the relational swaps stayed.
+#### Hard set (adds to full)
+
+Mutations that are valid but usually unkillable: their survival rarely indicates a real test gap, so they are opt-in rather than part of `full` (ADR-12). Reach for them when hunting the last survivors, and suppress individual sites with `# henitai:disable <OperatorName>`.
+
+| Canonical name | Purpose | Ruby example |
+|---|---|---|
+| `EqualityIdentityOperator` | Replace a relational operator with `eql?`/`equal?`, or replace `eql?`/`equal?` with any other comparison method | `a == b` -> `a.eql?(b)` |
+| `HashKeyType` | Replace a symbol hash key with the equivalent string key, one pair at a time | `{ a: 1 }` -> `{ "a" => 1 }` |
+
+`EqualityOperator` and `EqualityIdentityOperator` partition the same operator space along a signal/noise line (ADR-10): `==`/`eql?`/`equal?` is the hardest equality pairing to kill in practice, so it moved out of the default light set while the rest of the relational swaps stayed — and as of ADR-12 out of `full` as well. `HashKeyType` is the same story for key types: symbol/string confusion is a real defect class, but frameworks that normalize keys (ActiveRecord `order`/`where`) make those mutants frequently equivalent.
 
 ### 8.2 Cost Reduction Pipeline
 
@@ -608,6 +617,8 @@ Mutant activation covers `module_function` subjects: `module_function` copies th
 | Remove per-line mutation cap (ADR-08) | keep the default cap; make it configurable only; use sampling instead | accepted | every other major mutation framework emits all mutations per node; the cap silently discarded granular operator output and made coverage metrics dishonest |
 | Split `EqualityOperator` into relational vs identity-method mutations (ADR-10) | thread operator-set context into `Operator#mutate`; rely solely on `EquivalenceDetector`; drop `eql?`/`equal?` mutations entirely | accepted | `==`/`eql?`/`equal?` is the hardest equality pairing to kill in practice (precedent: the `mutant` gem excludes it from its default operator set); partitioning by class fits the existing `Operator.for_set` model used by every other operator |
 | Content-fingerprint verdict reuse, not git scoping (ADR-11) | auto-`--since` from recorded HEAD as the only mechanism; killed-only reuse forever | accepted | git proves a scope boundary, not per-mutant validity; fingerprints over subject source, covering-set membership/content, and dependency files make Survived reuse sound, with every doubt resolving to re-execution |
+| Supported Ruby range starts at 3.3.6 (ADR-13) | keep `>= 4.0.0` as policy; relax to `>= 3.3.0`; relax to `>= 3.4.0` | accepted | henitai runs inside the target project's process, so the floor decides who can be mutation-tested at all; measurement showed one 4.0-only API (`Enumerable#rfind`, introduced by RuboCop's own `TargetRubyVersion: 4.0`), and 3.3.6 is the version actually verified green |
+| Hard operator set for usually-unkillable mutations (ADR-12) | keep the mutations in `full` and rely on `EquivalenceDetector`; drop them entirely; per-operator config flags | accepted | framework key normalization and the `==`/`eql?`/`equal?` pairing make these mutants survive without indicating a test gap; a third nested set keeps `full` high-signal while leaving the mutations available, with `# henitai:disable <OperatorName>` as the per-site escape hatch |
 
 Formal ADRs live in `docs/architecture/adr/` and use the same English terminology.
 
@@ -694,7 +705,7 @@ CI and developer-feedback features:
 - `define_method`-based subject detection
 - dashboard integration
 
-The full Phase 2 operator set (`SafeNavigation`, `RangeLiteral`, etc.) is defined in the architecture but has not yet been fully implemented.
+All three operator sets (`light`, `full`, `hard`) are implemented; see §8.1.
 
 ### Phase 3 - Extensions
 

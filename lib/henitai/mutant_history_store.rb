@@ -7,11 +7,13 @@ require "sqlite3"
 require "time"
 require_relative "mutant_identity"
 require_relative "mutant_history_store/sql"
+require_relative "mutant_history_store/subject_scans"
 require_relative "mutant_history_store/verdict_cache"
 
 module Henitai
   # Persists mutant outcomes across runs in a lightweight SQLite database.
   class MutantHistoryStore
+    include SubjectScans
     include VerdictCache
 
     # @param per_test_coverage [PerTestCoverage, nil] live per-test coverage
@@ -24,15 +26,32 @@ module Henitai
 
     attr_reader :path
 
-    def record(result, version:, recorded_at: Time.now.utc)
+    # Timestamps are normalized to UTC on the way in: they are stored as
+    # ISO8601 strings and compared lexicographically (retirement compares a
+    # mutant's last_seen_at against its subject's scan), and callers pass
+    # local-zone times — `Runner#run` hands over `Time.now`. Mixing offsets
+    # makes "2026-01-01T13:00:00Z" < "2026-01-01T14:00:00+02:00" as strings
+    # while the opposite is true as instants. `getutc`, not `utc`, so the
+    # caller's Time object is not mutated.
+    # @param operators [Symbol, nil] the operator set this run generated from;
+    #   stored per mutant so a later scan only retires mutants recorded under
+    #   the same set.
+    # @param full_scan [Boolean] whether this run regenerated each touched
+    #   subject's mutants in full. False for sampled runs, which produce a
+    #   fraction of the set and must not advance the retirement baseline.
+    def record(result, version:, recorded_at: Time.now, operators: nil, full_scan: false)
+      recorded_at = recorded_at.getutc
       FileUtils.mkdir_p(File.dirname(path))
 
       with_database do |db|
         ensure_schema(db)
         db.transaction do
-          insert_run(db, result, version, recorded_at) unless partial_rerun?(result)
+          unless partial_rerun?(result)
+            insert_run(db, result, version, recorded_at)
+            record_subject_scans(db, result, recorded_at, operators) if full_scan && operators
+          end
           Array(result.mutants).each do |mutant|
-            upsert_mutant(db, mutant, version, recorded_at)
+            upsert_mutant(db, mutant, version, recorded_at, operators)
           end
         end
       end
@@ -100,6 +119,8 @@ module Henitai
     def ensure_schema(db)
       db.execute_batch(Sql::RUNS_TABLE)
       db.execute_batch(Sql::MUTANTS_TABLE)
+      migrate_subject_scans_table(db)
+      db.execute_batch(SubjectScans::SUBJECT_SCANS_TABLE)
       migrate_mutants_table(db)
     end
 
@@ -119,10 +140,10 @@ module Henitai
       db.execute(Sql::INSERT_RUN, insert_run_bindings(result, version, recorded_at))
     end
 
-    def upsert_mutant(db, mutant, version, recorded_at)
+    def upsert_mutant(db, mutant, version, recorded_at, operators)
       db.execute(
         Sql::UPSERT_MUTANT,
-        upsert_mutant_bindings(mutant_history_data(db, mutant, version, recorded_at))
+        upsert_mutant_bindings(mutant_history_data(db, mutant, version, recorded_at), operators)
       )
     end
 
@@ -201,7 +222,7 @@ module Henitai
     end
 
     def load_mutants(db)
-      db.execute("SELECT * FROM mutants ORDER BY first_seen_at, mutant_id").map do |row|
+      db.execute(SubjectScans::LOAD_MUTANTS).map do |row|
         {
           mutantId: row["mutant_id"],
           firstSeenVersion: row["first_seen_version"],
@@ -232,7 +253,7 @@ module Henitai
       ]
     end
 
-    def upsert_mutant_bindings(data)
+    def upsert_mutant_bindings(data, operators)
       mutant = data.fetch(:mutant)
       [
         data.fetch(:mutant_id),
@@ -243,7 +264,9 @@ module Henitai
         mutant.status.to_s,
         JSON.generate(data.fetch(:history)),
         data.fetch(:days_alive),
-        *verdict_cache_bindings(mutant, data[:existing_row])
+        *verdict_cache_bindings(mutant, data[:existing_row]),
+        mutant_subject_expression(mutant),
+        operators&.to_s
       ]
     end
   end

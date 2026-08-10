@@ -54,7 +54,9 @@ module Henitai
       # filter treats as never-reusable — the correct conservative behavior.
       MIGRATION_COLUMNS = {
         "subject_source_hash" => "TEXT",
-        "covered_tests_fingerprint" => "TEXT"
+        "covered_tests_fingerprint" => "TEXT",
+        "subject_expression" => "TEXT",
+        "operators" => "TEXT"
       }.freeze
 
       UPSERT_MUTANT = <<~SQL
@@ -68,9 +70,13 @@ module Henitai
           status_history,
           days_alive,
           subject_source_hash,
-          covered_tests_fingerprint
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          covered_tests_fingerprint,
+          subject_expression,
+          operators
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(mutant_id) DO UPDATE SET
+          subject_expression = excluded.subject_expression,
+          operators = excluded.operators,
           last_seen_version = excluded.last_seen_version,
           last_seen_at = excluded.last_seen_at,
           current_status = excluded.current_status,

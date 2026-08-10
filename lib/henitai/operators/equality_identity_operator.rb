@@ -10,8 +10,8 @@ module Henitai
     # This is the noisy half of the equality/identity pairing split out of
     # EqualityOperator: most Ruby objects don't observably distinguish `==`
     # from `eql?`/`equal?`, so these mutations are frequently unkillable by
-    # ordinary tests. They stay available in the full operator set rather
-    # than the default light set.
+    # ordinary tests. As of ADR-12 they live in the hard set — available on
+    # request, but out of both `light` and `full`.
     class EqualityIdentityOperator < Henitai::Operator
       NODE_TYPES = [:send].freeze
       RELATIONAL = %i[== != < > <= >= <=>].freeze
