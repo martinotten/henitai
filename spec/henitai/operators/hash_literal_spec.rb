@@ -66,6 +66,16 @@ RSpec.describe Henitai::Operators::HashLiteral do
       )
     end
 
+    it "labels a symbol key containing a newline by position" do
+      newline_key_hash = <<~'RUBY'.strip
+        { :"a\nb" => 1, x: 2 }
+      RUBY
+
+      expect(pair_removal_descriptions(newline_key_hash)).to eq(
+        ["removed hash pair #1", "removed hash pair x"]
+      )
+    end
+
     it "keeps every description single-line" do
       descriptions = pair_removal_descriptions("{ { a: 1 } => 2, [1] => 3, x: 4 }")
 

@@ -69,13 +69,20 @@ module Henitai
       # s-expression (and, for a nested hash, embedded newlines) into every
       # report surface and into MutantIdentity.stable_id.
       def pair_key_label(pair, index)
-        key = pair.children.first
+        label = literal_key_label(pair.children.first)
+        return "##{index + 1}" if label.nil? || label.include?("\n")
 
+        label
+      end
+
+      # A symbol can itself contain a newline (`:"a\nb"`), which would put the
+      # break straight back into every single-line surface — hence the
+      # newline check on the rendered label above, not just on the node type.
+      def literal_key_label(key)
         case key.type
         when *SCALAR_KEY_TYPES then key.children.first.to_s
         when *QUOTED_KEY_TYPES then key.children.first.inspect
         when *KEYWORD_KEY_TYPES then key.type.to_s
-        else "##{index + 1}"
         end
       end
     end

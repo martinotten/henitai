@@ -81,7 +81,7 @@ RSpec.describe "Operator registry" do
   def description_fixture
     <<~RUBY
       def sample(a, b)
-        config = { { x: 1 } => 2, [3] => 4, "s" => 5, k: 6 }
+        config = { { x: 1 } => 2, [3] => 4, "s" => 5, :"multi\nline" => 6, k: 7 }
         total = a + b - 1
         total += 1
         flag = a == b && a != b || !a

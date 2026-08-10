@@ -1084,6 +1084,7 @@ module Henitai
     def operators: () -> untyped
     def progress_reporter: () -> untyped?
     def history_store: () -> untyped
+    def full_mutant_set?: () -> bool
     def per_test_coverage: () -> PerTestCoverage
     def history_store_path: () -> String
     def source_files: () -> Array[String]

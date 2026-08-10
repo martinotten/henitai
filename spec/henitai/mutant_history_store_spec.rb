@@ -141,8 +141,12 @@ RSpec.describe Henitai::MutantHistoryStore do
       { mutation_score: 100.0, mutation_score_indicator: 100.0, equivalence_uncertainty: nil }
     end
 
-    def record_scan(store, mutants, version:, recorded_at:)
-      store.record(build_result(mutants, scan_summary), version:, recorded_at:)
+    def record_scan(store, mutants, version:, recorded_at:, **scan)
+      store.record(
+        build_result(mutants, scan_summary),
+        version:, recorded_at:, operators: scan.fetch(:operators, :light),
+        full_scan: scan.fetch(:full_scan, true)
+      )
     end
 
     def subject_mutant(subject_name, description, status: :survived)
@@ -198,6 +202,53 @@ RSpec.describe Henitai::MutantHistoryStore do
         end
 
         expect(stored).to eq(1)
+      end
+    end
+
+    # Sampling shrinks the generated set at generation time, so a sampled run
+    # re-records a fraction of a subject's mutants. Advancing the baseline
+    # there would retire everything it happened not to sample.
+    it "does not retire mutants a sampled run left out" do
+      Dir.mktmpdir do |dir|
+        store = described_class.new(path: File.join(dir, "history.sqlite3"))
+        sampled_out = subject_mutant("Sample", "replaced + with -")
+        sampled_in = subject_mutant("Sample", "replaced * with /")
+        record_scan(store, [sampled_out, sampled_in], version: "0.4.0", recorded_at: Time.utc(2026, 1, 1))
+        record_scan(store, [sampled_in], version: "0.5.0", recorded_at: Time.utc(2026, 1, 2), full_scan: false)
+
+        expect(exported_ids(store)).to include(Henitai::MutantIdentity.stable_id(sampled_out))
+      end
+    end
+
+    # A `light` run cannot speak for mutants only a `full` run generates.
+    it "does not retire mutants recorded under a wider operator set" do
+      Dir.mktmpdir do |dir|
+        store = described_class.new(path: File.join(dir, "history.sqlite3"))
+        full_only = subject_mutant("Sample", "removed hash pair foo")
+        light_one = subject_mutant("Sample", "replaced + with -")
+        record_scan(store, [full_only, light_one], version: "0.4.0",
+                                                   recorded_at: Time.utc(2026, 1, 1), operators: :full)
+        record_scan(store, [light_one], version: "0.5.0",
+                                        recorded_at: Time.utc(2026, 1, 2), operators: :light)
+
+        expect(exported_ids(store)).to include(Henitai::MutantIdentity.stable_id(full_only))
+      end
+    end
+
+    it "rebuilds a subject_scans table predating the operators column" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "history.sqlite3")
+        legacy = SQLite3::Database.new(path)
+        legacy.execute(
+          "CREATE TABLE subject_scans (subject_expression TEXT PRIMARY KEY, last_scanned_at TEXT NOT NULL)"
+        )
+        legacy.close
+        store = described_class.new(path:)
+
+        expect do
+          record_scan(store, [subject_mutant("Sample", "replaced + with -")],
+                      version: "0.5.0", recorded_at: Time.utc(2026, 1, 1))
+        end.not_to raise_error
       end
     end
 
