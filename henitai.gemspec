@@ -51,7 +51,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "minitest", "~> 5.25" # Required under Bundler for the Minitest integration
   spec.add_dependency "prism", "~> 1.5" # Ruby parser
   spec.add_dependency "simplecov", "~> 0.22" # Coverage collection for Minitest integration
-  spec.add_dependency "sqlite3", "~> 1.7" # Lightweight persistent history store
+  spec.add_dependency "sqlite3", ">= 2.9.5", "< 3" # Lightweight persistent history store
   spec.add_dependency "unparser", "~> 0.6" # AST → source code reconstruction
 
   # Development dependencies (via Gemfile)

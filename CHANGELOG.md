@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- `sqlite3` requirement raised from `~> 1.7` to `>= 2.9.5, < 3`, excluding the
+  vulnerable releases up to and including 2.9.4. This is a runtime major bump:
+  applications pinned to `sqlite3` 1.x will need to upgrade before installing
+  this version of henitai. The root bundle also moves to `json` 2.21.2, the
+  patched release. `spec/infra/gemspec_dependencies_spec.rb` now asserts both
+  floors so a regression fails the suite rather than shipping quietly
+
 ### Changed
 - Minimum supported Ruby lowered from 4.0.0 to 3.3.6, making henitai usable by
   projects not yet on Ruby 4. The only Ruby 4-only API in use was

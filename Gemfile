@@ -16,6 +16,6 @@ group :development do
   gem "steep", require: false # Type checking via RBS
 end
 
-gem "sqlite3", "~> 1.7"
+gem "sqlite3", ">= 2.9.5", "< 3"
 
 gem "ruby-lsp", "~> 0.26.9", group: :development
