@@ -3,6 +3,7 @@
 require "fileutils"
 require "stringio"
 require_relative "process_wakeup"
+require_relative "integration/child_bootstrap"
 require_relative "integration/rspec_process_runner"
 require_relative "integration/scenario_log_support"
 require_relative "integration/coverage_suppression"

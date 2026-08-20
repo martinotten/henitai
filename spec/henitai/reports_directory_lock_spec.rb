@@ -23,6 +23,43 @@ RSpec.describe Henitai::ReportsDirectoryLock do
     end
   end
 
+  # A forked mutant child inherits this handle, and the flock lives on the
+  # shared open file description. Registering it lets the child close its copy
+  # right after fork, so an orphaned child cannot pin the lock open.
+  describe "inherited fd registration" do
+    it "registers the lock handle while the lock is held" do
+      Dir.mktmpdir do |reports_dir|
+        registered = nil
+
+        described_class.new(reports_dir:).synchronize do
+          registered = Henitai::InheritedFdRegistry.registered.map { |io| io.path if io.respond_to?(:path) }
+        end
+
+        expect(registered).to include(File.join(reports_dir, ".henitai-run.lock"))
+      end
+    end
+
+    it "unregisters the lock handle after the block returns" do
+      Dir.mktmpdir do |reports_dir|
+        described_class.new(reports_dir:).synchronize { nil }
+
+        expect(Henitai::InheritedFdRegistry.registered).to be_empty
+      end
+    end
+
+    it "unregisters the lock handle when the block raises" do
+      Dir.mktmpdir do |reports_dir|
+        begin
+          described_class.new(reports_dir:).synchronize { raise "boom" }
+        rescue RuntimeError
+          # The raise is the point; the assertion is about cleanup after it.
+        end
+
+        expect(Henitai::InheritedFdRegistry.registered).to be_empty
+      end
+    end
+  end
+
   it "replaces stale owner metadata after acquiring the lock" do
     Dir.mktmpdir do |reports_dir|
       lock_path = File.join(reports_dir, ".henitai-run.lock")
