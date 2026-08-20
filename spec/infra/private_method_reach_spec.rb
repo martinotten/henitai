@@ -80,12 +80,6 @@ RSpec.describe "Private method reach in specs" do
         "reject_excluded_tests is private; needs an ExcludedTestFilter collaborator " \
         "(docs/backlog/2026-08-21-review-send-execution-engine-spec.md)"
       ],
-      "spec/henitai/operators/regex_mutator_spec.rb" => [
-        2,
-        "build_regex_mutant guards are reachable through public #mutate with a " \
-        "pathological pattern; spec rewrite only " \
-        "(docs/backlog/2026-07-08-review-send-operators-regex-mutator-spec.md)"
-      ],
       "spec/henitai/mutant_history_store_spec.rb" => [
         2,
         "fixture builder pokes Subject's @source_file/@source_range; " \

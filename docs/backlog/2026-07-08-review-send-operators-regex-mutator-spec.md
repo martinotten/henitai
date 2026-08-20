@@ -1,6 +1,6 @@
 # `operators/regex_mutator_spec` Uses `send` to Reach Private Mutator Helpers
 
-Status: backlog
+Status: done (2026-08-21)
 Date: 2026-07-08
 Severity: Low
 Source: discovered while auditing specs that call private methods with `send`
@@ -42,3 +42,26 @@ public path genuinely reaches the behavior.
 
 The budget for this file in `spec/infra/private_method_reach_spec.rb` must come
 down in the same commit as any reduction here.
+
+## Resolution (2026-08-21)
+
+Spec rewrite only; no lib change was needed, so this one did not call for a
+collaborator extraction.
+
+Both guards in `build_regex_mutant` are reachable through the public
+`#mutate`:
+
+- the duplicate guard, with `/simple/` -- a pattern with no quantifier,
+  anchor or character class, so every transformation returns the source
+  unchanged and all five are discarded;
+- the validity guard, with a hand-built node whose pattern is `[`.
+  Character-class negation turns that into `[^`, which is not a valid regex.
+  A bare `[` is not valid Ruby source, hence the hand-built node rather than
+  a parsed one. Since the transformed string *differs* from the source, only
+  the validity guard can be what rejects it -- which makes the assertion
+  precise rather than incidental.
+
+Verified non-vacuous by deleting the `valid_regex?` guard and confirming the
+second example fails.
+
+Budget removed from `spec/infra/private_method_reach_spec.rb`.
