@@ -973,6 +973,8 @@ module Henitai
 
     SCHEMA_VERSION: String
     DEFAULT_THRESHOLDS: Hash[Symbol, Integer]
+    DEFAULT_COVERAGE_CRITERIA: Hash[Symbol, bool]
+    CRITERION_STATUSES: Hash[Symbol, Symbol]
 
     attr_reader mutants: Array[Mutant]
     attr_reader started_at: Time
@@ -982,8 +984,9 @@ module Henitai
     attr_reader session_id: String
     attr_reader git_sha: String?
     attr_reader since: String?
+    attr_reader coverage_criteria: Hash[Symbol, bool]
 
-    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time, ?thresholds: Hash[Symbol, Integer]?, ?partial_rerun: bool, ?survivor_stats: Hash[Symbol, untyped]?, ?session_id: String, ?git_sha: String?, ?source_provider: ^(String) -> String, ?authoritative: bool, ?since: String?) -> void
+    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time, ?thresholds: Hash[Symbol, Integer]?, ?partial_rerun: bool, ?survivor_stats: Hash[Symbol, untyped]?, ?session_id: String, ?git_sha: String?, ?source_provider: ^(String) -> String, ?authoritative: bool, ?since: String?, ?coverage_criteria: Hash[Symbol, bool]?) -> void
     def partial_rerun?: () -> bool
     def authoritative?: () -> bool
     def killed: () -> Integer
@@ -1000,6 +1003,7 @@ module Henitai
     private
 
     def detected_in: (Array[Mutant]) -> Integer
+    def detected_statuses: () -> Array[Symbol]
     def mutation_score_for: (Array[Mutant]) -> Float?
     def mutation_score_indicator_for: (Array[Mutant]) -> Float?
     def base_schema: () -> Hash[Symbol, untyped]
@@ -1111,6 +1115,8 @@ module Henitai
     def mutants_for: (Array[Subject], Array[String]) -> Array[Mutant]
     def with_reports_dir: () { () -> untyped } -> untyped
     def result_thresholds: () -> Hash[Symbol, Integer]?
+    def result_coverage_criteria: () -> Hash[Symbol, bool]?
+    def optional_config: (Symbol) -> untyped
     def survivor_rerun?: () -> bool
     def full_run?: () -> bool
     def survivor_strategy: () -> SurvivorRerunStrategy

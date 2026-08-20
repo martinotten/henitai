@@ -21,7 +21,8 @@ RSpec.describe Henitai::Runner do
         :reporters,
         :thresholds,
         :integration,
-        :reports_dir
+        :reports_dir,
+        :coverage_criteria
       )
     )
 
@@ -60,7 +61,36 @@ RSpec.describe Henitai::Runner do
       values[:reporters],
       values[:thresholds],
       values[:integration],
-      values[:reports_dir]
+      values[:reports_dir],
+      values[:coverage_criteria]
+    )
+  end
+
+  # Drives a full run with every gate stubbed out and returns the keyword
+  # arguments Runner handed to Result. Lets plumb-through assertions go through
+  # the public #run instead of reaching private readers.
+  def capture_result_kwargs(runner)
+    stub_empty_pipeline(runner)
+    captured = nil
+    result = build_result([])
+    allow(Henitai::Result).to receive(:new) do |**kwargs|
+      captured = kwargs
+      result
+    end
+    allow(Henitai::Reporter).to receive(:run_all)
+
+    runner.run
+    captured
+  end
+
+  def stub_empty_pipeline(runner)
+    allow(runner).to receive_messages(
+      subject_resolver: instance_double(Henitai::SubjectResolver, resolve_from_files: []),
+      mutant_generator: instance_double(Henitai::MutantGenerator, generate: []),
+      static_filter: instance_double(Henitai::StaticFilter, apply: []),
+      execution_engine: instance_double(Henitai::ExecutionEngine, run: []),
+      integration: instance_double(Henitai::Integration::Rspec),
+      history_store: build_history_store
     )
   end
 
@@ -73,7 +103,8 @@ RSpec.describe Henitai::Runner do
       reporters: ["terminal"],
       thresholds: { low: 60, high: 80 },
       integration: "rspec",
-      reports_dir: "reports"
+      reports_dir: "reports",
+      coverage_criteria: nil
     }
   end
 
@@ -1039,6 +1070,36 @@ RSpec.describe Henitai::Runner do
         runner.run
 
         expect(captured[:thresholds]).to be_nil
+      end
+    end
+  end
+
+  it "passes the configured coverage criteria to the result" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+      Dir.chdir(dir) do
+        config = build_config(reporters: [], coverage_criteria: { timeout: false })
+        captured = capture_result_kwargs(described_class.new(config:))
+
+        expect(captured[:coverage_criteria]).to eq(timeout: false)
+      end
+    end
+  end
+
+  it "passes nil coverage criteria when the config does not expose them" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+      Dir.chdir(dir) do
+        config = Struct.new(
+          :includes, :excludes, :operators, :timeout, :reporters, :integration, :reports_dir
+        ).new(["lib"], [], :light, 10.0, [], "rspec", "reports")
+        captured = capture_result_kwargs(described_class.new(config:))
+
+        expect(captured[:coverage_criteria]).to be_nil
       end
     end
   end

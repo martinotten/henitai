@@ -161,9 +161,17 @@ Statuses are `Killed`, `Survived`, `NoCoverage`, `Timeout`, `CompileError`,
 `RuntimeError`, `Ignored`, `Equivalent`, and `Pending`.
 
 ```text
-MS  = (killed + timeout) / (total - ignored - no_coverage - compile_error - equivalent)
+MS  = (killed + timeout + runtime_error) / (total - ignored - no_coverage - compile_error - equivalent)
 MSI = killed / total
 ```
+
+The `MS` numerator is configurable via the `coverage_criteria` block
+(`test_result` -> `killed`, `timeout` -> `timeout`, `process_abort` ->
+`runtime_error`); all three default to `true`, which is the formula above.
+Switching one off removes that status from the numerator only — the
+denominator is unaffected, and `MSI` is never affected, being `killed / total`
+by definition. Note that turning a criterion off can move a run across its
+threshold and so change the CLI exit code.
 
 `Equivalent` is an internal status serialized as `Ignored` in the external
 Stryker schema. `EquivalenceDetector` only flags AST-provable cases such as

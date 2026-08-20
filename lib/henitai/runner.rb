@@ -164,6 +164,7 @@ module Henitai
         started_at:,
         finished_at:,
         thresholds: result_thresholds,
+        coverage_criteria: result_coverage_criteria,
         partial_rerun: survivor_rerun?,
         survivor_stats: survivor_strategy.survivor_stats,
         git_sha: safe_head_sha,
@@ -298,19 +299,17 @@ module Henitai
       subjects.uniq { |subject| [subject.expression, subject.source_file] }
     end
 
-    def normalize_path(path)
-      File.expand_path(path)
-    end
+    def normalize_path(path) = File.expand_path(path)
 
-    def result_thresholds
-      return nil unless config.respond_to?(:thresholds)
+    def result_thresholds = optional_config(:thresholds)
 
-      config.thresholds
-    end
+    def result_coverage_criteria = optional_config(:coverage_criteria)
 
-    def survivor_rerun?
-      !@survivors_from.nil?
-    end
+    # Specs pass bare config doubles that expose only what the example needs, so
+    # scoring inputs are read defensively rather than assumed present.
+    def optional_config(name) = config.respond_to?(name) ? config.public_send(name) : nil
+
+    def survivor_rerun? = !@survivors_from.nil?
 
     # Mutation-scope full run, controlling Result#authoritative? — distinct
     # from the per-test-coverage plan's test-suite-scope "full run".

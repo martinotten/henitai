@@ -16,6 +16,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   floors so a regression fails the suite rather than shipping quietly
 
 ### Changed
+- `coverage_criteria` now actually affects scoring. The block was documented,
+  defaulted and validated since it was introduced, but nothing ever read it —
+  `Result` hardcoded the `MS` numerator as `killed + timeout + runtime_error`,
+  so flipping `coverage_criteria.timeout` silently did nothing. It is now
+  consumed by `Result`, mapping `test_result` to `Killed`, `timeout` to
+  `Timeout` and `process_abort` to `RuntimeError`.
+
+  The shipped defaults for `timeout` and `process_abort` were `false`, which
+  described behavior the scorer did not have. They are now `true`, so **scores
+  do not move**: wiring the knob up with the old defaults intact would have
+  dropped timeouts and process aborts out of every user's numerator. Turning a
+  criterion off removes that status from the numerator only — the denominator is
+  unaffected, and `MSI` remains `killed / total` by definition. Note that
+  turning one off can move a run across its threshold and so change the exit
+  code
 - Minimum supported Ruby lowered from 4.0.0 to 3.3.6, making henitai usable by
   projects not yet on Ruby 4. The only Ruby 4-only API in use was
   `Enumerable#rfind`, replaced by `reverse_each.find`; `TargetRubyVersion` is

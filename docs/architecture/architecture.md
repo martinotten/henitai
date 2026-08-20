@@ -215,8 +215,8 @@ mutation:
     - "(send _ :puts _)"
 coverage_criteria:
   test_result: true
-  timeout: false
-  process_abort: false
+  timeout: true
+  process_abort: true
 reporters:
   - terminal
   - json

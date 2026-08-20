@@ -113,12 +113,13 @@ RSpec.describe Henitai::Result do
     mutant
   end
 
-  def result(mutants, thresholds: nil)
+  def result(mutants, thresholds: nil, coverage_criteria: nil)
     described_class.new(
       mutants:,
       started_at: Time.at(0),
       finished_at: Time.at(1),
-      thresholds:
+      thresholds:,
+      coverage_criteria:
     )
   end
 
@@ -183,6 +184,65 @@ RSpec.describe Henitai::Result do
 
   it "calculates mutation score indicator from killed mutants only" do
     expect(result(scoring_mutants).mutation_score_indicator).to eq(12.5)
+  end
+
+  describe "coverage criteria" do
+    # scoring_mutants is one mutant per status. Under the defaults the MS
+    # numerator is killed + timeout + runtime_error (3) over the four
+    # non-excluded statuses, i.e. 75.0. Switching a criterion off drops its
+    # status out of the numerator only, so each single-off case lands on 50.0.
+
+    it "defaults to counting test failures, timeouts and process aborts" do
+      expect(result(scoring_mutants).coverage_criteria).to eq(
+        test_result: true, timeout: true, process_abort: true
+      )
+    end
+
+    it "reproduces the unconfigured mutation score under the defaults" do
+      expect(result(scoring_mutants, coverage_criteria: nil).mutation_score).to eq(75.0)
+    end
+
+    it "drops timeouts from the numerator when the timeout criterion is off" do
+      scored = result(scoring_mutants, coverage_criteria: { timeout: false })
+
+      expect(scored.mutation_score).to eq(50.0)
+    end
+
+    it "drops runtime errors from the numerator when the process-abort criterion is off" do
+      scored = result(scoring_mutants, coverage_criteria: { process_abort: false })
+
+      expect(scored.mutation_score).to eq(50.0)
+    end
+
+    it "drops kills from the numerator when the test-result criterion is off" do
+      scored = result(scoring_mutants, coverage_criteria: { test_result: false })
+
+      expect(scored.mutation_score).to eq(50.0)
+    end
+
+    it "scores zero when every criterion is off" do
+      criteria = { test_result: false, timeout: false, process_abort: false }
+
+      expect(result(scoring_mutants, coverage_criteria: criteria).mutation_score).to eq(0.0)
+    end
+
+    it "leaves the denominator alone when a criterion is off" do
+      excluded = result(scoring_mutants, coverage_criteria: { timeout: false })
+
+      expect(excluded.mutation_score_indicator).to eq(result(scoring_mutants).mutation_score_indicator)
+    end
+
+    it "merges a partial criteria hash over the defaults" do
+      expect(result([], coverage_criteria: { timeout: false }).coverage_criteria).to eq(
+        test_result: true, timeout: false, process_abort: true
+      )
+    end
+
+    it "matches the configuration defaults so the two constants cannot drift" do
+      expect(described_class::DEFAULT_COVERAGE_CRITERIA).to eq(
+        Henitai::Configuration::DEFAULT_COVERAGE_CRITERIA
+      )
+    end
   end
 
   it "returns nil scores for an empty mutant set" do
