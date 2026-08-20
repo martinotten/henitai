@@ -64,3 +64,44 @@ existing conservative design):
 - Counter-fixture: `a == b` where `a`/`b` are not statically boolean/finite
   domain — detector must NOT flag `.eql?`/`.equal?`/`<=>` mutants here
   (guards against false positives for objects with custom `==`).
+
+## Deferral Decision (2026-08-21)
+
+Explicitly **out of scope for 0.5.0** and left open, after review during the
+0.5.0 backlog triage.
+
+Reasons:
+
+- The ticket is framed as *investigate*, not *implement*. Its own guiding
+  constraint — "false positives are worse than missed true positives" — means a
+  wrong implementation silently corrupts `MS` for every user, because an
+  equivalent mutant is removed from **both** sides of the score
+  (`lib/henitai/result.rb:146-152`).
+- It needs a lightweight receiver type-narrowing pass, and no such
+  infrastructure exists. `EquivalenceDetector` has AST-literal predicates only;
+  there is no notion of a value domain anywhere in the pipeline.
+- It is not reproducible with this repository's own configuration:
+  `.henitai.yml` uses `operators: light`, and the `.eql?` / `.equal?` / `<=>`
+  swaps come from `EqualityIdentityOperator`, which lives in the **hard** set.
+  Reproducing needs `--operators hard`.
+
+Current detector scope, for whoever picks this up — it has grown past this
+ticket's description and already handles four families, not two:
+`equivalent_arithmetic_mutation?`, `equivalent_logical_mutation?`,
+`equivalent_singleton_equality_mutation?`, `equivalent_string_eql_mutation?`.
+
+Why the three cases in this ticket still slip through:
+
+- The singleton-equality family requires a *literal* receiver
+  (`singleton_literal?(original.children[0])`), so `status == true` with `status`
+  an `lvar` is excluded by design. The safety comment at
+  `equivalence_detector.rb:135-143` gives the reason: `1.0 == 1` versus
+  `1.0.equal?(1)`, and custom `#==`.
+- `equality_operator?` is `%i[== equal?]` only, so `.eql?` is not on the
+  singleton path at all.
+- `<=>` appears in no detector predicate, and there is no ternary or
+  truthiness-context analysis anywhere in the class.
+
+If revived, scope it to the boolean case only and skip the `<=>`
+truthiness-context arm, which the ticket itself calls "likely not worth
+generalizing".

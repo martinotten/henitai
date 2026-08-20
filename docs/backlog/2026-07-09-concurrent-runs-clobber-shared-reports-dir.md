@@ -1,6 +1,6 @@
 # Concurrent Runs Silently Clobber a Shared reports_dir
 
-Status: backlog
+Status: done (shipped 0.3.0; status flipped 2026-08-21)
 Date: 2026-07-09
 Severity: Medium
 Source: observed live — two `henitai run` invocations against the same repo
@@ -70,3 +70,38 @@ kernel-released, so it degrades cleanly.
   `rake smoke:integration:all` stay green.
 - Manual: start one run, start a second against the same `reports_dir` mid-flight
   → second aborts with the diagnostic instead of merging.
+
+## Resolution (status corrected 2026-08-21)
+
+Shipped in 0.3.0; this header was stale, which made the item look open during
+the 0.5.0 backlog review.
+
+- `lib/henitai/reports_directory_lock.rb` — `LOCK_FILENAME = ".henitai-run.lock"`,
+  `flock(LOCK_EX | LOCK_NB)`, owner pid + start time written as JSON, and
+  `ConcurrentRunError` carrying this ticket's exact message wording.
+- `lib/henitai/runner.rb:56` wraps the whole pipeline in
+  `ReportsDirectoryLock#synchronize`. The block form releases on both normal
+  exit and exception, satisfying the `ensure` requirement.
+- `lib/henitai/cli/clean_command.rb:19` takes the same lock, so `clean` cannot
+  delete a live run's artifacts — beyond what this ticket asked for.
+- The live-repro request for dead-owner diagnostics also shipped:
+  `reports_directory_lock.rb:49-66` probes liveness with `Process.kill(0, pid)`
+  (ESRCH ⇒ dead, EPERM ⇒ treated alive) and appends an `lsof` hint.
+- Documented in `README.md:186-194`, `CHANGELOG.md` 0.3.0, and
+  `docs/architecture/architecture.md:187,:202`.
+
+Two deltas against the original sketch, both deliberate:
+
+1. **`--wait` was never built.** Acquisition is `LOCK_NB` only, fail-fast. Split
+   out as [`2026-08-21-reports-dir-lock-wait-flag.md`](2026-08-21-reports-dir-lock-wait-flag.md).
+2. **The dry-run carve-out was decided the other way.** This ticket suggested a
+   dry run "need not lock"; `runner.rb:53-56` takes the lock *before* the
+   `@dry_run` branch, and `runner.rb:83-87` plus `README.md:186-194` state that
+   every run including `--dry-run` locks, since the lock file may be a dry
+   run's only artifact.
+
+A third item surfaced later and is fixed separately: a child that survived its
+parent inherited the parent's `flock` fd, pinning the lock open and making every
+subsequent run fail with a `ConcurrentRunError` naming a dead pid. That is fork
+hygiene rather than a locking defect — see
+[`2026-07-09-orphaned-worker-processes-on-parent-kill.md`](2026-07-09-orphaned-worker-processes-on-parent-kill.md).

@@ -182,7 +182,9 @@ The full set adds `SafeNavigation`, `RangeLiteral`, `HashLiteral`,
 `AssignmentExpression`, `UnaryOperator`, `UpdateOperator`, `RegexMutator`, and
 `MethodChainUnwrap`. The hard set adds the usually unkillable
 `EqualityIdentityOperator` and `HashKeyType` on top of full (ADR-12). This
-repository's own `.henitai.yml` dogfoods with `operators: full`.
+repository's own `.henitai.yml` dogfoods with `operators: light`, so hard- and
+full-set operators do not fire on a plain `bundle exec henitai run` here — pass
+`--operators full` (or `hard`) to reproduce anything involving them.
 
 The `# henitai:disable` magic comment skips mutation at the call site. A
 trailing comment is line-scoped; a standalone comment directly above a `def`
@@ -230,6 +232,28 @@ deliberate even though `||=` is a valid `UpdateOperator`/
   (`henitai.rb`, `configuration.rb`, `subject.rb`, `mutant.rb`, `operator.rb`,
   `integration.rb`, `reporter.rb`, `result.rb`, `runner.rb`) against
   `sig/henitai.rbs`. `spec/infra/steep_scope_spec.rb` guards this list.
+
+### Do Not Reach Private Methods From Specs
+
+`spec/infra/private_method_reach_spec.rb` budgets every use of `send`,
+`__send__`, `instance_variable_get` and `instance_variable_set` in the spec
+tree. It is a ratchet: a budget may only go down, a spec that beats its budget
+fails until the number is lowered in the same commit, and a file with no budget
+may not reach private methods at all.
+
+When you need to test behavior that is currently private, **extract a public
+collaborator** — do not simply rewrite the example to drive the public facade,
+and do not widen visibility. The precedent is
+`docs/backlog/2026-07-08-review-send-integration-minitest-spec.md`: extracting
+`MinitestSuiteCommand`, `MinitestTestRunner`, `MinitestLoadPath` and
+`RailsEnvironmentPreloader` took `Henitai::Integration::Minitest` from
+MS 72.83% / MSI 43.05% to MS 100% / MSI 91.87%. Because this repository scores
+mutation coverage against itself, a pure public-API rewrite usually *loses*
+coverage — the assertions get further from the logic they constrain.
+
+Capture the host's MS/MSI before an extraction and re-measure host plus new
+collaborator afterwards; the sum must not fall. If it does, the extraction left
+an untested seam.
 
 ## Ruby And Style
 
