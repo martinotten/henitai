@@ -84,8 +84,13 @@ module Henitai
       # Forks a child, sets process group, activates the mutant, runs tests.
       # Returns a ChildHandle with the forked pid and log_paths.
       def spawn_mutant(integration, mutant:, test_files:, log_paths:)
+        # Captured here, in the parent. Reading Process.ppid inside the child
+        # would race the very death the watchdog looks for: a parent dying
+        # between fork and that read leaves the child with ppid 1 as its
+        # baseline, so it would never consider itself orphaned.
+        parent_pid = Process.pid
         pid = Process.fork do
-          Process.setpgid(0, 0)
+          ChildBootstrap.after_fork!(parent_pid:)
           ENV["HENITAI_MUTANT_ID"] = mutant.id
           Process.exit(
             integration.run_in_child(

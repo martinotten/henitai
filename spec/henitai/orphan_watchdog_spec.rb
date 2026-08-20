@@ -129,22 +129,33 @@ RSpec.describe Henitai::OrphanWatchdog do
   end
 
   # DANGER: .start builds a watchdog with the real on_orphan, which calls
-  # Kernel.exit!. Passing a parent_pid that does not match this process's
-  # actual ppid makes it fire immediately and take the whole RSpec process down
-  # with exit status 2 -- no failure output, no summary. Always pass
-  # Process.ppid here so the watchdog sees a healthy parent and just sleeps.
+  # Kernel.exit!. A live watchdog thread must never run inside the test
+  # process: if this process is ever reparented -- which happens routinely when
+  # a CI shell or wrapper exits -- the thread decides it has been orphaned and
+  # takes the whole RSpec run down with exit status 2, producing no failure
+  # output and no summary at all. Thread#kill is asynchronous and cannot be
+  # relied on to win that race, so Thread.new is stubbed instead and the body
+  # never executes here. The real thread is exercised by
+  # orphan_watchdog_process_spec.rb, in a child process where exiting is the
+  # intended outcome.
   describe ".start" do
+    let(:thread) { instance_double(Thread) }
+
+    before { allow(Thread).to receive(:new).and_return(thread) }
+
     it "does not start a thread when disabled" do
-      expect(described_class.start(parent_pid: Process.ppid, env: { "HENITAI_CHILD_WATCHDOG" => "0" }))
+      expect(described_class.start(parent_pid: 4_242, env: { "HENITAI_CHILD_WATCHDOG" => "0" }))
         .to be_nil
     end
 
-    it "returns a thread when enabled" do
-      thread = described_class.start(parent_pid: Process.ppid, env: {})
+    it "starts no thread at all when disabled" do
+      described_class.start(parent_pid: 4_242, env: { "HENITAI_CHILD_WATCHDOG" => "0" })
 
-      expect(thread).to be_a(Thread)
-    ensure
-      thread&.kill
+      expect(Thread).not_to have_received(:new)
+    end
+
+    it "returns the started thread when enabled" do
+      expect(described_class.start(parent_pid: 4_242, env: {})).to be(thread)
     end
   end
 end

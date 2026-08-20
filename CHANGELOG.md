@@ -38,6 +38,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   4.0-only form), and CI runs the floor alongside 4.0.2
 
 ### Fixed
+- Forked mutant children no longer outlive a parent that dies without warning.
+  Children run in their own process group, and all parent-side cleanup —
+  timeout kills, graceful drain, signal traps — only runs while the parent's
+  event loop is alive, so a `kill -9`, an OOM kill or a crash left children
+  running with no signal delivered: they reparented to init and each kept a
+  full Ruby and test-framework image resident (runs were observed leaving a
+  dozen behind, several gigabytes in total). Each child now starts a watchdog
+  that exits once its parent is gone. Set `HENITAI_CHILD_WATCHDOG=0` to
+  disable it, or `HENITAI_CHILD_WATCHDOG_INTERVAL` to change the poll interval
+  (default `1.5` seconds)
+- A surviving child could also pin the reports-directory lock open, because
+  `flock` is held on the open file description that parent and child share.
+  Once the parent died, every later run in that directory failed with
+  `ConcurrentRunError` naming a pid that no longer existed. Children now close
+  the inherited handle immediately after forking
 - `# henitai:disable HashKeyType` and `# henitai:disable
   EqualityIdentityOperator` no longer raise `ConfigurationError` and abort the
   run. The directive whitelist validated names against `full` rather than the
