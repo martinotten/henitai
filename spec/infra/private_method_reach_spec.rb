@@ -61,7 +61,7 @@ RSpec.describe "Private method reach in specs" do
         "(docs/backlog/2026-08-21-review-send-slot-scheduler-draining-spec.md)"
       ],
       "spec/henitai/runner_spec.rb" => [
-        24,
+        19,
         "mix of behavior helpers reachable through #run and identity assertions on " \
         "lazily-built private dependencies; needs SourceFileSelection, SubjectSelection " \
         "and RunnerDependencies (docs/backlog/2026-07-08-review-send-runner-spec.md)"
