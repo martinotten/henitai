@@ -7,7 +7,8 @@ require_relative "integration/child_bootstrap"
 require_relative "integration/rspec_process_runner"
 require_relative "integration/scenario_log_support"
 require_relative "integration/coverage_suppression"
-require_relative "integration/child_debug_support"
+require_relative "integration/child_debug_log"
+require_relative "integration/loaded_features"
 require_relative "integration/base"
 require_relative "integration/mutant_run_support"
 require_relative "integration/rspec_child_runner"
@@ -112,13 +113,14 @@ module Henitai
       def run_tests(test_files)
         require "rspec/core"
         ::RSpec.__send__(:configuration).fail_if_no_examples = true
-        debug_child_rspec_trace(test_files:, rspec_options: [], rspec_argv: test_files)
-        debug_child_example_count("before_run") # steep:ignore Ruby::NoMethod
-        debug_child_puts("[henitai-debug-child] runner_run_start")
+        log = child_debug_log
+        log.rspec_trace(test_files:, rspec_options: [], rspec_argv: test_files)
+        log.example_count("before_run")
+        log.write("[henitai-debug-child] runner_run_start")
         status = run_rspec_runner(test_files)
-        debug_child_puts("[henitai-debug-child] runner_run_return status=#{status.inspect}")
-        debug_child_example_count("after_run") # steep:ignore Ruby::NoMethod
-        debug_child_rspec_exit(status)
+        log.write("[henitai-debug-child] runner_run_return status=#{status.inspect}")
+        log.example_count("after_run")
+        log.rspec_exit(status)
         return status if status.is_a?(Integer)
 
         status == true ? 0 : 1

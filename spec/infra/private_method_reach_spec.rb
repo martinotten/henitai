@@ -58,12 +58,6 @@ RSpec.describe "Private method reach in specs" do
         "pokes the same private slot state as slot_scheduler_spec; paid down by the " \
         "same SlotTable extraction (docs/backlog/2026-08-21-review-send-slot-scheduler-draining-spec.md)"
       ],
-      "spec/henitai/integration/child_debug_support_spec.rb" => [
-        33,
-        "ChildDebugSupport declares `private` at the top of the module, so no public " \
-        "seam exists at all; needs promotion to ChildDebugLog and LoadedFeatures " \
-        "(docs/backlog/2026-07-08-review-send-integration-child-debug-support-spec.md)"
-      ],
       "spec/henitai/runner_spec.rb" => [
         24,
         "mix of behavior helpers reachable through #run and identity assertions on " \

@@ -47,7 +47,7 @@ module Henitai
         with_subprocess_env do
           suppress_simplecov!
           suppress_coverage!
-          install_debug_timeout_trap if debug_child?
+          install_debug_timeout_trap if child_debug_log.enabled?
           with_non_interactive_stdin do
             run_child_activation_and_tests(mutant:, test_files:, log_paths:)
           end
@@ -63,11 +63,11 @@ module Henitai
       def run_child_activation_and_tests(mutant:, test_files:, log_paths:)
         scenario_log_support.with_coverage_dir(mutant.id) do
           scenario_log_support.capture_child_output(log_paths) do
-            debug_child_mutant_meta(mutant) if debug_child?
-            debug_child_activation_start(mutant.id)
+            child_debug_log.mutant_meta(mutant)
+            child_debug_log.activation_start(mutant.id)
             activation_result = Mutant::Activator.activate!(mutant)
-            debug_child_activation_check if debug_child?
-            debug_child_activation_end(activation_result, test_files:)
+            child_debug_log.activation_check
+            child_debug_log.activation_end(activation_result, test_files:)
             activation_result == :compile_error ? 2 : run_tests(test_files)
           end
         end
