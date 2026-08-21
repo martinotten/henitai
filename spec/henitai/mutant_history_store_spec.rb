@@ -8,8 +8,8 @@ require "tmpdir"
 require "parser/current"
 
 RSpec.describe Henitai::MutantHistoryStore do
-  def build_subject
-    Henitai::Subject.new(namespace: "Sample", method_name: "value")
+  def build_subject(source_location: nil)
+    Henitai::Subject.new(namespace: "Sample", method_name: "value", source_location:)
   end
 
   def build_location
@@ -23,7 +23,7 @@ RSpec.describe Henitai::MutantHistoryStore do
   end
 
   # rubocop:disable Metrics/MethodLength
-  def build_mutant(status:, mutated_source: "1 + 0")
+  def build_mutant(status:, mutated_source: "1 + 0", source_location: nil)
     Struct.new(
       :subject,
       :operator,
@@ -44,7 +44,7 @@ RSpec.describe Henitai::MutantHistoryStore do
         status == :equivalent
       end
     end.new(
-      build_subject,
+      build_subject(source_location:),
       "ArithmeticOperator",
       "replaced + with -",
       build_location,
@@ -286,9 +286,7 @@ RSpec.describe Henitai::MutantHistoryStore do
       test = File.join(dir, "sample_spec.rb")
       File.write(test, "it works\n")
 
-      mutant = build_mutant(status:)
-      mutant.subject.instance_variable_set(:@source_file, source)
-      mutant.subject.instance_variable_set(:@source_range, 2..2)
+      mutant = build_mutant(status:, source_location: { file: source, range: 2..2 })
       covering = covered_by == :default ? [test] : covered_by
       mutant.define_singleton_method(:covered_by) { covering }
       mutant

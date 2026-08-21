@@ -69,15 +69,6 @@ RSpec.describe "Private method reach in specs" do
         "mix of behavior helpers reachable through #run and identity assertions on " \
         "lazily-built private dependencies; needs SourceFileSelection, SubjectSelection " \
         "and RunnerDependencies (docs/backlog/2026-07-08-review-send-runner-spec.md)"
-      ],
-      "spec/henitai/mutant_history_store_spec.rb" => [
-        2,
-        "fixture builder pokes Subject's @source_file/@source_range; " \
-        "Subject.new(source_location:) is public, so this is a plain spec rewrite"
-      ],
-      "spec/henitai/cli_spec.rb" => [
-        1,
-        "asserts @argv rather than the behavior it stands in for (no-args usage output)"
       ]
     }
   end

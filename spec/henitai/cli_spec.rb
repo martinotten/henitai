@@ -1452,11 +1452,13 @@ RSpec.describe Henitai::CLI do
       exit_status
     end
 
-    it "parses into options[:strict_exit_codes]" do
+    # That the flag takes effect is covered by the exit-3 and exit-4 examples
+    # below, which would land on 0 or 1 if it were ignored. What is left to
+    # check is that the parser accepts it rather than rejecting it as unknown.
+    it "accepts the flag without reporting an invalid option" do
       cli = described_class.new(["run", "--strict-exit-codes", "--help"])
-      capture_stdout { cli.run }
 
-      expect(cli.instance_variable_get(:@argv)).to eq([])
+      expect { capture_stdout { cli.run } }.not_to raise_error
     end
 
     it "documents the flag in run --help" do
