@@ -3,15 +3,15 @@
 require "spec_helper"
 
 RSpec.describe Henitai::ProcessLiveness do
+  def raising(error) = ->(_signal, _pid) { raise error }
+
   describe ".alive?" do
     it "reports the current process as alive" do
       expect(described_class.alive?(Process.pid)).to be(true)
     end
 
     it "reports a process that no longer exists as dead" do
-      allow(Process).to receive(:kill).and_raise(Errno::ESRCH)
-
-      expect(described_class.alive?(4_242)).to be(false)
+      expect(described_class.alive?(4_242, kill: raising(Errno::ESRCH))).to be(false)
     end
 
     # A process owned by another user is running -- we simply may not signal
@@ -19,15 +19,11 @@ RSpec.describe Henitai::ProcessLiveness do
     # would make the lock's contention diagnostics claim a running owner is
     # gone.
     it "treats a process we may not signal as alive" do
-      allow(Process).to receive(:kill).and_raise(Errno::EPERM)
-
-      expect(described_class.alive?(4_242)).to be(true)
+      expect(described_class.alive?(4_242, kill: raising(Errno::EPERM))).to be(true)
     end
 
     it "treats an unexpected signalling error as alive rather than guessing" do
-      allow(Process).to receive(:kill).and_raise(StandardError)
-
-      expect(described_class.alive?(4_242)).to be(true)
+      expect(described_class.alive?(4_242, kill: raising(StandardError))).to be(true)
     end
 
     it "reports a non-integer pid as dead" do
@@ -39,11 +35,21 @@ RSpec.describe Henitai::ProcessLiveness do
     end
 
     it "signals zero rather than a real signal" do
-      allow(Process).to receive(:kill)
+      calls = []
+      described_class.alive?(4_242, kill: ->(signal, pid) { calls << [signal, pid] })
 
-      described_class.alive?(4_242)
+      expect(calls).to eq([[0, 4_242]])
+    end
 
-      expect(Process).to have_received(:kill).with(0, 4_242)
+    # The reason KILL is captured at load time. A mutant child runs the host
+    # project's own suite; a spec in that suite stubbing Process.kill to raise
+    # ESRCH previously made this answer "dead" for a live parent, and
+    # OrphanWatchdog exited the child on the strength of it. Observed as a
+    # spurious CompileError on henitai's own dogfood run.
+    it "is not fooled by a stubbed Process.kill" do
+      allow(Process).to receive(:kill).and_raise(Errno::ESRCH)
+
+      expect(described_class.alive?(Process.pid)).to be(true)
     end
   end
 end

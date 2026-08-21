@@ -39,6 +39,20 @@ RSpec.describe Henitai::OrphanWatchdog do
     it "is true once the parent process is gone" do
       expect(build(alive: false).orphaned?).to be(true)
     end
+
+    # The mutant child runs the host project's own suite, so a spec in there
+    # stubbing Process.ppid or Process.kill must not convince the child it has
+    # been orphaned. Both primitives are captured at load time, before any
+    # double can replace them. Observed as a spurious CompileError on
+    # henitai's own dogfood run before this was fixed.
+    it "is not fooled by stubbed Process.ppid and Process.kill", :aggregate_failures do
+      watchdog = described_class.new(parent_pid: Process.ppid)
+      allow(Process).to receive(:ppid).and_return(999_999)
+      allow(Process).to receive(:kill).and_raise(Errno::ESRCH)
+
+      expect(Process.ppid).to eq(999_999)
+      expect(watchdog.orphaned?).to be(false)
+    end
   end
 
   describe "#run" do

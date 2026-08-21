@@ -50,6 +50,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that exits once its parent is gone. Set `HENITAI_CHILD_WATCHDOG=0` to
   disable it, or `HENITAI_CHILD_WATCHDOG_INTERVAL` to change the poll interval
   (default `1.5` seconds)
+- The orphan watchdog no longer mistakes a live parent for a dead one when the
+  project's own suite stubs `Process.kill` or `Process.ppid`. Both primitives
+  are now captured as `Method` objects at load time, before any test double can
+  replace them — a captured `Method` keeps pointing at the original definition
+  even after the singleton method is redefined. This was not hypothetical: on
+  henitai's own dogfood run a mutant child running specs that stub
+  `Process.kill` to raise `ESRCH` concluded it had been orphaned and exited,
+  which the scheduler recorded as `CompileError`. Fixing it turned two spurious
+  `CompileError`s and one spurious `Timeout` back into `Killed` on a
+  1019-mutant run
 - A surviving child could also pin the reports-directory lock open, because
   `flock` is held on the open file description that parent and child share.
   Once the parent died, every later run in that directory failed with

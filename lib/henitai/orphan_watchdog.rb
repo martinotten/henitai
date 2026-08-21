@@ -29,6 +29,12 @@ module Henitai
     # the parent is dead and nothing classifies this child at all.
     ORPHAN_EXIT_CODE = 2
 
+    # Captured at load time, for the same reason as ProcessLiveness::KILL: the
+    # mutant child runs the host project's own suite, and a spec there stubbing
+    # `Process.ppid` would otherwise make this child believe it had been
+    # reparented and exit itself.
+    PPID = Process.method(:ppid)
+
     # Opt-OUT, deliberately inverted relative to HENITAI_DEBUG_CHILD's opt-in:
     # a watchdog that defaulted to off would never protect the runs it exists
     # for. Set HENITAI_CHILD_WATCHDOG=0 to disable.
@@ -56,7 +62,7 @@ module Henitai
     # without forking a process or waiting on a real clock.
     # rubocop:disable Metrics/ParameterLists
     def initialize(parent_pid:, interval: DEFAULT_INTERVAL, liveness: ProcessLiveness,
-                   ppid: -> { Process.ppid }, on_orphan: nil, sleeper: nil)
+                   ppid: PPID, on_orphan: nil, sleeper: nil)
       @parent_pid = parent_pid
       @interval   = interval
       @liveness   = liveness
