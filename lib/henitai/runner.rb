@@ -30,9 +30,16 @@ module Henitai
 
     # @param mode [Hash] execution-mode flags: +dry_run:+ stops before Gate 4,
     #   +incremental:+ reuses still-valid Killed verdicts from history.
+    # +deps+ is assigned in the body, not defaulted in the signature: the
+    # default needs @config, and `config:` itself defaults to a load.
+    #
+    # rubocop:disable Metrics/ParameterLists -- these are the CLI's own flags
+    # plus the dependency seam; a params object would only move the list.
     def initialize(config: Configuration.load, subjects: nil, since: nil, survivors_from: nil,
-                   mode: {})
+                   mode: {}, deps: nil)
+      # rubocop:enable Metrics/ParameterLists
       @config         = config
+      @deps           = deps || RunnerDependencies.new(config: @config)
       @subjects       = subjects
       @since          = since
       @survivors_from = survivors_from
@@ -174,20 +181,6 @@ module Henitai
       )
     end
 
-    # Reads each source file once and caches it, so Result consumes source
-    # content while performing no disk IO of its own. Returns "" for files that
-    # cannot be read (e.g. recipe stubs with synthetic locations).
-    def source_provider
-      cache = {} # : Hash[String, String]
-      lambda do |file|
-        cache[file] ||= begin
-          File.read(file)
-        rescue StandardError
-          ""
-        end
-      end
-    end
-
     def safe_head_sha
       git_diff_analyzer.head_sha
     rescue StandardError
@@ -200,45 +193,21 @@ module Henitai
       coverage_bootstrapper.ensure!(source_files:, config:, integration:, test_files:)
     end
 
-    def subject_resolver = @subject_resolver ||= SubjectResolver.new
+    attr_reader :deps
 
-    def git_diff_analyzer = @git_diff_analyzer ||= GitDiffAnalyzer.new
+    def subject_resolver = deps.subject_resolver
+    def git_diff_analyzer = deps.git_diff_analyzer
+    def mutant_generator = deps.mutant_generator
+    def static_filter = deps.static_filter
+    def execution_engine = deps.execution_engine
+    def coverage_bootstrapper = deps.coverage_bootstrapper
+    def integration = deps.integration
+    def operators = deps.operators
+    def history_store = deps.history_store
+    def per_test_coverage = deps.per_test_coverage
+    def source_provider = deps.source_provider
 
-    def mutant_generator = @mutant_generator ||= MutantGenerator.new
-
-    def static_filter = @static_filter ||= StaticFilter.new
-
-    def execution_engine = @execution_engine ||= ExecutionEngine.new
-
-    def coverage_bootstrapper = @coverage_bootstrapper ||= CoverageBootstrapper.new
-
-    def integration
-      @integration ||= Integration.for(config.integration).new
-    end
-
-    def operators
-      @operators ||= Operator.for_set(config.operators)
-    end
-
-    # Fans progress out to the terminal reporter (when enabled) and the
-    # checkpoint writer (when enabled and a file report is configured), so a
-    # long run persists partial results incrementally.
-    def progress_reporter
-      CompositeProgressReporter.for(config:, source_provider:, full_run: full_run?)
-    end
-
-    def history_store
-      @history_store ||= MutantHistoryStore.new(
-        path: File.join(config.reports_dir, Henitai::HISTORY_STORE_FILENAME), per_test_coverage:
-      )
-    end
-
-    # One shared live view of the per-test coverage map: the incremental
-    # filter proves survivor reuse against it and the history store records
-    # the same intersection set — one implementation, one snapshot.
-    def per_test_coverage
-      @per_test_coverage ||= PerTestCoverage.new(reports_dir: config.reports_dir)
-    end
+    def progress_reporter = deps.progress_reporter(full_run: full_run?)
 
     def source_files
       @source_files ||= source_file_selection.call

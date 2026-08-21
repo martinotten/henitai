@@ -78,6 +78,7 @@ module Henitai
   autoload :InheritedFdRegistry, "henitai/inherited_fd_registry"
   autoload :OrphanWatchdog, "henitai/orphan_watchdog"
   autoload :Runner, "henitai/runner"
+  autoload :RunnerDependencies, "henitai/runner_dependencies"
   autoload :Reporter, "henitai/reporter"
   autoload :Integration, "henitai/integration"
   autoload :Result, "henitai/result"

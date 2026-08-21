@@ -1075,6 +1075,22 @@ module Henitai
     def self.write: (String, Hash[String, Hash[String, untyped]]) -> void
   end
 
+  class RunnerDependencies
+    def initialize: (config: untyped) -> void
+    def subject_resolver: () -> untyped
+    def git_diff_analyzer: () -> untyped
+    def mutant_generator: () -> untyped
+    def static_filter: () -> untyped
+    def execution_engine: () -> untyped
+    def coverage_bootstrapper: () -> CoverageBootstrapper
+    def integration: () -> untyped
+    def operators: () -> Array[Operator]
+    def per_test_coverage: () -> PerTestCoverage
+    def history_store: () -> untyped
+    def progress_reporter: (full_run: bool) -> untyped
+    def source_provider: () -> ^(String) -> String
+  end
+
   class SourceFileSelection
     def initialize: (
       config: untyped,
@@ -1109,8 +1125,9 @@ module Henitai
     attr_reader config: Configuration
     attr_reader result: untyped
 
-    def initialize: (?config: Configuration, ?subjects: Array[Subject], ?since: String, ?survivors_from: String?, ?mode: Hash[Symbol, bool]) -> void
+    def initialize: (?config: Configuration, ?subjects: Array[Subject], ?since: String, ?survivors_from: String?, ?mode: Hash[Symbol, bool], ?deps: RunnerDependencies?) -> void
     def run: () -> Result
+    def deps: () -> RunnerDependencies
     def resolve_subjects: (?Array[String]) -> untyped
     def generate_mutants: (untyped) -> untyped
     def filter_mutants: (untyped) -> untyped

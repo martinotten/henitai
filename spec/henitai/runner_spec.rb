@@ -1950,53 +1950,6 @@ RSpec.describe Henitai::Runner do
         history_store: history
       )
     end
-
-    it "returns a terminal reporter when reporters contains symbols" do
-      config = build_config(reporters: [:terminal])
-      runner = described_class.new(config:)
-      expect(runner.send(:progress_reporter)).to be_a(Henitai::Reporter::Terminal)
-    end
-
-    def checkpoint_config(reporters:)
-      Struct.new(:reporters, :checkpoint_enabled, :checkpoint_every, :checkpoint_interval, :reports_dir, :thresholds)
-            .new(reporters, true, 200, 30.0, "reports", { high: 80, low: 60 })
-    end
-
-    it "fans out to a composite when terminal and a file report are both enabled" do
-      runner = described_class.new(config: checkpoint_config(reporters: %w[terminal json]))
-      expect(runner.send(:progress_reporter)).to be_a(Henitai::CompositeProgressReporter)
-    end
-
-    it "returns a lone checkpoint reporter when only a file report is enabled" do
-      runner = described_class.new(config: checkpoint_config(reporters: %w[json]))
-      expect(runner.send(:progress_reporter)).to be_a(Henitai::CheckpointReporter)
-    end
-
-    it "skips the checkpoint reporter when disabled" do
-      config = checkpoint_config(reporters: %w[json])
-      config.checkpoint_enabled = false
-      runner = described_class.new(config:)
-      expect(runner.send(:progress_reporter)).to be_nil
-    end
-  end
-
-  describe "#source_provider" do
-    it "returns a lambda that reads files and caches their content" do # rubocop:disable RSpec/MultipleExpectations
-      runner = described_class.new(config: build_config)
-      provider = runner.send(:source_provider)
-      expect(provider).to be_a(Proc)
-
-      Dir.mktmpdir do |dir|
-        file_path = File.join(dir, "test.txt")
-        File.write(file_path, "hello world")
-
-        expect(provider.call(file_path)).to eq("hello world")
-        File.write(file_path, "changed")
-        expect(provider.call(file_path)).to eq("hello world")
-
-        expect(provider.call("nonexistent.txt")).to eq("")
-      end
-    end
   end
 
   describe "#safe_head_sha" do
