@@ -109,19 +109,13 @@ module Henitai
       test_prioritizer(config).sort(tests, mutant, test_history(config))
     end
 
-    # Drops test files matching any config.test_excludes glob. Used to keep a
-    # mutant child from re-running tests that themselves spawn henitai/forked
-    # subprocesses (e.g. the CLI and process-scheduler specs when dogfooding
-    # henitai on itself), which otherwise multiplies processes and log noise.
     def reject_excluded_tests(tests, config)
-      patterns = config.respond_to?(:test_excludes) ? Array(config.test_excludes) : []
-      return tests if patterns.empty?
+      ExcludedTestFilter.new(patterns: configured_test_excludes(config)).reject(tests)
+    end
 
-      expanded = patterns.map { |pattern| File.expand_path(pattern) }
-      tests.reject do |path|
-        candidate = File.expand_path(path)
-        expanded.any? { |pattern| File.fnmatch?(pattern, candidate, File::FNM_PATHNAME) }
-      end
+    # Specs pass bare config doubles exposing only what the example needs.
+    def configured_test_excludes(config)
+      config.respond_to?(:test_excludes) ? config.test_excludes : nil
     end
 
     def test_prioritizer(config)

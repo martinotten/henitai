@@ -1,6 +1,6 @@
 # `execution_engine_spec` Uses `send` to Reach Private Test Exclusion
 
-Status: backlog
+Status: done (2026-08-21)
 Date: 2026-08-21
 Severity: Low
 Source: discovered while seeding budgets for
@@ -43,3 +43,24 @@ Extract `Henitai::ExcludedTestFilter` into
   add directory-boundary cases for the `FNM_PATHNAME` rule.
 - Lower this file's budget in `spec/infra/private_method_reach_spec.rb` in the
   same commit.
+
+## Resolution (2026-08-21)
+
+Extracted `Henitai::ExcludedTestFilter` (`lib/henitai/excluded_test_filter.rb`)
+with `spec/henitai/excluded_test_filter_spec.rb`.
+
+- Public `#initialize(patterns:)` and `#reject(tests)`. It takes the pattern
+  list rather than a configuration object, so the path-matching rule is free
+  of configuration lookup and directly testable; `ExecutionEngine` reads
+  `config.test_excludes` defensively and passes it in.
+- The `FNM_PATHNAME` rule now has explicit coverage on both sides: a single
+  `*` must not cross a directory separator, and a pattern that spans
+  directories explicitly still matches. Without `FNM_PATHNAME` an exclude as
+  narrow as `spec/a/*_spec.rb` would swallow every test below `spec/a`.
+- Relative-versus-absolute matching is covered too, since both sides are
+  expanded before comparison.
+- `nil` patterns are accepted alongside `[]`, matching what the engine can
+  actually hand over.
+
+Not added to the `Steepfile`: `spec/infra/steep_scope_spec.rb` pins that list.
+Budget removed from the private-reach ratchet in the same commit.

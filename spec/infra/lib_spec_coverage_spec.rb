@@ -3,8 +3,8 @@
 require "spec_helper"
 
 # Scoped to top-level lib/henitai/*.rb, not the full **/*.rb tree: files
-# under lib/henitai/cli/, configuration_validator/, integration/,
-# mutant_history_store/, reporter/, and slot_scheduler/ are private
+# under lib/henitai/cli/, configuration_validator/, equivalence_detector/,
+# integration/, mutant_history_store/, reporter/, and slot_scheduler/ are private
 # decomposition components exercised behaviorally through their facade's
 # spec (e.g. cli_spec.rb drives Cli::RunCommand without naming it), not via
 # a same-named spec file. Guarding those would produce false positives, not

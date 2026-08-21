@@ -70,16 +70,6 @@ RSpec.describe "Private method reach in specs" do
         "lazily-built private dependencies; needs SourceFileSelection, SubjectSelection " \
         "and RunnerDependencies (docs/backlog/2026-07-08-review-send-runner-spec.md)"
       ],
-      "spec/henitai/equivalence_detector_spec.rb" => [
-        4,
-        "operand predicates are private; needs an OperandPredicates collaborator " \
-        "(docs/backlog/2026-08-21-review-send-equivalence-detector-spec.md)"
-      ],
-      "spec/henitai/execution_engine_spec.rb" => [
-        3,
-        "reject_excluded_tests is private; needs an ExcludedTestFilter collaborator " \
-        "(docs/backlog/2026-08-21-review-send-execution-engine-spec.md)"
-      ],
       "spec/henitai/mutant_history_store_spec.rb" => [
         2,
         "fixture builder pokes Subject's @source_file/@source_range; " \
