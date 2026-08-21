@@ -41,3 +41,79 @@ public path genuinely reaches the behavior.
 
 The budget for this file in `spec/infra/private_method_reach_spec.rb` must come
 down in the same commit as any reduction here.
+
+## Progress (2026-08-21)
+
+Reach is down from 75 to 57. Two of the three planned waves have landed.
+
+**Wave 1 — the free half.** Every `send(:integration)`, `send(:runtime)` and
+`send(:host)` reached back through a private reader for an object the spec had
+built itself one line earlier. `build_worker_scheduler` now accepts
+`integration:` and `host:`, and `draining_spec`'s builder accepts `runtime:`
+and `integration:`.
+
+The `"delegated host readers"` example keeps its four sends deliberately.
+`worker_count`/`runtime`/`wakeup`/`shutdown?` are one-line delegators whose only
+direct coverage is that example, and this repository scores mutation coverage
+against itself — deleting it would lose four killed mutants to buy four points
+of budget.
+
+**Wave 2 — the policy objects.** Four extractions, each in
+`lib/henitai/slot_scheduler/`:
+
+| Collaborator | Public interface | Retired |
+|---|---|---|
+| `RetryPolicy` | `#retry?(slot:, result:, shutdown:)` | `should_retry?` ×6 |
+| `SlotDeadline` | `#remaining(slot, now)` | `remaining_slot_timeout` ×4 |
+| `TestFileSelection` | `#for(mutant)`, `#resolved_empty?(test_files)` | `resolve_test_files` ×3 |
+| `DrainVerdict` | `#build(slot, final_status)` | `build_drain_result` ×5 |
+
+`resolved_selection_empty?` moved onto `TestFileSelection` alongside `#for`:
+both answer questions about the *same* option keys, and splitting them would
+have left the scheduler reading `options[:test_file_resolver]` directly again.
+
+`SlotScheduler` also gained `#finalize_slot` and `#annotate_selection`, split
+out of `dispatch_slot_result` and `spawn_into_slot` — the extra collaborator
+call pushed both over `Metrics/AbcSize`.
+
+One behavioral note: `RetryPolicy` is memoized lazily rather than built in
+`SlotScheduler#initialize`, because the old `should_retry?` short-circuited on
+`shutdown?`/`survived?` and so never read `config.max_flaky_retries` for a
+killed mutant. `draining_spec` had been relying on that to pass `config: nil`;
+it now passes a real config struct, matching what `ProcessWorkerRunner` always
+supplies.
+
+### Two mutations in the new code are unkillable by design
+
+Found by falsifying each new spec (breaking the implementation and confirming
+the spec goes red). Recording them so they are not mistaken for coverage gaps:
+
+- `SlotDeadline`: `remaining.positive? ? remaining : 0.0` and
+  `remaining >= 0 ? remaining : 0.0` are genuinely equivalent — both yield
+  `0.0` at the boundary. `EquivalenceDetector` is too conservative to prove it,
+  so this will show up as a survivor.
+- `TestFileSelection`: `@options.key?(:test_file_resolver)` and
+  `@options[:test_file_resolver]` differ only for an explicitly-nil resolver,
+  which no caller produces — and under `key?` semantics that input would raise
+  rather than fall through. Codifying a crash as expected behavior would be
+  worse than leaving the mutant alive.
+
+**Wave 3 — `SlotTable`, still open.** The 29 `send(:slots)`, 3
+`send(:pid_to_slot)`, 2 `send(:next_slot_id!)` and 2
+`send(:next_free_worker_index)` need the slot-table extraction. Per the plan,
+most `send(:slots)` assertions should first convert to the already-public
+`done?`/`results`/`flaky_retry_count` rather than being mechanically renamed to
+a new public `slot_table` reader — that would be laundering, not decoupling.
+
+**Deferred — drain mechanics.** `dispatch_slot_result` ×9, `retry_slot` ×3,
+`complete_slot` ×3, `reset_slot_for_retry` ×1 here, plus the residue tracked in
+`2026-08-21-review-send-slot-scheduler-draining-spec.md`. This is the
+`DrainCycle`/`SlotSpawner`/`ResultDispatcher` wave, out of scope for 0.5.0.
+
+### The per-step mutation-score gate could not run
+
+Scoped runs such as `henitai run 'Henitai::SlotScheduler#*'` return zero
+mutants: `reports/henitai_per_test.json` is scope-thin, so every mutant in a
+fresh scope is classified `NoCoverage` in under a second. That is Part 2 of
+`2026-07-08-per-test-coverage-completeness-check.md`, still open. Falsification
+of each new spec was used in its place.

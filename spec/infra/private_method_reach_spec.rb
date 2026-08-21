@@ -49,12 +49,12 @@ RSpec.describe "Private method reach in specs" do
         "install the guard's own overrides; not private-API reach on a subject"
       ],
       "spec/henitai/slot_scheduler_spec.rb" => [
-        70,
+        57,
         "slot table and scheduling helpers are all private; needs SlotTable plus " \
         "policy-object extraction (docs/backlog/2026-07-08-review-send-slot-scheduler-spec.md)"
       ],
       "spec/henitai/slot_scheduler/draining_spec.rb" => [
-        27,
+        22,
         "residue is the private slot tables plus the drain state machine itself; the " \
         "tables are paid down by the SlotTable extraction and the drain mechanics by " \
         "the DrainCycle follow-up " \

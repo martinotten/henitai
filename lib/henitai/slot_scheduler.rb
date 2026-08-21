@@ -2,6 +2,10 @@
 
 require_relative "slot_scheduler/process_control"
 require_relative "slot_scheduler/draining"
+require_relative "slot_scheduler/drain_verdict"
+require_relative "slot_scheduler/retry_policy"
+require_relative "slot_scheduler/slot_deadline"
+require_relative "slot_scheduler/test_file_selection"
 
 module Henitai
   # Owns the process-slot table for a single parallel mutation run.
@@ -84,7 +88,7 @@ module Henitai
     def next_event_timeout
       now = monotonic_time
       slot_timeouts = slots.each_value.filter_map do |slot|
-        remaining_slot_timeout(slot, now)
+        slot_deadline.remaining(slot, now)
       end
 
       slot_timeouts.min
@@ -101,10 +105,10 @@ module Henitai
     def shutdown? = host.shutdown_requested?
 
     def spawn_into_slot(mutant)
-      test_files = resolve_test_files(mutant)
-      mutant.covered_by = test_files if mutant.respond_to?(:covered_by=)
-      mutant.tests_completed = test_files.size if mutant.respond_to?(:tests_completed=)
-      return record_no_coverage(mutant) if resolved_selection_empty?(test_files)
+      selection = test_file_selection
+      test_files = selection.for(mutant)
+      annotate_selection(mutant, test_files)
+      return record_no_coverage(mutant) if selection.resolved_empty?(test_files)
 
       worker_index = next_free_worker_index
       with_worker_slot(worker_index) do
@@ -113,6 +117,14 @@ module Henitai
       end
     rescue StandardError => e
       record_spawn_failure(mutant, e)
+    end
+
+    # Reported back onto the mutant so the report can show which tests were
+    # considered, whether or not any of them ran. Guarded by respond_to? because
+    # specs pass Struct stand-ins without these members.
+    def annotate_selection(mutant, test_files)
+      mutant.covered_by = test_files if mutant.respond_to?(:covered_by=)
+      mutant.tests_completed = test_files.size if mutant.respond_to?(:tests_completed=)
     end
 
     def register_slot(handle, mutant, worker_index, timeout)
@@ -159,23 +171,40 @@ module Henitai
     end
 
     def dispatch_slot_result(slot, result)
-      if should_retry?(slot, result)
-        retry_slot(slot)
-      else
-        slots.delete(slot.slot_id)
-        slot.mutant.status = result.status
-        results << result
-        progress_reporter&.progress(slot.mutant, scenario_result: result)
-        result.release_output! if result.respond_to?(:release_output!)
-      end
+      return retry_slot(slot) if retry_policy.retry?(slot: slot, result: result, shutdown: shutdown?)
+
+      finalize_slot(slot, result)
     end
 
-    def should_retry?(slot, result)
-      !shutdown? && result.survived? && slot.retry_count < config.max_flaky_retries.to_i
+    def finalize_slot(slot, result)
+      slots.delete(slot.slot_id)
+      slot.mutant.status = result.status
+      results << result
+      progress_reporter&.progress(slot.mutant, scenario_result: result)
+      result.release_output! if result.respond_to?(:release_output!)
+    end
+
+    # Memoized lazily, not built in #initialize: specs (and the no-op scheduler
+    # the runner builds when nothing is pending) pass `config: nil`, and this
+    # is only reached once a slot has actually finished.
+    def retry_policy
+      @retry_policy ||= RetryPolicy.new(max_retries: config.max_flaky_retries)
+    end
+
+    def drain_verdict
+      @drain_verdict ||= DrainVerdict.new(integration: integration)
+    end
+
+    def slot_deadline
+      @slot_deadline ||= SlotDeadline.new(drain_window: PROCESS_DRAIN_WINDOW)
+    end
+
+    def test_file_selection
+      @test_file_selection ||= TestFileSelection.new(options: options, integration: integration)
     end
 
     def retry_slot(slot)
-      test_files = resolve_test_files(slot.mutant)
+      test_files = test_file_selection.for(slot.mutant)
       with_worker_slot(slot.worker_index) do
         handle = integration.spawn_mutant(mutant: slot.mutant, test_files: test_files)
         finish_retry(slot, handle)
@@ -218,37 +247,6 @@ module Henitai
     def record_no_coverage(mutant)
       mutant.status = :no_coverage
       progress_reporter&.progress(mutant, scenario_result: nil)
-    end
-
-    def resolved_selection_empty?(test_files)
-      options.key?(:test_file_resolver) && test_files.empty?
-    end
-
-    def remaining_slot_timeout(slot, now)
-      # Invariant: drain_draining_slots runs (and removes draining slots) before
-      # the event wait, so next_event_timeout never observes a draining slot
-      # whose SIGTERM has not been sent. Guard term_sent_at_monotonic defensively
-      # against a future ordering change: an unsignalled draining slot is due now.
-      return 0.0 if slot.draining && slot.term_sent_at_monotonic.nil?
-
-      deadline =
-        if slot.draining
-          slot.term_sent_at_monotonic + PROCESS_DRAIN_WINDOW
-        else
-          slot.started_at_monotonic + slot.timeout
-        end
-      remaining = deadline - now
-      remaining.positive? ? remaining : 0.0
-    end
-
-    def resolve_test_files(mutant)
-      if @options.key?(:test_file_resolver)
-        @options[:test_file_resolver].call(mutant)
-      elsif @options.key?(:test_files)
-        @options[:test_files]
-      else
-        integration.select_tests(mutant.subject)
-      end
     end
 
     def next_slot_id!

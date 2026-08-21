@@ -126,20 +126,10 @@ module Henitai
       end
 
       def record_drain_result(slot, final_status)
-        result = build_drain_result(slot, final_status)
+        result = drain_verdict.build(slot, final_status)
         slot.mutant.status = result.status
         results << result
         progress_reporter&.progress(slot.mutant, scenario_result: result)
-      end
-
-      # Choose result: use real exit status only if observed before any parent
-      # signal was sent. After SIGTERM, the forced outcome is authoritative.
-      def build_drain_result(slot, final_status)
-        if final_status&.exited? && slot.term_sent_at_monotonic.nil?
-          integration.build_result(final_status, slot.log_paths)
-        else
-          integration.build_result(slot.forced_outcome || :timeout, slot.log_paths)
-        end
       end
     end
   end

@@ -50,7 +50,8 @@ RSpec.describe Henitai::SlotScheduler::Draining do
     end.new(1, runtime, opts[:wakeup])
     Henitai::SlotScheduler.new(
       integration: opts[:integration] || instance_double(Henitai::Integration::Rspec),
-      config: nil, progress_reporter: opts[:progress_reporter], options: {}, host: host
+      config: opts[:config] || Struct.new(:max_flaky_retries).new(0),
+      progress_reporter: opts[:progress_reporter], options: {}, host: host
     )
   end
 
@@ -380,57 +381,6 @@ RSpec.describe Henitai::SlotScheduler::Draining do
       expect(slot.mutant.status).to eq(:killed)
       expect(scheduler.results).to eq([killed])
       expect(progress_reporter).to have_received(:progress).with(slot.mutant, scenario_result: killed)
-    end
-  end
-
-  describe "#build_drain_result" do
-    it "uses the real exit status when it exited before any signal was sent" do
-      status = instance_double(Process::Status, exited?: true)
-      slot = build_slot(slot_id: 0, pid: 10, forced_outcome: :timeout)
-      integration = instance_double(Henitai::Integration::Rspec)
-      allow(integration).to receive(:build_result).with(status, slot.log_paths).and_return(:real)
-      scheduler = build_scheduler(integration: integration)
-
-      expect(scheduler.send(:build_drain_result, slot, status)).to eq(:real)
-    end
-
-    it "uses the forced outcome when a signal was already sent, even if the status exited" do
-      status = instance_double(Process::Status, exited?: true)
-      slot = build_slot(slot_id: 0, pid: 10, forced_outcome: :interrupted, term_sent_at: 1.0)
-      integration = instance_double(Henitai::Integration::Rspec)
-      allow(integration).to receive(:build_result).with(:interrupted, slot.log_paths).and_return(:forced)
-      scheduler = build_scheduler(integration: integration)
-
-      expect(scheduler.send(:build_drain_result, slot, status)).to eq(:forced)
-    end
-
-    it "uses the forced outcome when the status did not exit" do
-      status = instance_double(Process::Status, exited?: false)
-      slot = build_slot(slot_id: 0, pid: 10, forced_outcome: :interrupted)
-      integration = instance_double(Henitai::Integration::Rspec)
-      allow(integration).to receive(:build_result).with(:interrupted, slot.log_paths).and_return(:forced)
-      scheduler = build_scheduler(integration: integration)
-
-      expect(scheduler.send(:build_drain_result, slot, status)).to eq(:forced)
-    end
-
-    it "falls back to :timeout when the status did not exit and forced_outcome is nil" do
-      status = instance_double(Process::Status, exited?: false)
-      slot = build_slot(slot_id: 0, pid: 10, forced_outcome: nil)
-      integration = instance_double(Henitai::Integration::Rspec)
-      allow(integration).to receive(:build_result).with(:timeout, slot.log_paths).and_return(:fallback)
-      scheduler = build_scheduler(integration: integration)
-
-      expect(scheduler.send(:build_drain_result, slot, status)).to eq(:fallback)
-    end
-
-    it "uses the forced outcome when final_status is nil" do
-      slot = build_slot(slot_id: 0, pid: 10, forced_outcome: :timeout)
-      integration = instance_double(Henitai::Integration::Rspec)
-      allow(integration).to receive(:build_result).with(:timeout, slot.log_paths).and_return(:forced)
-      scheduler = build_scheduler(integration: integration)
-
-      expect(scheduler.send(:build_drain_result, slot, nil)).to eq(:forced)
     end
   end
 end
