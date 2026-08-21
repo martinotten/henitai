@@ -36,28 +36,38 @@ RSpec.describe Henitai::SlotScheduler::Draining do
     instance_double(Henitai::ScenarioExecutionResult, survived?: survived, status: status)
   end
 
+  # One table per example, injected into the scheduler, so an example can seed
+  # mid-drain state and assert through the table's own public interface instead
+  # of reaching a private reader on the scheduler.
+  let(:slot_table) { Henitai::SlotScheduler::SlotTable.new }
+
   # `runtime:` and `integration:` are injectable so an example can hold onto
   # the collaborator it asserts against instead of reaching back through the
   # scheduler's private readers.
-  def build_scheduler(**opts)
+  def build_host(**opts)
     runtime = opts[:runtime] || build_runtime(
       now: opts.fetch(:now, 0.0),
       wait2_results: opts[:wait2_results] || {},
       wait_results: opts[:wait_results] || {}
     )
-    host = Struct.new(:worker_count, :runtime, :wakeup) do
+    Struct.new(:worker_count, :runtime, :wakeup) do
       def shutdown_requested? = false
     end.new(1, runtime, opts[:wakeup])
+  end
+
+  def build_scheduler(**opts)
     Henitai::SlotScheduler.new(
+      host: build_host(**opts),
       integration: opts[:integration] || instance_double(Henitai::Integration::Rspec),
       config: opts[:config] || Struct.new(:max_flaky_retries).new(0),
-      progress_reporter: opts[:progress_reporter], options: {}, host: host
+      progress_reporter: opts[:progress_reporter], options: {},
+      slot_table: opts[:slot_table] || slot_table
     )
   end
 
-  def inject_slot(scheduler, slot)
-    scheduler.send(:slots)[slot.slot_id] = slot
-    scheduler.send(:pid_to_slot)[slot.pid] = slot.slot_id
+  def inject_slot(_scheduler, slot)
+    slot_table.add(slot)
+    slot_table.register_pid(slot.pid, slot.slot_id)
   end
 
   describe "#check_timeouts" do
@@ -117,7 +127,7 @@ RSpec.describe Henitai::SlotScheduler::Draining do
       scheduler.check_timeouts
 
       expect(slot.draining).to be(false)
-      expect(scheduler.send(:slots)).to be_empty
+      expect(slot_table).to be_empty
     end
   end
 
@@ -195,7 +205,7 @@ RSpec.describe Henitai::SlotScheduler::Draining do
       scheduler.drain_draining_slots
 
       expect(runtime).not_to have_received(:kill)
-      expect(scheduler.send(:slots)).to be_empty
+      expect(slot_table).to be_empty
     end
 
     it "broadcasts SIGTERM then SIGKILL and reaps the survivors", :aggregate_failures do
@@ -213,7 +223,7 @@ RSpec.describe Henitai::SlotScheduler::Draining do
 
       expect(calls).to eq([[:SIGTERM, -10], [:SIGKILL, -10]])
       expect(wakeup).to have_received(:wait).with(Henitai::SlotScheduler::PROCESS_DRAIN_WINDOW)
-      expect(scheduler.send(:slots)).to be_empty
+      expect(slot_table).to be_empty
     end
   end
 
@@ -230,7 +240,7 @@ RSpec.describe Henitai::SlotScheduler::Draining do
       scheduler.send(:prune_raced_draining_slots, draining)
 
       expect(draining).to be_empty
-      expect(scheduler.send(:slots)).to be_empty
+      expect(slot_table).to be_empty
     end
 
     it "keeps a slot whose pid has not exited yet" do
@@ -324,8 +334,8 @@ RSpec.describe Henitai::SlotScheduler::Draining do
 
       scheduler.send(:reap_and_finalize_slot, slot)
 
-      expect(scheduler.send(:slots)).to be_empty
-      expect(scheduler.send(:pid_to_slot)).to be_empty
+      expect(slot_table).to be_empty
+      expect(slot_table.pid_registered?(10)).to be(false)
       expect(Henitai::Integration::SchedulerDiagnostics).to have_received(:child_ended).with(10)
     end
 

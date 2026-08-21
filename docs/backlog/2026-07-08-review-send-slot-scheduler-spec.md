@@ -98,17 +98,39 @@ the spec goes red). Recording them so they are not mistaken for coverage gaps:
   rather than fall through. Codifying a crash as expected behavior would be
   worse than leaving the mutant alive.
 
-**Wave 3 — `SlotTable`, still open.** The 29 `send(:slots)`, 3
-`send(:pid_to_slot)`, 2 `send(:next_slot_id!)` and 2
-`send(:next_free_worker_index)` need the slot-table extraction. Per the plan,
-most `send(:slots)` assertions should first convert to the already-public
-`done?`/`results`/`flaky_retry_count` rather than being mechanically renamed to
-a new public `slot_table` reader — that would be laundering, not decoupling.
+**Wave 3 — `SlotTable`.** `lib/henitai/slot_scheduler/slot_table.rb` now owns
+`@slots`, `@pid_to_slot` and the slot-id sequence. Reach dropped 57 → 21 here
+and 22 → 14 in `draining_spec`.
+
+The mechanism matters, because a mechanical rename would have satisfied the
+ratchet while leaving the coupling byte-identical: `send(:slots).values.first`
+becoming `scheduler.slot_table.values.first` is laundering, and the guard
+counts `send`, not coupling. So there is **no public `slot_table` reader on
+`SlotScheduler`**. Instead the table is a constructor dependency
+(`slot_table:`, defaulting to a fresh one), and each spec builds the table it
+asserts against — the same shape already used for `integration:` and
+`runtime:`. `draining_spec`'s `inject_slot` seeds the injected table directly.
+
+Table invariants moved out of the host spec entirely into
+`spec/henitai/slot_scheduler/slot_table_spec.rb`: slot-id monotonicity and
+non-reuse, smallest-free-worker-index with its `|| used.size` fallback branch,
+and the pid index's claim-once semantics — `release_pid` answers the slot id the
+first time and `nil` the second, which is what stops two threads finalizing one
+slot. All eight falsification mutations on the new class are killed.
+
+`SlotScheduler#initialize` picked up a `Metrics/ParameterLists` disable: six
+keyword collaborators, all supplied by `ProcessWorkerRunner`. Bundling them into
+a context object would only move the list.
 
 **Deferred — drain mechanics.** `dispatch_slot_result` ×9, `retry_slot` ×3,
-`complete_slot` ×3, `reset_slot_for_retry` ×1 here, plus the residue tracked in
+`complete_slot` ×3, `reset_slot_for_retry` ×1 here, plus the 14 remaining in
 `2026-08-21-review-send-slot-scheduler-draining-spec.md`. This is the
 `DrainCycle`/`SlotSpawner`/`ResultDispatcher` wave, out of scope for 0.5.0.
+
+Note for whoever picks that up: a slot-fetch cannot be retired while the thing
+the slot is fed to is still a private-method `send`. That is why the residue is
+what it is, and why the plan's target of "budgets hold `process_guard.rb` and
+nothing else" is unreachable without this wave.
 
 ### The per-step mutation-score gate could not run
 

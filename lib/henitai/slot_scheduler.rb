@@ -5,6 +5,7 @@ require_relative "slot_scheduler/draining"
 require_relative "slot_scheduler/drain_verdict"
 require_relative "slot_scheduler/retry_policy"
 require_relative "slot_scheduler/slot_deadline"
+require_relative "slot_scheduler/slot_table"
 require_relative "slot_scheduler/test_file_selection"
 
 module Henitai
@@ -44,18 +45,23 @@ module Henitai
     # @return [Array<ScenarioExecutionResult>] verdicts accumulated so far.
     attr_reader :flaky_retry_count, :results
 
-    def initialize(integration:, config:, progress_reporter:, options:, host:)
+    # +slot_table+ is injectable so a spec can seed mid-run state, or assert
+    # against the table through its own public interface, without reaching a
+    # private reader here.
+    # rubocop:disable Metrics/ParameterLists -- every one of these is a distinct
+    # collaborator supplied by ProcessWorkerRunner; bundling them into a context
+    # object would only move the list.
+    def initialize(integration:, config:, progress_reporter:, options:, host:, slot_table: SlotTable.new)
+      # rubocop:enable Metrics/ParameterLists
       @integration = integration
       @config = config
       @progress_reporter = progress_reporter
       @options = options
       @host = host
+      @slot_table = slot_table
       @pending = []
-      @slots = {}
-      @pid_to_slot = {}
       @results = []
       @flaky_retry_count = 0
-      @next_slot_id = 0
     end
 
     # Queues the mutants to be scheduled into worker slots.
@@ -64,11 +70,11 @@ module Henitai
     end
 
     def done?
-      pending.empty? && slots.empty?
+      pending.empty? && slot_table.empty?
     end
 
     def fill_idle_slots
-      while slots.size < worker_count && !pending.empty?
+      while slot_table.size < worker_count && !pending.empty?
         mutant = pending.shift
         spawn_into_slot(mutant)
       end
@@ -87,7 +93,7 @@ module Henitai
 
     def next_event_timeout
       now = monotonic_time
-      slot_timeouts = slots.each_value.filter_map do |slot|
+      slot_timeouts = slot_table.each_value.filter_map do |slot|
         slot_deadline.remaining(slot, now)
       end
 
@@ -96,7 +102,7 @@ module Henitai
 
     private
 
-    attr_reader :pending, :slots, :pid_to_slot, :integration, :config,
+    attr_reader :pending, :slot_table, :integration, :config,
                 :progress_reporter, :options, :host
 
     def worker_count = host.worker_count
@@ -110,7 +116,7 @@ module Henitai
       annotate_selection(mutant, test_files)
       return record_no_coverage(mutant) if selection.resolved_empty?(test_files)
 
-      worker_index = next_free_worker_index
+      worker_index = slot_table.next_free_worker_index(worker_count)
       with_worker_slot(worker_index) do
         handle = integration.spawn_mutant(mutant: mutant, test_files: test_files)
         register_slot(handle, mutant, worker_index, slot_timeout(mutant, test_files))
@@ -128,10 +134,9 @@ module Henitai
     end
 
     def register_slot(handle, mutant, worker_index, timeout)
-      slot_id = next_slot_id!
-      slot = build_slot(slot_id, mutant, handle, worker_index, timeout)
-      slots[slot_id] = slot
-      pid_to_slot[handle.pid] = slot_id
+      slot = build_slot(slot_table.next_slot_id!, mutant, handle, worker_index, timeout)
+      slot_table.add(slot)
+      slot_table.register_pid(handle.pid, slot.slot_id)
       Integration::SchedulerDiagnostics.child_started(handle.pid)
     end
 
@@ -149,20 +154,11 @@ module Henitai
       resolver ? resolver.call(mutant, test_files) : config.timeout
     end
 
-    # Smallest index in 0...worker_count not held by a live slot, so
-    # concurrently-running children always see distinct values and freed
-    # indices are reused. Slot ids themselves grow monotonically and are
-    # unsuitable as a resource token.
-    def next_free_worker_index
-      used = slots.each_value.map(&:worker_index)
-      (0...worker_count).find { |index| !used.include?(index) } || used.size
-    end
-
     def complete_slot(pid, wait_result)
-      slot_id = pid_to_slot.delete(pid)
+      slot_id = slot_table.release_pid(pid)
       return unless slot_id
 
-      slot = slots[slot_id]
+      slot = slot_table.fetch(slot_id)
       return unless slot
 
       Integration::SchedulerDiagnostics.child_ended(pid)
@@ -177,7 +173,7 @@ module Henitai
     end
 
     def finalize_slot(slot, result)
-      slots.delete(slot.slot_id)
+      slot_table.delete(slot.slot_id)
       slot.mutant.status = result.status
       results << result
       progress_reporter&.progress(slot.mutant, scenario_result: result)
@@ -210,7 +206,7 @@ module Henitai
         finish_retry(slot, handle)
       end
     rescue StandardError => e
-      slots.delete(slot.slot_id)
+      slot_table.delete(slot.slot_id)
       record_spawn_failure(slot.mutant, e)
     end
 
@@ -218,7 +214,7 @@ module Henitai
       @flaky_retry_count += 1 if slot.retry_count.zero?
       slot.retry_count += 1
       reset_slot_for_retry(slot, handle)
-      pid_to_slot[handle.pid] = slot.slot_id
+      slot_table.register_pid(handle.pid, slot.slot_id)
       Integration::SchedulerDiagnostics.child_started(handle.pid)
     end
 
@@ -247,12 +243,6 @@ module Henitai
     def record_no_coverage(mutant)
       mutant.status = :no_coverage
       progress_reporter&.progress(mutant, scenario_result: nil)
-    end
-
-    def next_slot_id!
-      id = @next_slot_id
-      @next_slot_id += 1
-      id
     end
 
     def with_worker_slot(worker_index)

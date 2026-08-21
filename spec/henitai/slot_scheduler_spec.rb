@@ -3,13 +3,19 @@
 require "spec_helper"
 
 RSpec.describe Henitai::SlotScheduler do
-  def build_scheduler
+  # One table per example, shared by both builders, so an example can assert
+  # through the table's own public interface instead of reaching a private
+  # reader on the scheduler.
+  let(:slot_table) { Henitai::SlotScheduler::SlotTable.new }
+
+  def build_scheduler(slot_table: self.slot_table)
     described_class.new(
       integration: nil,
       config: nil,
       progress_reporter: nil,
       options: {},
-      host: nil
+      host: nil,
+      slot_table: slot_table
     )
   end
 
@@ -49,7 +55,8 @@ RSpec.describe Henitai::SlotScheduler do
       config: Struct.new(:timeout, :max_flaky_retries).new(10.0, max_flaky_retries),
       progress_reporter: opts[:progress_reporter],
       options: opts[:options] || { test_files: [] },
-      host: opts[:host] || build_host(worker_count, shutdown: opts.fetch(:shutdown, false))
+      host: opts[:host] || build_host(worker_count, shutdown: opts.fetch(:shutdown, false)),
+      slot_table: opts[:slot_table] || slot_table
     )
   end
 
@@ -113,7 +120,7 @@ RSpec.describe Henitai::SlotScheduler do
 
       scheduler.fill_idle_slots
 
-      expect(scheduler.send(:slots).size).to eq(2)
+      expect(slot_table.size).to eq(2)
       expect(scheduler.send(:pending).size).to eq(1)
     end
 
@@ -129,10 +136,11 @@ RSpec.describe Henitai::SlotScheduler do
     it "does not spawn when slots already exceed worker_count" do
       captured = []
       scheduler = build_worker_scheduler(captured, worker_count: 1)
-      slots = scheduler.send(:slots)
-      # Two live slots against worker_count: 1 forces slots.size(2) > worker_count(1),
+      # Two live slots against worker_count: 1 forces size(2) > worker_count(1),
       # distinguishing `<` from a `!=` mutation (which would keep spawning at exactly 1).
-      2.times { |i| slots[i] = Henitai::SlotScheduler::Slot.new(i, nil, 100 + i, 0.0, 5.0, nil, 0, false, nil, nil, i) }
+      2.times do |i|
+        slot_table.add(Henitai::SlotScheduler::Slot.new(i, nil, 100 + i, 0.0, 5.0, nil, 0, false, nil, nil, i))
+      end
       scheduler.enqueue([build_worker_mutant("a")])
 
       scheduler.fill_idle_slots
@@ -165,7 +173,7 @@ RSpec.describe Henitai::SlotScheduler do
       scheduler.enqueue([bare_mutant])
 
       expect { scheduler.fill_idle_slots }.not_to raise_error
-      expect(scheduler.send(:slots).size).to eq(1)
+      expect(slot_table.size).to eq(1)
     end
 
     it "records a spawn failure without raising", :aggregate_failures do
@@ -174,7 +182,7 @@ RSpec.describe Henitai::SlotScheduler do
       allow(integration).to receive(:select_tests).and_return([])
       scheduler = described_class.new(
         integration: integration, config: nil, progress_reporter: nil,
-        options: { test_files: [] }, host: build_host(1)
+        options: { test_files: [] }, slot_table: slot_table, host: build_host(1)
       )
       mutant = build_worker_mutant("a")
       scheduler.enqueue([mutant])
@@ -196,13 +204,13 @@ RSpec.describe Henitai::SlotScheduler do
 
       scheduler.fill_idle_slots
 
-      slot = scheduler.send(:slots).values.first
+      slot = slot_table.each_value.first
       expect(slot.mutant).to eq(mutant)
       expect(slot.retry_count).to eq(0)
       expect(slot.draining).to be(false)
       expect(slot.term_sent_at_monotonic).to be_nil
       expect(slot.forced_outcome).to be_nil
-      expect(scheduler.send(:pid_to_slot)[slot.pid]).to eq(slot.slot_id)
+      expect(slot_table.release_pid(slot.pid)).to eq(slot.slot_id)
     end
 
     it "reports the child pid to SchedulerDiagnostics" do
@@ -213,7 +221,7 @@ RSpec.describe Henitai::SlotScheduler do
 
       scheduler.fill_idle_slots
 
-      pid = scheduler.send(:slots).values.first.pid
+      pid = slot_table.each_value.first.pid
       expect(Henitai::Integration::SchedulerDiagnostics).to have_received(:child_started).with(pid)
     end
   end
@@ -226,7 +234,7 @@ RSpec.describe Henitai::SlotScheduler do
 
       scheduler.fill_idle_slots
 
-      slot = scheduler.send(:slots).values.first
+      slot = slot_table.each_value.first
       expect(slot.log_paths).to eq(
         { stdout_path: "/dev/null", stderr_path: "/dev/null", log_path: "/dev/null" }
       )
@@ -239,7 +247,7 @@ RSpec.describe Henitai::SlotScheduler do
 
       scheduler.fill_idle_slots
 
-      slot = scheduler.send(:slots).values.first
+      slot = slot_table.each_value.first
       expect(slot.started_at_monotonic).to be_a(Float).and be > 0.0
     end
   end
@@ -261,7 +269,7 @@ RSpec.describe Henitai::SlotScheduler do
       scheduler = build_worker_scheduler(captured, worker_count: 2, integration: integration, host: host)
       scheduler.enqueue([build_worker_mutant("a"), build_worker_mutant("b")])
       scheduler.fill_idle_slots
-      pids = scheduler.send(:slots).values.map(&:pid)
+      pids = slot_table.each_value.map(&:pid)
       status_a = instance_double(Process::Status)
       status_b = instance_double(Process::Status)
       allow(host).to receive(:runtime).and_return(
@@ -270,7 +278,7 @@ RSpec.describe Henitai::SlotScheduler do
 
       scheduler.reap_all_completed_children
 
-      expect(scheduler.send(:slots)).to be_empty
+      expect(slot_table).to be_empty
       expect(scheduler.results.size).to eq(2)
     end
 
@@ -300,7 +308,7 @@ RSpec.describe Henitai::SlotScheduler do
       runtime = instance_double(Henitai::ProcessWorkerRunner::Runtime, clock_gettime: now)
       described_class.new(
         integration: nil, config: nil, progress_reporter: nil, options: {},
-        host: build_host(1, runtime: runtime)
+        slot_table: slot_table, host: build_host(1, runtime: runtime)
       )
     end
 
@@ -312,9 +320,8 @@ RSpec.describe Henitai::SlotScheduler do
 
     it "returns the smallest remaining timeout across all slots" do
       scheduler = scheduler_with_runtime_now(10.0)
-      slots = scheduler.send(:slots)
-      slots[0] = Henitai::SlotScheduler::Slot.new(0, nil, 100, 0.0, 5.0, nil, 0, false, nil, nil, 0)
-      slots[1] = Henitai::SlotScheduler::Slot.new(1, nil, 101, 0.0, 50.0, nil, 0, false, nil, nil, 1)
+      slot_table.add(Henitai::SlotScheduler::Slot.new(0, nil, 100, 0.0, 5.0, nil, 0, false, nil, nil, 0))
+      slot_table.add(Henitai::SlotScheduler::Slot.new(1, nil, 101, 0.0, 50.0, nil, 0, false, nil, nil, 1))
 
       expect(scheduler.next_event_timeout).to eq(0.0)
     end
@@ -328,7 +335,7 @@ RSpec.describe Henitai::SlotScheduler do
 
       scheduler.fill_idle_slots
 
-      expect(scheduler.send(:slots).values.first.timeout).to eq(10.0)
+      expect(slot_table.each_value.first.timeout).to eq(10.0)
     end
 
     it "uses the timeout_resolver when the option is set" do
@@ -341,57 +348,7 @@ RSpec.describe Henitai::SlotScheduler do
 
       scheduler.fill_idle_slots
 
-      expect(scheduler.send(:slots).values.first.timeout).to eq(99.0)
-    end
-  end
-
-  describe "#next_free_worker_index" do
-    def build_idle_scheduler(worker_count)
-      described_class.new(
-        integration: nil, config: nil, progress_reporter: nil, options: {}, host: build_host(worker_count)
-      )
-    end
-
-    it "returns 0 when no slots are in use" do
-      scheduler = build_idle_scheduler(2)
-      expect(scheduler.send(:next_free_worker_index)).to eq(0)
-    end
-
-    it "returns the smallest free index among live slots" do
-      captured = []
-      scheduler = build_worker_scheduler(captured, worker_count: 3)
-      scheduler.enqueue([build_worker_mutant("a")])
-      scheduler.fill_idle_slots
-      # Free the assigned worker_index (0) but keep the slot table entry
-      # untouched otherwise, then take a second one to prove reuse.
-      scheduler.enqueue([build_worker_mutant("b")])
-
-      scheduler.fill_idle_slots
-
-      expect(captured).to eq(%w[0 1])
-    end
-
-    it "does not treat worker_count itself as a free index" do
-      scheduler = build_idle_scheduler(2)
-      slots = scheduler.send(:slots)
-      [0, 1, 5].each_with_index do |worker_index, i|
-        slots[i] = Henitai::SlotScheduler::Slot.new(
-          i, nil, 100 + i, 0.0, 5.0, nil, 0, false, nil, nil, worker_index
-        )
-      end
-
-      expect(scheduler.send(:next_free_worker_index)).to eq(3)
-    end
-  end
-
-  describe "#next_slot_id!" do
-    it "increments monotonically across calls" do
-      scheduler = build_scheduler
-
-      first = scheduler.send(:next_slot_id!)
-      second = scheduler.send(:next_slot_id!)
-
-      expect([first, second]).to eq([0, 1])
+      expect(slot_table.each_value.first.timeout).to eq(99.0)
     end
   end
 
@@ -403,12 +360,12 @@ RSpec.describe Henitai::SlotScheduler do
       scheduler.fill_idle_slots
 
       expect { scheduler.send(:complete_slot, 999_999, nil) }.not_to raise_error
-      expect(scheduler.send(:slots).size).to eq(1)
+      expect(slot_table.size).to eq(1)
     end
 
     it "does nothing when the slot table has no entry for the pid" do
       scheduler = build_scheduler
-      scheduler.send(:pid_to_slot)[42] = "stale-slot-id"
+      slot_table.register_pid(42, "stale-slot-id")
 
       expect { scheduler.send(:complete_slot, 42, nil) }.not_to raise_error
     end
@@ -419,7 +376,7 @@ RSpec.describe Henitai::SlotScheduler do
       scheduler = build_worker_scheduler(captured, worker_count: 1, integration: integration)
       scheduler.enqueue([build_worker_mutant("a")])
       scheduler.fill_idle_slots
-      slot = scheduler.send(:slots).values.first
+      slot = slot_table.each_value.first
       allow(Henitai::Integration::SchedulerDiagnostics).to receive(:child_ended)
       killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed)
       allow(integration).to receive(:build_result).with(:wait_result, slot.log_paths).and_return(killed)
@@ -440,12 +397,12 @@ RSpec.describe Henitai::SlotScheduler do
       mutant = build_worker_mutant("a")
       scheduler.enqueue([mutant])
       scheduler.fill_idle_slots
-      slot = scheduler.send(:slots).values.first
+      slot = slot_table.each_value.first
       killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed)
 
       scheduler.send(:dispatch_slot_result, slot, killed)
 
-      expect(scheduler.send(:slots)).to be_empty
+      expect(slot_table).to be_empty
       expect(mutant.status).to eq(:killed)
       expect(scheduler.results).to eq([killed])
       expect(progress_reporter).to have_received(:progress).with(mutant, scenario_result: killed)
@@ -456,7 +413,7 @@ RSpec.describe Henitai::SlotScheduler do
       scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 1)
       scheduler.enqueue([build_worker_mutant("a")])
       scheduler.fill_idle_slots
-      slot = scheduler.send(:slots).values.first
+      slot = slot_table.each_value.first
       survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true, status: :survived)
 
       scheduler.send(:dispatch_slot_result, slot, survived)
@@ -477,14 +434,14 @@ RSpec.describe Henitai::SlotScheduler do
       mutant = build_worker_mutant("a")
       scheduler.enqueue([mutant])
       scheduler.fill_idle_slots
-      slot = scheduler.send(:slots).values.first
+      slot = slot_table.each_value.first
       original_pid = slot.pid
 
       scheduler.send(:retry_slot, slot)
 
       expect(integration).to have_received(:spawn_mutant).with(mutant: mutant, test_files: %w[a_spec.rb]).twice
       expect(slot.pid).not_to eq(original_pid)
-      expect(scheduler.send(:pid_to_slot)[slot.pid]).to eq(slot.slot_id)
+      expect(slot_table.release_pid(slot.pid)).to eq(slot.slot_id)
     end
 
     it "records a spawn failure and drops the slot when the respawn raises", :aggregate_failures do
@@ -494,17 +451,17 @@ RSpec.describe Henitai::SlotScheduler do
       ))
       scheduler = described_class.new(
         integration: integration, config: Struct.new(:timeout, :max_flaky_retries).new(10.0, 1),
-        progress_reporter: nil, options: { test_files: [] }, host: build_host(1)
+        progress_reporter: nil, options: { test_files: [] }, slot_table: slot_table, host: build_host(1)
       )
       mutant = build_worker_mutant("a")
       scheduler.enqueue([mutant])
       scheduler.fill_idle_slots
-      slot = scheduler.send(:slots).values.first
+      slot = slot_table.each_value.first
       allow(integration).to receive(:spawn_mutant).and_raise(StandardError, "respawn failed")
 
       scheduler.send(:retry_slot, slot)
 
-      expect(scheduler.send(:slots)).to be_empty
+      expect(slot_table).to be_empty
       expect(scheduler.results.size).to eq(1)
       expect(scheduler.results.first.status).to eq(:compile_error)
       expect(mutant.status).to eq(:compile_error)
@@ -520,7 +477,7 @@ RSpec.describe Henitai::SlotScheduler do
       allow(integration).to receive(:select_tests).and_return(%w[a_spec.rb])
       scheduler.enqueue([mutant])
       scheduler.fill_idle_slots
-      slot = scheduler.send(:slots).values.first
+      slot = slot_table.each_value.first
       allow(integration).to receive(:select_tests).with(mutant.subject).and_return(%w[b_spec.rb])
 
       scheduler.send(:retry_slot, slot)
@@ -535,7 +492,7 @@ RSpec.describe Henitai::SlotScheduler do
       scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 2)
       scheduler.enqueue([build_worker_mutant("a")])
       scheduler.fill_idle_slots
-      slot = scheduler.send(:slots).values.first
+      slot = slot_table.each_value.first
       survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true, status: :survived)
 
       scheduler.send(:dispatch_slot_result, slot, survived)
@@ -550,7 +507,7 @@ RSpec.describe Henitai::SlotScheduler do
       scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 2)
       scheduler.enqueue([build_worker_mutant("a")])
       scheduler.fill_idle_slots
-      slot = scheduler.send(:slots).values.first
+      slot = slot_table.each_value.first
       survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true, status: :survived)
 
       scheduler.send(:dispatch_slot_result, slot, survived)
@@ -563,7 +520,7 @@ RSpec.describe Henitai::SlotScheduler do
       scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 1)
       scheduler.enqueue([build_worker_mutant("a")])
       scheduler.fill_idle_slots
-      slot = scheduler.send(:slots).values.first
+      slot = slot_table.each_value.first
       survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true, status: :survived)
       allow(Henitai::Integration::SchedulerDiagnostics).to receive(:child_started)
 
@@ -579,7 +536,7 @@ RSpec.describe Henitai::SlotScheduler do
       scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 1)
       scheduler.enqueue([build_worker_mutant("a")])
       scheduler.fill_idle_slots
-      slot = scheduler.send(:slots).values.first
+      slot = slot_table.each_value.first
       slot.draining = true
       slot.term_sent_at_monotonic = 5.0
       slot.forced_outcome = :timeout
@@ -609,7 +566,7 @@ RSpec.describe Henitai::SlotScheduler do
       allow(integration).to receive(:spawn_mutant).and_raise(StandardError, "boom")
       scheduler = described_class.new(
         integration: integration, config: nil, progress_reporter: progress_reporter,
-        options: { test_files: [] }, host: build_host(1)
+        options: { test_files: [] }, slot_table: slot_table, host: build_host(1)
       )
       mutant = build_worker_mutant("a")
       scheduler.enqueue([mutant])
@@ -660,7 +617,7 @@ RSpec.describe Henitai::SlotScheduler do
       scheduler.fill_idle_slots
       survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true, status: :survived)
 
-      slot_one = scheduler.send(:slots).values.last
+      slot_one = slot_table.each_value.to_a.last
       scheduler.send(:dispatch_slot_result, slot_one, survived)
 
       expect(captured).to eq(%w[0 1 1])
@@ -674,7 +631,7 @@ RSpec.describe Henitai::SlotScheduler do
       survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true, status: :survived)
 
       ENV["HENITAI_WORKER_SLOT"] = "parent"
-      slot = scheduler.send(:slots).values.first
+      slot = slot_table.each_value.first
       scheduler.send(:dispatch_slot_result, slot, survived)
 
       expect(ENV.fetch("HENITAI_WORKER_SLOT", nil)).to eq("parent")
@@ -687,7 +644,7 @@ RSpec.describe Henitai::SlotScheduler do
       scheduler.fill_idle_slots
       killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed)
 
-      slot_zero = scheduler.send(:slots).values.first
+      slot_zero = slot_table.each_value.first
       scheduler.send(:dispatch_slot_result, slot_zero, killed)
       scheduler.fill_idle_slots
 
