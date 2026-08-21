@@ -42,8 +42,6 @@ module Henitai
         @pid_to_slot.delete(pid)
       end
 
-      def pid_registered?(pid) = @pid_to_slot.key?(pid)
-
       # Monotonic and never reused. Freed worker indices are recycled; slot ids
       # are not, which is what makes them safe as hash keys across retries.
       def next_slot_id!

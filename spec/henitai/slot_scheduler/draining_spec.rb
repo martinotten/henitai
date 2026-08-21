@@ -335,7 +335,7 @@ RSpec.describe Henitai::SlotScheduler::Draining do
       scheduler.send(:reap_and_finalize_slot, slot)
 
       expect(slot_table).to be_empty
-      expect(slot_table.pid_registered?(10)).to be(false)
+      expect(slot_table.release_pid(10)).to be_nil
       expect(Henitai::Integration::SchedulerDiagnostics).to have_received(:child_ended).with(10)
     end
 

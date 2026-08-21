@@ -72,13 +72,6 @@ RSpec.describe Henitai::SlotScheduler::SlotTable do
       expect(table.release_pid(500)).to be_nil
     end
 
-    it "reports whether a pid is currently registered", :aggregate_failures do
-      table.register_pid(500, 7)
-
-      expect(table.pid_registered?(500)).to be(true)
-      expect(table.pid_registered?(501)).to be(false)
-    end
-
     # A flaky retry keeps the slot and its id but respawns under a new pid, so
     # the reverse index has to accept re-pointing without touching the slot.
     it "re-points an existing slot_id at a new pid", :aggregate_failures do
