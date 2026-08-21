@@ -2024,18 +2024,6 @@ RSpec.describe Henitai::Runner do
     end
   end
 
-  describe "#unique_subjects" do
-    it "keeps subjects with the same expression if they are in different source files" do
-      runner = described_class.new(config: build_config)
-      s1 = build_subject("Greeter#hello", source_file: "lib/foo.rb")
-      s2 = build_subject("Greeter#hello", source_file: "lib/bar.rb")
-      s3 = build_subject("Greeter#hello", source_file: "lib/foo.rb")
-
-      unique = runner.send(:unique_subjects, [s1, s2, s3])
-      expect(unique).to eq([s1, s2])
-    end
-  end
-
   describe "#result_thresholds" do
     it "returns nil when config does not respond to thresholds" do
       config = Object.new
@@ -2047,36 +2035,6 @@ RSpec.describe Henitai::Runner do
       config = build_config(thresholds: { low: 20, high: 80 })
       runner = described_class.new(config:)
       expect(runner.send(:result_thresholds)).to eq(low: 20, high: 80)
-    end
-  end
-
-  describe "#reject_excluded" do
-    it "returns the files immediately and does not normalize paths when excludes is empty" do # rubocop:disable RSpec/MultipleExpectations
-      runner = described_class.new(config: build_config(excludes: []))
-      allow(runner).to receive(:normalize_path).and_call_original
-
-      expect(runner.send(:reject_excluded, ["lib/foo.rb"])).to eq(["lib/foo.rb"])
-      expect(runner).not_to have_received(:normalize_path)
-    end
-
-    it "filters out excluded files by pattern" do
-      runner = described_class.new(config: build_config(excludes: ["lib/exclude*"]))
-      Dir.mktmpdir do |dir|
-        FileUtils.mkdir_p(File.join(dir, "lib"))
-        File.write(File.join(dir, "lib/foo.rb"), "")
-        File.write(File.join(dir, "lib/exclude_me.rb"), "")
-
-        original = Dir.pwd
-        begin
-          Dir.chdir(dir) do
-            files = ["lib/foo.rb", "lib/exclude_me.rb"]
-            filtered = runner.send(:reject_excluded, files)
-            expect(filtered).to eq(["lib/foo.rb"])
-          end
-        ensure
-          Dir.chdir(original)
-        end
-      end
     end
   end
 end

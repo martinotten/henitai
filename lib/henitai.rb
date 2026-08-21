@@ -59,6 +59,8 @@ module Henitai
   autoload :SurvivorActivationCache, "henitai/survivor_activation_cache"
   autoload :SurvivorRerunStrategy, "henitai/survivor_rerun_strategy"
   autoload :DirtySourceDetector, "henitai/dirty_source_detector"
+  autoload :SourceFileSelection, "henitai/source_file_selection"
+  autoload :SubjectSelection, "henitai/subject_selection"
   autoload :ScenarioExecutionResult, "henitai/scenario_execution_result"
   autoload :CoverageFormatter, "henitai/coverage_formatter"
   autoload :MinitestCoverageReporter, "henitai/minitest_coverage_reporter"

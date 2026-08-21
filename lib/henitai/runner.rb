@@ -88,13 +88,13 @@ module Henitai
     end
 
     def resolve_subjects(source_files = self.source_files)
-      subjects = subject_resolver.resolve_from_files(source_files)
-      return subjects if pattern_subjects.empty?
+      subject_selection.resolve(source_files)
+    end
 
-      selected_subjects = pattern_subjects.flat_map do |pattern|
-        subject_resolver.apply_pattern(subjects, pattern.expression)
-      end
-      unique_subjects(selected_subjects)
+    def subject_selection
+      @subject_selection ||= SubjectSelection.new(
+        subject_resolver: subject_resolver, patterns: @subjects
+      )
     end
 
     def generate_mutants(subjects)
@@ -241,65 +241,15 @@ module Henitai
     end
 
     def source_files
-      @source_files ||= filter_changed(reject_excluded(included_source_files))
+      @source_files ||= source_file_selection.call
     end
 
-    def included_source_files
-      Array(config.includes).flat_map do |include_path|
-        Dir.glob(File.join(include_path, "**", "*.rb"))
-      end.uniq
+    def source_file_selection
+      @source_file_selection ||= SourceFileSelection.new(
+        config: config, since: @since,
+        git_diff_analyzer: git_diff_analyzer, per_test_coverage: per_test_coverage
+      )
     end
-
-    # Drops files matched by any `excludes:` glob (e.g. standalone entry points
-    # that cannot be mutation-tested in-process). Excludes apply regardless of
-    # the --since filter.
-    def reject_excluded(files)
-      excluded = excluded_source_files
-      return files if excluded.empty?
-
-      files.reject { |path| excluded.include?(normalize_path(path)) }
-    end
-
-    def excluded_source_files
-      Array(config.excludes)
-        .flat_map { |pattern| Dir.glob(pattern) }
-        .map { |path| normalize_path(path) }
-    end
-
-    def filter_changed(files)
-      return files unless @since
-
-      changed_file_set = changed_paths_since.map { |path| normalize_path(path) }
-      changed_file_set += covered_sources_for_changed_tests(changed_file_set)
-      files.select { |path| changed_file_set.include?(normalize_path(path)) }
-    end
-
-    # Committed changes since the ref plus the current working tree (tracked
-    # dirty and untracked files): the working tree is what gets tested, so it
-    # is always part of "changed since REF".
-    def changed_paths_since
-      git_diff_analyzer.changed_files(from: @since, to: "HEAD") +
-        git_diff_analyzer.working_tree_changed_files
-    end
-
-    # Changed test files select the source files they cover, so an edited
-    # test re-tests the subjects it can kill. Uses the per-test map from the
-    # previous run — Gate 1 runs before this run's bootstrap finishes.
-    def covered_sources_for_changed_tests(changed_paths)
-      changed_paths
-        .flat_map { |path| per_test_coverage.source_files_covered_by(path) }
-        .map { |path| normalize_path(path) }
-    end
-
-    def pattern_subjects
-      Array(@subjects)
-    end
-
-    def unique_subjects(subjects)
-      subjects.uniq { |subject| [subject.expression, subject.source_file] }
-    end
-
-    def normalize_path(path) = File.expand_path(path)
 
     def result_thresholds = optional_config(:thresholds)
 
@@ -314,7 +264,7 @@ module Henitai
     # Mutation-scope full run, controlling Result#authoritative? — distinct
     # from the per-test-coverage plan's test-suite-scope "full run".
     def full_run?
-      pattern_subjects.empty? && @since.nil? && !survivor_rerun?
+      Array(@subjects).empty? && @since.nil? && !survivor_rerun?
     end
 
     def survivor_strategy

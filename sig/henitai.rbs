@@ -1075,6 +1075,36 @@ module Henitai
     def self.write: (String, Hash[String, Hash[String, untyped]]) -> void
   end
 
+  class SourceFileSelection
+    def initialize: (
+      config: untyped,
+      since: String?,
+      git_diff_analyzer: untyped,
+      per_test_coverage: untyped
+    ) -> void
+    def call: () -> Array[String]
+    def included_source_files: () -> Array[String]
+    def reject_excluded: (Array[String]) -> Array[String]
+    def filter_changed: (Array[String]) -> Array[String]
+
+    private
+
+    def excluded_source_files: () -> Array[String]
+    def changed_paths_since: () -> Array[String]
+    def covered_sources_for_changed_tests: (Array[String]) -> Array[String]
+    def normalize_path: (String) -> String
+  end
+
+  class SubjectSelection
+    def initialize: (subject_resolver: untyped, patterns: Array[untyped]?) -> void
+    def resolve: (Array[String]) -> Array[Subject]
+    def unique: (Array[Subject]) -> Array[Subject]
+
+    private
+
+    def pattern_expressions: () -> Array[String]
+  end
+
   class Runner
     attr_reader config: Configuration
     attr_reader result: untyped
@@ -1099,15 +1129,8 @@ module Henitai
     def per_test_coverage: () -> PerTestCoverage
     def history_store_path: () -> String
     def source_files: () -> Array[String]
-    def included_source_files: () -> Array[String]
-    def reject_excluded: (Array[String]) -> Array[String]
-    def excluded_source_files: () -> Array[String]
-    def filter_changed: (Array[String]) -> Array[String]
-    def changed_paths_since: () -> Array[String]
-    def covered_sources_for_changed_tests: (Array[String]) -> Array[String]
-    def pattern_subjects: () -> Array[Subject]
-    def unique_subjects: (Array[Subject]) -> Array[Subject]
-    def normalize_path: (String) -> String
+    def source_file_selection: () -> SourceFileSelection
+    def subject_selection: () -> SubjectSelection
 
     private
 
