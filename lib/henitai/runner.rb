@@ -30,9 +30,16 @@ module Henitai
 
     # @param mode [Hash] execution-mode flags: +dry_run:+ stops before Gate 4,
     #   +incremental:+ reuses still-valid Killed verdicts from history.
+    # +deps+ is assigned in the body, not defaulted in the signature: the
+    # default needs @config, and `config:` itself defaults to a load.
+    #
+    # rubocop:disable Metrics/ParameterLists -- these are the CLI's own flags
+    # plus the dependency seam; a params object would only move the list.
     def initialize(config: Configuration.load, subjects: nil, since: nil, survivors_from: nil,
-                   mode: {})
+                   mode: {}, deps: nil)
+      # rubocop:enable Metrics/ParameterLists
       @config         = config
+      @deps           = deps || RunnerDependencies.new(config: @config)
       @subjects       = subjects
       @since          = since
       @survivors_from = survivors_from
@@ -88,13 +95,13 @@ module Henitai
     end
 
     def resolve_subjects(source_files = self.source_files)
-      subjects = subject_resolver.resolve_from_files(source_files)
-      return subjects if pattern_subjects.empty?
+      subject_selection.resolve(source_files)
+    end
 
-      selected_subjects = pattern_subjects.flat_map do |pattern|
-        subject_resolver.apply_pattern(subjects, pattern.expression)
-      end
-      unique_subjects(selected_subjects)
+    def subject_selection
+      @subject_selection ||= SubjectSelection.new(
+        subject_resolver: subject_resolver, patterns: @subjects
+      )
     end
 
     def generate_mutants(subjects)
@@ -164,6 +171,7 @@ module Henitai
         started_at:,
         finished_at:,
         thresholds: result_thresholds,
+        coverage_criteria: result_coverage_criteria,
         partial_rerun: survivor_rerun?,
         survivor_stats: survivor_strategy.survivor_stats,
         git_sha: safe_head_sha,
@@ -171,20 +179,6 @@ module Henitai
         authoritative: full_run?,
         since: @since
       )
-    end
-
-    # Reads each source file once and caches it, so Result consumes source
-    # content while performing no disk IO of its own. Returns "" for files that
-    # cannot be read (e.g. recipe stubs with synthetic locations).
-    def source_provider
-      cache = {} # : Hash[String, String]
-      lambda do |file|
-        cache[file] ||= begin
-          File.read(file)
-        rescue StandardError
-          ""
-        end
-      end
     end
 
     def safe_head_sha
@@ -199,123 +193,47 @@ module Henitai
       coverage_bootstrapper.ensure!(source_files:, config:, integration:, test_files:)
     end
 
-    def subject_resolver = @subject_resolver ||= SubjectResolver.new
+    attr_reader :deps
 
-    def git_diff_analyzer = @git_diff_analyzer ||= GitDiffAnalyzer.new
+    def subject_resolver = deps.subject_resolver
+    def git_diff_analyzer = deps.git_diff_analyzer
+    def mutant_generator = deps.mutant_generator
+    def static_filter = deps.static_filter
+    def execution_engine = deps.execution_engine
+    def coverage_bootstrapper = deps.coverage_bootstrapper
+    def integration = deps.integration
+    def operators = deps.operators
+    def history_store = deps.history_store
+    def per_test_coverage = deps.per_test_coverage
+    def source_provider = deps.source_provider
 
-    def mutant_generator = @mutant_generator ||= MutantGenerator.new
+    def progress_reporter = deps.progress_reporter(full_run: full_run?)
 
-    def static_filter = @static_filter ||= StaticFilter.new
-
-    def execution_engine = @execution_engine ||= ExecutionEngine.new
-
-    def coverage_bootstrapper = @coverage_bootstrapper ||= CoverageBootstrapper.new
-
-    def integration
-      @integration ||= Integration.for(config.integration).new
+    def source_files
+      @source_files ||= source_file_selection.call
     end
 
-    def operators
-      @operators ||= Operator.for_set(config.operators)
-    end
-
-    # Fans progress out to the terminal reporter (when enabled) and the
-    # checkpoint writer (when enabled and a file report is configured), so a
-    # long run persists partial results incrementally.
-    def progress_reporter
-      CompositeProgressReporter.for(config:, source_provider:, full_run: full_run?)
-    end
-
-    def history_store
-      @history_store ||= MutantHistoryStore.new(
-        path: File.join(config.reports_dir, Henitai::HISTORY_STORE_FILENAME), per_test_coverage:
+    def source_file_selection
+      @source_file_selection ||= SourceFileSelection.new(
+        config: config, since: @since,
+        git_diff_analyzer: git_diff_analyzer, per_test_coverage: per_test_coverage
       )
     end
 
-    # One shared live view of the per-test coverage map: the incremental
-    # filter proves survivor reuse against it and the history store records
-    # the same intersection set — one implementation, one snapshot.
-    def per_test_coverage
-      @per_test_coverage ||= PerTestCoverage.new(reports_dir: config.reports_dir)
-    end
+    def result_thresholds = optional_config(:thresholds)
 
-    def source_files
-      @source_files ||= filter_changed(reject_excluded(included_source_files))
-    end
+    def result_coverage_criteria = optional_config(:coverage_criteria)
 
-    def included_source_files
-      Array(config.includes).flat_map do |include_path|
-        Dir.glob(File.join(include_path, "**", "*.rb"))
-      end.uniq
-    end
+    # Specs pass bare config doubles that expose only what the example needs, so
+    # scoring inputs are read defensively rather than assumed present.
+    def optional_config(name) = config.respond_to?(name) ? config.public_send(name) : nil
 
-    # Drops files matched by any `excludes:` glob (e.g. standalone entry points
-    # that cannot be mutation-tested in-process). Excludes apply regardless of
-    # the --since filter.
-    def reject_excluded(files)
-      excluded = excluded_source_files
-      return files if excluded.empty?
-
-      files.reject { |path| excluded.include?(normalize_path(path)) }
-    end
-
-    def excluded_source_files
-      Array(config.excludes)
-        .flat_map { |pattern| Dir.glob(pattern) }
-        .map { |path| normalize_path(path) }
-    end
-
-    def filter_changed(files)
-      return files unless @since
-
-      changed_file_set = changed_paths_since.map { |path| normalize_path(path) }
-      changed_file_set += covered_sources_for_changed_tests(changed_file_set)
-      files.select { |path| changed_file_set.include?(normalize_path(path)) }
-    end
-
-    # Committed changes since the ref plus the current working tree (tracked
-    # dirty and untracked files): the working tree is what gets tested, so it
-    # is always part of "changed since REF".
-    def changed_paths_since
-      git_diff_analyzer.changed_files(from: @since, to: "HEAD") +
-        git_diff_analyzer.working_tree_changed_files
-    end
-
-    # Changed test files select the source files they cover, so an edited
-    # test re-tests the subjects it can kill. Uses the per-test map from the
-    # previous run — Gate 1 runs before this run's bootstrap finishes.
-    def covered_sources_for_changed_tests(changed_paths)
-      changed_paths
-        .flat_map { |path| per_test_coverage.source_files_covered_by(path) }
-        .map { |path| normalize_path(path) }
-    end
-
-    def pattern_subjects
-      Array(@subjects)
-    end
-
-    def unique_subjects(subjects)
-      subjects.uniq { |subject| [subject.expression, subject.source_file] }
-    end
-
-    def normalize_path(path)
-      File.expand_path(path)
-    end
-
-    def result_thresholds
-      return nil unless config.respond_to?(:thresholds)
-
-      config.thresholds
-    end
-
-    def survivor_rerun?
-      !@survivors_from.nil?
-    end
+    def survivor_rerun? = !@survivors_from.nil?
 
     # Mutation-scope full run, controlling Result#authoritative? — distinct
     # from the per-test-coverage plan's test-suite-scope "full run".
     def full_run?
-      pattern_subjects.empty? && @since.nil? && !survivor_rerun?
+      Array(@subjects).empty? && @since.nil? && !survivor_rerun?
     end
 
     def survivor_strategy

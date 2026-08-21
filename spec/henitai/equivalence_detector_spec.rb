@@ -209,37 +209,25 @@ RSpec.describe Henitai::EquivalenceDetector do
     expect(mutant.status).to eq(:pending)
   end
 
-  it "recognizes multiplicative arithmetic operators" do
-    detector = described_class.new
-
-    expect(detector.send(:multiplicative_operator?, :**)).to be(true)
-  end
-
-  it "recognizes one as the multiplicative neutral operand" do
-    detector = described_class.new
+  # The operand and operator predicates themselves are covered directly in
+  # spec/henitai/equivalence_detector/operand_predicates_spec.rb. What matters
+  # here is that #analyze reaches the right verdict through them.
+  it "marks an exponent-by-one mutation equivalent" do
     mutant = build_mutant(
-      original_node: binary_send(lvar(:value), :*, int(1)),
+      original_node: binary_send(lvar(:value), :**, int(1)),
       mutated_node: binary_send(lvar(:value), :*, int(1))
     )
 
-    expect(detector.send(:one_operand?, mutant.original_node)).to be(true)
+    expect(described_class.new.analyze(mutant).status).to eq(:equivalent)
   end
 
-  it "rejects non-numeric operands for additive equivalence" do
-    detector = described_class.new
+  it "keeps a mutation with non-numeric operands pending" do
     mutant = build_mutant(
       original_node: binary_send(lvar(:value), :+, lvar(:other)),
       mutated_node: binary_send(lvar(:value), :-, lvar(:other))
     )
 
-    expect(detector.send(:zero_operand?, mutant.original_node)).to be(false)
-  end
-
-  it "rejects malformed operands for neutral arithmetic checks" do
-    detector = described_class.new
-    malformed = Parser::AST::Node.new(:send, [lvar(:value), :+, 0])
-
-    expect(detector.send(:zero_operand?, malformed)).to be(false)
+    expect(described_class.new.analyze(mutant).status).to eq(:pending)
   end
 
   it "keeps additive mutants pending with a malformed zero-like operand" do

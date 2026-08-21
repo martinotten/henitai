@@ -10,6 +10,12 @@ RSpec.describe Henitai::Integration::Minitest do
   before do
     allow(Process).to receive(:setpgid).and_return(0)
     allow(Process).to receive(:kill).and_raise(Errno::ESRCH)
+    # These specs execute the fork block in-process (see stub_process_fork),
+    # so the child bootstrap runs here rather than in a real child. The
+    # watchdog must be stubbed: given this process as its parent_pid it would
+    # see ppid != parent_pid, conclude it had been orphaned, and call exit!(2),
+    # killing the RSpec run with no output at all.
+    allow(Henitai::OrphanWatchdog).to receive(:start)
   end
 
   def with_temp_workspace

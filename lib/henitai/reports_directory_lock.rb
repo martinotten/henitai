@@ -18,7 +18,17 @@ module Henitai
       File.open(lock_path, File::RDWR | File::CREAT, 0o644) do |file|
         acquire(file)
         write_owner(file)
-        yield
+        # Registered so a forked mutant child can close its inherited copy: the
+        # flock lives on the shared open file description, so a child that
+        # outlives its parent would otherwise keep this lock held. Unregistered
+        # inside the File.open block, keeping the registration's lifetime a
+        # subset of the handle's.
+        InheritedFdRegistry.register(file)
+        begin
+          yield
+        ensure
+          InheritedFdRegistry.unregister(file)
+        end
       end
     end
 
@@ -55,16 +65,7 @@ module Henitai
 
     # True only when the recorded owner pid provably no longer exists. EPERM
     # means the process is alive but owned by someone else — treated as alive.
-    def dead_owner?(pid)
-      return false unless pid.is_a?(Integer)
-
-      Process.kill(0, pid)
-      false
-    rescue Errno::ESRCH
-      true
-    rescue StandardError
-      false
-    end
+    def dead_owner?(pid) = !ProcessLiveness.alive?(pid)
 
     def write_owner(file)
       file.rewind

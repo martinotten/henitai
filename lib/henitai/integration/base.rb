@@ -2,7 +2,7 @@
 
 require "stringio"
 require_relative "../process_wakeup"
-require_relative "child_debug_support"
+require_relative "child_debug_log"
 require_relative "child_runtime_control"
 require_relative "scenario_log_support"
 
@@ -13,8 +13,13 @@ module Henitai
     # environment helpers. Concrete adapters mix in MutantRunSupport and
     # implement #run_tests plus test selection.
     class Base
-      include ChildDebugSupport
       include ChildRuntimeControl
+
+      # Child-run diagnostics. Public so the child-side modules mixed into
+      # concrete adapters can reach it without `send`.
+      def child_debug_log
+        @child_debug_log ||= ChildDebugLog.new
+      end
 
       # @param subject [Subject]
       # @return [Array<String>] paths to test files that cover this subject

@@ -1,6 +1,6 @@
 # Forked Worker Processes Orphan and Leak When the Parent Is Hard-Killed
 
-Status: backlog
+Status: done (2026-08-21)
 Date: 2026-07-09
 Severity: Medium
 Source: discovered while investigating a long-running run's memory growth
@@ -107,3 +107,75 @@ Two consequences for this ticket:
    now detects a dead recorded owner via `Process.kill(0, pid)` and appends
    an orphaned-child hint (incl. the `lsof` command) to the contention
    message.
+
+## Resolution (2026-08-21)
+
+Implemented as the recommended portable poll, plus the inherited-fd fix the
+2026-07-12 live repro exposed. No kqueue or PDEATHSIG; those can be layered
+behind the same interface later.
+
+- `Henitai::OrphanWatchdog` polls with a two-armed predicate. A changed
+  `Process.ppid` is definitive -- reparenting cannot be faked by pid reuse --
+  but stays equal while the parent lingers as a zombie, which a
+  `Process.kill(0, parent_pid)` probe catches. Every collaborator is
+  injectable, so the decision logic is specced with no forks.
+- `parent_pid` is captured in the *parent*, before `Process.fork`. Reading
+  `Process.ppid` in the child would race the very death being detected: a
+  parent dying between fork and that read leaves the child with ppid 1 as its
+  baseline, so it would never consider itself orphaned.
+- Exit code is 2, because `ScenarioExecutionResult.status_for` maps that to
+  `:compile_error` while codes from 3 up map to `:killed`. A false positive is
+  therefore visible in the report rather than silently inflating the mutation
+  score.
+- `Henitai::ProcessLiveness` extracts the pid probe that
+  `ReportsDirectoryLock#dead_owner?` had inlined, so the EPERM-means-alive
+  rule lives in one place. `reports_directory_lock_process_spec.rb` passes
+  unedited, which was the acceptance signal for that extraction.
+- `Integration::ChildBootstrap.after_fork!` names the sequence -- close
+  inherited handles, `setpgid`, start watchdog -- and lives under
+  `Integration`, so the RSpec and Minitest paths both get it via the shared
+  `MutantRunSupport#spawn_mutant`. The hook went at the fork site rather than
+  in `run_in_child` as this ticket suggested, because `run_in_child` is
+  stubbed with verifying doubles in the process specs and a `parent_pid:`
+  kwarg would have forced signature churn on both framework paths for what is
+  fork hygiene rather than test execution.
+- `HENITAI_CHILD_WATCHDOG=0` disables it; `HENITAI_CHILD_WATCHDOG_INTERVAL`
+  sets the poll seconds. The flag is opt-*out*, deliberately inverted relative
+  to `HENITAI_DEBUG_CHILD`'s opt-in.
+
+### Inherited flock handle (from the live repro)
+
+`Henitai::InheritedFdRegistry` lets the child close handles it inherited.
+`ReportsDirectoryLock` registers its handle for the duration of the lock, and
+the child closes its copy first thing after forking. `close_all!`
+deliberately does *not* take the registry mutex: `fork` can land while
+another thread holds it, only the forking thread survives into the child, and
+waiting on a mutex whose owner does not exist would hang the child forever.
+
+### Verification
+
+Both halves were falsified before being accepted, in
+`spec/henitai/orphan_watchdog_process_spec.rb`:
+
+- with `HENITAI_CHILD_WATCHDOG=0`, the orphan-death example fails (the child
+  survives its killed parent);
+- with the `close_all!` call removed, the lock-release example fails with
+  `ConcurrentRunError`.
+
+Manual A/B on a real `bundle exec henitai run --jobs 2`, SIGKILLing the
+parent mid-run: with the watchdog enabled no child survived; with it disabled
+the mutant child reparented to ppid 1 and was still running 12 seconds later.
+`rake smoke:integration:all` produced an unchanged status tally (8 killed, 4
+survived, 11 ignored on both frameworks) and no `CompileError`, i.e. no false
+positives from the watchdog in real forked children.
+
+### Incidental finding worth keeping
+
+Specs that execute the fork block in-process (`stub_process_fork` in
+`spec/henitai/integration/rspec_spec.rb`, 21 call sites) run the child
+bootstrap in the test process. Given the test process as its `parent_pid`,
+the watchdog sees `ppid != parent_pid`, concludes it is orphaned, and calls
+`exit!(2)` -- killing the RSpec run with no failure output and no summary.
+Those hooks now stub `OrphanWatchdog.start` alongside the `Process.setpgid`
+stub they already had. Only `bin/verify-process-free-specs` caught this; the
+plain suite did not.

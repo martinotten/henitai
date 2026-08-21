@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "dirty_source_detector"
+
 module Henitai
   # Survivor-rerun fast path for {Runner}.
   #
@@ -154,27 +156,13 @@ module Henitai
     end
 
     def dirty_source_files?(dirty_worktree_files, git_sha: nil)
-      return true if dirty_worktree_files.nil?
-
-      all_changed = dirty_worktree_files + committed_changed_files(git_sha)
-      include_roots = Array(@config.includes).map { |path| normalize_path(path) }
-      all_changed.any? { |path| in_include_root?(normalize_path(path), include_roots) }
-    rescue StandardError
-      true
+      dirty_source_detector.dirty?(dirty_worktree_files, git_sha: git_sha)
     end
 
-    def committed_changed_files(git_sha)
-      return [] unless git_sha
-
-      @git_diff_analyzer.changed_files(from: git_sha, to: "HEAD")
-    end
-
-    def in_include_root?(path, include_roots)
-      include_roots.any? { |root| path == root || path.start_with?("#{root}/") }
-    end
-
-    def normalize_path(path)
-      File.expand_path(path)
+    def dirty_source_detector
+      @dirty_source_detector ||= DirtySourceDetector.new(
+        includes: @config.includes, git_diff_analyzer: @git_diff_analyzer
+      )
     end
 
     def warn_survivor_drift(selector)

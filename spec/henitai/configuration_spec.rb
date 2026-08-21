@@ -52,8 +52,8 @@ RSpec.describe Henitai::Configuration do
       timeout: 12.5,
       coverage_criteria: {
         test_result: false,
-        timeout: false,
-        process_abort: false
+        timeout: true,
+        process_abort: true
       },
       thresholds: {
         high: 90,
@@ -71,7 +71,7 @@ RSpec.describe Henitai::Configuration do
       coverage_criteria: {
         test_result: false,
         timeout: true,
-        process_abort: false
+        process_abort: true
       },
       thresholds: {
         high: 95,
@@ -217,8 +217,8 @@ RSpec.describe Henitai::Configuration do
       sampling: nil,
       coverage_criteria: {
         test_result: true,
-        timeout: false,
-        process_abort: false
+        timeout: true,
+        process_abort: true
       },
       thresholds: {
         high: 80,
@@ -239,8 +239,8 @@ RSpec.describe Henitai::Configuration do
       sampling: nil,
       coverage_criteria: {
         test_result: true,
-        timeout: false,
-        process_abort: false
+        timeout: true,
+        process_abort: true
       },
       thresholds: {
         high: 80,

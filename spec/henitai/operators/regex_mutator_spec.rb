@@ -121,28 +121,29 @@ RSpec.describe Henitai::Operators::RegexMutator do
     expect(mutant.mutated_node.children[1]).to eq(node.children[1])
   end
 
-  it "skips duplicate regex mutants and invalid replacements" do
+  # A pattern with no quantifier, anchor or character class: every
+  # transformation returns the source unchanged, so the duplicate guard
+  # discards all of them.
+  it "emits nothing when no transformation changes the pattern" do
     node = find_nodes(parse("/simple/"), :regexp).first
 
-    duplicate = described_class.new.send(
-      :build_regex_mutant,
-      node,
-      nil,
-      "simple",
-      "simple",
-      "noop",
-      subject: mutation_subject
-    )
-    invalid = described_class.new.send(
-      :build_regex_mutant,
-      node,
-      nil,
-      "(",
-      "simple",
-      "broken",
-      subject: mutation_subject
-    )
+    expect(mutate(node)).to be_empty
+  end
 
-    expect([duplicate, invalid]).to eq([nil, nil])
+  # Built by hand rather than parsed, because a bare "[" is not valid Ruby
+  # source. Character-class negation turns it into "[^", which is not a valid
+  # regex -- and since that differs from the source, only the validity guard
+  # can be what rejects it.
+  it "discards a transformation that would produce an invalid regex" do
+    node = regexp_node("[")
+
+    expect(mutate(node)).to be_empty
+  end
+
+  def regexp_node(source)
+    Parser::AST::Node.new(
+      :regexp,
+      [Parser::AST::Node.new(:str, [source]), Parser::AST::Node.new(:regopt, [])]
+    )
   end
 end

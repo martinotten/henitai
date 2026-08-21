@@ -215,8 +215,8 @@ mutation:
     - "(send _ :puts _)"
 coverage_criteria:
   test_result: true
-  timeout: false
-  process_abort: false
+  timeout: true
+  process_abort: true
 reporters:
   - terminal
   - json
@@ -487,6 +487,33 @@ hook, but it is not wired into the default path yet. Each worker forks a child
 process per mutant, so thread-level concurrency and process-level isolation
 are combined: threads coordinate the queue, forked processes provide the
 actual test isolation.
+
+Every forked mutant child begins with `Integration::ChildBootstrap.after_fork!`,
+which runs three steps in a fixed order:
+
+1. `InheritedFdRegistry.close_all!` drops handles inherited from the parent.
+   The reports-directory lock is the one that matters: `flock` is held on the
+   open file description, shared across the fork, so a child outliving its
+   parent would keep the lock held and make every later run fail with a
+   `ConcurrentRunError` naming a dead pid. This runs first so that even a crash
+   in a later step still releases the lock.
+2. `Process.setpgid(0, 0)` puts the child in its own process group, so the
+   parent can signal a whole mutant run without hitting itself.
+3. `OrphanWatchdog.start` begins a poll thread that exits the child once its
+   parent is gone. Parent-side cleanup — timeout kills, graceful drain, signal
+   traps — only runs while the parent's event loop is alive, so a SIGKILLed,
+   OOM-killed or crashed parent otherwise leaves children running with no
+   signal delivered: they reparent to init and keep a full Ruby and
+   test-framework image resident.
+
+The watchdog's predicate has two arms. A changed `Process.ppid` is definitive
+(reparenting cannot be faked by pid reuse) but stays equal while the parent
+lingers as a zombie, which a `Process.kill(0, parent_pid)` liveness probe
+catches. It is on by default; `HENITAI_CHILD_WATCHDOG=0` disables it and
+`HENITAI_CHILD_WATCHDOG_INTERVAL` sets the poll interval in seconds (default
+`1.5`). Note that this env flag is opt-*out*, unlike the opt-in
+`HENITAI_DEBUG_CHILD`: a watchdog defaulting to off would never protect the
+runs it exists for.
 
 Test instability is handled conservatively:
 

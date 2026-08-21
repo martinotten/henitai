@@ -7,7 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-21
+
+### Security
+- `sqlite3` requirement raised from `~> 1.7` to `>= 2.9.5, < 3`, excluding the
+  vulnerable releases up to and including 2.9.4. This is a runtime major bump:
+  applications pinned to `sqlite3` 1.x will need to upgrade before installing
+  this version of henitai. The root bundle also moves to `json` 2.21.2, the
+  patched release. `spec/infra/gemspec_dependencies_spec.rb` now asserts both
+  floors so a regression fails the suite rather than shipping quietly
+
 ### Changed
+- `coverage_criteria` now actually affects scoring. The block was documented,
+  defaulted and validated since it was introduced, but nothing ever read it —
+  `Result` hardcoded the `MS` numerator as `killed + timeout + runtime_error`,
+  so flipping `coverage_criteria.timeout` silently did nothing. It is now
+  consumed by `Result`, mapping `test_result` to `Killed`, `timeout` to
+  `Timeout` and `process_abort` to `RuntimeError`.
+
+  The shipped defaults for `timeout` and `process_abort` were `false`, which
+  described behavior the scorer did not have. They are now `true`, so **scores
+  do not move**: wiring the knob up with the old defaults intact would have
+  dropped timeouts and process aborts out of every user's numerator. Turning a
+  criterion off removes that status from the numerator only — the denominator is
+  unaffected, and `MSI` remains `killed / total` by definition. Note that
+  turning one off can move a run across its threshold and so change the exit
+  code
 - Minimum supported Ruby lowered from 4.0.0 to 3.3.6, making henitai usable by
   projects not yet on Ruby 4. The only Ruby 4-only API in use was
   `Enumerable#rfind`, replaced by `reverse_each.find`; `TargetRubyVersion` is
@@ -15,6 +40,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   4.0-only form), and CI runs the floor alongside 4.0.2
 
 ### Fixed
+- Forked mutant children no longer outlive a parent that dies without warning.
+  Children run in their own process group, and all parent-side cleanup —
+  timeout kills, graceful drain, signal traps — only runs while the parent's
+  event loop is alive, so a `kill -9`, an OOM kill or a crash left children
+  running with no signal delivered: they reparented to init and each kept a
+  full Ruby and test-framework image resident (runs were observed leaving a
+  dozen behind, several gigabytes in total). Each child now starts a watchdog
+  that exits once its parent is gone. Set `HENITAI_CHILD_WATCHDOG=0` to
+  disable it, or `HENITAI_CHILD_WATCHDOG_INTERVAL` to change the poll interval
+  (default `1.5` seconds)
+- The orphan watchdog no longer mistakes a live parent for a dead one when the
+  project's own suite stubs `Process.kill` or `Process.ppid`. Both primitives
+  are now captured as `Method` objects at load time, before any test double can
+  replace them — a captured `Method` keeps pointing at the original definition
+  even after the singleton method is redefined. This was not hypothetical: on
+  henitai's own dogfood run a mutant child running specs that stub
+  `Process.kill` to raise `ESRCH` concluded it had been orphaned and exited,
+  which the scheduler recorded as `CompileError`. Fixing it turned two spurious
+  `CompileError`s and one spurious `Timeout` back into `Killed` on a
+  1019-mutant run
+- A surviving child could also pin the reports-directory lock open, because
+  `flock` is held on the open file description that parent and child share.
+  Once the parent died, every later run in that directory failed with
+  `ConcurrentRunError` naming a pid that no longer existed. Children now close
+  the inherited handle immediately after forking
 - `# henitai:disable HashKeyType` and `# henitai:disable
   EqualityIdentityOperator` no longer raise `ConfigurationError` and abort the
   run. The directive whitelist validated names against `full` rather than the
@@ -22,6 +72,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ADR-12 and the README tell users to suppress per site — were rejected as
   unknown operators. `# henitai:disable EqualityIdentityOperator` worked in
   0.3.1; this restores it
+
+### Internal
+- Test-suite coupling to private implementation details is now guarded by
+  `spec/infra/private_method_reach_spec.rb`, a ratchet: every spec that reaches
+  a private method through `send` or an instance-variable poke carries a
+  documented budget, and a budget may only ever go down — beating one fails the
+  suite until the number is lowered in the same commit. Twelve tickets tracking
+  this debt had sat open while the debt itself moved into three *different*,
+  unticketed files, because nothing measured it
+- Nine collaborators extracted, each because a rule had no public seam rather
+  than to satisfy the ratchet mechanically: `Integration::ChildDebugLog` and
+  `Integration::LoadedFeatures` (replacing `Integration::ChildDebugSupport`,
+  which declared `private` at the top of the module); `SlotScheduler::SlotTable`,
+  `RetryPolicy`, `SlotDeadline`, `TestFileSelection` and `DrainVerdict`;
+  `ExcludedTestFilter`; `EquivalenceDetector::OperandPredicates`;
+  `DirtySourceDetector`, `SourceFileSelection`, `SubjectSelection` and
+  `RunnerDependencies`. `SlotScheduler` and `Runner` both shed enough code to
+  come back under their complexity budgets
 
 ## [0.4.0] - 2026-07-14
 
@@ -438,7 +506,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI critical path: `henitai run` now executes the full pipeline, supports `--since`, returns CI-friendly exit codes, and `henitai version` prints `Henitai::VERSION`
 - RSpec per-test coverage output: `henitai/coverage_formatter` now writes `coverage/henitai_per_test.json`
 
-[Unreleased]: https://github.com/martinotten/henitai/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/martinotten/henitai/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/martinotten/henitai/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/martinotten/henitai/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/martinotten/henitai/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/martinotten/henitai/compare/v0.2.1...v0.3.0

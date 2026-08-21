@@ -15,8 +15,28 @@ module Henitai
     SCHEMA_VERSION = "1.0"
     DEFAULT_THRESHOLDS = { high: 80, low: 60 }.freeze
 
+    # Which outcomes count as "the test suite detected this mutant" for the MS
+    # numerator. Duplicated from Configuration rather than read from it: Result
+    # is a domain object and must not depend on configuration loading. The same
+    # arrangement already exists for DEFAULT_THRESHOLDS, and result_spec asserts
+    # the two constants stay equal.
+    DEFAULT_COVERAGE_CRITERIA = {
+      test_result: true,
+      timeout: true,
+      process_abort: true
+    }.freeze
+
+    # Maps each criterion to the mutant status it governs. process_abort has no
+    # producer in lib/ yet -- nothing classifies a mutant as :runtime_error --
+    # so that entry is forward-looking wiring rather than a live code path.
+    CRITERION_STATUSES = {
+      test_result: :killed,
+      timeout: :timeout,
+      process_abort: :runtime_error
+    }.freeze
+
     attr_reader :mutants, :started_at, :finished_at, :thresholds, :survivor_stats,
-                :session_id, :git_sha, :since
+                :session_id, :git_sha, :since, :coverage_criteria
 
     # @param source_provider [#call] maps a file path to its source string.
     #   Injected so the domain object performs no disk IO; the caller (which
@@ -33,7 +53,7 @@ module Henitai
                    partial_rerun: false, survivor_stats: nil,
                    session_id: SecureRandom.uuid, git_sha: nil,
                    source_provider: ->(_file) { "" }, authoritative: true,
-                   since: nil)
+                   since: nil, coverage_criteria: nil)
       @mutants         = mutants
       @started_at      = started_at
       @finished_at     = finished_at
@@ -45,6 +65,7 @@ module Henitai
       @source_provider = source_provider
       @authoritative   = authoritative
       @since           = since
+      @coverage_criteria = DEFAULT_COVERAGE_CRITERIA.merge(coverage_criteria || {})
     end
     # rubocop:enable Metrics/ParameterLists
 
@@ -140,7 +161,13 @@ module Henitai
     private
 
     def detected_in(list)
-      list.count { |m| %i[killed timeout runtime_error].include?(m.status) }
+      list.count { |m| detected_statuses.include?(m.status) }
+    end
+
+    def detected_statuses
+      @detected_statuses ||= CRITERION_STATUSES.filter_map do |criterion, status|
+        status if @coverage_criteria[criterion]
+      end
     end
 
     def mutation_score_for(list)

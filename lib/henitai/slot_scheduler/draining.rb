@@ -16,7 +16,7 @@ module Henitai
       # so that naturally-exited processes are already removed from slots.
       def check_timeouts
         now = monotonic_time
-        slots.each_value do |slot|
+        slot_table.each_value do |slot|
           next if slot.draining
           next unless now >= slot.started_at_monotonic + slot.timeout
 
@@ -32,7 +32,7 @@ module Henitai
       end
 
       def draining_slots?
-        slots.any? { |_, slot| slot.draining }
+        slot_table.any_draining?
       end
 
       # Two-phase broadcast cleanup for all slots that are in draining state.
@@ -56,7 +56,7 @@ module Henitai
       end
 
       def interrupt_active_slots
-        slots.each_value do |slot|
+        slot_table.each_value do |slot|
           next if slot.draining
 
           slot.forced_outcome = :interrupted
@@ -67,7 +67,7 @@ module Henitai
       private
 
       def draining_slots
-        slots.select { |_, slot| slot.draining }
+        slot_table.draining
       end
 
       def prune_raced_draining_slots(draining)
@@ -116,8 +116,8 @@ module Henitai
         _, final_status = wnohang_reap(slot.pid)
         reap_pid(slot.pid) unless final_status
 
-        pid_to_slot.delete(slot.pid)
-        slots.delete(slot.slot_id)
+        slot_table.release_pid(slot.pid)
+        slot_table.delete(slot.slot_id)
         Integration::SchedulerDiagnostics.child_ended(slot.pid)
 
         return if slot.forced_outcome == :interrupted
@@ -126,20 +126,10 @@ module Henitai
       end
 
       def record_drain_result(slot, final_status)
-        result = build_drain_result(slot, final_status)
+        result = drain_verdict.build(slot, final_status)
         slot.mutant.status = result.status
         results << result
         progress_reporter&.progress(slot.mutant, scenario_result: result)
-      end
-
-      # Choose result: use real exit status only if observed before any parent
-      # signal was sent. After SIGTERM, the forced outcome is authoritative.
-      def build_drain_result(slot, final_status)
-        if final_status&.exited? && slot.term_sent_at_monotonic.nil?
-          integration.build_result(final_status, slot.log_paths)
-        else
-          integration.build_result(slot.forced_outcome || :timeout, slot.log_paths)
-        end
       end
     end
   end

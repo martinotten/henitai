@@ -26,10 +26,17 @@ module Henitai
     DEFAULT_CHECKPOINT_EVERY = 200
     DEFAULT_CHECKPOINT_INTERVAL = 30.0
     DEFAULT_REPORTS_DIR = "reports"
+    # All three default to true because Result's MS numerator has always counted
+    # killed + timeout + runtime_error unconditionally. Until 0.5.0 this block
+    # was validated but never read, so the shipped `false` defaults described
+    # behavior the scorer did not have. Wiring it up with those defaults intact
+    # would have silently dropped timeouts and aborts out of every user's score;
+    # flipping them keeps the numerator exactly as it was and makes the knob
+    # mean what it says. See Result::CRITERION_STATUSES for the mapping.
     DEFAULT_COVERAGE_CRITERIA = {
       test_result: true,
-      timeout: false,
-      process_abort: false
+      timeout: true,
+      process_abort: true
     }.freeze
     DEFAULT_THRESHOLDS = { high: 80, low: 60 }.freeze
     CONFIG_FILE        = ".henitai.yml"

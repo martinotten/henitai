@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "parser_current"
+require_relative "equivalence_detector/operand_predicates"
 
 module Henitai
   # Detects obvious equivalent mutants before execution.
@@ -112,33 +113,15 @@ module Henitai
       node.is_a?(Parser::AST::Node) && node.type == type && node.children.empty?
     end
 
-    def additive_operator?(operator)
-      %i[+ -].include?(operator)
-    end
+    def additive_operator?(operator) = operand_predicates.additive_operator?(operator)
 
-    def multiplicative_operator?(operator)
-      %i[* / **].include?(operator)
-    end
+    def multiplicative_operator?(operator) = operand_predicates.multiplicative_operator?(operator)
 
-    def zero_operand?(node)
-      numeric_operand?(node, 0)
-    end
+    def zero_operand?(node) = operand_predicates.zero_operand?(node)
 
-    def one_operand?(node)
-      numeric_operand?(node, 1)
-    end
+    def one_operand?(node) = operand_predicates.one_operand?(node)
 
-    def numeric_operand?(node, value)
-      operand = node.children[2]
-      return false unless operand.is_a?(Parser::AST::Node)
-
-      case operand.type
-      when :int, :float
-        operand.children.first == value || operand.children.first == value.to_i
-      else
-        false
-      end
-    end
+    def operand_predicates = @operand_predicates ||= OperandPredicates.new
 
     # Detects `lhs == <singleton>` mutated to `lhs.equal?(<singleton>)` (or the
     # reverse), but only when the receiver is itself a singleton literal.

@@ -21,7 +21,8 @@ RSpec.describe Henitai::Runner do
         :reporters,
         :thresholds,
         :integration,
-        :reports_dir
+        :reports_dir,
+        :coverage_criteria
       )
     )
 
@@ -60,7 +61,36 @@ RSpec.describe Henitai::Runner do
       values[:reporters],
       values[:thresholds],
       values[:integration],
-      values[:reports_dir]
+      values[:reports_dir],
+      values[:coverage_criteria]
+    )
+  end
+
+  # Drives a full run with every gate stubbed out and returns the keyword
+  # arguments Runner handed to Result. Lets plumb-through assertions go through
+  # the public #run instead of reaching private readers.
+  def capture_result_kwargs(runner)
+    stub_empty_pipeline(runner)
+    captured = nil
+    result = build_result([])
+    allow(Henitai::Result).to receive(:new) do |**kwargs|
+      captured = kwargs
+      result
+    end
+    allow(Henitai::Reporter).to receive(:run_all)
+
+    runner.run
+    captured
+  end
+
+  def stub_empty_pipeline(runner)
+    allow(runner).to receive_messages(
+      subject_resolver: instance_double(Henitai::SubjectResolver, resolve_from_files: []),
+      mutant_generator: instance_double(Henitai::MutantGenerator, generate: []),
+      static_filter: instance_double(Henitai::StaticFilter, apply: []),
+      execution_engine: instance_double(Henitai::ExecutionEngine, run: []),
+      integration: instance_double(Henitai::Integration::Rspec),
+      history_store: build_history_store
     )
   end
 
@@ -73,7 +103,8 @@ RSpec.describe Henitai::Runner do
       reporters: ["terminal"],
       thresholds: { low: 60, high: 80 },
       integration: "rspec",
-      reports_dir: "reports"
+      reports_dir: "reports",
+      coverage_criteria: nil
     }
   end
 
@@ -1043,6 +1074,36 @@ RSpec.describe Henitai::Runner do
     end
   end
 
+  it "passes the configured coverage criteria to the result" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+      Dir.chdir(dir) do
+        config = build_config(reporters: [], coverage_criteria: { timeout: false })
+        captured = capture_result_kwargs(described_class.new(config:))
+
+        expect(captured[:coverage_criteria]).to eq(timeout: false)
+      end
+    end
+  end
+
+  it "passes nil coverage criteria when the config does not expose them" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+      Dir.chdir(dir) do
+        config = Struct.new(
+          :includes, :excludes, :operators, :timeout, :reporters, :integration, :reports_dir
+        ).new(["lib"], [], :light, 10.0, [], "rspec", "reports")
+        captured = capture_result_kwargs(described_class.new(config:))
+
+        expect(captured[:coverage_criteria]).to be_nil
+      end
+    end
+  end
+
   it "restricts Gate 1 to changed files when --since is given" do
     Dir.mktmpdir do |dir|
       FileUtils.mkdir_p(File.join(dir, "lib"))
@@ -1889,53 +1950,6 @@ RSpec.describe Henitai::Runner do
         history_store: history
       )
     end
-
-    it "returns a terminal reporter when reporters contains symbols" do
-      config = build_config(reporters: [:terminal])
-      runner = described_class.new(config:)
-      expect(runner.send(:progress_reporter)).to be_a(Henitai::Reporter::Terminal)
-    end
-
-    def checkpoint_config(reporters:)
-      Struct.new(:reporters, :checkpoint_enabled, :checkpoint_every, :checkpoint_interval, :reports_dir, :thresholds)
-            .new(reporters, true, 200, 30.0, "reports", { high: 80, low: 60 })
-    end
-
-    it "fans out to a composite when terminal and a file report are both enabled" do
-      runner = described_class.new(config: checkpoint_config(reporters: %w[terminal json]))
-      expect(runner.send(:progress_reporter)).to be_a(Henitai::CompositeProgressReporter)
-    end
-
-    it "returns a lone checkpoint reporter when only a file report is enabled" do
-      runner = described_class.new(config: checkpoint_config(reporters: %w[json]))
-      expect(runner.send(:progress_reporter)).to be_a(Henitai::CheckpointReporter)
-    end
-
-    it "skips the checkpoint reporter when disabled" do
-      config = checkpoint_config(reporters: %w[json])
-      config.checkpoint_enabled = false
-      runner = described_class.new(config:)
-      expect(runner.send(:progress_reporter)).to be_nil
-    end
-  end
-
-  describe "#source_provider" do
-    it "returns a lambda that reads files and caches their content" do # rubocop:disable RSpec/MultipleExpectations
-      runner = described_class.new(config: build_config)
-      provider = runner.send(:source_provider)
-      expect(provider).to be_a(Proc)
-
-      Dir.mktmpdir do |dir|
-        file_path = File.join(dir, "test.txt")
-        File.write(file_path, "hello world")
-
-        expect(provider.call(file_path)).to eq("hello world")
-        File.write(file_path, "changed")
-        expect(provider.call(file_path)).to eq("hello world")
-
-        expect(provider.call("nonexistent.txt")).to eq("")
-      end
-    end
   end
 
   describe "#safe_head_sha" do
@@ -1963,18 +1977,6 @@ RSpec.describe Henitai::Runner do
     end
   end
 
-  describe "#unique_subjects" do
-    it "keeps subjects with the same expression if they are in different source files" do
-      runner = described_class.new(config: build_config)
-      s1 = build_subject("Greeter#hello", source_file: "lib/foo.rb")
-      s2 = build_subject("Greeter#hello", source_file: "lib/bar.rb")
-      s3 = build_subject("Greeter#hello", source_file: "lib/foo.rb")
-
-      unique = runner.send(:unique_subjects, [s1, s2, s3])
-      expect(unique).to eq([s1, s2])
-    end
-  end
-
   describe "#result_thresholds" do
     it "returns nil when config does not respond to thresholds" do
       config = Object.new
@@ -1986,99 +1988,6 @@ RSpec.describe Henitai::Runner do
       config = build_config(thresholds: { low: 20, high: 80 })
       runner = described_class.new(config:)
       expect(runner.send(:result_thresholds)).to eq(low: 20, high: 80)
-    end
-  end
-
-  describe "#reject_excluded" do
-    it "returns the files immediately and does not normalize paths when excludes is empty" do # rubocop:disable RSpec/MultipleExpectations
-      runner = described_class.new(config: build_config(excludes: []))
-      allow(runner).to receive(:normalize_path).and_call_original
-
-      expect(runner.send(:reject_excluded, ["lib/foo.rb"])).to eq(["lib/foo.rb"])
-      expect(runner).not_to have_received(:normalize_path)
-    end
-
-    it "filters out excluded files by pattern" do
-      runner = described_class.new(config: build_config(excludes: ["lib/exclude*"]))
-      Dir.mktmpdir do |dir|
-        FileUtils.mkdir_p(File.join(dir, "lib"))
-        File.write(File.join(dir, "lib/foo.rb"), "")
-        File.write(File.join(dir, "lib/exclude_me.rb"), "")
-
-        original = Dir.pwd
-        begin
-          Dir.chdir(dir) do
-            files = ["lib/foo.rb", "lib/exclude_me.rb"]
-            filtered = runner.send(:reject_excluded, files)
-            expect(filtered).to eq(["lib/foo.rb"])
-          end
-        ensure
-          Dir.chdir(original)
-        end
-      end
-    end
-  end
-
-  describe "SurvivorRerunStrategy#dirty_source_files? (private)" do
-    def strategy_with_analyzer(analyzer, includes: ["lib"])
-      Henitai::SurvivorRerunStrategy.new(
-        survivors_from: "reports/mutation-report.json",
-        config: build_config(includes:),
-        git_diff_analyzer: analyzer
-      )
-    end
-
-    def stub_analyzer(committed: [])
-      analyzer = instance_double(Henitai::GitDiffAnalyzer)
-      allow(analyzer).to receive(:changed_files).with(from: anything, to: "HEAD").and_return(committed)
-      analyzer
-    end
-
-    it "returns true when a committed source file in includes changed since git_sha" do
-      Dir.mktmpdir do |dir|
-        Dir.chdir(dir) do
-          strategy = strategy_with_analyzer(stub_analyzer(committed: ["lib/henitai/foo.rb"]))
-          expect(strategy.send(:dirty_source_files?, [], git_sha: "abc123")).to be(true)
-        end
-      end
-    end
-
-    it "returns false when only spec files changed since git_sha" do
-      Dir.mktmpdir do |dir|
-        Dir.chdir(dir) do
-          strategy = strategy_with_analyzer(stub_analyzer(committed: ["spec/henitai/foo_spec.rb"]))
-          expect(strategy.send(:dirty_source_files?, [], git_sha: "abc123")).to be(false)
-        end
-      end
-    end
-
-    it "returns false when git_sha is nil and worktree is clean" do
-      Dir.mktmpdir do |dir|
-        Dir.chdir(dir) do
-          strategy = strategy_with_analyzer(instance_double(Henitai::GitDiffAnalyzer))
-          expect(strategy.send(:dirty_source_files?, [], git_sha: nil)).to be(false)
-        end
-      end
-    end
-
-    it "returns true when git diff raises (conservative fallback)" do
-      Dir.mktmpdir do |dir|
-        Dir.chdir(dir) do
-          analyzer = instance_double(Henitai::GitDiffAnalyzer)
-          allow(analyzer).to receive(:changed_files).and_raise(Henitai::GitDiffError, "fatal")
-          strategy = strategy_with_analyzer(analyzer)
-          expect(strategy.send(:dirty_source_files?, [], git_sha: "abc123")).to be(true)
-        end
-      end
-    end
-
-    it "returns true when dirty_worktree_files is nil regardless of git_sha" do
-      Dir.mktmpdir do |dir|
-        Dir.chdir(dir) do
-          strategy = strategy_with_analyzer(instance_double(Henitai::GitDiffAnalyzer))
-          expect(strategy.send(:dirty_source_files?, nil, git_sha: "abc123")).to be(true)
-        end
-      end
     end
   end
 end
