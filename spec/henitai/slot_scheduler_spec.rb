@@ -40,13 +40,16 @@ RSpec.describe Henitai::SlotScheduler do
     integration
   end
 
+  # `integration:` and `host:` are injectable so an example can hold onto the
+  # collaborator it asserts against instead of reaching back through the
+  # scheduler's private readers.
   def build_worker_scheduler(captured, worker_count:, max_flaky_retries: 0, **opts)
     described_class.new(
-      integration: build_capturing_integration(captured),
+      integration: opts[:integration] || build_capturing_integration(captured),
       config: Struct.new(:timeout, :max_flaky_retries).new(10.0, max_flaky_retries),
       progress_reporter: opts[:progress_reporter],
       options: opts[:options] || { test_files: [] },
-      host: build_host(worker_count, shutdown: opts.fetch(:shutdown, false))
+      host: opts[:host] || build_host(worker_count, shutdown: opts.fetch(:shutdown, false))
     )
   end
 
@@ -250,16 +253,17 @@ RSpec.describe Henitai::SlotScheduler do
 
     it "completes every reaped slot until wait2 returns no pid", :aggregate_failures do
       captured = []
-      scheduler = build_worker_scheduler(captured, worker_count: 2)
+      integration = build_capturing_integration(captured)
+      allow(integration).to receive(:build_result).and_return(
+        instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed)
+      )
+      host = build_host(2)
+      scheduler = build_worker_scheduler(captured, worker_count: 2, integration: integration, host: host)
       scheduler.enqueue([build_worker_mutant("a"), build_worker_mutant("b")])
       scheduler.fill_idle_slots
       pids = scheduler.send(:slots).values.map(&:pid)
       status_a = instance_double(Process::Status)
       status_b = instance_double(Process::Status)
-      allow(scheduler.send(:integration)).to receive(:build_result).and_return(
-        instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed)
-      )
-      host = scheduler.send(:host)
       allow(host).to receive(:runtime).and_return(
         build_runtime_double([pids[0], status_a], [pids[1], status_b])
       )
@@ -411,14 +415,14 @@ RSpec.describe Henitai::SlotScheduler do
 
     it "reports the pid to SchedulerDiagnostics and builds the result", :aggregate_failures do
       captured = []
-      scheduler = build_worker_scheduler(captured, worker_count: 1)
+      integration = build_capturing_integration(captured)
+      scheduler = build_worker_scheduler(captured, worker_count: 1, integration: integration)
       scheduler.enqueue([build_worker_mutant("a")])
       scheduler.fill_idle_slots
       slot = scheduler.send(:slots).values.first
       allow(Henitai::Integration::SchedulerDiagnostics).to receive(:child_ended)
       killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed)
-      allow(scheduler.send(:integration)).to receive(:build_result).with(:wait_result,
-                                                                         slot.log_paths).and_return(killed)
+      allow(integration).to receive(:build_result).with(:wait_result, slot.log_paths).and_return(killed)
 
       scheduler.send(:complete_slot, slot.pid, :wait_result)
 
@@ -531,15 +535,16 @@ RSpec.describe Henitai::SlotScheduler do
   describe "#retry_slot" do
     it "respawns with the slot's mutant and resolved test files", :aggregate_failures do
       captured = []
+      integration = build_capturing_integration(captured)
       scheduler = build_worker_scheduler(
-        captured, worker_count: 1, max_flaky_retries: 1, options: { test_files: %w[a_spec.rb] }
+        captured, worker_count: 1, max_flaky_retries: 1, integration: integration,
+                  options: { test_files: %w[a_spec.rb] }
       )
       mutant = build_worker_mutant("a")
       scheduler.enqueue([mutant])
       scheduler.fill_idle_slots
       slot = scheduler.send(:slots).values.first
       original_pid = slot.pid
-      integration = scheduler.send(:integration)
 
       scheduler.send(:retry_slot, slot)
 
@@ -573,9 +578,11 @@ RSpec.describe Henitai::SlotScheduler do
 
     it "resolves test files through integration.select_tests using the slot's own mutant" do
       captured = []
-      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 1, options: {})
+      integration = build_capturing_integration(captured)
+      scheduler = build_worker_scheduler(
+        captured, worker_count: 1, max_flaky_retries: 1, integration: integration, options: {}
+      )
       mutant = build_worker_mutant("a")
-      integration = scheduler.send(:integration)
       allow(integration).to receive(:select_tests).and_return(%w[a_spec.rb])
       scheduler.enqueue([mutant])
       scheduler.fill_idle_slots
