@@ -2,6 +2,27 @@
 
 What went wrong, why, and what stops it recurring. Newest first.
 
+## 2026-08-21 — `git add -A` committed an untracked tool artifact
+
+**What happened.** The release plan said explicitly: "Untracked `.pi/` in the
+working tree is an unrelated tool artifact — do not commit it." Several commits
+later I staged with `git add -A` and swept `.pi/extensions/rtk.ts` (80 lines of
+local agent tooling) into the commit that followed the release commit. Caught
+only when asked whether anything was broken, by diffing the branch against the
+release commit rather than trusting `git status`.
+
+**Root cause.** `git add -A` stages everything untracked, including the exact
+file I had been told to leave alone. `git status` looked clean *afterwards*,
+which is the trap: a clean status means nothing is unstaged, not that nothing
+wrong is staged.
+
+**Prevention.** Stage explicit paths, not `-A`, whenever the working tree has
+untracked files that are not part of the change. Before committing on a release
+branch, run `git diff <last-known-good> HEAD --stat` and read the file list —
+`git status` cannot show what a previous commit already absorbed. And when a
+plan names a file to exclude, gitignore it at that moment instead of relying on
+remembering; `.pi/` is now in `.gitignore`.
+
 ## 2026-08-21 — A ported spec can be vacuous even though it was green before
 
 **What happened.** The 0.5.0 collaborator extractions moved examples out of
