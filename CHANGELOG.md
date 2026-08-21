@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-21
+
 ### Security
 - `sqlite3` requirement raised from `~> 1.7` to `>= 2.9.5, < 3`, excluding the
   vulnerable releases up to and including 2.9.4. This is a runtime major bump:
@@ -60,6 +62,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ADR-12 and the README tell users to suppress per site — were rejected as
   unknown operators. `# henitai:disable EqualityIdentityOperator` worked in
   0.3.1; this restores it
+
+### Internal
+- Test-suite coupling to private implementation details is now guarded by
+  `spec/infra/private_method_reach_spec.rb`, a ratchet: every spec that reaches
+  a private method through `send` or an instance-variable poke carries a
+  documented budget, and a budget may only ever go down — beating one fails the
+  suite until the number is lowered in the same commit. Twelve tickets tracking
+  this debt had sat open while the debt itself moved into three *different*,
+  unticketed files, because nothing measured it
+- Nine collaborators extracted, each because a rule had no public seam rather
+  than to satisfy the ratchet mechanically: `Integration::ChildDebugLog` and
+  `Integration::LoadedFeatures` (replacing `Integration::ChildDebugSupport`,
+  which declared `private` at the top of the module); `SlotScheduler::SlotTable`,
+  `RetryPolicy`, `SlotDeadline`, `TestFileSelection` and `DrainVerdict`;
+  `ExcludedTestFilter`; `EquivalenceDetector::OperandPredicates`;
+  `DirtySourceDetector`, `SourceFileSelection`, `SubjectSelection` and
+  `RunnerDependencies`. `SlotScheduler` and `Runner` both shed enough code to
+  come back under their complexity budgets
 
 ## [0.4.0] - 2026-07-14
 
@@ -476,7 +496,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI critical path: `henitai run` now executes the full pipeline, supports `--since`, returns CI-friendly exit codes, and `henitai version` prints `Henitai::VERSION`
 - RSpec per-test coverage output: `henitai/coverage_formatter` now writes `coverage/henitai_per_test.json`
 
-[Unreleased]: https://github.com/martinotten/henitai/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/martinotten/henitai/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/martinotten/henitai/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/martinotten/henitai/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/martinotten/henitai/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/martinotten/henitai/compare/v0.2.1...v0.3.0
