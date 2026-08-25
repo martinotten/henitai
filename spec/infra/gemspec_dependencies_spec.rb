@@ -14,6 +14,33 @@ RSpec.describe "Gemspec dependencies" do
     expect(dependency_names).to include("minitest")
   end
 
+  it "allows minitest from the 5.25 floor" do
+    spec = Gem::Specification.load(
+      File.expand_path("../../henitai.gemspec", __dir__)
+    )
+    dependency = spec.runtime_dependencies.find { |item| item.name == "minitest" }
+
+    expect(dependency.requirement.satisfied_by?(Gem::Version.new("5.25.0"))).to be(true)
+  end
+
+  it "allows minitest 6.x" do
+    spec = Gem::Specification.load(
+      File.expand_path("../../henitai.gemspec", __dir__)
+    )
+    dependency = spec.runtime_dependencies.find { |item| item.name == "minitest" }
+
+    expect(dependency.requirement.satisfied_by?(Gem::Version.new("6.5.0"))).to be(true)
+  end
+
+  it "rejects minitest 7" do
+    spec = Gem::Specification.load(
+      File.expand_path("../../henitai.gemspec", __dir__)
+    )
+    dependency = spec.runtime_dependencies.find { |item| item.name == "minitest" }
+
+    expect(dependency.requirement.satisfied_by?(Gem::Version.new("7.0.0"))).to be(false)
+  end
+
   it "allows the patched sqlite3 release" do
     spec = Gem::Specification.load(
       File.expand_path("../../henitai.gemspec", __dir__)
