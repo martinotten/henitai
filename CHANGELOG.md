@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-08-25
+
+### Changed
+- `minitest` runtime dependency widened from `~> 5.25` to `>= 5.25, < 7`.
+  The floor is unchanged; only the ceiling moved. `~> 5.25` capped the
+  range below 6.0, so bundles resolving minitest 6.x could not install
+  henitai even though the integration makes no 5.x-only assumptions.
+  `spec/infra/gemspec_dependencies_spec.rb` now asserts both ends of the
+  range so a regression fails the suite rather than shipping quietly
+
 ## [0.5.0] - 2026-08-21
 
 ### Security
@@ -506,7 +516,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI critical path: `henitai run` now executes the full pipeline, supports `--since`, returns CI-friendly exit codes, and `henitai version` prints `Henitai::VERSION`
 - RSpec per-test coverage output: `henitai/coverage_formatter` now writes `coverage/henitai_per_test.json`
 
-[Unreleased]: https://github.com/martinotten/henitai/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/martinotten/henitai/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/martinotten/henitai/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/martinotten/henitai/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/martinotten/henitai/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/martinotten/henitai/compare/v0.3.0...v0.3.1
