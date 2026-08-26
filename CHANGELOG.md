@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-08-26
+
 ### Fixed
 
 - A timed-out Minitest baseline suite is now actually killed. Its child was
@@ -586,7 +588,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI critical path: `henitai run` now executes the full pipeline, supports `--since`, returns CI-friendly exit codes, and `henitai version` prints `Henitai::VERSION`
 - RSpec per-test coverage output: `henitai/coverage_formatter` now writes `coverage/henitai_per_test.json`
 
-[Unreleased]: https://github.com/martinotten/henitai/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/martinotten/henitai/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/martinotten/henitai/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/martinotten/henitai/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/martinotten/henitai/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/martinotten/henitai/compare/v0.4.0...v0.5.0
