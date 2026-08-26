@@ -36,7 +36,7 @@ module Henitai
     def ensure!(source_files:, config:, integration:, test_files: nil)
       return if source_files.empty?
 
-      resolved_test_files = resolve_test_files(integration, test_files)
+      resolved_test_files = resolve_test_files(integration, test_files, config)
 
       # Skip the bootstrap only when the coverage artifacts are both newer than
       # all watched files and actually cover the configured sources. A fresh
@@ -225,10 +225,24 @@ module Henitai
       Array(source_files) + Array(test_files) + VerdictFingerprint.dependency_files
     end
 
-    def resolve_test_files(integration, test_files)
-      return test_files unless test_files.nil?
+    # Excluded tests are dropped here rather than in `bootstrap_coverage`, so
+    # the same filtered list feeds both the suite run and the freshness watch
+    # list: a test that no longer contributes to the baseline must not
+    # invalidate it either.
+    def resolve_test_files(integration, test_files, config)
+      candidates = test_files.nil? ? integration.test_files : test_files
+      patterns = configured_test_excludes(config)
+      retained = ExcludedTestFilter.new(patterns:).reject(candidates)
+      return retained unless retained.empty? && candidates.any?
 
-      integration.test_files
+      raise ConfigurationError,
+            "test_excludes #{Array(patterns).inspect} excludes every test file; " \
+            "coverage cannot be generated"
+    end
+
+    # Specs pass bare config doubles exposing only what the example needs.
+    def configured_test_excludes(config)
+      config.respond_to?(:test_excludes) ? config.test_excludes : nil
     end
 
     def reports_dir(config)

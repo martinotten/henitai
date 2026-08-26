@@ -1211,6 +1211,8 @@ module Henitai
     def coverage_fresh?: (Array[String], Configuration, Integration::Base, Array[String]?) -> bool
     def coverage_report_path: (Configuration) -> String
     def bootstrap_coverage: (Integration::Base, Configuration, ?Array[String]?) -> void
+    def resolve_test_files: (Integration::Base, Array[String]?, Configuration) -> Array[String]
+    def configured_test_excludes: (Configuration) -> Array[String]?
     def source_file_paths: (Array[String]) -> Array[String]
   end
 

@@ -7,9 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `test_excludes` now also applies to the coverage-bootstrap suite, not only to
+  per-mutant test selection. Slow end-to-end or integration suites could be kept
+  away from mutant children but still had to run in full during the baseline,
+  where the fixed suite timeout aborts the run with
+  `Henitai::CoverageError: Configured test suite failed while generating
+  coverage` even though the suite itself was green. Excluded files are also
+  dropped from the coverage freshness watch list, so a test that no longer
+  contributes to the baseline no longer invalidates it. Lines covered only by
+  excluded tests now count as uncovered and are not mutated — matching what
+  already happened at execution time, where such mutants could never be killed.
+  A `test_excludes` set that leaves no test file now aborts with
+  `Henitai::ConfigurationError` instead of running an empty suite and then
+  reporting missing coverage.
+
 ## [0.5.1] - 2026-08-25
 
 ### Changed
+
 - `minitest` runtime dependency widened from `~> 5.25` to `>= 5.25, < 7`.
   The floor is unchanged; only the ceiling moved. `~> 5.25` capped the
   range below 6.0, so bundles resolving minitest 6.x could not install
@@ -20,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.0] - 2026-08-21
 
 ### Security
+
 - `sqlite3` requirement raised from `~> 1.7` to `>= 2.9.5, < 3`, excluding the
   vulnerable releases up to and including 2.9.4. This is a runtime major bump:
   applications pinned to `sqlite3` 1.x will need to upgrade before installing
@@ -28,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   floors so a regression fails the suite rather than shipping quietly
 
 ### Changed
+
 - `coverage_criteria` now actually affects scoring. The block was documented,
   defaulted and validated since it was introduced, but nothing ever read it —
   `Result` hardcoded the `MS` numerator as `killed + timeout + runtime_error`,
@@ -50,6 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   4.0-only form), and CI runs the floor alongside 4.0.2
 
 ### Fixed
+
 - Forked mutant children no longer outlive a parent that dies without warning.
   Children run in their own process group, and all parent-side cleanup —
   timeout kills, graceful drain, signal traps — only runs while the parent's
@@ -84,6 +104,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   0.3.1; this restores it
 
 ### Internal
+
 - Test-suite coupling to private implementation details is now guarded by
   `spec/infra/private_method_reach_spec.rb`, a ratchet: every spec that reaches
   a private method through `send` or an instance-variable poke carries a
@@ -104,6 +125,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.0] - 2026-07-14
 
 ### Added
+
 - `hard` operator set (`mutation.operators: hard` / `--operators hard`), a
   strict superset of `full` for usually-unkillable mutations (ADR-12):
   currently `EqualityIdentityOperator` and the new `HashKeyType`
@@ -113,6 +135,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   single-pair hashes and double-splat entries are skipped
 
 ### Changed
+
 - `full` now means "usually killable": the symbol-key -> string-key mutation
   moved from `HashLiteral` into the new hard-set `HashKeyType`, and
   `EqualityIdentityOperator` moved from `full` to `hard` — `full` runs emit
@@ -121,6 +144,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.1] - 2026-07-13
 
 ### Fixed
+
 - Per-mutant log capture no longer crashes with
   `Encoding::UndefinedConversionError` when the host app sets
   `Encoding.default_internal` (as Rails test environments do) and a child
@@ -130,6 +154,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from corrupting the file.
 
 ### Changed
+
 - `--since REF` now includes the working tree: tracked files with
   uncommitted changes and untracked files count as changed, matching what
   actually gets tested. Previously only committed changes in `REF..HEAD`
@@ -146,6 +171,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.0] - 2026-07-13
 
 ### Added
+
 - `henitai run --incremental`: verdict reuse from the history store. Killed
   verdicts are reused when the subject's source and every covering test file
   are byte-identical to what was recorded; Survived verdicts are additionally
@@ -181,6 +207,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   moved out of the default light set into its own operator (ADR-10)
 
 ### Fixed
+
 - Mutants in `module_function` modules were unkillable: `module_function`
   copies the method onto the module's singleton and activation only replaced
   the instance side, so callers kept running original code and every such
@@ -200,6 +227,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Flaky-retry counter no longer inflates when a respawned child fails again
 
 ### Changed
+
 - Terminal reporter renders original nodes from their source slice and reuses
   a memoized unparse of the mutated node shared with the JSON reporter
   (a dogfood profile spent 27% of wall time re-unparsing survivors)
@@ -213,6 +241,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   redefinition warnings into their logs
 
 ### Internal
+
 - Architecture documentation gained §8.11 (incremental verdict reuse) and
   ADR-11 (content-fingerprint verdict reuse, not git scoping); new backlog
   tickets for CI warm verdict cache, child null formatter, and auto-`--since`
@@ -224,12 +253,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.1] - 2026-06-25
 
 ### Fixed
+
 - `henitai run` now exits 0 when a run evaluates no valid mutants, instead of
   failing a CI gate on a vacuous result
 - Flaky-retry counts are now recorded on the parallel execution path (they were
   always reported as 0 regardless of actual retries)
 
 ### Changed
+
 - `Result` and `Reporter::Json` take their IO as an injected dependency,
   restoring the domain/infrastructure boundary (no public API change)
 - Decomposed the monolithic `integration.rb` into single-responsibility files
@@ -238,6 +269,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Narrowed broad rescues in `safe_unparse` and per-test coverage snapshotting
 
 ### Internal
+
 - De-mocked runner specs, added `process_wakeup` and helper coverage, and
   removed sleep- and chdir-based flakiness from the suite
 - Enabled full-operator dogfooding configuration and isolated the
@@ -247,6 +279,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2026-04-30
 
 ### Added
+
 - `--survivors-from <path>` flag on `henitai run` for survivor-only reruns:
   re-execute only the mutants that survived a prior full run without re-running
   the whole suite
@@ -281,6 +314,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - x86_64 platform added to gem platform list
 
 ### Changed
+
 - JSON mutation report vendor extension now always includes `sessionId`
   (and `gitSha` when available) to support survivor-only reruns
 - Terminal reporter labels partial reruns as "Partial survivor rerun" and
@@ -295,6 +329,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `max_flaky_retries: 3` added
 
 ### Fixed
+
 - Minitest autorun hook suppressed in mutation child processes to prevent
   spurious re-runs of the full suite inside each fork
 - Coverage bootstrap RSpec subprocess ARGV leakage resolved — child processes
@@ -307,6 +342,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   preventing stale cache hits after edits
 
 ### Performance
+
 - File discovery cached in the integration layer; repeated calls within one
   run no longer re-scan the filesystem
 - Polling sleep removed from the scheduler hot loop; slots are refilled
@@ -315,6 +351,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.10] - 2026-04-16
 
 ### Fixed
+
 - RuboCop `RSpec/MultipleExpectations` offenses in `coverage_formatter_spec` and
   `per_test_coverage_collector_spec` resolved by splitting each two-assertion
   example into focused single-expectation examples
@@ -322,6 +359,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.9] - 2026-04-16
 
 ### Fixed
+
 - SimpleCov is now suppressed during Minitest mutant child runs: `SimpleCov.start`
   is turned into a no-op before test files are required, eliminating the
   "Stopped processing SimpleCov as a previous error has been detected" warning
@@ -330,12 +368,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.8] - 2026-04-16
 
 ### Added
+
 - Minitest integration now supports per-test coverage: a `MinitestCoverageReporter`
   snapshots `Coverage.peek_result` after each test and writes `henitai_per_test.json`,
   enabling targeted mutation runs that only execute the tests covering the mutated lines —
   the same efficiency that was previously available only to RSpec projects
 
 ### Fixed
+
 - RSpec integration now respects `--exclude-pattern` entries in `.rspec` so excluded
   spec files are not passed to the runner during mutation runs
 - Per-test source file filter corrected to check only the project-relative path prefix
@@ -345,11 +385,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.7] - 2026-04-14
 
 ### Added
+
 - Committed integration smoke projects for RSpec and Minitest, runnable via
   `bundle exec rake smoke:integration:all`, to exercise `henitai` against
   small real projects that depend on the local source checkout
 
 ### Fixed
+
 - Child-process stdout/stderr restoration after captured test runs now keeps
   the standard streams usable, preventing passing mutant executions from being
   misclassified because the child exited with a closed stdio handle
@@ -360,6 +402,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.6] - 2026-04-14
 
 ### Fixed
+
 - Minitest is no longer required eagerly when `henitai/integration` loads, so
   projects that do not include Minitest in their bundle can still boot and use
   non-Minitest integrations without a parent-process `LoadError`
@@ -367,6 +410,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.5] - 2026-04-14
 
 ### Fixed
+
 - Steep type errors in `Runner` after removing targeted-run bootstrap scoping:
   updated `bootstrap_mutants` RBS signature to match the new single-argument
   form and removed stale signatures for `refresh_coverage_for_targeted_run`,
@@ -375,6 +419,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workspace setup and report writing into helper methods
 
 ### Changed
+
 - Targeted-run coverage bootstrap no longer scopes the initial run to the
   subject's test files; the full suite is always used for the baseline,
   trading a minor performance optimisation for reliability
@@ -382,6 +427,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.4] - 2026-04-14
 
 ### Fixed
+
 - `StringLiteral` operator no longer generates no-op mutations where the
   replacement equals the original value (e.g. the spurious `"" → ""` mutant
   that was emitted for methods already returning an empty string literal)
@@ -397,6 +443,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runner's configured reports directory
 
 ### Changed
+
 - `ScenarioExecutionResult.build` factory method consolidates status and
   exit-status derivation that was previously spread across `Integration`,
   reducing the mutation surface of the value object
@@ -404,6 +451,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.3] - 2026-04-13
 
 ### Added
+
 - Four new mutation operators: `UnaryOperator` (negates boolean and numeric
   unary expressions), `UpdateOperator` (swaps `+=`/`-=`/`*=` and targets
   compound-assignment nodes), `RegexMutator` (replaces regex literals with
@@ -422,6 +470,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `x || false`, `true && x`, `x && true` are suppressed as equivalent mutants
 
 ### Changed
+
 - Per-line mutation cap (`max_mutants_per_line`) removed from the generator,
   configuration schema, and validator — see ADR-08. All syntactically valid
   mutations on a line are now generated unconditionally
@@ -436,6 +485,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without reflection
 
 ### Performance
+
 - Coverage bootstrap freshness check: the baseline RSpec run is skipped when
   `.resultset.json` is newer than every watched source and test file,
   eliminating ~83 % of bootstrap wall time on repeated runs within a session
@@ -457,6 +507,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   AST node
 
 ### Fixed
+
 - Mutant child processes now run in isolated process groups (`setpgid`);
   `cleanup_process_group` sends `SIGTERM` to the entire group on timeout or
   error, preventing orphaned subprocesses
@@ -472,10 +523,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.2] - 2026-04-07
 
 ### Added
+
 - Method coverage is now enabled in both RSpec and Minitest bootstraps, and
   the static filter merges method-level coverage into the line map
 
 ### Fixed
+
 - Coverage baseline regeneration now happens on every `henitai run`, so stale
   coverage state does not leak between runs
 - Coverage handling now accepts symbol-keyed `Coverage.peek_result` output and
@@ -492,6 +545,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.1] - 2026-04-03
 
 ### Added
+
 - Minitest integration for Rails projects: injects SimpleCov for coverage
   collection, sets `RAILS_ENV=test` and `PARALLEL_WORKERS=1` in the baseline
   subprocess, preloads `config/environment.rb` before mutant activation, adds
@@ -499,6 +553,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `simplecov` runtime dependency (required by the Minitest integration)
 
 ### Fixed
+
 - `rspec/core` was unconditionally required at load time, causing a `LoadError`
   in projects that do not have RSpec installed — now loaded lazily only when the
   RSpec integration is used
@@ -508,6 +563,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-03-01
 
 ### Added
+
 - Initial gem scaffold with Ruby 4.0.2 support
 - Dev Container configuration (official `ruby:4.0.2-alpine` base image, Codex CLI preinstalled)
 - CI pipeline (RuboCop + RSpec + incremental mutation testing on PRs)

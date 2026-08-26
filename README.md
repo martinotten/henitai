@@ -77,7 +77,7 @@ excludes:
   - lib/henitai/eager_load.rb   # standalone entry points with no in-process coverage
 
 test_excludes:
-  - spec/end_to_end/*_spec.rb   # never select these files for individual mutants
+  - spec/end_to_end/*_spec.rb   # never run these files, mutants or coverage baseline
 
 mutation:
   operators: light   # light | full
@@ -109,8 +109,14 @@ when a value is invalid.
 
 CLI flags override the corresponding values from `.henitai.yml`.
 
-`test_excludes` removes matching test files from per-mutant selection. A mutant
-with no tests left is reported as `NoCoverage` and is not executed.
+`test_excludes` removes matching test files from per-mutant selection *and* from
+the coverage-bootstrap suite. A mutant with no tests left is reported as
+`NoCoverage` and is not executed. Excluding slow end-to-end or integration
+suites therefore also keeps them out of the baseline run — which matters,
+because a test that never runs against a mutant can never kill one, and the
+baseline suite has a fixed timeout. Lines covered only by excluded tests count
+as uncovered and are not mutated. Excluding every test file aborts with
+`Henitai::ConfigurationError`.
 `mutation.max_log_bytes` is a positive per-stream byte cap for captured child
 output. `mutation.max_timeout` caps auto-calibrated timeouts; an explicit
 `mutation.timeout` still takes precedence. When JSON or HTML reporting is

@@ -913,4 +913,123 @@ RSpec.describe Henitai::CoverageBootstrapper do
       end
     end
   end
+
+  describe "test_excludes" do
+    def build_excluding_config(patterns, reports_dir: "reports")
+      Struct.new(:reports_dir, :test_excludes).new(reports_dir, patterns)
+    end
+
+    it "keeps excluded test files out of the coverage bootstrap suite" do
+      static_filter = instance_double(Henitai::StaticFilter)
+      integration = build_integration(
+        test_files: ["spec/unit/a_spec.rb", "spec/integration/slow_spec.rb"],
+        run_suite_result: :survived
+      )
+
+      bootstrapper = build_bootstrapper(static_filter:)
+
+      allow(static_filter).to receive(:coverage_lines_for).and_return(
+        { File.expand_path("lib/sample.rb") => [2] }
+      )
+
+      bootstrapper.ensure!(
+        source_files: [File.expand_path("lib/sample.rb")],
+        config: build_excluding_config(["spec/integration/**/*_spec.rb"]),
+        integration:
+      )
+
+      expect(integration).to have_received(:run_suite).with(["spec/unit/a_spec.rb"])
+    end
+
+    it "applies the excludes to explicitly passed test files" do
+      static_filter = instance_double(Henitai::StaticFilter)
+      integration = build_integration(
+        test_files: ["spec/unit/a_spec.rb"],
+        run_suite_result: :survived
+      )
+
+      bootstrapper = build_bootstrapper(static_filter:)
+
+      allow(static_filter).to receive(:coverage_lines_for).and_return(
+        { File.expand_path("lib/sample.rb") => [2] }
+      )
+
+      bootstrapper.ensure!(
+        source_files: [File.expand_path("lib/sample.rb")],
+        config: build_excluding_config(["spec/integration/**/*_spec.rb"]),
+        integration:,
+        test_files: ["spec/unit/a_spec.rb", "spec/integration/slow_spec.rb"]
+      )
+
+      expect(integration).to have_received(:run_suite).with(["spec/unit/a_spec.rb"])
+    end
+
+    it "raises a configuration error when the excludes match every test file" do
+      static_filter = instance_double(Henitai::StaticFilter)
+      integration = build_integration(
+        test_files: ["spec/integration/slow_spec.rb"],
+        run_suite_result: :survived
+      )
+
+      bootstrapper = build_bootstrapper(static_filter:)
+
+      allow(static_filter).to receive(:coverage_lines_for).and_return({})
+
+      expect do
+        bootstrapper.ensure!(
+          source_files: [File.expand_path("lib/sample.rb")],
+          config: build_excluding_config(["spec/**/*_spec.rb"]),
+          integration:
+        )
+      end.to raise_error(Henitai::ConfigurationError, /test_excludes/)
+    end
+
+    it "does not run the suite when the excludes match every test file" do
+      static_filter = instance_double(Henitai::StaticFilter)
+      integration = build_integration(
+        test_files: ["spec/integration/slow_spec.rb"],
+        run_suite_result: :survived
+      )
+
+      bootstrapper = build_bootstrapper(static_filter:)
+
+      allow(static_filter).to receive(:coverage_lines_for).and_return({})
+
+      begin
+        bootstrapper.ensure!(
+          source_files: [File.expand_path("lib/sample.rb")],
+          config: build_excluding_config(["spec/**/*_spec.rb"]),
+          integration:
+        )
+      rescue Henitai::ConfigurationError
+        # asserted in the sibling example; here only the absent run matters
+      end
+
+      expect(integration).not_to have_received(:run_suite)
+    end
+
+    it "runs every test file when no excludes are configured" do
+      static_filter = instance_double(Henitai::StaticFilter)
+      integration = build_integration(
+        test_files: ["spec/unit/a_spec.rb", "spec/integration/slow_spec.rb"],
+        run_suite_result: :survived
+      )
+
+      bootstrapper = build_bootstrapper(static_filter:)
+
+      allow(static_filter).to receive(:coverage_lines_for).and_return(
+        { File.expand_path("lib/sample.rb") => [2] }
+      )
+
+      bootstrapper.ensure!(
+        source_files: [File.expand_path("lib/sample.rb")],
+        config: build_excluding_config([]),
+        integration:
+      )
+
+      expect(integration).to have_received(:run_suite).with(
+        ["spec/unit/a_spec.rb", "spec/integration/slow_spec.rb"]
+      )
+    end
+  end
 end
