@@ -32,7 +32,9 @@ module Henitai
     # @param config       [Configuration]
     # @param integration  [Integration::Base]
     # @param test_files   [Array<String>, nil] test files to run; defaults to
-    #                     all files reported by the integration when nil
+    #                     all files reported by the integration when nil.
+    #                     Either way, `config.test_excludes` matches are dropped.
+    # @raise [ConfigurationError] when the excludes leave no test file to run
     def ensure!(source_files:, config:, integration:, test_files: nil)
       return if source_files.empty?
 

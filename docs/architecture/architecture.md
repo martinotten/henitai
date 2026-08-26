@@ -566,7 +566,7 @@ The bootstrap sequence is:
 
 1. Inspect the configured coverage artifacts for lines that overlap the current source files.
 2. If usable coverage already exists, proceed with the normal mutation pipeline.
-3. If coverage is missing or stale, run the configured test suite once to bootstrap fresh coverage. Staleness covers source files, test files, and the dependency file set (helpers, support, fixtures, lockfile, tool config): edits are detected by mtime, deletions by comparing the recorded dependency manifest against disk.
+3. If coverage is missing or stale, run the configured test suite once to bootstrap fresh coverage. The suite is the integration's test files minus the `test_excludes` globs, the same set used for per-mutant selection: a test that never runs against a mutant contributes nothing but baseline runtime. The excluded files are equally absent from the staleness watch list. Staleness covers source files, test files, and the dependency file set (helpers, support, fixtures, lockfile, tool config): edits are detected by mtime, deletions by comparing the recorded dependency manifest against disk.
 4. Re-check the coverage artifacts.
 5. If coverage is still missing or unusable, raise `Henitai::CoverageError`.
 
