@@ -71,6 +71,11 @@ module Henitai
         env
       end
 
+      # `pgroup: true` makes the suite child a group leader, so the whole tree
+      # it spawns -- a Rails test server, browser drivers -- is signalable as
+      # one group. Without it the parent's `kill(:SIGTERM, -pid)` addresses a
+      # group that does not exist, raises ESRCH, and leaves a timed-out suite
+      # running to completion while the parent has already given up on it.
       def spawn_suite_process(test_files, log_paths)
         FileUtils.mkdir_p(File.dirname(log_paths[:stdout_path]))
         File.open(log_paths[:stdout_path], "w") do |stdout_file|
@@ -79,16 +84,19 @@ module Henitai
               subprocess_env,
               *suite_command(test_files),
               out: stdout_file,
-              err: stderr_file
+              err: stderr_file,
+              pgroup: true
             )
           end
         end
       end
 
+      # A timeout has already torn the group down and reaped the child in
+      # `handle_timeout`; signalling again would only race a recycled pid.
       def cleanup_suite_process(pid, wait_result)
         return unless pid
 
-        cleanup_child_process(pid)
+        cleanup_process_group(pid) unless wait_result == :timeout
         reap_child(pid) if wait_result.nil?
       end
 

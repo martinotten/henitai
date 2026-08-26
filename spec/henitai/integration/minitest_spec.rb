@@ -222,7 +222,7 @@ RSpec.describe Henitai::Integration::Minitest do
 
       allow(Process).to receive(:spawn).and_return(4321)
       allow(integration).to receive_messages(wait_with_timeout: nil, build_result: :survived)
-      allow(integration).to receive(:cleanup_child_process) do |pid|
+      allow(integration).to receive(:cleanup_process_group) do |pid|
         calls << [:cleanup, pid]
       end
       allow(integration).to receive(:reap_child) do |pid|
@@ -249,7 +249,7 @@ RSpec.describe Henitai::Integration::Minitest do
         wait_with_timeout: Struct.new(:success?).new(true),
         build_result: :killed
       )
-      allow(integration).to receive(:cleanup_child_process) do |pid|
+      allow(integration).to receive(:cleanup_process_group) do |pid|
         calls << [:cleanup, pid]
       end
       allow(integration).to receive(:reap_child) do |pid|
@@ -270,12 +270,51 @@ RSpec.describe Henitai::Integration::Minitest do
 
       allow(Process).to receive(:spawn).and_return(nil)
       allow(integration).to receive_messages(wait_with_timeout: :timeout, build_result: :timeout)
-      allow(integration).to receive(:cleanup_child_process) { |pid| calls << [:cleanup, pid] }
+      allow(integration).to receive(:cleanup_process_group) { |pid| calls << [:cleanup, pid] }
       allow(integration).to receive(:reap_child) { |pid| calls << [:reap, pid] }
 
       integration.run_suite(["test/sample_test.rb"], timeout: 4.0)
 
       expect(calls).to be_empty
+    end
+  end
+
+  it "leaves the torn-down group alone after a baseline timeout" do
+    integration = described_class.new
+
+    with_temp_workspace do
+      calls = []
+
+      allow(Process).to receive(:spawn).and_return(4321)
+      allow(integration).to receive_messages(wait_with_timeout: :timeout, build_result: :timeout)
+      allow(integration).to receive(:cleanup_process_group) { |pid| calls << [:cleanup, pid] }
+      allow(integration).to receive(:reap_child) { |pid| calls << [:reap, pid] }
+
+      integration.run_suite(["test/sample_test.rb"], timeout: 4.0)
+
+      # handle_timeout already killed the group and reaped the child
+      expect(calls).to be_empty
+    end
+  end
+
+  it "spawns the baseline suite in its own process group" do
+    integration = described_class.new
+
+    with_temp_workspace do
+      allow(Process).to receive(:spawn).and_return(4321)
+      allow(integration).to receive(:wait_with_timeout).and_return(
+        Struct.new(:success?, :exitstatus).new(true, 0)
+      )
+
+      integration.run_suite(["test/sample_test.rb"])
+
+      expect(Process).to have_received(:spawn).with(
+        { "PARALLEL_WORKERS" => "1", "RAILS_ENV" => "test" },
+        *integration.suite_command(["test/sample_test.rb"]),
+        out: kind_of(File),
+        err: kind_of(File),
+        pgroup: true
+      )
     end
   end
 
@@ -285,7 +324,7 @@ RSpec.describe Henitai::Integration::Minitest do
 
     with_env("RAILS_ENV", nil) do
       with_temp_workspace do
-        allow(Process).to receive(:spawn) do |*args, out:, err:|
+        allow(Process).to receive(:spawn) do |*args, out:, err:, **|
           spawn_calls << args
           out.write("out-line\n")
           err.write("err-line\n")

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A timed-out Minitest baseline suite is now actually killed. Its child was
+  spawned without `pgroup: true`, so the parent's group-wide `SIGTERM` named a
+  process group that never existed, raised `ESRCH`, and left the suite running;
+  the parent then blocked in `Process.wait` until the suite finished on its own
+  — minutes past the timeout it had already reported, and long after the log
+  tail quoted in the error had stopped describing reality. The suite child now
+  leads its own group, as the RSpec baseline child already did, and post-run
+  cleanup signals that group instead of the single pid, so a Rails test server
+  or browser driver started by the suite is torn down with it.
+
 ## [0.5.2] - 2026-08-26
 
 ### Changed
