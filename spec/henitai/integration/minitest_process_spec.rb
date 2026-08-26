@@ -63,7 +63,9 @@ RSpec.describe Henitai::Integration::Minitest do
           [RbConfig.ruby, "-e", suite_script(marker)]
         )
 
-        thread = Thread.new { integration.run_suite([], timeout: 2.0) }
+        # Generous enough that a slow interpreter boot cannot beat the timeout
+        # to the marker file; the no-fix case still runs into the deadline.
+        thread = Thread.new { integration.run_suite([], timeout: 5.0) }
         grandchild_pid = wait_for_marker(marker)
         elapsed = measure { thread.join }
 

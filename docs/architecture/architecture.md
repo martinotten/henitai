@@ -506,6 +506,12 @@ which runs three steps in a fixed order:
    signal delivered: they reparent to init and keep a full Ruby and
    test-framework image resident.
 
+The baseline suite child is spawned, not forked, so it reaches the same
+property through `Process.spawn(..., pgroup: true)` instead of `setpgid`. Both
+integrations set it: parent-side cleanup signals the group, and a group that
+was never created turns that signal into an `ESRCH` no-op, leaving a suite the
+parent has already timed out running to completion.
+
 The watchdog's predicate has two arms. A changed `Process.ppid` is definitive
 (reparenting cannot be faked by pid reuse) but stays equal while the parent
 lingers as a zombie, which a `Process.kill(0, parent_pid)` liveness probe

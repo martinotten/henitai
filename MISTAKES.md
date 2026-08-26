@@ -149,3 +149,26 @@ against the specs that execute the fork block in-process — grep for
 `stub_process_fork` and `allow(Process).to receive(:fork)`. And run the guarded
 lane (`bin/verify-process-free-specs`), not only `bundle exec rspec`: only the
 guarded lane caught this.
+
+## 2026-08-26 — A teardown spec that asserted the end state, not the timing
+
+**What happened.** The Minitest baseline suite was spawned without
+`pgroup: true`, so `cleanup_process_group`'s `Process.kill(:SIGTERM, -pid)`
+named a group that never existed, raised `ESRCH`, and cleaned up nothing. The
+first process spec written for the fix — spawn a suite that sleeps, force a
+timeout, assert the tree is dead afterwards — passed against the *unfixed*
+code.
+
+**Root cause.** After the failed kill, `handle_timeout` still calls
+`reap_child`, which blocks in `Process.wait` until the suite exits on its own.
+By the time `run_suite` returned, the sleeping child and its grandchild had
+finished naturally, so "is the tree dead?" was true — 120 seconds late. The
+assertion could not tell teardown apart from waiting it out. In the field this
+is what left a Rails suite running for twenty more minutes after henitai had
+already reported a timeout and quoted a log that kept growing.
+
+**Prevention.** A spec for killing something must assert *when*, not only
+*whether*. Measure the elapsed time and bound it well below the point where the
+process would have exited by itself. And confirm the red: revert the fix and
+watch the spec fail before trusting it — this one passed both ways, and only
+the runtime (120s vs 2s) gave it away.
