@@ -515,9 +515,8 @@ module Henitai
       end
 
       def ignore_reason_for(mutant)
-        return nil unless mutant.respond_to?(:ignore_reason)
-
-        reason = mutant.ignore_reason
+        reason = mutant.status_reason if mutant.respond_to?(:status_reason)
+        reason ||= mutant.ignore_reason if mutant.respond_to?(:ignore_reason)
         reason ? "(#{reason})" : nil
       end
 

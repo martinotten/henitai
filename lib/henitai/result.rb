@@ -261,11 +261,11 @@ module Henitai
     end
 
     # Serialized as the schema's statusReason so directive reasons show up
-    # next to the Ignored status in the HTML report.
+    # next to the Ignored status, and harness reasons (a failed fidelity
+    # check, for example) next to CompileError, in the HTML report.
     def status_reason_for(mutant)
-      return nil unless mutant.respond_to?(:ignore_reason)
-
-      mutant.ignore_reason
+      reason = mutant.status_reason if mutant.respond_to?(:status_reason)
+      reason || (mutant.ignore_reason if mutant.respond_to?(:ignore_reason))
     end
 
     # Vendored extension field (like stableId): marks verdicts reused from

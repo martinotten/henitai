@@ -8,16 +8,17 @@ RSpec.describe Henitai::Reporter::DryRun do
     defaults = {
       subject: "Sample#answer", operator: :ArithmeticOperator,
       description: "replaced + with -", file: "lib/sample.rb", start_line: 3,
-      ignore_reason: nil
+      ignore_reason: nil, status_reason: nil
     }
     values = defaults.merge(attributes)
-    Struct.new(:status, :subject, :operator, :description, :location, :ignore_reason).new(
+    Struct.new(:status, :subject, :operator, :description, :location, :ignore_reason, :status_reason).new(
       status,
       Struct.new(:expression).new(values[:subject]),
       values[:operator],
       values[:description],
       { file: values[:file], start_line: values[:start_line], end_line: values[:start_line] },
-      values[:ignore_reason]
+      values[:ignore_reason],
+      values[:status_reason]
     )
   end
 
@@ -55,6 +56,14 @@ RSpec.describe Henitai::Reporter::DryRun do
     )
 
     expect(output).to include("[ignored] (log-format noise)")
+  end
+
+  it "shows a compile error with the harness reason that caused it" do
+    output = report(
+      [build_mutant(status: :compile_error, status_reason: "activated code differs from the reported mutation")]
+    )
+
+    expect(output).to include("[compile_error] (activated code differs from the reported mutation)")
   end
 
   it "counts every status in the summary" do

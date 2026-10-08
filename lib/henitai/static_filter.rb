@@ -10,9 +10,11 @@ module Henitai
     DEFAULT_PER_TEST_COVERAGE_REPORT_PATH = CoverageReportReader::DEFAULT_PER_TEST_COVERAGE_REPORT_PATH
 
     def initialize(coverage_report_reader: CoverageReportReader.new,
-                   skip_directives: MutationSkipDirectives.new)
+                   skip_directives: MutationSkipDirectives.new,
+                   fidelity_check: FidelityCheck.new)
       @coverage_report_reader = coverage_report_reader
       @skip_directives = skip_directives
+      @fidelity_check = fidelity_check
     end
 
     # This method is the gate-level filter orchestrator.
@@ -22,6 +24,7 @@ module Henitai
 
       Array(mutants).each do |mutant|
         next if ignored_mutant?(mutant, config) || skip_directive_mutant?(mutant)
+        next if unfaithful_mutant?(mutant)
 
         mark_equivalent_mutant(mutant)
         mark_no_coverage_mutant(
@@ -64,7 +67,7 @@ module Henitai
 
     private
 
-    attr_reader :coverage_report_reader, :skip_directives
+    attr_reader :coverage_report_reader, :skip_directives, :fidelity_check
 
     def ignored?(mutant, config)
       source = source_for(mutant)
@@ -88,6 +91,17 @@ module Henitai
 
       mutant.status = :ignored
       mutant.ignore_reason = directive.reason if mutant.respond_to?(:ignore_reason=)
+      true
+    end
+
+    # A mutant whose activated code is not the reported mutation must not
+    # run: any test failure would be credited to a change it never made.
+    def unfaithful_mutant?(mutant)
+      reason = fidelity_check.violation(mutant)
+      return false unless reason
+
+      mutant.status = :compile_error
+      mutant.status_reason = reason
       true
     end
 

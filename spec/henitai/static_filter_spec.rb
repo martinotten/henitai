@@ -93,6 +93,33 @@ RSpec.describe Henitai::StaticFilter do
     expect(mutant.status).to eq(:ignored)
   end
 
+  it "marks a mutant that fails the fidelity check as a compile error with the reason" do
+    mutant = build_mutant("foo.bar")
+    fidelity_check = instance_double(Henitai::FidelityCheck, violation: "activated code differs")
+
+    filter_with_coverage(fidelity_check:).apply([mutant], config)
+
+    expect([mutant.status, mutant.status_reason]).to eq([:compile_error, "activated code differs"])
+  end
+
+  it "leaves a mutant that passes the fidelity check to the remaining filters" do
+    mutant = build_mutant("foo.bar")
+    fidelity_check = instance_double(Henitai::FidelityCheck, violation: nil)
+
+    filter_with_coverage(fidelity_check:).apply([mutant], config)
+
+    expect([mutant.status, mutant.status_reason]).to eq([:no_coverage, nil])
+  end
+
+  it "keeps an ignored mutant ignored without checking its fidelity" do
+    mutant = build_mutant("foo.bar")
+    fidelity_check = instance_double(Henitai::FidelityCheck, violation: "activated code differs")
+
+    filter_with_coverage(fidelity_check:).apply([mutant], config(ignore_patterns: ["foo\\.bar"]))
+
+    expect(mutant.status).to eq(:ignored)
+  end
+
   it "marks mutants on a line with a trailing skip directive as ignored" do
     with_sample_file(<<~RUBY) do |dir, path|
       class Sample
