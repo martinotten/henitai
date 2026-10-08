@@ -69,6 +69,26 @@ RSpec.describe Henitai::Mutant::Activator do
     end
   end
 
+  it "keeps the method's own source text for an unmutated control" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, <<~RUBY)
+        class Sample
+          def total(pairs)
+            pairs.map { |pair| pair.first }.sum + 1
+          end
+        end
+      RUBY
+
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      original_node = find_nodes(subject.ast_node, :send).find { |node| node.children[1] == :+ }
+      mutant = build_mutant(subject:, original_node:, mutated_node: original_node,
+                            location: location_for(original_node))
+
+      expect(described_class.activation_source_for(mutant))
+        .to include("pairs.map { |pair| pair.first }.sum + 1")
+    end
+  end
+
   it "patches the singleton copy of a module_function method", :aggregate_failures do
     Dir.mktmpdir do |dir|
       path = write_source(dir, <<~RUBY)

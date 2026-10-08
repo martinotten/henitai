@@ -33,7 +33,19 @@ module Henitai
       end
 
       warn_flaky_mutants(pending_mutants.size)
+      verify_controls(pending_mutants, integration, config)
       mutants
+    end
+
+    def verify_controls(mutants, integration, config)
+      return unless config.respond_to?(:control_runs) && config.control_runs
+
+      timeout_for = ->(test_files) { resolved_timeout(test_files, config) }
+      stats = ControlRun.new(integration:, timeout_for:).verify(mutants)
+      return if stats[:failed].zero?
+
+      warn format("henitai: control runs failed for %<failed>d of %<verified>d subjects; " \
+                  "%<reclassified>d detected verdicts reclassified as CompileError", **stats)
     end
 
     def parallel_execution?(config, mutants)

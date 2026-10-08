@@ -100,8 +100,15 @@ module Henitai
         location = body.location
         return source_body(location, body) unless original_range && location
 
-        replacement = compile_safe_unparse(mutant.mutated_node)
-        body_source_for_location(location, original_range, replacement, body)
+        body_source_for_location(location, original_range, replacement_source(mutant, original_range), body)
+      end
+
+      # An unmutated control keeps the original text: re-rendering it would
+      # test the unparser, not the activation path.
+      def replacement_source(mutant, original_range)
+        return original_range.source if mutant.mutated_node.equal?(mutant.original_node)
+
+        compile_safe_unparse(mutant.mutated_node)
       end
 
       def body_source_for_location(location, original_range, replacement, body)
