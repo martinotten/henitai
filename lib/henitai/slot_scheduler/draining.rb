@@ -128,6 +128,7 @@ module Henitai
       def record_drain_result(slot, final_status)
         result = drain_verdict.build(slot, final_status)
         slot.mutant.status = result.status
+        ScenarioExecutionResult.copy_reason(result, slot.mutant)
         results << result
         progress_reporter&.progress(slot.mutant, scenario_result: result)
       end

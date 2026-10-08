@@ -198,7 +198,19 @@ RSpec.describe Henitai::Integration::Rspec do
     allow(log_support).to receive_messages(read_log_file: "", write_combined_log: nil)
     allow(log_support).to receive(:with_coverage_dir).and_yield
     allow(log_support).to receive(:capture_child_output).and_yield
-    allow(integration).to receive(:scenario_log_support).and_return(log_support)
+    allow(integration).to receive_messages(scenario_log_support: log_support,
+                                           child_report_store: in_memory_report_store)
+  end
+
+  # The forked block runs in-process in these examples, so the child's report
+  # can live in memory and still reach the parent's classification.
+  def in_memory_report_store
+    reports = {}
+    store = instance_double(Henitai::Integration::ChildReportStore)
+    allow(store).to receive(:write) { |path, data| reports[path] = data }
+    allow(store).to receive(:read) { |path| reports[path] }
+    allow(store).to receive(:clear) { |path| reports.delete(path) }
+    store
   end
 
   def stub_process_exit(record)
@@ -1402,6 +1414,60 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  def run_in_process_mutant(integration, child_status:)
+    stub_child_logging(integration)
+    stub_in_process_fork(24_606)
+    stub_process_wakeup
+    allow(Process).to receive(:wait).and_return(24_606)
+    allow(Process).to receive_messages(last_status: child_status)
+    integration.run_mutant(mutant: Struct.new(:id).new("mutant-contract"), test_files: ["spec/a_spec.rb"],
+                           timeout: 0.1)
+  end
+
+  def stub_in_process_fork(child_pid)
+    allow(Process).to receive(:exit)
+    allow(Process).to receive(:fork) do |&block|
+      block.call
+      child_pid
+    end
+  end
+
+  def exited_status(code)
+    Struct.new(:success?, :exitstatus, :signaled?, :termsig).new(code.zero?, code, false, nil)
+  end
+
+  it "reports an activation error as a compile error instead of a kill" do
+    integration = described_class.new
+    allow(Henitai::Mutant::Activator).to receive(:activate!)
+      .and_raise(NameError, "uninitialized constant Shop::Base")
+
+    result = run_in_process_mutant(integration, child_status: exited_status(1))
+
+    expect([result.status, result.status_reason])
+      .to eq([:compile_error, "activation failed: NameError: uninitialized constant Shop::Base"])
+  end
+
+  it "reports a SystemExit raised by the code under test as a runtime error" do
+    integration = described_class.new
+    allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(nil)
+    allow(integration).to receive(:run_tests).and_raise(SystemExit.new(0))
+
+    result = run_in_process_mutant(integration, child_status: exited_status(0))
+
+    expect([result.status, result.status_reason])
+      .to eq([:runtime_error, "the test run ended early with SystemExit (status 0)"])
+  end
+
+  it "reports a finished test run by the exit code the tests returned" do
+    integration = described_class.new
+    allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(nil)
+    allow(integration).to receive(:run_tests).and_return(1)
+
+    result = run_in_process_mutant(integration, child_status: exited_status(1))
+
+    expect(result.status).to eq(:killed)
+  end
+
   it "marks unsupported activations as compile errors" do
     mutant = Struct.new(:id).new("mutant-compile-error")
     integration = described_class.new
@@ -1619,7 +1685,7 @@ RSpec.describe Henitai::Integration::Rspec do
         handle = integration.spawn_mutant(mutant:, test_files: ["spec/foo_spec.rb"])
 
         expect([handle.pid, handle.log_paths.keys]).to eq(
-          [55_555, %i[stdout_path stderr_path log_path]]
+          [55_555, %i[stdout_path stderr_path log_path report_path]]
         )
       ensure
         ENV["HENITAI_MUTANT_ID"] = original_env

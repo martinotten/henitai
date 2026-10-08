@@ -355,7 +355,8 @@ RSpec.describe Henitai::Integration::Minitest do
   end
 
   def stub_mutant_log_support(integration, mutant, order)
-    log_support = build_mutant_log_support_double(build_log_paths("mutant-setup"), mutant)
+    log_paths = build_log_paths("mutant-setup").merge(report_path: "reports/mutation-logs/mutant-setup.report.json")
+    log_support = build_mutant_log_support_double(log_paths, mutant)
     allow(Henitai::Integration::MinitestLoadPath).to receive(:ensure!) do
       order << :setup_load_path
     end

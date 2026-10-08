@@ -175,6 +175,7 @@ module Henitai
     def finalize_slot(slot, result)
       slot_table.delete(slot.slot_id)
       slot.mutant.status = result.status
+      ScenarioExecutionResult.copy_reason(result, slot.mutant)
       results << result
       progress_reporter&.progress(slot.mutant, scenario_result: result)
       result.release_output! if result.respond_to?(:release_output!)

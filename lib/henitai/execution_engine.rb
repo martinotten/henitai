@@ -77,6 +77,7 @@ module Henitai
 
       scenario_result = run_with_flaky_retry(mutant, integration, config, test_files, mutex)
       mutant.status = scenario_status(scenario_result)
+      ScenarioExecutionResult.copy_reason(scenario_result, mutant)
 
       report_progress(mutant, scenario_result, progress_reporter, mutex)
     end
