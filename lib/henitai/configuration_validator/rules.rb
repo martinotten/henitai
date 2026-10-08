@@ -100,6 +100,7 @@ module Henitai
         Scalars.validate_max_flaky_retries(value[:max_flaky_retries])
         Scalars.validate_max_log_bytes(value[:max_log_bytes])
         Scalars.validate_max_timeout(value[:max_timeout])
+        Scalars.validate_boolean(value[:control_runs], "mutation.control_runs") unless value[:control_runs].nil?
       end
 
       def validate_mutation_filters(value)

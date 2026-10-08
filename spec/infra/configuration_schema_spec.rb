@@ -42,6 +42,12 @@ RSpec.describe "Configuration schema" do
     expect(mutation.fetch("max_flaky_retries").fetch("minimum")).to eq(0)
   end
 
+  it "documents the control-run switch" do
+    mutation = properties.fetch("mutation").fetch("properties")
+
+    expect(mutation.fetch("control_runs")).to include("type" => "boolean", "default" => true)
+  end
+
   it "documents sampling as a complete configuration block" do
     sampling = properties.fetch("mutation").fetch("properties").fetch("sampling")
 

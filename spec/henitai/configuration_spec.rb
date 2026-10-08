@@ -436,6 +436,28 @@ RSpec.describe Henitai::Configuration do
     )
   end
 
+  it "enables control runs by default" do
+    expect(load_configuration("").control_runs).to be(true)
+  end
+
+  it "loads a disabled control-run setting" do
+    config = load_configuration(<<~YAML)
+      mutation:
+        control_runs: false
+    YAML
+
+    expect(config.control_runs).to be(false)
+  end
+
+  it "aborts on a non-boolean control-run setting" do
+    expect do
+      load_configuration(<<~YAML)
+        mutation:
+          control_runs: sometimes
+      YAML
+    end.to raise_error(Henitai::ConfigurationError, /mutation\.control_runs/)
+  end
+
   it "aborts on invalid sampling settings" do
     expect do
       load_configuration(<<~YAML)

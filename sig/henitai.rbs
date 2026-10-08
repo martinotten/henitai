@@ -187,6 +187,7 @@ module Henitai
     attr_reader ignore_patterns: Array[untyped]
     attr_reader max_mutants_per_line: Integer
     attr_reader max_flaky_retries: Integer
+    attr_reader control_runs: bool
     attr_reader max_log_bytes: Integer
     attr_reader max_timeout: Float
     attr_reader sampling: untyped

@@ -65,6 +65,11 @@
           "type": "number",
           "exclusiveMinimum": 0
         },
+        "control_runs": {
+          "type": "boolean",
+          "default": true,
+          "description": "After execution, re-run each subject that has detected mutants with its unmutated method injected; if its tests fail, the subject's detections are reclassified as CompileError."
+        },
         "ignore_patterns": {
           "type": "array",
           "items": {
