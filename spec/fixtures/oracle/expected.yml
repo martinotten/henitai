@@ -1,0 +1,5 @@
+# Survivors the strong suite may leave, each with the reason it cannot be
+# killed. A survivor that is not listed here is a false survivor: a mutant
+# whose behaviour change the strong specs pin, yet the run did not detect.
+# Entries are "relative/path.rb:line description => replacement".
+allowed_survivors: {}
