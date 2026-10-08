@@ -150,12 +150,16 @@ module Henitai
       Reporter.run_all(names: config.reporters, result:, config:, history_store:)
     end
 
+    # History is an auxiliary trend artifact: a corrupt or locked database
+    # must not discard the run's verdicts, so the reports are still written.
     def persist_history(result, recorded_at)
       history_store.record(
         result,
         version: Henitai::VERSION,
         recorded_at:
       )
+    rescue StandardError => e
+      warn "henitai: could not record mutation history (#{e.class}: #{e.message}); reports are still written"
     end
 
     def build_result(mutants, started_at, finished_at)

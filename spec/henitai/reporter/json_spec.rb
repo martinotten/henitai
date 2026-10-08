@@ -318,6 +318,22 @@ RSpec.describe Henitai::Reporter::Json do
     end
   end
 
+  it "warns instead of failing when the history store cannot be read" do
+    Dir.mktmpdir do |dir|
+      reports_dir = File.join(dir, "reports")
+      store_path = File.join(reports_dir, "mutation-history.sqlite3")
+      FileUtils.mkdir_p(reports_dir)
+      File.write(store_path, "not a database")
+      store = instance_double(Henitai::MutantHistoryStore, path: store_path)
+      allow(store).to receive(:trend_report).and_raise(StandardError, "file is not a database")
+      schema = { schemaVersion: "1.0", thresholds: { high: 80, low: 60 }, files: {} }
+      reporter = described_class.new(config: build_config(reports_dir:), history_store: store)
+
+      expect { reporter.report(build_result(schema:)) }
+        .to output(/could not export mutation history.*file is not a database/).to_stderr
+    end
+  end
+
   it "skips mutation-history.json when the injected store has no database file" do
     Dir.mktmpdir do |dir|
       reports_dir = File.join(dir, "reports")

@@ -395,6 +395,8 @@ module Henitai
 
         FileUtils.mkdir_p(File.dirname(history_report_path))
         File.write(history_report_path, JSON.pretty_generate(store.trend_report))
+      rescue StandardError => e
+        warn "henitai: could not export mutation history (#{e.class}: #{e.message})"
       end
 
       def default_history_store

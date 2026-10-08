@@ -637,6 +637,24 @@ RSpec.describe Henitai::Runner do
     end
   end
 
+  it "still reports the run when the history store cannot record it" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+      Dir.chdir(dir) do
+        runner = described_class.new(config: build_config(reporters: []))
+        history_store = instance_double(Henitai::MutantHistoryStore)
+        allow(history_store).to receive(:record).and_raise(StandardError, "file is not a database")
+        stub_pipeline(runner, history_store:, executed: [executed_mutant(:killed)])
+        allow(Henitai::Reporter).to receive(:run_all)
+
+        expect { runner.run }.to output(/could not record mutation history.*file is not a database/).to_stderr
+        expect(Henitai::Reporter).to have_received(:run_all)
+      end
+    end
+  end
+
   # Targeted runs still bootstrap the full suite.
   it "passes nil test_files to the bootstrapper for targeted runs" do
     Dir.mktmpdir do |dir|
