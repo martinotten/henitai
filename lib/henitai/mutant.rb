@@ -42,7 +42,7 @@ module Henitai
                 :mutation_type, :description, :location,
                 :precomputed_stable_id, :precomputed_activation_source
     attr_accessor :status, :killing_test, :duration, :covered_by, :tests_completed,
-                  :ignore_reason, :from_cache
+                  :ignore_reason, :status_reason, :from_cache
 
     # @param subject [Subject] the subject being mutated
     # @param operator [Symbol] operator name, e.g. :ArithmeticOperator
@@ -61,9 +61,7 @@ module Henitai
       @location      = location
       @precomputed_stable_id = precomputed_stable_id
       @precomputed_activation_source = precomputed_activation_source
-      @status = :pending
-      @killing_test = @duration = @covered_by = @tests_completed = @ignore_reason = nil
-      @from_cache = false
+      reset_outcome
     end
     # rubocop:enable Metrics/ParameterLists
 
@@ -84,6 +82,15 @@ module Henitai
 
     def to_s
       "#{operator}@#{location[:file]}:#{location[:start_line]} — #{description}"
+    end
+
+    private
+
+    def reset_outcome
+      @status = :pending
+      @killing_test = @duration = @covered_by = @tests_completed = nil
+      @ignore_reason = @status_reason = nil
+      @from_cache = false
     end
   end
 end

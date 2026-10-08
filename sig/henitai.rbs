@@ -281,6 +281,7 @@ module Henitai
     attr_accessor covered_by: Array[String]?
     attr_accessor tests_completed: Integer?
     attr_accessor ignore_reason: String?
+    attr_accessor status_reason: String?
     attr_accessor from_cache: bool
     attr_reader precomputed_stable_id: String?
     attr_reader precomputed_activation_source: String?
@@ -295,6 +296,10 @@ module Henitai
     def ignored?: () -> bool
     def equivalent?: () -> bool
     def to_s: () -> String
+
+    private
+
+    def reset_outcome: () -> void
   end
 
   class SyntaxValidator

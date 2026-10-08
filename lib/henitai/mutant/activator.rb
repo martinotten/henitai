@@ -7,6 +7,10 @@ module Henitai
   class Mutant
     # Activates a mutant inside the forked child process.
     class Activator
+      # File name the activation source is evaluated under. It decides what
+      # +__FILE__+ and +__LINE__+ mean inside an activated mutant.
+      EVAL_FILE = __FILE__
+
       # Filters "already initialized constant" C-level warnings that fire when
       # a source file is loaded into a process that already has the constant
       # defined via require. Uses a thread-local flag so the filter is active
@@ -43,7 +47,7 @@ module Henitai
         source = mutant.precomputed_activation_source || method_source(mutant)
         target = target_for(subject)
         Henitai::WarningSilencer.silence do
-          target.class_eval(source, __FILE__, __LINE__ + 1)
+          target.class_eval(source, EVAL_FILE, __LINE__ + 1)
           nil
         end
       rescue Unparser::UnsupportedNodeError, SyntaxError

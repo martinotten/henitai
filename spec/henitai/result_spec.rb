@@ -422,6 +422,16 @@ RSpec.describe Henitai::Result do
     expect(schema[:files][file][:mutants].first[:statusReason]).to eq("log-format noise")
   end
 
+  it "serialises a harness status reason as statusReason" do
+    mutant = build_mutant(status: :compile_error)
+    mutant.status_reason = "activated code differs from the reported mutation"
+    schema = result([mutant]).to_stryker_schema
+    file = schema[:files].keys.first
+
+    expect(schema[:files][file][:mutants].first[:statusReason])
+      .to eq("activated code differs from the reported mutation")
+  end
+
   it "omits statusReason when no reason is attached" do
     schema = result([build_mutant(status: :ignored)]).to_stryker_schema
     file = schema[:files].keys.first
