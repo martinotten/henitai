@@ -85,6 +85,55 @@ RSpec.describe Henitai::GitDiffAnalyzer do
     end
   end
 
+  def init_repo(dir)
+    git!(dir, "init")
+    configure_git_identity(dir)
+  end
+
+  it "reports committed changes relative to a project in a sub-directory" do
+    Dir.mktmpdir do |dir|
+      init_repo(dir)
+      write_file(dir, "app/lib/sample.rb", "class Sample; end\n")
+      write_file(dir, "other/lib/unrelated.rb", "class Unrelated; end\n")
+      commit_all(dir, "Initial commit")
+      write_file(dir, "app/lib/sample.rb", "class Sample\n  def answer = 42\nend\n")
+      write_file(dir, "other/lib/unrelated.rb", "class Unrelated\n  def answer = 42\nend\n")
+      commit_all(dir, "Update sample")
+
+      changed = described_class.new.changed_files(from: "HEAD~1", to: "HEAD", dir: File.join(dir, "app"))
+
+      expect(changed).to eq(["lib/sample.rb"])
+    end
+  end
+
+  it "reports working-tree changes relative to a project in a sub-directory" do
+    Dir.mktmpdir do |dir|
+      init_repo(dir)
+      write_file(dir, "app/lib/sample.rb", "class Sample; end\n")
+      commit_all(dir, "Initial commit")
+      write_file(dir, "app/lib/sample.rb", "class Sample\n  def answer = 42\nend\n")
+      write_file(dir, "app/lib/added.rb", "class Added; end\n")
+
+      changed = described_class.new.working_tree_changed_files(dir: File.join(dir, "app"))
+
+      expect(changed).to contain_exactly("lib/sample.rb", "lib/added.rb")
+    end
+  end
+
+  it "returns non-ASCII paths unquoted" do
+    Dir.mktmpdir do |dir|
+      init_repo(dir)
+      write_file(dir, "lib/größe.rb", "class Groesse; end\n")
+      commit_all(dir, "Initial commit")
+      write_file(dir, "lib/größe.rb", "class Groesse\n  def answer = 42\nend\n")
+      write_file(dir, "lib/maß.rb", "class Mass; end\n")
+
+      changed = described_class.new.working_tree_changed_files(dir:)
+
+      expect(changed).to contain_exactly("lib/größe.rb", "lib/maß.rb")
+    end
+  end
+
   it "returns an empty array when no files changed" do
     Dir.mktmpdir do |dir|
       git!(dir, "init")
