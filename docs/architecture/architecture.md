@@ -444,6 +444,27 @@ For scoring:
 - `Equivalent` is an internal concept and is serialized as `Ignored` for the external Stryker schema
 - reports must preserve the distinction between detected, ignored, and unknown outcomes
 
+A detected verdict must be caused by the mutation (ADR-14). Three mechanisms
+keep harness defects out of the detected count:
+
+- `FidelityCheck` (run by `StaticFilter`) parses each mutant's activation
+  source before execution and requires it to differ from the original method
+  by exactly the reported mutation. Failures become `CompileError` with the
+  reason in `statusReason`.
+- The mutant child reports its outcome through a small JSON file
+  (`ChildReportStore`); `MutantVerdict` classifies the run from that report and
+  the process status. Only a finished test run yields `Killed` or `Survived`;
+  a failed activation is `CompileError`; a signal, a missing report, or a
+  `SystemExit` raised by the code under test is `RuntimeError`. The baseline
+  suite keeps exit-status semantics.
+- `ControlRun` (`mutation.control_runs`, on by default) re-runs every subject
+  with a detected verdict once with its unmutated method injected. If the tests
+  fail, the subject's detections are reclassified as `CompileError`.
+
+`spec/fixtures/oracle` measures how well this holds: its assertion-free suite
+can produce no legitimate kill, and its pinning suite no legitimate survivor
+outside `expected.yml` (`rake oracle`).
+
 ### 8.5 Subject Addressing and Inline Control
 
 Henitai reuses the idea of subject expressions from the Ruby `mutant` ecosystem:
@@ -480,16 +501,15 @@ Namespace-wide ignore rules belong in `.henitai.yml`, not in source comments.
 
 ### 8.6 Parallel Execution and Flaky Test Mitigation
 
-The execution engine runs mutants in parallel using a Thread+Queue worker
-pool. The number of workers currently defaults to `1` and can be overridden
-via `config.jobs`. The `AvailableCpuCount` helper exists as a future policy
-hook, but it is not wired into the default path yet. Each worker forks a child
-process per mutant, so thread-level concurrency and process-level isolation
-are combined: threads coordinate the queue, forked processes provide the
-actual test isolation.
+The execution engine runs mutants linearly by default; `config.jobs` above `1`
+switches to `ProcessWorkerRunner`, a single-threaded event loop that delegates
+spawning, reaping, timeouts and draining to `SlotScheduler`. The
+`AvailableCpuCount` helper exists as a future policy hook, but it is not wired
+into the default path yet. Every mutant runs in its own forked child process,
+which provides the actual test isolation.
 
 Every forked mutant child begins with `Integration::ChildBootstrap.after_fork!`,
-which runs three steps in a fixed order:
+which runs these steps in a fixed order:
 
 1. `InheritedFdRegistry.close_all!` drops handles inherited from the parent.
    The reports-directory lock is the one that matters: `flock` is held on the
@@ -497,9 +517,12 @@ which runs three steps in a fixed order:
    parent would keep the lock held and make every later run fail with a
    `ConcurrentRunError` naming a dead pid. This runs first so that even a crash
    in a later step still releases the lock.
-2. `Process.setpgid(0, 0)` puts the child in its own process group, so the
+2. The INT, TERM, HUP and CHLD handlers inherited from the parent's traps are
+   reset to Ruby's defaults. Otherwise the child would ignore the SIGTERM sent
+   while draining it and could write into the parent's wakeup pipe.
+3. `Process.setpgid(0, 0)` puts the child in its own process group, so the
    parent can signal a whole mutant run without hitting itself.
-3. `OrphanWatchdog.start` begins a poll thread that exits the child once its
+4. `OrphanWatchdog.start` begins a poll thread that exits the child once its
    parent is gone. Parent-side cleanup — timeout kills, graceful drain, signal
    traps — only runs while the parent's event loop is alive, so a SIGKILLed,
    OOM-killed or crashed parent otherwise leaves children running with no
@@ -641,6 +664,7 @@ Mutant activation covers `module_function` subjects: `module_function` copies th
 | Remove per-line mutation cap (ADR-08) | keep the default cap; make it configurable only; use sampling instead | accepted | every other major mutation framework emits all mutations per node; the cap silently discarded granular operator output and made coverage metrics dishonest |
 | Split `EqualityOperator` into relational vs identity-method mutations (ADR-10) | thread operator-set context into `Operator#mutate`; rely solely on `EquivalenceDetector`; drop `eql?`/`equal?` mutations entirely | accepted | `==`/`eql?`/`equal?` is the hardest equality pairing to kill in practice (precedent: the `mutant` gem excludes it from its default operator set); partitioning by class fits the existing `Operator.for_set` model used by every other operator |
 | Content-fingerprint verdict reuse, not git scoping (ADR-11) | auto-`--since` from recorded HEAD as the only mechanism; killed-only reuse forever | accepted | git proves a scope boundary, not per-mutant validity; fingerprints over subject source, covering-set membership/content, and dependency files make Survived reuse sound, with every doubt resolving to re-execution |
+| Detected verdicts must be caused by the mutation (ADR-14) | classify by child exit status; trust activation | accepted | a false kill hides exactly the test gap the tool exists to reveal; a fidelity check, an explicit child report, and an unmutated control run keep harness failures out of the detected count, and an oracle corpus measures it |
 
 Formal ADRs live in `docs/architecture/adr/` and use the same English terminology.
 
@@ -719,7 +743,7 @@ CI and developer-feedback features:
 
 - per-test coverage analysis via `CoverageFormatter` and `henitai_per_test.json`
 - sampling and test prioritization via `TestPrioritizer` with path normalization and historical kill counts
-- parallel execution via Thread+Queue worker pool with configurable `jobs`
+- parallel execution via an event-loop process scheduler with configurable `jobs`
 - flaky-test mitigation with configurable `max_flaky_retries` and 5% retry-rate warning
 - latent-mutant tracking via `MutantHistoryStore` (SQLite) and `mutation-history.json` trend export
 - conservative equivalence detection via `EquivalenceDetector` (arithmetic neutral-element heuristics)

@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Scores will drop, by design.** A mutant now counts as detected only when a
+  test failed because of its mutation (ADR-14). Harness failures that used to
+  be credited as kills are now reported as `CompileError` or `RuntimeError`,
+  with the reason in `statusReason`. On an assertion-free test suite, 0.5.3
+  reported 130 of 137 mutants as killed; this release reports none. Projects
+  should expect lower Mutation Scores. Re-measure before adjusting thresholds.
+- Mutant runs are classified from an explicit report written by the child
+  process instead of from its exit status. An exception while activating the
+  mutant (for example a `NameError` from a superclass defined in another file)
+  is `CompileError`, not `Killed`. A child killed by a signal, or one that
+  exits without reporting, is `RuntimeError`, not `Killed`. A `SystemExit`
+  raised by the code under test is `RuntimeError`, not `Survived`.
+
+### Added
+
+- A fidelity check rejects, before execution, every mutant whose activated
+  code differs from the original method by more than the reported mutation.
+  Examples are a negated condition that lost its parentheses, keyword
+  arguments re-rendered as a positional hash, `|x|` re-rendered as `|x,|`, a
+  splice shifted by a multibyte character, and a removed assignment that turns
+  a later local-variable read into a method call. Such mutants are reported as
+  `CompileError` with the reason.
+- `mutation.control_runs` (default `true`): after execution, every subject
+  with a detected verdict runs once more with its unmutated method injected.
+  If its tests fail, the subject's detected verdicts are reclassified as
+  `CompileError`, because the injection itself broke them.
+- `rake oracle` runs a corpus whose verdicts follow from its construction and
+  fails on false kills or false survivors. CI runs it.
+
+### Fixed
+
+- The "negated condition" mutant now negates the whole condition
+  (`!(a > b)`), not just its left operand (`!a > b`).
+- Source files are read as UTF-8 regardless of the process locale. With `LANG`
+  unset or `C`, any non-ASCII source file used to abort subject resolution.
+- Per-test coverage now narrows RSpec test selection. RSpec records test files
+  as `./spec/x_spec.rb` while candidates arrive as `spec/x_spec.rb`, so the
+  lookup never matched and every mutant ran all candidate files.
+- `--since` and the dirty-source and survivor checks now work for a project in
+  a sub-directory of its git repository and for non-ASCII file names.
+- A corrupt or locked `mutation-history.sqlite3` no longer discards the run's
+  reports. History recording and export now warn instead.
+- Forked mutant children reset the INT, TERM, HUP and CHLD handlers inherited
+  from the parent, so a draining SIGTERM is no longer ignored.
+- A zero-example check no longer matches `10 examples, 0 failures`.
+
 ## [0.5.3] - 2026-08-26
 
 ### Fixed

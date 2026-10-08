@@ -85,6 +85,7 @@ mutation:
   max_flaky_retries: 3
   max_log_bytes: 5000000
   max_timeout: 30.0
+  control_runs: true   # re-run detected subjects with the unmutated method
   sampling:
     ratio: 0.05
     strategy: stratified
@@ -132,6 +133,20 @@ unavailable for the current sources, `henitai run` aborts with
 
 Surviving mutants are retried up to `mutation.max_flaky_retries` times before
 they are classified as survivors. The default retry budget is 3.
+
+A mutant only counts as detected when a test failed because of the mutation.
+Before a mutant runs, Henitai checks that its activated code differs from the
+original method by exactly the reported mutation; a mutant that fails this
+check is reported as `CompileError` with the reason in `statusReason` instead
+of running. Each mutant child reports what it got to — a failed activation, a
+finished test run, or a `SystemExit` raised by the code under test — and only
+a finished test run yields `Killed` or `Survived`. A failed activation is a
+`CompileError`; a child killed by a signal, one that exits without reporting,
+and a `SystemExit` during the tests are `RuntimeError`. With
+`mutation.control_runs` (on by default), every subject that has detected
+mutants is run once more with its unmutated method injected; if its tests fail
+then, the injection itself is broken for that subject and its detected
+verdicts are reclassified as `CompileError`.
 
 Per-test coverage reporting is currently wired through the RSpec child runner.
 Minitest integration reuses the same selection and execution flow, but does not
