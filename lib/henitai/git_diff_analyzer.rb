@@ -9,14 +9,21 @@ module Henitai
   # Shells out to git to discover changed files between two refs.
   #
   # By default the analyzer runs in the current working directory. Callers can
-  # pass dir: to point it at another repository root without changing cwd.
+  # pass dir: to point it at another directory without changing cwd.
+  #
+  # Every path is reported relative to that directory, which need not be the
+  # repository root: `git diff` would otherwise print root-relative paths
+  # while `git ls-files` prints directory-relative ones. Paths are read
+  # NUL-separated so git never quotes non-ASCII names.
   class GitDiffAnalyzer
+    NAME_ONLY = ["--name-only", "--relative", "-z"].freeze
+
     def changed_files(from:, to:, dir: Dir.pwd)
-      stdout, stderr, status = git_diff(dir, "--name-only", from, to)
+      stdout, stderr, status = git_diff(dir, *NAME_ONLY, from, to)
 
       raise GitDiffError, stderr.strip unless status.success?
 
-      stdout.split("\n").reject(&:empty?)
+      paths(stdout)
     end
 
     def working_tree_changed_files(dir: Dir.pwd)
@@ -55,7 +62,7 @@ module Henitai
     end
 
     def changed_line_ranges(path, from:, to:, dir:)
-      stdout, stderr, status = git_diff(dir, "--unified=0", from, to, "--", path)
+      stdout, stderr, status = git_diff(dir, "--unified=0", "--relative", from, to, "--", path)
 
       raise GitDiffError, stderr.strip unless status.success?
 
@@ -95,22 +102,26 @@ module Henitai
     end
 
     def working_tree_tracked_files(dir)
-      stdout, stderr, status = git_diff(dir, "--name-only", "HEAD")
+      stdout, stderr, status = git_diff(dir, *NAME_ONLY, "HEAD")
 
       raise GitDiffError, stderr.strip unless status.success?
 
-      stdout.split("\n").reject(&:empty?)
+      paths(stdout)
     end
 
     def untracked_files(dir)
       command = ["git"]
       command += ["-C", dir] if dir
-      command += ["ls-files", "--others", "--exclude-standard"]
+      command += ["ls-files", "--others", "--exclude-standard", "-z"]
       stdout, stderr, status = Open3.capture3(*command)
 
       raise GitDiffError, stderr.strip unless status.success?
 
-      stdout.split("\n").reject(&:empty?)
+      paths(stdout)
+    end
+
+    def paths(stdout)
+      stdout.dup.force_encoding(Encoding::UTF_8).split("\0").reject(&:empty?)
     end
   end
 end

@@ -52,7 +52,7 @@ RSpec.describe Henitai::GitDiffAnalyzer do
 
   it "returns changed files from git output" do
     allow(Open3).to receive(:capture3).and_return(
-      ["lib/alpha.rb\nlib/beta.rb\n", "", successful_status]
+      ["lib/alpha.rb\0lib/beta.rb\0", "", successful_status]
     )
 
     expect(described_class.new.changed_files(from: "main", to: "HEAD")).to eq(
@@ -61,21 +61,21 @@ RSpec.describe Henitai::GitDiffAnalyzer do
   end
 
   it "invokes git with the configured directory and refs" do
-    allow(Open3).to receive(:capture3).and_return(["lib/alpha.rb\n", "", successful_status])
+    allow(Open3).to receive(:capture3).and_return(["lib/alpha.rb\0", "", successful_status])
 
     described_class.new.changed_files(from: "main", to: "HEAD", dir: "/tmp/repo")
 
     expect(Open3).to have_received(:capture3).with(
-      "git", "-C", "/tmp/repo", "diff", "--name-only", "main", "HEAD"
+      "git", "-C", "/tmp/repo", "diff", "--name-only", "--relative", "-z", "main", "HEAD"
     )
   end
 
   it "combines tracked and untracked working-tree files without duplicates" do
     allow(Open3).to receive(:capture3) do |*command|
       if command.include?("diff")
-        ["lib/tracked.rb\nlib/shared.rb\n", "", successful_status]
+        ["lib/tracked.rb\0lib/shared.rb\0", "", successful_status]
       else
-        ["lib/shared.rb\nlib/untracked.rb\n", "", successful_status]
+        ["lib/shared.rb\0lib/untracked.rb\0", "", successful_status]
       end
     end
 
@@ -87,19 +87,19 @@ RSpec.describe Henitai::GitDiffAnalyzer do
   it "uses distinct git commands for tracked and untracked files", :aggregate_failures do
     allow(Open3).to receive(:capture3) do |*command|
       if command.include?("ls-files")
-        ["lib/untracked.rb\n", "", successful_status]
+        ["lib/untracked.rb\0", "", successful_status]
       else
-        ["lib/tracked.rb\n", "", successful_status]
+        ["lib/tracked.rb\0", "", successful_status]
       end
     end
 
     described_class.new.working_tree_changed_files(dir: "/tmp/repo")
 
     expect(Open3).to have_received(:capture3).with(
-      "git", "-C", "/tmp/repo", "diff", "--name-only", "HEAD"
+      "git", "-C", "/tmp/repo", "diff", "--name-only", "--relative", "-z", "HEAD"
     )
     expect(Open3).to have_received(:capture3).with(
-      "git", "-C", "/tmp/repo", "ls-files", "--others", "--exclude-standard"
+      "git", "-C", "/tmp/repo", "ls-files", "--others", "--exclude-standard", "-z"
     )
   end
 
@@ -112,7 +112,7 @@ RSpec.describe Henitai::GitDiffAnalyzer do
       )
       allow(Open3).to receive(:capture3) do |*command|
         if command.include?("--name-only")
-          ["lib/sample.rb\n", "", successful_status]
+          ["lib/sample.rb\0", "", successful_status]
         else
           ["@@ -2 +2 @@\n", "", successful_status]
         end
@@ -129,7 +129,7 @@ RSpec.describe Henitai::GitDiffAnalyzer do
       write_file(dir, "lib/sample.rb", "class Sample\n  def alpha = 1\nend\n")
       allow(Open3).to receive(:capture3) do |*command|
         if command.include?("--name-only")
-          ["lib/sample.rb\n", "", successful_status]
+          ["lib/sample.rb\0", "", successful_status]
         else
           ["@@ -2 +2 @@\n", "", successful_status]
         end
@@ -138,7 +138,7 @@ RSpec.describe Henitai::GitDiffAnalyzer do
       described_class.new.changed_methods(from: "HEAD~1", to: "HEAD", dir:)
 
       expect(Open3).to have_received(:capture3).with(
-        "git", "-C", dir, "diff", "--unified=0", "HEAD~1", "HEAD", "--", "lib/sample.rb"
+        "git", "-C", dir, "diff", "--unified=0", "--relative", "HEAD~1", "HEAD", "--", "lib/sample.rb"
       )
     end
   end
@@ -152,7 +152,7 @@ RSpec.describe Henitai::GitDiffAnalyzer do
       )
       allow(Open3).to receive(:capture3) do |*command|
         if command.include?("--name-only")
-          ["lib/sample.rb\n", "", successful_status]
+          ["lib/sample.rb\0", "", successful_status]
         else
           ["@@ -2,2 +2,2 @@\n", "", successful_status]
         end
@@ -173,7 +173,7 @@ RSpec.describe Henitai::GitDiffAnalyzer do
       )
       allow(Open3).to receive(:capture3) do |*args|
         if args.include?("--name-only")
-          ["lib/sample.rb\n", "", successful_status]
+          ["lib/sample.rb\0", "", successful_status]
         else
           ["", "fatal: broken diff", failed_status]
         end
