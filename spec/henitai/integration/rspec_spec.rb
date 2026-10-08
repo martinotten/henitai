@@ -1432,6 +1432,15 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  def capture_stderr
+    original = $stderr
+    $stderr = StringIO.new
+    yield
+    $stderr.string
+  ensure
+    $stderr = original
+  end
+
   def exited_status(code)
     Struct.new(:success?, :exitstatus, :signaled?, :termsig).new(code.zero?, code, false, nil)
   end
@@ -1441,10 +1450,11 @@ RSpec.describe Henitai::Integration::Rspec do
     allow(Henitai::Mutant::Activator).to receive(:activate!)
       .and_raise(NameError, "uninitialized constant Shop::Base")
 
-    result = run_in_process_mutant(integration, child_status: exited_status(1))
+    result = nil
+    stderr = capture_stderr { result = run_in_process_mutant(integration, child_status: exited_status(1)) }
 
-    expect([result.status, result.status_reason])
-      .to eq([:compile_error, "activation failed: NameError: uninitialized constant Shop::Base"])
+    expect([result.status, result.status_reason, stderr.include?("mutant activation failed")])
+      .to eq([:compile_error, "activation failed: NameError: uninitialized constant Shop::Base", true])
   end
 
   it "reports a SystemExit raised by the code under test as a runtime error" do
