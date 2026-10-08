@@ -35,12 +35,7 @@ module Henitai
     # @return [Array<String>] sorted; empty when the test is unknown or the
     #   map is unavailable.
     def source_files_covered_by(test_file)
-      wanted = File.expand_path(test_file.to_s)
-      map.select { |test, _| File.expand_path(test) == wanted }
-         .values
-         .flat_map(&:keys)
-         .uniq
-         .sort
+      Array(map_by_absolute_test_path[File.expand_path(test_file.to_s)]&.keys).sort
     end
 
     # True when the given test file's recorded coverage intersects the
@@ -63,9 +58,18 @@ module Henitai
         mutant.location[:end_line]
     end
 
+    # RSpec records test files as "./spec/x_spec.rb" while candidates arrive
+    # as "spec/x_spec.rb"; both resolve to the same absolute key.
     def coverage_lines_for(test, mutant)
-      source_map = map[test.to_s] || {}
+      source_map = map_by_absolute_test_path[File.expand_path(test.to_s)] || {}
       Array(source_map[File.expand_path(mutant.location[:file])]).uniq
+    end
+
+    def map_by_absolute_test_path
+      @map_by_absolute_test_path ||= map.each_with_object({}) do |(test, source_map), index|
+        merged = index[File.expand_path(test)] ||= {}
+        source_map.each { |file, lines| merged[file] = Array(merged[file]) + Array(lines) }
+      end
     end
 
     def mutant_lines(mutant)

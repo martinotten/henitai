@@ -22,6 +22,31 @@ RSpec.describe Henitai::PerTestCoverage do
     )
   end
 
+  describe "#covers? with differently spelled test paths" do
+    it "matches a candidate path against the ./-prefixed key RSpec records" do
+      Dir.mktmpdir do |dir|
+        file = File.expand_path("lib/sample.rb")
+        write_report(dir, "./spec/sample_spec.rb" => { file => [2] })
+
+        coverage = described_class.new(reports_dir: dir)
+
+        expect(coverage.covers?("spec/sample_spec.rb", build_mutant(file))).to be(true)
+      end
+    end
+
+    it "merges coverage recorded under both spellings of one test file" do
+      Dir.mktmpdir do |dir|
+        file = File.expand_path("lib/sample.rb")
+        write_report(dir, "./spec/sample_spec.rb" => { file => [2] }, "spec/sample_spec.rb" => { file => [7] })
+
+        coverage = described_class.new(reports_dir: dir)
+
+        expect(%w[spec/sample_spec.rb ./spec/sample_spec.rb].map { |test| coverage.covers?(test, build_mutant(file)) })
+          .to eq([true, true])
+      end
+    end
+  end
+
   describe "#tests_covering" do
     it "returns the sorted test paths whose covered lines intersect the mutant" do
       Dir.mktmpdir do |dir|
