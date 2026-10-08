@@ -5,6 +5,17 @@ require "tmpdir"
 require "unparser"
 
 RSpec.describe Henitai::SourceParser do
+  def with_default_external(encoding)
+    original = Encoding.default_external
+    verbose = $VERBOSE
+    $VERBOSE = nil
+    Encoding.default_external = encoding
+    yield
+  ensure
+    Encoding.default_external = original
+    $VERBOSE = verbose
+  end
+
   def collect_node_types(node)
     types = []
     queue = [node]
@@ -70,6 +81,17 @@ RSpec.describe Henitai::SourceParser do
     ast = described_class.new.parse("1 + 2")
 
     expect(ast.location.expression.source_buffer.name).to eq("(string)")
+  end
+
+  it "reads source files as UTF-8 whatever the default external encoding" do
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "umlaut.rb")
+      File.write(path, "LABEL = \"größe\"\n", encoding: Encoding::UTF_8)
+
+      label = with_default_external(Encoding::US_ASCII) { described_class.new.parse_file(path).children.last }
+
+      expect(label.children.first).to eq("größe")
+    end
   end
 
   it "exposes the node types needed for mutation operators" do
@@ -158,7 +180,7 @@ RSpec.describe Henitai::SourceParser do
 
         described_class.parse_file(path)
 
-        expect(File).to have_received(:read).once.with(path)
+        expect(File).to have_received(:read).once.with(path, encoding: Encoding::UTF_8)
       end
     end
 

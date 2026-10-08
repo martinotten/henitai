@@ -35,10 +35,12 @@ module Henitai
       Prism::Translation::ParserCurrent.new.parse(source_buffer(source, path))
     end
 
+    # Read as UTF-8, Ruby's own default source encoding, not the process
+    # locale: with LANG=C the default external encoding is US-ASCII and every
+    # non-ASCII source file would fail to parse. A magic encoding comment is
+    # still honoured by the parser buffer, which re-encodes to UTF-8.
     def parse_file(path)
-      # Ruby's file encoding rules apply here. Projects that use explicit source
-      # encoding comments can be handled by a future encoding-aware option.
-      parse(File.read(path), path:)
+      parse(File.read(path, encoding: Encoding::UTF_8), path:)
     end
 
     private
