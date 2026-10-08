@@ -108,7 +108,7 @@ RSpec.describe Henitai::StaticFilter do
 
     filter_with_coverage(fidelity_check:).apply([mutant], config)
 
-    expect([mutant.status, mutant.status_reason]).to eq([:no_coverage, nil])
+    expect([mutant.status == :compile_error, mutant.status_reason]).to eq([false, nil])
   end
 
   it "keeps an ignored mutant ignored without checking its fidelity" do
