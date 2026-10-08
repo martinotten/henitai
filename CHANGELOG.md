@@ -54,6 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Forked mutant children reset the INT, TERM, HUP and CHLD handlers inherited
   from the parent, so a draining SIGTERM is no longer ignored.
 - A zero-example check no longer matches `10 examples, 0 failures`.
+- A run in which harness errors (`CompileError`) left no mutant to score now
+  exits `1` with a warning instead of passing its threshold with nothing
+  tested.
 
 ## [0.5.3] - 2026-08-26
 

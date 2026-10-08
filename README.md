@@ -176,6 +176,10 @@ for framework errors. With `--strict-exit-codes` (opt-in, additive) it also
 exits `3` when one or more mutants timed out and `4` when runtime/compile
 errors are present; precedence `2` > `3` > `4` > `1` > `0`. The timeout code
 is informational — a run can pass its threshold and still exit `3`.
+A run with no scoreable mutant passes its threshold only when there was
+nothing to score (no changed code, everything ignored). When `CompileError`
+harness errors emptied the score denominator, nothing was tested, and the run
+exits `1`.
 
 For pull-request feedback, add the `github` reporter to `reporters:` in
 `.henitai.yml`: it prints one `::warning file=...,line=...` workflow command
