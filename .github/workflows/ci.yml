@@ -39,6 +39,9 @@ jobs:
       - name: Run integration smoke projects
         run: bundle exec rake smoke:integration:all
 
+      - name: Check verdicts against the oracle corpus
+        run: bundle exec rake oracle
+
   mutation:
     name: Mutation Testing (incremental)
     runs-on: ubuntu-latest

@@ -5,7 +5,7 @@ require "yaml"
 
 # rubocop:disable RSpec/DescribeClass
 RSpec.describe "CI workflow" do
-  it "runs rubocop, steep, rspec, and integration smoke tests in the test job" do
+  it "runs rubocop, steep, rspec, integration smoke tests and the oracle corpus in the test job" do
     workflow = YAML.safe_load_file(
       File.expand_path("../../.github/workflows/ci.yml", __dir__)
     )
@@ -19,7 +19,8 @@ RSpec.describe "CI workflow" do
       "bundle exec steep check",
       "bundle exec rspec",
       "bundle exec ruby bin/verify-process-free-specs",
-      "bundle exec rake smoke:integration:all"
+      "bundle exec rake smoke:integration:all",
+      "bundle exec rake oracle"
     )
   end
 end

@@ -1,0 +1,12 @@
+includes:
+  - lib
+integration:
+  name: rspec
+reporters:
+  - json
+reports_dir: reports/strong
+test_excludes:
+  - spec/weak/**/*_spec.rb
+thresholds:
+  high: 100
+  low: 0
