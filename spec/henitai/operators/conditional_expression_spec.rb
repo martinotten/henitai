@@ -138,7 +138,17 @@ RSpec.describe Henitai::Operators::ConditionalExpression do
     end
     mutant = mutate(source).find { |candidate| candidate.description == "negated condition" }
 
-    expect(mutant.mutated_node.children.first.children.first).to eq(original_condition)
+    expect(mutant.mutated_node.children.first.children.first.children.first).to eq(original_condition)
+  end
+
+  it "parenthesises a negated condition so the whole condition is inverted" do
+    mutant = mutate(<<~RUBY).find { |candidate| candidate.description == "negated condition" }
+      if count > 3
+        :many
+      end
+    RUBY
+
+    expect(Unparser.unparse(mutant.mutated_node.children.first)).to eq("!(count > 3)")
   end
 
   it "mutates empty case expressions conservatively" do
@@ -205,8 +215,8 @@ RSpec.describe Henitai::Operators::ConditionalExpression do
       while_mutant = mutate(while_source).find { |candidate| candidate.description == "negated condition" }
       until_mutant = mutate(until_source).find { |candidate| candidate.description == "negated condition" }
 
-      expect(while_mutant.mutated_node.children.first.children.first).to eq(while_condition)
-      expect(until_mutant.mutated_node.children.first.children.first).to eq(until_condition)
+      expect(while_mutant.mutated_node.children.first.children.first.children.first).to eq(while_condition)
+      expect(until_mutant.mutated_node.children.first.children.first.children.first).to eq(until_condition)
     end
   end
 
