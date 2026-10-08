@@ -15,7 +15,10 @@ reported 130 of 137 mutants as killed.
 `class_eval` inside `Henitai::Mutant::Activator`, so Henitai's own namespace
 leaks into constant lookup. In the dogfood run every subject is a
 `Henitai::*` constant and Henitai is already loaded in the parent, so both
-failure modes are invisible there. The status of a run was guessed from the
+failure modes are mostly invisible there. Only constants of intermediate
+namespaces fail to resolve, for example `ConfigurationValidator::VALID_OPERATORS`
+from inside `ConfigurationValidator::Scalars`. Those failures were credited as
+kills: Phase A's control runs reclassified 63 of them in the dogfood run. The status of a run was guessed from the
 child's exit code, which turns any harness exception into a kill. No test
 measured whether a reported kill was caused by the mutation.
 
