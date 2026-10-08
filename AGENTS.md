@@ -94,6 +94,9 @@ threshold, `1` when it does not, and `2` for a framework error. With optional
 mutants and `4` for runtime or compile errors. Precedence is `2` > `3` > `4` >
 `1` > `0`. The timeout code is informational: a run can pass its threshold and
 still exit `3`.
+A run with no scoreable mutant passes its threshold only when there was
+nothing to score; when CompileError harness errors emptied the score
+denominator, it exits `1`.
 
 ## Architecture
 

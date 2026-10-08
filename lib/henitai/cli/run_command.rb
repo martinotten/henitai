@@ -104,6 +104,18 @@ module Henitai
         strict_status || threshold_status_for(result, config)
       end
 
+      # An empty score denominator passes only when there was nothing to score
+      # (no changed code, everything ignored). When harness errors emptied it,
+      # nothing was tested, and the run must not pass its threshold.
+      def empty_score_status(result)
+        harness_errors = result.mutants.count { |mutant| mutant.status == :compile_error }
+        return 0 if harness_errors.zero?
+
+        warn "henitai: no mutant could be scored: #{harness_errors} harness error(s) " \
+             "(CompileError, see statusReason in the report)"
+        1
+      end
+
       # Expanded, opt-in exit codes (precedence: timeout > runtime/compile
       # error > threshold miss). The timeout code is informational and
       # independent of coverage_criteria.timeout: a run can pass its threshold
@@ -118,9 +130,7 @@ module Henitai
 
       def threshold_status_for(result, config)
         score = result.mutation_score
-        # No valid mutants to evaluate (e.g. an incremental run with no changed
-        # code) cannot fail a threshold — treat it as success.
-        return 0 if score.nil?
+        return empty_score_status(result) if score.nil?
 
         score.to_i >= config.thresholds.fetch(:low, 60) ? 0 : 1
       end

@@ -759,7 +759,7 @@ RSpec.describe Henitai::CLI do
     Dir.mktmpdir do |dir|
       config_path = write_configuration(dir)
       exit_status = nil
-      result = instance_double(Henitai::Result, mutation_score: nil, partial_rerun?: false)
+      result = instance_double(Henitai::Result, mutation_score: nil, partial_rerun?: false, mutants: [])
       runner = build_runner(result:)
 
       allow(Henitai::Runner).to receive(:new) { |**_kwargs| runner }
@@ -769,6 +769,22 @@ RSpec.describe Henitai::CLI do
       cli.run
 
       expect(exit_status).to eq(0)
+    end
+  end
+
+  it "fails the threshold when harness errors left no mutant to score" do
+    Dir.mktmpdir do |dir|
+      config_path = write_configuration(dir)
+      exit_status = nil
+      harness_error = instance_double(Henitai::Mutant, status: :compile_error)
+      result = instance_double(Henitai::Result, mutation_score: nil, partial_rerun?: false, mutants: [harness_error])
+      runner = build_runner(result:)
+      allow(Henitai::Runner).to receive(:new) { |**_kwargs| runner }
+      cli = described_class.new(["run", "--config", config_path, "Foo#bar"])
+      cli.define_singleton_method(:exit) { |status = nil| exit_status = status }
+
+      warning = output(/no mutant could be scored: 1 harness error/).to_stderr
+      expect { cli.run }.to warning.and(change { exit_status }.from(nil).to(1))
     end
   end
 
