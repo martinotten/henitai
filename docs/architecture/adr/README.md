@@ -17,6 +17,7 @@ This directory contains one ADR per accepted architecture decision.
 - [ADR-11: Content-fingerprint verdict reuse, not git scoping, as the skip mechanism](ADR-11-verdict-reuse-fingerprints-over-git-scoping.md)
 - [ADR-12: Hard operator set for usually-unkillable mutations](ADR-12-hard-operator-set.md)
 - [ADR-13: `def` injection in the original lexical nesting](ADR-13-def-injection-in-lexical-nesting.md) (proposed, supersedes ADR-04 once accepted)
+- [ADR-14: Detected verdicts must be caused by the mutation](ADR-14-detected-verdicts-must-be-caused-by-the-mutation.md)
 
 ## Maintenance Rule
 

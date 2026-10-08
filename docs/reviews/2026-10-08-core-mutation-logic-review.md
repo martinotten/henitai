@@ -98,6 +98,13 @@ spec.
 | REU-09 | Low | — | lost report | R2 | A broken history DB discards the whole run's report |
 | REU-10 | Low | — | perf | T | Two-dot diff and partial dashboard upload |
 | DOC-01 | Low | — | — | T | Documentation drift (AGENTS.md, ADR-04) |
+| ACT-09 | Medium | I1 | wasted | R1 | Default values with operators break the rebuilt block signature |
+| ACT-10 | High | I1 | false kill | R1 | A removed assignment turns later reads of the local into method calls |
+| GEN-12 | Medium | I1 | wasted | R1 | MethodExpression leaves a block attached to a removed call |
+| EXE-14 | Medium | I2 | — | R1 | A run whose mutants are all harness errors exits 0 |
+
+The last four rows were found during Phase A by the fidelity check and the
+oracle corpus; see "Findings Added During Phase A" below.
 
 ## Activation (`lib/henitai/mutant/`)
 
@@ -439,6 +446,61 @@ spec.
 - `AGENTS.md` describes a "Thread+Queue worker pool". The implementation is a single-threaded `ProcessWorkerRunner` event loop with `SlotScheduler`.
 - ADR-04's consequence "activation failures must be classified separately" is not implemented (see EXE-01).
 - ADR-04's stated drivers (no disk I/O, no write contention) are equally met by evaluating a `def` string in memory, so the decision does not follow from its own context. See ADR-13.
+
+## Findings Added During Phase A
+
+Phase A's fidelity check (`FidelityCheck`) and oracle corpus exposed four
+findings that the review missed. All four were reproduced in this repository
+or in the corpus.
+
+### ACT-09 Default values with operators break the rebuilt block signature
+
+- **Location:** `lib/henitai/mutant/parameter_source.rb`
+- **Defect:** `def call(x = 1 + 2)` is activated as `define_method(:call) do |x = 1 + 2|`. Inside block parameters, `|` ends the parameter list, so this is a SyntaxError.
+- **Effect:** every mutant of such a method becomes `CompileError`, not only the mutants in the default value. On 0.5.3 these were compile errors as well; the fidelity check now names the reason.
+- **Fix direction:** ADR-13 (`def` injection copies the header verbatim).
+
+### ACT-10 A removed assignment turns later reads of the local into method calls
+
+- **Location:** every operator that removes a subtree containing an assignment, combined with the splice in `activator.rb`
+- **Defect:** in `if survivor_rerun? && (fast_mutants = …)` followed by `return fast_mutants`, the mutants "replaced && with lhs" and "replaced condition with true" drop the assignment. Ruby then parses the later `fast_mutants` as a method call, so the mutant raises `NameError`.
+- **Reproduction:** `lib/henitai/runner.rb:78`, `lib/henitai/reporter.rb:366`, `lib/henitai/reports_directory_lock.rb:50`, `lib/henitai/subject.rb:59`.
+- **Effect:** false kill. The mutated AST still holds `lvar` nodes, but the executed code does not, so only a re-parse can see it. The fidelity check now rejects these mutants.
+- **Fix direction:** skip mutations that remove the only assignment of a local that is read later in the method, or keep the assignment in the mutant.
+
+### GEN-12 MethodExpression leaves a block attached to a removed call
+
+- **Location:** `lib/henitai/operators/method_expression.rb`
+- **Defect:** "replaced method call with nil" on a call with a block replaces only the call, which leaves `nil do |pattern| … end` or `nil { |pattern| … }`. That is a SyntaxError.
+- **Effect:** 291 of 16,117 full-set mutants in this repository are wasted as `CompileError`.
+- **Fix direction:** mutate the whole `block` node when the call carries a block.
+
+### EXE-14 A run whose mutants are all harness errors exits 0
+
+- **Location:** `lib/henitai/result.rb` (empty MS denominator) and `lib/henitai/cli/run_command.rb` (threshold check)
+- **Defect:** when every mutant is a `CompileError`, the MS denominator is empty, the score is `nil`, and the threshold check does not fail.
+- **Reproduction:** the EXE-01 project after Phase A reports 9 of 9 `CompileError` and exits 0.
+- **Effect:** CI goes green although nothing was tested. Only `--strict-exit-codes` (exit 4) catches it.
+- **Fix direction:** treat an empty denominator with executed or generated mutants as a failed threshold, or at least warn loudly.
+
+## Measurements
+
+| Run | Mutants | Killed | Survived | Harness errors | MS / MSI | Wall time |
+|---|---|---|---|---|---|---|
+| Dogfood 0.5.3 (5 % sampling) | 1025 | 876 | 68 | 17 CompileError | 92.88 % / 85.46 % | 22 min |
+| Oracle weak suite 0.5.3 | 137 | **130** | 4 | 0 | — | — |
+| Oracle weak suite, Phase A | 137 | **0** | 4 | 130 | — | — |
+| Oracle strong suite, Phase A | 137 | 4 | 0 | 130 | — | — |
+
+Re-checking the 0.5.3 dogfood verdicts with the fidelity check flagged 49 of
+the 876 kills (5.6 %) and 12 of the 68 survivors as unfaithful:
+
+| Reason | Kills flagged |
+|---|---|
+| keyword arguments re-rendered as a positional hash | 19 |
+| structure differs from the mutation | 11 |
+| invalid Ruby, kept only because it crashed at runtime | 10 |
+| `\|x\|` re-rendered as `\|x,\|` | 9 |
 
 ## Verified Correct
 

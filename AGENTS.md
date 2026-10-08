@@ -144,9 +144,17 @@ coverage and is excluded from `includes` in `.henitai.yml`.
 - Mutants run through `Module#define_method` injection inside forked worker
   processes. Process isolation is the required default model, not thread-only
   parallelism.
-- `ExecutionEngine` and `ProcessWorkerRunner` use a Thread+Queue worker pool
-  (`config.jobs`, default `1`). Each worker forks a child process per mutant;
-  threads coordinate the queue and forked processes provide test isolation.
+- `ExecutionEngine` runs mutants linearly by default (`config.jobs`, default
+  `1`). With more jobs, `ProcessWorkerRunner` drives a single-threaded event
+  loop and `SlotScheduler` owns spawning, reaping, timeouts and draining. Every
+  mutant runs in its own forked child; forked processes provide the isolation.
+- A detected verdict must be caused by the mutation (ADR-14). `FidelityCheck`
+  rejects a mutant whose activation source is not exactly the reported
+  mutation before it runs; the child reports its outcome through
+  `ChildReportStore` and `MutantVerdict` classifies it, so activation errors,
+  signals and `SystemExit` never count as kills; `ControlRun` re-runs
+  detected subjects with the unmutated method and reclassifies their
+  detections if that fails. `rake oracle` measures false kills and survivors.
 - Survived mutants are retried up to `config.max_flaky_retries` (default `3`)
   before being classified as survived. A warning is emitted if more than `5%`
   of mutants needed a retry.

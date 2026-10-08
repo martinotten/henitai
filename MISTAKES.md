@@ -2,6 +2,30 @@
 
 What went wrong, why, and what stops it recurring. Newest first.
 
+## 2026-10-08 — The dogfood run could not see the activation bugs it was meant to catch
+
+**What happened.** Henitai scores itself, and the dogfood score stayed above
+90 %. Meanwhile mutants on user projects were systematically misclassified.
+A NameError from loading a subject file whose superclass lives in another
+file counted as a kill. So did a lost constant scope, and so did `super` or
+`yield` inside `define_method`. On an assertion-free test suite, 0.5.3
+reported 130 of 137 mutants as killed.
+
+**Root cause.** The activator evaluates the mutant with a string
+`class_eval` inside `Henitai::Mutant::Activator`, so Henitai's own namespace
+leaks into constant lookup. In the dogfood run every subject is a
+`Henitai::*` constant and Henitai is already loaded in the parent, so both
+failure modes are invisible there. The status of a run was guessed from the
+child's exit code, which turns any harness exception into a kill. No test
+measured whether a reported kill was caused by the mutation.
+
+**Prevention.** Detected verdicts now need positive evidence (ADR-14): a
+fidelity check before execution, an explicit report from the child, and an
+unmutated control run. `rake oracle` runs in CI against a corpus outside
+Henitai's own namespace, with an assertion-free suite in which every kill is
+by construction false. Never treat the dogfood score as evidence of
+correctness for user projects: it shares the tool's namespace and load state.
+
 ## 2026-08-21 — `git add -A` committed an untracked tool artifact
 
 **What happened.** The release plan said explicitly: "Untracked `.pi/` in the
