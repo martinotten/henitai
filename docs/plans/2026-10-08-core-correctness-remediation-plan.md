@@ -212,6 +212,51 @@ Findings: DOC-01, plus the consequences of all workstreams.
 - Write CHANGELOG entries that state the score break explicitly (see below).
 - Add an entry to `MISTAKES.md`: the dogfood run hid ACT-01 because the activator's own namespace leaked into constant lookup.
 
+## Phase A Status (2026-10-08)
+
+Phase A is implemented on branch `fix/phase-a-safety-nets`.
+
+| Item | Status | Notes |
+|---|---|---|
+| WS0.1 Oracle corpus | done | `spec/fixtures/oracle`, `rake oracle`, runs in CI |
+| WS0.2 Smoke fixtures | partly | multi-file namespace covered by the oracle; sub-directory project by real-git process specs; slow-boot and background-process fixtures move to WS4 as the failing tests for EXE-03 and EXE-05 |
+| WS0.3 Fidelity check | done | `FidelityCheck` in `StaticFilter` |
+| WS0.4 Control run | done | `ControlRun`, `mutation.control_runs` (default on) |
+| WS0.5 Baseline numbers | done | see the table below and the review's "Measurements" |
+| WS1 Status contract | done | `ChildReportStore`, `MutantVerdict`; EXE-01, EXE-02, EXE-04, EXE-06, EXE-08 fixed |
+| Quick wins | done | GEN-02, GEN-08, EXE-11, REU-03, REU-09; also EXE-14, found during Phase A |
+| WS7 (Phase A part) | done | ADR-14, architecture, README, AGENTS.md, CHANGELOG, MISTAKES.md |
+
+Measurements:
+
+| Run | Mutants | Killed | Survived | CompileError | RuntimeError | Timeout | NoCoverage | MS / MSI | Wall time |
+|---|---|---|---|---|---|---|---|---|---|
+| Dogfood 0.5.3 | 1025 | 876 | 68 | 17 | 0 | 11 | 53 | 92.88 % / 85.46 % | 22.0 min |
+| Dogfood Phase A | 1082 | 801 | 65 | 145 | 11 | 11 | 49 | 92.68 % / 74.03 % | 18.9 min |
+| Oracle weak, 0.5.3 | 137 | **130** | 4 | 0 | 0 | 0 | 3 | — | — |
+| Oracle weak, Phase A | 137 | **0** | 4 | 130 | 0 | 0 | 3 | — | — |
+
+Notes on the measurements:
+
+- **Mutant counts differ.** The two dogfood runs used different code: Phase A
+  adds files to `lib`, so the sample contains 1082 mutants instead of 1025.
+- **Control runs.** In the Phase A dogfood run they verified 830 subjects. 55
+  failed, and 63 detected verdicts were reclassified. The failures checked are
+  genuine ACT-01 cases: a `module_function` module losing the constants of its
+  enclosing namespace.
+- **Wall time fell despite the control runs.** Unfaithful mutants no longer
+  execute, and per-test narrowing now applies to RSpec.
+- **Self-hosting artefacts.** Seven `SystemExit` and one empty-outcome
+  `RuntimeError` come from mutants of Henitai's own CLI and child-report code.
+  They are correctly not counted as kills.
+
+Consequence for the order of Phase B: most remaining harness errors on the
+oracle corpus (87 of 130) come from activating a mutant before the test
+environment is loaded. A subject whose superclass lives in another file cannot
+be tested at all today. **Phase B should start with WS2.5 (activate after the
+environment has loaded) together with ADR-13**, before the rest of WS2 and
+WS3.
+
 ## Sequencing
 
 | Phase | Content | Depends on |
