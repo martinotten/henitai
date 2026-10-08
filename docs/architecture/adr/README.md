@@ -16,6 +16,7 @@ This directory contains one ADR per accepted architecture decision.
 - [ADR-10: Split equality operator into relational and identity mutations](ADR-10-split-equality-identity-mutations.md)
 - [ADR-11: Content-fingerprint verdict reuse, not git scoping, as the skip mechanism](ADR-11-verdict-reuse-fingerprints-over-git-scoping.md)
 - [ADR-12: Hard operator set for usually-unkillable mutations](ADR-12-hard-operator-set.md)
+- [ADR-13: `def` injection in the original lexical nesting](ADR-13-def-injection-in-lexical-nesting.md) (proposed, supersedes ADR-04 once accepted)
 
 ## Maintenance Rule
 

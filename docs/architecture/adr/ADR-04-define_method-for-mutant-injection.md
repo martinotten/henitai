@@ -1,6 +1,6 @@
 # ADR-04: `define_method` for Mutant Injection
 
-Status: accepted
+Status: accepted — replacement proposed in [ADR-13](ADR-13-def-injection-in-lexical-nesting.md)
 
 ## Context
 
