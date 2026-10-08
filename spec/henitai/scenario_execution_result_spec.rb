@@ -154,6 +154,37 @@ RSpec.describe Henitai::ScenarioExecutionResult do
     )
   end
 
+  it "keeps a kill when examples ran and an error occurred outside of them" do
+    result = described_class.build(
+      wait_result: build_wait_result(success: false, exitstatus: 1),
+      stdout: "10 examples, 0 failures, 1 error occurred outside of examples\n",
+      stderr: "",
+      log_path: "/tmp/henitai-test.log"
+    )
+
+    expect(result.status).to eq(:killed)
+  end
+
+  it "classifies a mutant run from the child's report" do
+    result = described_class.build_for_mutant(
+      wait_result: Struct.new(:exitstatus, :signaled?).new(2, false),
+      report: { "outcome" => "activation_failed", "reason" => "NameError: Shop::Base" },
+      stdout: "", stderr: "", log_path: "/tmp/henitai-test.log"
+    )
+
+    expect([result.status, result.status_reason]).to eq([:compile_error, "activation failed: NameError: Shop::Base"])
+  end
+
+  it "copies the reason behind a status onto the mutant" do
+    mutant = Struct.new(:status, :status_reason).new(:pending, nil)
+    result = described_class.new(status: :runtime_error, status_reason: "child terminated by signal SIGKILL",
+                                 stdout: "", stderr: "", log_path: "/tmp/henitai-test.log")
+
+    described_class.copy_reason(result, mutant)
+
+    expect(mutant.status_reason).to eq("child terminated by signal SIGKILL")
+  end
+
   it "builds a killed result from a failing wait result" do
     result = described_class.build(
       wait_result: build_wait_result(success: false, exitstatus: 1),

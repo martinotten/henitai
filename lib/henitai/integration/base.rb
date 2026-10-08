@@ -143,6 +143,10 @@ module Henitai
         @scenario_log_support ||= ScenarioLogSupport.new
       end
 
+      def child_report_store
+        @child_report_store ||= ChildReportStore.new
+      end
+
       def with_subprocess_env
         original_env = {} # : Hash[String, String?]
         subprocess_env.each do |key, value|

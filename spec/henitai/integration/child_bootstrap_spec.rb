@@ -12,6 +12,7 @@ RSpec.describe Henitai::Integration::ChildBootstrap do
     allow(Henitai::InheritedFdRegistry).to receive(:close_all!) { calls << :close_fds }
     allow(Process).to receive(:setpgid) { calls << :setpgid }
     allow(Henitai::OrphanWatchdog).to receive(:start) { calls << :watchdog }
+    allow(Signal).to receive(:trap) { |signal, _handler| calls << [:trap, signal] }
   end
 
   it "closes inherited handles before anything else can fail" do
@@ -23,7 +24,16 @@ RSpec.describe Henitai::Integration::ChildBootstrap do
   it "runs the full bootstrap sequence in order" do
     described_class.after_fork!(parent_pid: 4_242)
 
-    expect(calls).to eq(%i[close_fds setpgid watchdog])
+    expect(calls).to eq([:close_fds, [:trap, "INT"], [:trap, "TERM"], [:trap, "HUP"], [:trap, "CHLD"],
+                         :setpgid, :watchdog])
+  end
+
+  it "restores default handling of the signals the parent traps" do
+    described_class.after_fork!(parent_pid: 4_242)
+
+    %w[INT TERM HUP CHLD].each do |signal|
+      expect(Signal).to have_received(:trap).with(signal, "DEFAULT")
+    end
   end
 
   it "puts the child in its own process group" do
@@ -43,6 +53,6 @@ RSpec.describe Henitai::Integration::ChildBootstrap do
 
     described_class.after_fork!(parent_pid: 4_242)
 
-    expect(calls).to eq(%i[close_fds setpgid])
+    expect(calls.grep_v(Array)).to eq(%i[close_fds setpgid])
   end
 end

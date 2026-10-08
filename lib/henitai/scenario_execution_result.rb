@@ -3,7 +3,7 @@
 module Henitai
   # Captures the result of one baseline or mutant test run.
   class ScenarioExecutionResult
-    attr_reader :status, :stdout, :stderr, :exit_status, :log_path
+    attr_reader :status, :status_reason, :stdout, :stderr, :exit_status, :log_path
 
     def self.build(wait_result:, stdout:, stderr:, log_path:)
       new(
@@ -15,8 +15,25 @@ module Henitai
       )
     end
 
-    def initialize(status:, stdout:, stderr:, log_path:, exit_status: nil)
+    # Copies the reason behind a harness status onto the mutant the result was
+    # produced for. Tolerates results and mutants that carry no reason.
+    def self.copy_reason(result, mutant)
+      return unless result.respond_to?(:status_reason) && mutant.respond_to?(:status_reason=)
+
+      mutant.status_reason = result.status_reason
+    end
+
+    # Classifies a mutant run from the child's report (see MutantVerdict).
+    def self.build_for_mutant(wait_result:, report:, stdout:, stderr:, log_path:)
+      status, status_reason = MutantVerdict.new(wait_result:, report:, stdout:, stderr:).to_a
+      new(status:, status_reason:, stdout:, stderr:, log_path:, exit_status: exit_status_for(wait_result))
+    end
+
+    # rubocop:disable Metrics/ParameterLists -- one keyword per captured field
+    def initialize(status:, stdout:, stderr:, log_path:, exit_status: nil, status_reason: nil)
+      # rubocop:enable Metrics/ParameterLists
       @status = status
+      @status_reason = status_reason
       @stdout = stdout.to_s
       @stderr = stderr.to_s
       @log_path = log_path
@@ -114,7 +131,7 @@ module Henitai
         return false unless exit_status_for(wait_result) == 1
 
         output = [stdout.to_s, stderr.to_s].join("\n")
-        output.include?("0 examples, 0 failures")
+        output.match?(/\b0 examples, 0 failures/)
       end
     end
 
