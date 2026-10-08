@@ -154,8 +154,10 @@ module Henitai
         Parser::AST::Node.new(node.type, children)
       end
 
+      # The parentheses are part of the mutation: `!a > b` would negate only
+      # `a` and compare the boolean, which is not the reported mutant.
       def negate(node)
-        Parser::AST::Node.new(:send, [node, :!])
+        Parser::AST::Node.new(:send, [Parser::AST::Node.new(:begin, [node]), :!])
       end
 
       # rubocop:disable Lint/BooleanSymbol

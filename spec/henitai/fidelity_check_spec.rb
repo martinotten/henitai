@@ -121,7 +121,7 @@ RSpec.describe Henitai::FidelityCheck do
     expect(violation(mutant)).to include("not valid Ruby")
   end
 
-  it "rejects a negated condition that loses its parentheses" do
+  it "accepts a negated binary condition" do
     mutant = mutant_for(<<~RUBY, "negated condition")
       class Sample
         def check(i)
@@ -134,7 +134,7 @@ RSpec.describe Henitai::FidelityCheck do
       end
     RUBY
 
-    expect(violation(mutant)).to include("differs from the reported mutation")
+    expect(violation(mutant)).to be_nil
   end
 
   it "rejects a mutant that re-renders a one-parameter block as a destructuring block" do
