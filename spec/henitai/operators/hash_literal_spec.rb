@@ -25,8 +25,9 @@ RSpec.describe Henitai::Operators::HashLiteral do
     node = find_nodes(parse("build(name: x, size: 2)"), :kwargs).first
     mutants = described_class.new.mutate(node, subject: mutation_subject)
 
-    expect(mutants.map { |mutant| Unparser.unparse(mutant.mutated_node) })
-      .to eq(["", "size: 2", "name: x"])
+    expect(mutants.map { |mutant| [mutant.description, Unparser.unparse(mutant.mutated_node)] })
+      .to eq([["removed keyword arguments", ""], ["removed hash pair name", "size: 2"],
+              ["removed hash pair size", "name: x"]])
   end
 
   it "replaces non-empty hashes with empty hashes" do

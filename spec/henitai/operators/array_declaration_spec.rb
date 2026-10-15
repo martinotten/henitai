@@ -21,6 +21,12 @@ RSpec.describe Henitai::Operators::ArrayDeclaration do
     expect(described_class.node_types).to eq([:array])
   end
 
+  it "leaves bracketless lists such as rescue clauses alone" do
+    node = find_nodes(parse("begin; x; rescue Errno::ENOENT, Errno::EACCES; end"), :array).first
+
+    expect(described_class.new.mutate(node, subject: mutation_subject)).to eq([])
+  end
+
   it "replaces empty arrays with a nil element" do
     mutant = mutate("[]").first
 

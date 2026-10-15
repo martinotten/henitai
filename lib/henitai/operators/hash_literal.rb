@@ -33,7 +33,7 @@ module Henitai
           subject:,
           original_node: node,
           mutated_node: node.updated(nil, []),
-          description: "replaced hash with empty hash"
+          description: node.type == :kwargs ? "removed keyword arguments" : "replaced hash with empty hash"
         )
       end
 

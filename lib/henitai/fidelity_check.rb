@@ -129,9 +129,15 @@ module Henitai
       node.updated(nil, normalized_children(node))
     end
 
+    # `foo(a, )` -- left behind when all keyword arguments are removed --
+    # calls `foo(a)`, so an empty kwargs node is no argument at all.
     def normalized_children(node)
-      children = node.children.map { |child| normalize(child) }
+      children = node.children.map { |child| normalize(child) }.reject { |child| empty_kwargs?(child) }
       node.type == :begin ? children.flat_map { |child| statements(child) } : children
+    end
+
+    def empty_kwargs?(node)
+      node.is_a?(Parser::AST::Node) && node.type == :kwargs && node.children.empty?
     end
 
     # A statement sequence spliced into another one parses as one flat

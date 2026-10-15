@@ -12,7 +12,11 @@ module Henitai
         NODE_TYPES
       end
 
+      # A list without brackets (rescue classes, multiple return values,
+      # multiple assignment) is not an array literal and has no empty form.
       def mutate(node, subject:)
+        return [] unless node.location.begin
+
         if node.children.empty?
           [empty_array_mutant(subject:, node:)]
         else

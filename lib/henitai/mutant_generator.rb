@@ -71,14 +71,12 @@ module Henitai
       def walk(node, parent: nil)
         return unless node.is_a?(Parser::AST::Node)
 
-        # Str children of a non-heredoc dstr are raw text segments embedded
-        # inside a quoted interpolated string. They have no surrounding quotes
-        # in the source, so replacing them via source-fragment substitution
-        # would insert a quoted literal into the raw-text position and produce
-        # a SyntaxError when the mutant is activated.
-        # Heredoc dstr children are exempt: the heredoc body is plain text, so
-        # inserting "" there stays valid Ruby.
-        return if embedded_non_heredoc_dstr_str?(node, parent)
+        # A str node inside an interpolated string, heredoc, symbol, command,
+        # regexp or word array is raw text without quotes of its own.
+        # Replacing it would insert a quoted literal into the text -- a
+        # different mutation than reported, or a SyntaxError -- so it is not
+        # a StringLiteral site; its container is mutated instead.
+        return if raw_text_segment?(node, parent)
 
         apply_operators(node) if node_within_subject_range?(node)
         node.children.each do |child|
@@ -86,14 +84,17 @@ module Henitai
         end
       end
 
-      def embedded_non_heredoc_dstr_str?(node, parent)
-        node.type == :str &&
-          parent&.type == :dstr &&
-          !heredoc_node?(parent)
+      RAW_TEXT_CONTAINERS = %i[dstr dsym xstr regexp].freeze
+      private_constant :RAW_TEXT_CONTAINERS
+
+      def raw_text_segment?(node, parent)
+        return false unless node.type == :str && parent
+
+        RAW_TEXT_CONTAINERS.include?(parent.type) || word_array?(parent)
       end
 
-      def heredoc_node?(node)
-        node.location.respond_to?(:heredoc_body) && node.location.heredoc_body
+      def word_array?(node)
+        node.type == :array && node.location.begin&.source.to_s.start_with?("%")
       end
 
       def apply_operators(node)
