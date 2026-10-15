@@ -60,8 +60,8 @@ module Henitai
 
       private
 
-      def run_tests(test_files)
-        MinitestTestRunner.new.call(test_files)
+      def run_tests(test_files, &)
+        MinitestTestRunner.new.call(test_files, &)
       end
 
       def subprocess_env

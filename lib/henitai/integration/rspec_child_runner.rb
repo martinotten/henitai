@@ -8,7 +8,7 @@ module Henitai
     module RspecChildRunner
       private
 
-      def run_rspec_runner(test_files)
+      def run_rspec_runner(test_files, &after_load)
         log = child_debug_log
         log.write("[henitai-debug-child] build_rspec_runner_start")
         runner = build_rspec_runner
@@ -17,12 +17,26 @@ module Henitai
         configure_rspec_runner(runner)
         log.write("[henitai-debug-child] configure_rspec_runner_return")
         load_rspec_spec_files(test_files)
+        return 1 unless ready_to_run?(after_load)
+
         run_rspec_specs(runner)
       rescue SystemExit => e
         log.write("[henitai-debug-child] runner_run_system_exit status=#{e.status.inspect}")
         raise
       ensure
         child_debug_log.write("[henitai-debug-child] runner_run_ensure")
+      end
+
+      # The after-load hook (mutant activation) runs only when every spec file
+      # loaded; a falsy hook result also skips the run.
+      def ready_to_run?(after_load)
+        rspec_loaded_cleanly? && (after_load.nil? || after_load.call)
+      end
+
+      # RSpec records a spec file that failed to load and quits before running.
+      def rspec_loaded_cleanly?
+        world = ::RSpec.world
+        !(world.wants_to_quit || world.rspec_is_quitting)
       end
 
       def build_rspec_runner

@@ -111,14 +111,16 @@ module Henitai
 
       private
 
-      def run_tests(test_files)
+      # Yields once the spec files are loaded and before they run; a falsy
+      # block result skips the run (see MutantRunSupport#run_tests_in_child).
+      def run_tests(test_files, &)
         require "rspec/core"
         ::RSpec.__send__(:configuration).fail_if_no_examples = true
         log = child_debug_log
         log.rspec_trace(test_files:, rspec_options: [], rspec_argv: test_files)
         log.example_count("before_run")
         log.write("[henitai-debug-child] runner_run_start")
-        status = run_rspec_runner(test_files)
+        status = run_rspec_runner(test_files, &)
         log.write("[henitai-debug-child] runner_run_return status=#{status.inspect}")
         log.example_count("after_run")
         log.rspec_exit(status)

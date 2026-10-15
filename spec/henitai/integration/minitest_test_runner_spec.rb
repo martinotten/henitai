@@ -48,6 +48,25 @@ RSpec.describe Henitai::Integration::MinitestTestRunner do
       end
     end
 
+    it "yields after requiring the test files and before running them" do
+      with_temp_workspace do |dir|
+        test_file = write_test_file(dir, "test/hook_test.rb")
+        order = []
+        allow(Minitest).to receive(:run) { order << :run and true }
+
+        runner.call([test_file]) { order << $LOADED_FEATURES.include?(File.expand_path(test_file)) }
+
+        expect(order).to eq([true, :run])
+      end
+    end
+
+    it "skips the run when the after-load hook returns false" do
+      runs = []
+      allow(Minitest).to receive(:run) { runs << :run and true }
+
+      expect([runner.call([]) { false }, runs]).to eq([1, []])
+    end
+
     it "requires every test file by its expanded path" do
       with_temp_workspace do |dir|
         a_test = write_test_file(dir, "test/a_test.rb")
