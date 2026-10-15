@@ -193,6 +193,15 @@ RSpec.describe Henitai::Integration::Rspec do
     )
   end
 
+  # The real run_tests yields to the activation hook once the spec files are
+  # loaded; stubs simulate that load and then hand back the given exit code.
+  def stub_run_tests(integration, exit_code = 0)
+    allow(integration).to receive(:run_tests) do |*_files, &after_load|
+      after_load&.call
+      exit_code
+    end
+  end
+
   def stub_child_logging(integration)
     log_support = instance_double(Henitai::Integration::ScenarioLogSupport)
     allow(log_support).to receive_messages(read_log_file: "", write_combined_log: nil)
@@ -250,7 +259,7 @@ RSpec.describe Henitai::Integration::Rspec do
   def stub_mutant_runtime(integration)
     allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
     stub_process_wakeup
-    allow(integration).to receive_messages(run_tests: 0)
+    stub_run_tests(integration, 0)
   end
 
   def stub_ordered_mutant_run(order, integration, child_pid:)
@@ -269,7 +278,8 @@ RSpec.describe Henitai::Integration::Rspec do
       block.call
       child_pid
     end
-    allow(integration).to receive_messages(run_tests: 0, wait_with_timeout: :survived, build_result: :survived)
+    stub_run_tests(integration)
+    allow(integration).to receive_messages(wait_with_timeout: :survived, build_result: :survived)
     allow(integration).to receive(:cleanup_process_group)
   end
 
@@ -315,8 +325,10 @@ RSpec.describe Henitai::Integration::Rspec do
   end
 
   def stub_ordered_rspec(order, integration:)
-    allow(integration).to receive(:run_tests) do |test_files|
-      order << [:rspec, test_files]
+    allow(integration).to receive(:run_tests) do |test_files, &after_load|
+      order << [:load, test_files]
+      after_load.call
+      order << [:run, test_files]
       0
     end
   end
@@ -356,7 +368,7 @@ RSpec.describe Henitai::Integration::Rspec do
   end
 
   def stub_timeout_boundary_rspec(integration)
-    allow(integration).to receive(:run_tests).and_return(0)
+    stub_run_tests(integration, 0)
   end
 
   def stub_timeout_boundary_pause(_integration, record)
@@ -700,7 +712,7 @@ RSpec.describe Henitai::Integration::Rspec do
         4321
       end
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive(:run_tests).and_return(0)
+      stub_run_tests(integration, 0)
       allow(Process).to receive(:wait) do |pid, flags|
         record[:wait_args] = [pid, flags]
         4321
@@ -736,7 +748,8 @@ RSpec.describe Henitai::Integration::Rspec do
       stub_process_exit(record)
       stub_process_fork(record, 4321)
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive_messages(run_tests: 0, wait_with_timeout: :survived, build_result: :result)
+      stub_run_tests(integration)
+      allow(integration).to receive_messages(wait_with_timeout: :survived, build_result: :result)
       allow(integration).to receive(:cleanup_process_group)
 
       integration.run_mutant(mutant:, test_files: [], timeout: 1.0)
@@ -763,7 +776,7 @@ RSpec.describe Henitai::Integration::Rspec do
         record[:setpgid] = [pid, pgrp]
       end
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive(:run_tests).and_return(0)
+      stub_run_tests(integration, 0)
       allow(Process).to receive(:wait).and_return(4329)
       allow(Process).to receive_messages(
         last_status: Struct.new(:success?, :exitstatus).new(true, 0)
@@ -794,7 +807,7 @@ RSpec.describe Henitai::Integration::Rspec do
       4321
     end
     allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-    allow(integration).to receive(:run_tests).and_return(0)
+    stub_run_tests(integration, 0)
     allow(integration).to receive_messages(
       wait_with_timeout: Struct.new(:success?, :exitstatus).new(true, 0),
       build_result: :survived
@@ -837,10 +850,8 @@ RSpec.describe Henitai::Integration::Rspec do
         4322
       end
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive_messages(
-        run_tests: 0,
-        wait_with_timeout: Struct.new(:success?, :exitstatus).new(true, 0)
-      )
+      stub_run_tests(integration)
+      allow(integration).to receive_messages(wait_with_timeout: Struct.new(:success?, :exitstatus).new(true, 0))
       stub_process_wakeup
       allow(Process).to receive(:wait).with(4322, Process::WNOHANG).and_return(nil, nil)
       allow(Process).to receive_messages(
@@ -881,7 +892,7 @@ RSpec.describe Henitai::Integration::Rspec do
         4322
       end
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive(:run_tests).and_return(0)
+      stub_run_tests(integration, 0)
       allow(Process).to receive(:wait).and_return(4322)
       allow(Process).to receive_messages(
         last_status: Struct.new(:success?, :exitstatus).new(true, 0)
@@ -913,7 +924,7 @@ RSpec.describe Henitai::Integration::Rspec do
         nil
       end
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive(:run_tests).and_return(0)
+      stub_run_tests(integration, 0)
       allow(integration).to receive_messages(
         wait_with_timeout: Struct.new(:success?, :exitstatus).new(true, 0),
         build_result: :survived
@@ -957,7 +968,7 @@ RSpec.describe Henitai::Integration::Rspec do
         4323
       end
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive(:run_tests).and_return(0)
+      stub_run_tests(integration, 0)
       allow(integration).to receive_messages(
         wait_with_timeout: nil,
         build_result: :survived
@@ -1001,7 +1012,7 @@ RSpec.describe Henitai::Integration::Rspec do
         4324
       end
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive(:run_tests).and_return(0)
+      stub_run_tests(integration, 0)
       allow(integration).to receive_messages(
         wait_with_timeout: :timeout,
         build_result: :timeout
@@ -1085,7 +1096,7 @@ RSpec.describe Henitai::Integration::Rspec do
     expect([record[:signals], select_calls]).to eq([[[:SIGTERM, -4322]], 1])
   end
 
-  it "activates the mutant before running child tests" do
+  it "activates the mutant after loading the child tests and before running them" do
     mutant = Struct.new(:id).new("mutant-2")
     integration = described_class.new
     order = []
@@ -1103,8 +1114,9 @@ RSpec.describe Henitai::Integration::Rspec do
       expect(order).to eq(
         [
           :fork,
+          [:load, ["spec/bar_spec.rb"]],
           :activate,
-          [:rspec, ["spec/bar_spec.rb"]],
+          [:run, ["spec/bar_spec.rb"]],
           [:exit, 0],
           [:wait, 9876, 2.0]
         ]
@@ -1163,7 +1175,7 @@ RSpec.describe Henitai::Integration::Rspec do
         24_601
       end
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive_messages(run_tests: 0)
+      stub_run_tests(integration, 0)
       allow(Process).to receive(:wait).and_return(24_601)
       allow(Process).to receive_messages(last_status: Struct.new(:success?, :exitstatus).new(true, 0))
 
@@ -1193,7 +1205,7 @@ RSpec.describe Henitai::Integration::Rspec do
         24_602
       end
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive_messages(run_tests: 1)
+      stub_run_tests(integration, 1)
       allow(Process).to receive(:wait).and_return(24_602)
       allow(Process).to receive_messages(last_status: Struct.new(:success?, :exitstatus).new(false, 1))
 
@@ -1228,7 +1240,8 @@ RSpec.describe Henitai::Integration::Rspec do
         24_606
       end
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive(:run_tests) do |_files|
+      allow(integration).to receive(:run_tests) do |_files, &after_load|
+        after_load.call
         record[:coverage_dir] = ENV.fetch("HENITAI_COVERAGE_DIR", nil)
         0
       end
@@ -1261,7 +1274,7 @@ RSpec.describe Henitai::Integration::Rspec do
         24_603
       end
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      allow(integration).to receive(:run_tests).and_return(0)
+      stub_run_tests(integration, 0)
       allow(integration).to receive(:cleanup_process_group)
       allow(Process).to receive(:wait).and_return(nil, 24_603)
       allow(IO).to receive(:select) do
@@ -1392,7 +1405,8 @@ RSpec.describe Henitai::Integration::Rspec do
       )
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
       stub_process_wakeup
-      allow(integration).to receive(:run_tests) do |files|
+      allow(integration).to receive(:run_tests) do |files, &after_load|
+        after_load.call
         record[:rspec_files] = files
         1
       end
@@ -1449,12 +1463,25 @@ RSpec.describe Henitai::Integration::Rspec do
     integration = described_class.new
     allow(Henitai::Mutant::Activator).to receive(:activate!)
       .and_raise(NameError, "uninitialized constant Shop::Base")
+    stub_run_tests(integration)
 
     result = nil
     stderr = capture_stderr { result = run_in_process_mutant(integration, child_status: exited_status(1)) }
 
     expect([result.status, result.status_reason, stderr.include?("mutant activation failed")])
       .to eq([:compile_error, "activation failed: NameError: uninitialized constant Shop::Base", true])
+  end
+
+  it "reports test files that failed to load without activating the mutant" do
+    integration = described_class.new
+    activations = []
+    allow(Henitai::Mutant::Activator).to receive(:activate!) { |mutant| activations << mutant }
+    allow(integration).to receive(:run_tests).and_return(1)
+
+    result = run_in_process_mutant(integration, child_status: exited_status(2))
+
+    expect([result.status, result.status_reason, activations])
+      .to eq([:compile_error, "the test files failed to load, before the mutant was activated", []])
   end
 
   it "reports a SystemExit raised by the code under test as a runtime error" do
@@ -1471,7 +1498,7 @@ RSpec.describe Henitai::Integration::Rspec do
   it "reports a finished test run by the exit code the tests returned" do
     integration = described_class.new
     allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(nil)
-    allow(integration).to receive(:run_tests).and_return(1)
+    stub_run_tests(integration, 1)
 
     result = run_in_process_mutant(integration, child_status: exited_status(1))
 
@@ -1492,6 +1519,7 @@ RSpec.describe Henitai::Integration::Rspec do
         24_605
       end
       allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(:compile_error)
+      stub_run_tests(integration)
       stub_process_wakeup
       allow(Process).to receive(:wait).and_return(24_605)
       allow(Process).to receive_messages(
@@ -1686,7 +1714,7 @@ RSpec.describe Henitai::Integration::Rspec do
         stub_child_logging(integration)
         allow(Process).to receive(:exit)
         allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-        allow(integration).to receive(:run_tests).and_return(0)
+        stub_run_tests(integration, 0)
         allow(Process).to receive(:fork) do |&block|
           block.call
           55_555
@@ -1720,7 +1748,7 @@ RSpec.describe Henitai::Integration::Rspec do
         stub_child_logging(integration)
         allow(Process).to receive(:exit)
         allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-        allow(integration).to receive(:run_tests).and_return(0)
+        stub_run_tests(integration, 0)
         allow(Process).to receive(:fork) do |&block|
           record[:fork_count] += 1
           block.call

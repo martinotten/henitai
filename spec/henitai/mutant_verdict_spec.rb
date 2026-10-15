@@ -40,6 +40,11 @@ RSpec.describe Henitai::MutantVerdict do
       .to eq([:compile_error, "activation failed: NameError: uninitialized constant Shop::Base"])
   end
 
+  it "classifies a test environment that failed to load as a compile error" do
+    expect(verdict(exited(2), { "outcome" => "environment_failed" }))
+      .to eq([:compile_error, "the test files failed to load, before the mutant was activated"])
+  end
+
   it "classifies a SystemExit during the test run as a runtime error" do
     report = { "outcome" => "system_exit", "status" => 0 }
 

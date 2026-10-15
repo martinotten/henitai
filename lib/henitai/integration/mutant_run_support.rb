@@ -72,9 +72,7 @@ module Henitai
         report = ->(data) { child_report_store.write(log_paths[:report_path], data) }
         scenario_log_support.with_coverage_dir(mutant.id) do
           scenario_log_support.capture_child_output(log_paths) do
-            next 2 unless activate_in_child(mutant, test_files, report)
-
-            run_tests_in_child(test_files, report)
+            run_tests_in_child(mutant, test_files, report)
           end
         end
       end
@@ -105,13 +103,28 @@ module Henitai
       # RSpec and Minitest let SystemExit through by design. Raised by the
       # code under test it ends the run midway, so it is reported instead of
       # becoming the child's exit status.
-      def run_tests_in_child(test_files, report)
-        exit_code = run_tests(test_files)
+      #
+      # The mutant is activated from #run_tests' after-load hook: once the test
+      # files (and the code they require) are loaded, before any test runs.
+      # Activating earlier would load the subject file on its own, without the
+      # superclasses and constants the rest of the application defines.
+      def run_tests_in_child(mutant, test_files, report)
+        activated = nil
+        exit_code = run_tests(test_files) { activated = activate_in_child(mutant, test_files, report) }
+        return finish_without_tests(activated, report) unless activated
+
         report.call("outcome" => "tests_finished", "exit_code" => exit_code)
         exit_code
       rescue SystemExit => e
         report.call("outcome" => "system_exit", "status" => e.status)
         1
+      end
+
+      # A nil activation means the hook never ran: the test files failed to
+      # load, before the mutant was in place.
+      def finish_without_tests(activated, report)
+        report.call("outcome" => "environment_failed") if activated.nil?
+        2
       end
     end
   end

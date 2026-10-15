@@ -33,6 +33,8 @@ module Henitai
     def reported_verdict
       case @report["outcome"]
       when "activation_failed" then [:compile_error, "activation failed: #{@report['reason']}"]
+      when "environment_failed"
+        [:compile_error, "the test files failed to load, before the mutant was activated"]
       when "system_exit"
         [:runtime_error, "the test run ended early with SystemExit (status #{@report['status']})"]
       when "tests_finished" then test_verdict

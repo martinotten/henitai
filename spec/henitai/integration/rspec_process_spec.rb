@@ -53,15 +53,16 @@ RSpec.describe Henitai::Integration::Rspec do
     RUBY
   end
 
-  def real_child_script(source_path, spec_path, expected_status)
+  def real_child_script(source_path, spec_path, expected_status,
+                        expression: "IntegrationRealActivationSample.value", preload: true)
     <<~RUBY
       require "henitai"
 
       source_path = #{source_path.dump}
       spec_path = #{spec_path.dump}
-      require source_path
+      require source_path if #{preload}
       subject = Henitai::SubjectResolver.new.resolve_from_files([source_path]).find do |candidate|
-        candidate.expression == "IntegrationRealActivationSample.value"
+        candidate.expression == #{expression.dump}
       end
       mutant = Henitai::MutantGenerator.new.generate(
         [subject],
@@ -86,11 +87,11 @@ RSpec.describe Henitai::Integration::Rspec do
     RUBY
   end
 
-  def run_real_child(dir, source_path, spec_path, expected_status)
+  def run_real_child(dir, source_path, spec_path, expected_status, **script_options)
     Open3.capture3(
       { "BUNDLE_GEMFILE" => repo_gemfile },
       "bundle", "exec", "ruby", "-e",
-      real_child_script(source_path, spec_path, expected_status),
+      real_child_script(source_path, spec_path, expected_status, **script_options),
       chdir: dir
     )
   end
@@ -137,6 +138,33 @@ RSpec.describe Henitai::Integration::Rspec do
       stdout, stderr, status = run_real_child(dir, source_path, spec_path, :killed)
 
       expect(status.success? && stdout.include?("killed")).to be(true), stderr
+    end
+  end
+
+  it "kills a mutant whose superclass is defined in another file the parent never loaded" do
+    with_temp_workspace do |dir|
+      write_file(dir, "lib/shop.rb", "require_relative \"shop/base\"\nrequire_relative \"shop/cart\"\n")
+      write_file(dir, "lib/shop/base.rb", "module Shop\n  class Base; end\nend\n")
+      source_path = write_file(dir, "lib/shop/cart.rb", <<~RUBY)
+        module Shop
+          class Cart < Base
+            def value(a, b)
+              a + b
+            end
+          end
+        end
+      RUBY
+      spec_path = write_file(dir, "spec/cart_spec.rb", <<~RUBY)
+        require_relative "../lib/shop"
+
+        RSpec.describe Shop::Cart do
+          it("adds") { expect(described_class.new.value(3, 1)).to eq(4) }
+        end
+      RUBY
+      stdout, stderr, status = run_real_child(dir, source_path, spec_path, :killed,
+                                              expression: "Shop::Cart#value", preload: false)
+
+      expect(status.success? && stdout.include?("killed")).to be(true), [stdout, stderr].join("\n")
     end
   end
 

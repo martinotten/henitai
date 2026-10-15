@@ -7,10 +7,14 @@ module Henitai
     # Runs Minitest test files in-process and normalizes the result to an
     # exit code, for Minitest#run_tests during a single mutant activation.
     class MinitestTestRunner
-      def call(test_files)
+      # Yields once the test files are required and before Minitest runs; a
+      # falsy block result skips the run.
+      def call(test_files, &after_load)
         CoverageRuntimeSuppressors.suppress_simplecov!
         suppress_autorun!
         test_files.each { |file| require File.expand_path(file) }
+        return 1 if after_load && !after_load.call
+
         # @type var empty_args: Array[String]
         empty_args = []
         status = ::Minitest.run(empty_args)
