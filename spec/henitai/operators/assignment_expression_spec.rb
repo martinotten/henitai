@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "spec_helper"
+require "tmpdir"
 
 RSpec.describe Henitai::Operators::AssignmentExpression do
   def parse(source)
