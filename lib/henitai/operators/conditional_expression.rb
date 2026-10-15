@@ -28,6 +28,8 @@ module Henitai
       private
 
       def mutate_if(node, subject:)
+        return elsif_condition_mutants(node, subject:) if elsif?(node)
+
         condition, then_branch, else_branch = node.children
         mutations = condition_variants(node, subject:, condition:)
 
@@ -36,6 +38,22 @@ module Henitai
         append_removed_then_branch(mutations, node, subject:, else_branch:) if then_branch
 
         mutations
+      end
+
+      # An elsif's source range starts at `elsif` and has no `end`, so a
+      # re-rendered `if ... end` cannot take its place. Only its condition is
+      # mutated, in place; removing a branch is what "replaced condition with
+      # false" already does.
+      def elsif_condition_mutants(node, subject:)
+        condition = node.children.first
+        [[true_node, "replaced condition with true"], [false_node, "replaced condition with false"],
+         [negate(condition), "negated condition"]].map do |replacement, description|
+          build_mutant(subject:, original_node: condition, mutated_node: replacement, description:)
+        end
+      end
+
+      def elsif?(node)
+        node.location.respond_to?(:keyword) && node.location.keyword&.source == "elsif"
       end
 
       def mutate_case(node, subject:)
