@@ -146,6 +146,24 @@ RSpec.describe Henitai::FidelityCheck do
     expect(violation(mutant)).to be_nil
   end
 
+  it "accepts a mutation of an elsif condition" do
+    mutants = mutants_for(<<~RUBY).select { |mutant| mutant.description == "replaced condition with true" }
+      class Sample
+        def grade(score)
+          if score > 90
+            :a
+          elsif score > 50
+            :b
+          else
+            :c
+          end
+        end
+      end
+    RUBY
+
+    expect(mutants.map { |mutant| violation(mutant) }).to eq([nil, nil])
+  end
+
   it "accepts a negated binary condition" do
     mutant = mutant_for(<<~RUBY, "negated condition")
       class Sample

@@ -141,6 +141,15 @@ RSpec.describe Henitai::Operators::ConditionalExpression do
     expect(mutant.mutated_node.children.first.children.first.children.first).to eq(original_condition)
   end
 
+  it "mutates only the condition of an elsif" do
+    elsif_node = find_nodes(parse("if a\n  1\nelsif b > 2\n  2\nelse\n  3\nend\n"), :if).last
+    mutants = described_class.new.mutate(elsif_node, subject: mutation_subject)
+
+    expect(mutants.map { |mutant| [mutant.description, mutant.original_node.equal?(elsif_node.children[0])] })
+      .to eq([["replaced condition with true", true], ["replaced condition with false", true],
+              ["negated condition", true]])
+  end
+
   it "parenthesises a negated condition so the whole condition is inverted" do
     mutant = mutate(<<~RUBY).find { |candidate| candidate.description == "negated condition" }
       if count > 3
