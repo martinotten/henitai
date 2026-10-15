@@ -942,6 +942,20 @@ RSpec.describe Henitai::Mutant::Activator do
       end
     end
 
+    # (a && b) && c with the inner && replaced by || must run as (a || b) && c,
+    # not as the a || (b && c) a textual splice would produce.
+    it "keeps the reported mutation when it sits inside a longer expression" do
+      Dir.mktmpdir do |dir|
+        source = "class DiChain\n  def all?(a, b, c) = a && b && c\nend\n"
+        lvar = ->(name) { Parser::AST::Node.new(:lvar, [name]) }
+        inner_or = Parser::AST::Node.new(:or, [lvar.call(:a), lvar.call(:b)])
+        inner_and = { find: ->(ast) { find_nodes(ast, :and).last }, to: inner_or }
+        activate_in(dir, source, "DiChain#all?", constants: ["DiChain"], mutate: inner_and)
+
+        expect(DiChain.new.all?(true, false, false)).to be(false)
+      end
+    end
+
     it "describes a top-level activation in the original file and at the def's line" do
       Dir.mktmpdir do |dir|
         path = write_source(dir, "module DiPlace\n  class Spot\n    def value = 1\n  end\nend\n")
@@ -975,7 +989,7 @@ RSpec.describe Henitai::Mutant::Activator do
 
         source = described_class.activation_source_for(mutant)
 
-        expect(source).to eq("class ActivationSourceSample\n  def value\n    1 - 1\n  end\nend\n")
+        expect(source).to eq("class ActivationSourceSample\n  def value\n    (1 - 1)\n  end\nend\n")
       end
     end
 

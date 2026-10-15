@@ -23,6 +23,7 @@ module Henitai
     autoload :ParameterSource, "henitai/mutant/parameter_source"
     autoload :Activation, "henitai/mutant/activation"
     autoload :DefInjection, "henitai/mutant/def_injection"
+    autoload :Replacement, "henitai/mutant/replacement"
 
     # Status-Vokabular folgt dem Stryker mutation-testing-report-schema.
     # :equivalent ist ein Henitai-interner Status (wird im JSON als "Ignored" serialisiert,

@@ -22,8 +22,8 @@ module Henitai
 
     @cache = {}
 
-    def self.parse(source, path: DEFAULT_PATH)
-      new.parse(source, path:)
+    def self.parse(source, path: DEFAULT_PATH, line: 1)
+      new.parse(source, path:, line:)
     end
 
     # Returns the parsed AST for +path+, re-using a cached result when the
@@ -39,8 +39,9 @@ module Henitai
       @cache.clear
     end
 
-    def parse(source, path: DEFAULT_PATH)
-      Prism::Translation::ParserCurrent.new(Builder.new).parse(source_buffer(source, path))
+    # +line+ is the number of the source's first line, as for Kernel#eval.
+    def parse(source, path: DEFAULT_PATH, line: 1)
+      Prism::Translation::ParserCurrent.new(Builder.new).parse(source_buffer(source, path, line))
     end
 
     # Read as UTF-8, Ruby's own default source encoding, not the process
@@ -53,8 +54,8 @@ module Henitai
 
     private
 
-    def source_buffer(source, path)
-      Parser::Source::Buffer.new(path).tap do |buffer|
+    def source_buffer(source, path, line = 1)
+      Parser::Source::Buffer.new(path, line).tap do |buffer|
         buffer.source = source
       end
     end

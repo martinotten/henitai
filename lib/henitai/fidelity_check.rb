@@ -17,9 +17,10 @@ module Henitai
   #    errors silently.
   # 3. Structure: the activated method body, re-parsed, must equal the
   #    original body with the original node replaced by the mutated node.
-  #    Both sides are normalised first: an interpolation-free +dstr+ is the
-  #    same value as one +str+, nested statement sequences flatten, and
-  #    +__FILE__+ compares as an absolute path.
+  #    Both sides are normalised first: parentheses around one expression
+  #    are dropped, an interpolation-free +dstr+ is the same value as one
+  #    +str+, nested statement sequences flatten, an empty kwargs node is no
+  #    argument, and +__FILE__+ compares as an absolute path.
   #
   # A violation is a harness defect, not a test verdict: the mutant must not
   # run, and the reason must be reported.
@@ -56,7 +57,8 @@ module Henitai
 
     def structure_violation(mutant, expected, activation, whole_def)
       source = activation.source
-      tree = SourceParser.parse(source, path: activation.file || Mutant::Activator::EVAL_FILE)
+      tree = SourceParser.parse(source, path: activation.file || Mutant::Activator::EVAL_FILE,
+                                        line: activation.line || 1)
       actual = normalize(activated_tree(tree, mutant.subject.method_name, whole_def))
       expected = normalize(expected)
       "activated code differs from the reported mutation" unless actual == expected
@@ -123,6 +125,7 @@ module Henitai
 
     def normalize(node)
       return node unless node.is_a?(Parser::AST::Node)
+      return normalize(node.children[0]) if parenthesised?(node)
       return node.updated(:str, [literal_text(node)]) if literal_dstr?(node)
       return node.updated(nil, [File.expand_path(node.children[0])]) if file_keyword?(node)
 
@@ -134,6 +137,12 @@ module Henitai
     def normalized_children(node)
       children = node.children.map { |child| normalize(child) }.reject { |child| empty_kwargs?(child) }
       node.type == :begin ? children.flat_map { |child| statements(child) } : children
+    end
+
+    # Parentheses around one expression carry no meaning once the tree
+    # encodes precedence; Mutant::Replacement adds them around operators.
+    def parenthesised?(node)
+      node.type == :begin && node.children.size == 1
     end
 
     def empty_kwargs?(node)
