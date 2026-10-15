@@ -60,7 +60,7 @@ module Henitai
     private
 
     def parse_expression(expr)
-      if (m = expr.match(/\A(.+?)([#.])(\w+)\z/))
+      if (m = expr.match(/\A([\w:]+)([#.])([^#.\s]+)\z/))
         @namespace   = m[1]
         @method_type = m[2] == "." ? :class : :instance
         @method_name = m[3]
