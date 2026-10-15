@@ -14,7 +14,7 @@ module Henitai
   # descriptions in the test suite.
   class Subject
     attr_reader :namespace, :method_name, :method_type, :source_file,
-                :source_range, :ast_node
+                :source_range, :ast_node, :lexical_scope
 
     # @param expression [String] subject expression, e.g. "Foo::Bar#method"
     def self.parse(expression)
@@ -25,11 +25,14 @@ module Henitai
     # @param method_name [String]  method name (nil for wildcard subjects)
     # @param method_type [Symbol]  :instance or :class
     # @param source_location [Hash] file/range metadata for the subject source
+    # @param lexical_scope [Array<String>, nil] the openers of the modules and
+    #   classes around the method as written ("module Outer", "class Inner",
+    #   "class << self"); nil when a scope cannot be reopened by name
     # The explicit keyword API matches the public call sites and keeps the
     # metadata fields discoverable without a single options hash.
     # rubocop:disable Metrics/ParameterLists
     def initialize(expression: nil, namespace: nil, method_name: nil,
-                   method_type: :instance, source_location: nil, ast_node: nil)
+                   method_type: :instance, source_location: nil, ast_node: nil, lexical_scope: nil)
       if expression
         parse_expression(expression)
       else
@@ -40,6 +43,7 @@ module Henitai
       @source_file  = source_location&.fetch(:file, nil)
       @source_range = source_location&.fetch(:range, nil)
       @ast_node = ast_node
+      @lexical_scope = lexical_scope
     end
     # rubocop:enable Metrics/ParameterLists
 

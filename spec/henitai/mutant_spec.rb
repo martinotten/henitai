@@ -4,7 +4,7 @@ require "parser/current"
 require "spec_helper"
 
 RSpec.describe Henitai::Mutant do
-  def build_mutant(precomputed_stable_id: nil, precomputed_activation_source: nil)
+  def build_mutant(precomputed_stable_id: nil, precomputed_activation: nil)
     described_class.new(
       subject: Henitai::Subject.new(namespace: "Sample", method_name: "alpha"),
       operator: "ArithmeticOperator",
@@ -15,7 +15,7 @@ RSpec.describe Henitai::Mutant do
       description: "replaced 1 with 2",
       location: {},
       precomputed_stable_id:,
-      precomputed_activation_source:
+      precomputed_activation:
     )
   end
 
@@ -84,14 +84,14 @@ RSpec.describe Henitai::Mutant do
     end
   end
 
-  describe "#precomputed_activation_source" do
+  describe "#precomputed_activation" do
     it "is nil by default" do
-      expect(build_mutant.precomputed_activation_source).to be_nil
+      expect(build_mutant.precomputed_activation).to be_nil
     end
 
     it "can be provided and read back" do
-      mutant = build_mutant(precomputed_activation_source: "define_method(:foo) do\n  nil\nend\n")
-      expect(mutant.precomputed_activation_source).to eq("define_method(:foo) do\n  nil\nend\n")
+      activation = Henitai::Mutant::Activation.new(source: "define_method(:foo) do\n  nil\nend\n", mode: :class_eval)
+      expect(build_mutant(precomputed_activation: activation).precomputed_activation).to eq(activation)
     end
   end
 

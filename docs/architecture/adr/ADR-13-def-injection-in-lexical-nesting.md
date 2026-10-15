@@ -1,6 +1,6 @@
 # ADR-13: `def` Injection in the Original Lexical Nesting
 
-Status: proposed (supersedes ADR-04 once accepted)
+Status: accepted (supersedes ADR-04)
 
 ## Context
 

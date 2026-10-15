@@ -22,6 +22,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exits without reporting, is `RuntimeError`, not `Killed`. A `SystemExit`
   raised by the code under test is `RuntimeError`, not `Survived`.
 
+- Mutants are activated only after the spec or test files have loaded, so a
+  subject whose superclass or constants live in other files can be tested.
+  Previously the child loaded the subject file on its own and failed with a
+  `NameError` (every `ApplicationRecord` model, for example).
+- Mutants are activated by re-evaluating the subject's own `def` inside its
+  original module and class openers (ADR-13), not through `define_method`.
+  Constant lookup through enclosing modules, implicit `super`, `yield`,
+  `block_given?`, argument forwarding, default values, `__FILE__`/`__LINE__`,
+  `frozen_string_literal` and visibility now behave as in the original method.
+  Mutations in default values take effect, and splices no longer shift after
+  multibyte characters or leave heredoc bodies behind. Activation recipes from
+  earlier versions are ignored and regenerated.
+
 ### Added
 
 - A fidelity check rejects, before execution, every mutant whose activated

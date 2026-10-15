@@ -33,10 +33,11 @@ RSpec.describe Henitai::SurvivorActivationCache do
       covered_by: ["spec/my_module_spec.rb"],
       survived?: true
     )
+    activation = activation_source && Henitai::Mutant::Activation.new(source: activation_source, mode: :class_eval)
     allow(Henitai::Mutant::Activator)
-      .to receive(:activation_source_for)
+      .to receive(:activation_for)
       .with(mutant)
-      .and_return(activation_source)
+      .and_return(activation)
     mutant
   end
 
@@ -50,14 +51,15 @@ RSpec.describe Henitai::SurvivorActivationCache do
       result = described_class.compute([mutant])
 
       expect(result.keys).to eq(["abc123"])
-      expect(result["abc123"]["activationSource"]).to eq("define_method(:foo) do\n  nil\nend\n")
+      expect(result["abc123"]["activation"]).to include("source" => "define_method(:foo) do\n  nil\nend\n",
+                                                        "mode" => "class_eval")
       expect(result["abc123"]["namespace"]).to eq("MyModule")
       expect(result["abc123"]["methodName"]).to eq("foo")
       expect(result["abc123"]["methodType"]).to eq("instance")
       expect(result["abc123"]["operator"]).to eq("ArithmeticOperator")
     end
 
-    it "skips mutants for which activation_source_for returns nil" do
+    it "skips mutants for which activation_for returns nil" do
       mutant = build_survived_mutant(stable_id: "abc", activation_source: nil)
       expect(described_class.compute([mutant])).to be_empty
     end
@@ -111,11 +113,12 @@ RSpec.describe Henitai::SurvivorActivationCache do
     it "parses and returns a valid recipe file" do
       Dir.mktmpdir do |dir|
         path = File.join(dir, "recipes.json")
-        recipes = { "abc" => { "activationSource" => "define_method(:foo) do\n  nil\nend\n" } }
+        recipes = { "abc" => { "activation" => { "source" => "define_method(:foo) do\n  nil\nend\n",
+                                                 "mode" => "class_eval" } } }
         File.write(path, JSON.pretty_generate(recipes))
 
         result = described_class.load(path)
-        expect(result["abc"]["activationSource"]).to eq("define_method(:foo) do\n  nil\nend\n")
+        expect(result["abc"]["activation"]["source"]).to eq("define_method(:foo) do\n  nil\nend\n")
       end
     end
   end
@@ -124,12 +127,12 @@ RSpec.describe Henitai::SurvivorActivationCache do
     it "writes recipes as pretty JSON and creates intermediate directories" do
       Dir.mktmpdir do |dir|
         path = File.join(dir, "sessions", "abc-123", described_class::FILENAME)
-        recipes = { "id1" => { "activationSource" => "source" } }
+        recipes = { "id1" => { "activation" => { "source" => "source", "mode" => "class_eval" } } }
 
         described_class.write(path, recipes)
 
         written = JSON.parse(File.read(path))
-        expect(written["id1"]["activationSource"]).to eq("source")
+        expect(written["id1"]["activation"]["source"]).to eq("source")
       end
     end
   end

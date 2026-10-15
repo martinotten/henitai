@@ -46,13 +46,14 @@ module Henitai
     def violation(mutant)
       return unless checkable?(mutant)
 
-      expected = expected_body(mutant)
+      activation = Mutant::Activator.activation_for(mutant)
+      return "activation source could not be built" unless activation
+
+      whole_def = activation.mode == :toplevel
+      expected = expected_tree(mutant, whole_def)
       return "mutation site is outside the executed method body" unless expected
 
-      source = Mutant::Activator.activation_source_for(mutant)
-      return "activation source could not be built" unless source
-
-      syntax_violation(source) || structure_violation(mutant, expected, source)
+      syntax_violation(activation.source) || structure_violation(mutant, expected, activation, whole_def)
     rescue StandardError => e
       "fidelity could not be verified (#{e.class}: #{e.message})"
     end
@@ -71,9 +72,10 @@ module Henitai
       "activation source is not valid Ruby: #{error.message}" if error
     end
 
-    def structure_violation(mutant, expected, source)
-      tree = SourceParser.parse(source, path: Mutant::Activator::EVAL_FILE)
-      actual = normalize(activated_body(tree, mutant.subject.method_name))
+    def structure_violation(mutant, expected, activation, whole_def)
+      source = activation.source
+      tree = SourceParser.parse(source, path: activation.file || Mutant::Activator::EVAL_FILE)
+      actual = normalize(activated_tree(tree, mutant.subject.method_name, whole_def))
       expected = normalize(expected)
       return "activated code differs from the reported mutation" unless actual == expected
 
@@ -82,11 +84,13 @@ module Henitai
 
     # The mutated node takes the original node's location, so the syntax-form
     # check can compare the mutation site itself; operators often build the
-    # replacement without one.
-    def expected_body(mutant)
+    # replacement without one. A re-evaluated def (ADR-13) is compared as a
+    # whole, parameters included; the define_method fallback only by body.
+    def expected_tree(mutant, whole_def)
       original = mutant.original_node
       replacement = mutant.mutated_node&.updated(nil, nil, location: original.location)
-      replaced, found = substitute(method_body(mutant.subject.ast_node), original, replacement)
+      definition = mutant.subject.ast_node
+      replaced, found = substitute(whole_def ? definition : method_body(definition), original, replacement)
       replaced if found
     end
 
@@ -110,16 +114,23 @@ module Henitai
       [found ? node.updated(nil, children) : node, found]
     end
 
-    def activated_body(tree, method_name)
+    # The method as activated: a re-evaluated +def+ (ADR-13) or the
+    # +define_method+ block of the fallback.
+    def activated_tree(tree, method_name, whole_def)
+      name = method_name.to_sym
       definition = find_node(tree) do |node|
-        node.type == :block && define_method_call?(node.children[0], method_name)
+        activated_def?(node, name) || (node.type == :block && define_method_call?(node.children[0], name))
       end
-      definition&.children&.at(2)
+      whole_def ? definition : definition && method_body(definition)
+    end
+
+    def activated_def?(node, name)
+      (node.type == :def && node.children[0] == name) || (node.type == :defs && node.children[1] == name)
     end
 
     def define_method_call?(call, method_name)
       call.type == :send && call.children[0].nil? && call.children[1] == :define_method &&
-        call.children[2]&.type == :sym && call.children[2].children[0] == method_name.to_sym
+        call.children[2]&.type == :sym && call.children[2].children[0] == method_name
     end
 
     def find_node(node, &)

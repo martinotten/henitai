@@ -161,7 +161,7 @@ RSpec.describe Henitai::FidelityCheck do
     expect(violation(mutant)).to include("changes the syntax form of `kwargs`")
   end
 
-  it "rejects a mutant spliced at a shifted offset after multibyte characters" do
+  it "accepts a mutant after multibyte characters in the method" do
     mutant = mutant_for(<<~RUBY, "replaced + with -")
       class Sample
         def check(x)
@@ -171,10 +171,10 @@ RSpec.describe Henitai::FidelityCheck do
       end
     RUBY
 
-    expect(violation(mutant)).to match(/not valid Ruby|differs from the reported mutation/)
+    expect(violation(mutant)).to be_nil
   end
 
-  it "rejects a mutation outside the executed method body" do
+  it "accepts a mutation in a default value of a reopened def" do
     mutant = mutant_for(<<~RUBY, "replaced + with -")
       class Sample
         def call(x = 1 + 2)
@@ -183,10 +183,22 @@ RSpec.describe Henitai::FidelityCheck do
       end
     RUBY
 
+    expect(violation(mutant)).to be_nil
+  end
+
+  it "rejects a mutation outside the body of a define_method subject" do
+    mutant = mutant_for(<<~RUBY, "replaced + with -")
+      class Sample
+        define_method(:call) do |x = (1 + 2)|
+          x
+        end
+      end
+    RUBY
+
     expect(violation(mutant)).to include("outside the executed method body")
   end
 
-  it "rejects an activation source that is not valid Ruby" do
+  it "accepts a method that yields" do
     mutant = mutant_for(<<~RUBY, "replaced + with -")
       class Sample
         def each_doubled(x)
@@ -195,7 +207,7 @@ RSpec.describe Henitai::FidelityCheck do
       end
     RUBY
 
-    expect(violation(mutant)).to include("not valid Ruby: Invalid yield")
+    expect(violation(mutant)).to be_nil
   end
 
   it "reports an activation source that cannot be built" do
@@ -204,7 +216,7 @@ RSpec.describe Henitai::FidelityCheck do
         def total(a, b) = a + b
       end
     RUBY
-    allow(Henitai::Mutant::Activator).to receive(:activation_source_for).and_return(nil)
+    allow(Henitai::Mutant::Activator).to receive(:activation_for).and_return(nil)
 
     expect(violation(mutant)).to eq("activation source could not be built")
   end
@@ -215,7 +227,7 @@ RSpec.describe Henitai::FidelityCheck do
         def total(a, b) = a + b
       end
     RUBY
-    allow(Henitai::Mutant::Activator).to receive(:activation_source_for).and_raise(RuntimeError, "boom")
+    allow(Henitai::Mutant::Activator).to receive(:activation_for).and_raise(RuntimeError, "boom")
 
     expect(violation(mutant)).to eq("fidelity could not be verified (RuntimeError: boom)")
   end

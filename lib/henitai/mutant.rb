@@ -21,6 +21,8 @@ module Henitai
 
     autoload :Activator, "henitai/mutant/activator"
     autoload :ParameterSource, "henitai/mutant/parameter_source"
+    autoload :Activation, "henitai/mutant/activation"
+    autoload :DefInjection, "henitai/mutant/def_injection"
 
     # Status-Vokabular folgt dem Stryker mutation-testing-report-schema.
     # :equivalent ist ein Henitai-interner Status (wird im JSON als "Ignored" serialisiert,
@@ -40,7 +42,7 @@ module Henitai
 
     attr_reader :id, :subject, :operator, :original_node, :mutated_node,
                 :mutation_type, :description, :location,
-                :precomputed_stable_id, :precomputed_activation_source
+                :precomputed_stable_id, :precomputed_activation
     attr_accessor :status, :killing_test, :duration, :covered_by, :tests_completed,
                   :ignore_reason, :status_reason, :from_cache
 
@@ -51,7 +53,7 @@ module Henitai
     # @param location [Hash] { file:, start_line:, end_line:, start_col:, end_col: }
     # rubocop:disable Metrics/ParameterLists
     def initialize(subject:, operator:, nodes:, description:, location:,
-                   precomputed_stable_id: nil, precomputed_activation_source: nil)
+                   precomputed_stable_id: nil, precomputed_activation: nil)
       @id            = SecureRandom.uuid
       @subject       = subject
       @operator      = operator
@@ -60,7 +62,7 @@ module Henitai
       @description   = description
       @location      = location
       @precomputed_stable_id = precomputed_stable_id
-      @precomputed_activation_source = precomputed_activation_source
+      @precomputed_activation = precomputed_activation
       reset_outcome
     end
     # rubocop:enable Metrics/ParameterLists

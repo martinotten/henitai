@@ -31,23 +31,34 @@ module Henitai
         new.activate!(mutant)
       end
 
-      # Returns the +define_method+ source string for +mutant+ without
-      # actually evaluating it. Used to pre-compute activation recipes.
-      # Returns nil if the source cannot be computed (e.g. unsupported AST node).
-      def self.activation_source_for(mutant)
-        new.send(:method_source, mutant)
+      # Returns the Activation for +mutant+ without evaluating it: a real
+      # +def+ in the original lexical scope when the subject can be reopened
+      # (ADR-13), otherwise the +define_method+ fallback. Used by the fidelity
+      # check and to pre-compute activation recipes. Returns nil if the source
+      # cannot be computed (e.g. unsupported AST node).
+      def self.activation_for(mutant)
+        new.activation_for(mutant)
       rescue StandardError
         nil
+      end
+
+      def self.activation_source_for(mutant)
+        activation_for(mutant)&.source
+      end
+
+      def activation_for(mutant)
+        DefInjection.build(mutant, def_replacement(mutant)) ||
+          Activation.new(source: method_source(mutant), mode: :class_eval, file: EVAL_FILE)
       end
 
       def activate!(mutant)
         subject = mutant.subject
         raise ArgumentError, "Cannot activate wildcard subjects" if subject.method_name.nil?
 
-        source = mutant.precomputed_activation_source || method_source(mutant)
+        activation = mutant.precomputed_activation || activation_for(mutant)
         target = target_for(subject)
         Henitai::WarningSilencer.silence do
-          target.class_eval(source, EVAL_FILE, __LINE__ + 1)
+          evaluate(activation, target, subject)
           nil
         end
       rescue Unparser::UnsupportedNodeError, SyntaxError
@@ -55,6 +66,41 @@ module Henitai
       end
 
       private
+
+      def evaluate(activation, target, subject)
+        return inject_def(activation, target, subject) if activation.mode == :toplevel
+
+        target.class_eval(activation.source, EVAL_FILE, __LINE__)
+      end
+
+      # A re-evaluated +def+ is public, so the method's visibility -- or its
+      # +module_function+ copy -- is read before and restored after.
+      def inject_def(activation, target, subject)
+        name = subject.method_name.to_sym
+        owner = subject.method_type == :class ? target.singleton_class : target
+        visibility = visibility_of(owner, name)
+        copy = module_function_copy?(target, name, subject)
+        TOPLEVEL_BINDING.eval(activation.source, activation.file, activation.line)
+        return target.send(:module_function, name) if copy
+
+        owner.send(visibility, name) if visibility
+      end
+
+      def visibility_of(owner, name)
+        return :private if owner.private_method_defined?(name)
+
+        :protected if owner.protected_method_defined?(name)
+      end
+
+      def module_function_copy?(target, name, subject)
+        subject.method_type == :instance && !target.is_a?(Class) &&
+          target.private_method_defined?(name) && target.singleton_class.method_defined?(name)
+      end
+
+      def def_replacement(mutant)
+        original_range = mutant.original_node&.location&.expression
+        replacement_source(mutant, original_range) if original_range
+      end
 
       def target_for(subject)
         target = load_target(subject)

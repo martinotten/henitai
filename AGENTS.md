@@ -144,9 +144,15 @@ coverage and is excluded from `includes` in `.henitai.yml`.
 - Source parsing uses Prism's translation layer (a real AST, not regex).
   `RubyVM::AbstractSyntaxTree` is for inspection only, not the mutation
   backend.
-- Mutants run through `Module#define_method` injection inside forked worker
-  processes. Process isolation is the required default model, not thread-only
-  parallelism.
+- Each mutant runs inside a forked child process. The child first loads the
+  spec or test files and the code they require; only then is the mutant
+  activated, by re-evaluating the subject's own `def` with the mutation
+  spliced in, inside its original `module`/`class` openers and at its original
+  file and line (ADR-13, `Mutant::DefInjection`). Visibility and
+  `module_function` copies are restored. `define_method` remains only as the
+  fallback for subjects that cannot be reopened by name (`define_method`
+  subjects, `class << obj`). Process isolation is the required default model,
+  not thread-only parallelism.
 - `ExecutionEngine` runs mutants linearly by default (`config.jobs`, default
   `1`). With more jobs, `ProcessWorkerRunner` drives a single-threaded event
   loop and `SlotScheduler` owns spawning, reaping, timeouts and draining. Every

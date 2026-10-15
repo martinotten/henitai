@@ -244,8 +244,8 @@ RSpec.describe Henitai::Reporter::Json do
         covered_by: []
       )
       allow(Henitai::Mutant::Activator)
-        .to receive(:activation_source_for).with(survived)
-        .and_return("define_method(:bar) do\n  nil\nend\n")
+        .to receive(:activation_for).with(survived)
+        .and_return(Henitai::Mutant::Activation.new(source: "define_method(:bar) do\n  nil\nend\n", mode: :class_eval))
 
       result = Struct.new(:to_stryker_schema, :session_id, :mutants).new(
         {
@@ -266,7 +266,7 @@ RSpec.describe Henitai::Reporter::Json do
       )
       expect(File).to exist(recipe_path)
       recipes = JSON.parse(File.read(recipe_path))
-      expect(recipes["stable-abc"]["activationSource"]).to eq("define_method(:bar) do\n  nil\nend\n")
+      expect(recipes["stable-abc"]["activation"]["source"]).to eq("define_method(:bar) do\n  nil\nend\n")
     end
   end
 
