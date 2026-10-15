@@ -942,6 +942,22 @@ RSpec.describe Henitai::Mutant::Activator do
       end
     end
 
+    it "keeps a private class method private" do
+      Dir.mktmpdir do |dir|
+        source = <<~RUBY
+          class DiHidden
+            def self.secret = 1
+            private_class_method :secret
+          end
+        RUBY
+        activate_in(dir, source, "DiHidden.secret", constants: ["DiHidden"], mutate: first_int(1).merge(to: int(2)))
+
+        hidden = DiHidden.singleton_class
+        expect([hidden.private_method_defined?(:secret), hidden.instance_method(:secret).bind_call(DiHidden)])
+          .to eq([true, 2])
+      end
+    end
+
     # (a && b) && c with the inner && replaced by || must run as (a || b) && c,
     # not as the a || (b && c) a textual splice would produce.
     it "keeps the reported mutation when it sits inside a longer expression" do

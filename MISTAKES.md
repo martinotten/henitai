@@ -199,3 +199,19 @@ already reported a timeout and quoted a log that kept growing.
 process would have exited by itself. And confirm the red: revert the fix and
 watch the spec fail before trusting it — this one passed both ways, and only
 the runtime (120s vs 2s) gave it away.
+
+## 2026-10-15 — Visibility restored on the singleton of the singleton
+
+**What happened.** The def-injection activator (ADR-13) read and restored the
+visibility of a class method on `target.singleton_class`, but `target_for`
+already returns the singleton class for class methods. The lookup therefore
+asked the singleton's singleton, found nothing, and every
+`private_class_method` became public once its mutant was injected.
+
+**Root cause.** Two helpers each applied the "class method means singleton
+class" rule, and the visibility spec only covered an instance method, where
+the double application is invisible.
+
+**Prevention.** Apply a target transformation in exactly one place and name
+the variable after what it holds. When a behavior has an instance and a class
+variant, spec both.

@@ -74,16 +74,16 @@ module Henitai
       end
 
       # A re-evaluated +def+ is public, so the method's visibility -- or its
-      # +module_function+ copy -- is read before and restored after.
+      # +module_function+ copy -- is read before and restored after. +target+
+      # is already the singleton class for a class method.
       def inject_def(activation, target, subject)
         name = subject.method_name.to_sym
-        owner = subject.method_type == :class ? target.singleton_class : target
-        visibility = visibility_of(owner, name)
+        visibility = visibility_of(target, name)
         copy = module_function_copy?(target, name, subject)
         TOPLEVEL_BINDING.eval(activation.source, activation.file, activation.line)
         return target.send(:module_function, name) if copy
 
-        owner.send(visibility, name) if visibility
+        target.send(visibility, name) if visibility
       end
 
       def visibility_of(owner, name)
