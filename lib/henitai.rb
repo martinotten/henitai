@@ -65,6 +65,7 @@ module Henitai
   autoload :SourceFileSelection, "henitai/source_file_selection"
   autoload :SubjectSelection, "henitai/subject_selection"
   autoload :ScenarioExecutionResult, "henitai/scenario_execution_result"
+  autoload :ExampleSummary, "henitai/example_summary"
   autoload :MutantVerdict, "henitai/mutant_verdict"
   autoload :CoverageFormatter, "henitai/coverage_formatter"
   autoload :MinitestCoverageReporter, "henitai/minitest_coverage_reporter"

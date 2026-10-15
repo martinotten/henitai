@@ -70,7 +70,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reports. History recording and export now warn instead.
 - Forked mutant children reset the INT, TERM, HUP and CHLD handlers inherited
   from the parent, so a draining SIGTERM is no longer ignored.
-- A zero-example check no longer matches `10 examples, 0 failures`.
+- A zero-example check no longer matches `10 examples, 0 failures`, nor a
+  `No examples found.` or `0 examples, 0 failures` quoted in failure output;
+  only the run's last summary line counts. Such kills were reported as
+  `CompileError`.
 - A run in which harness errors (`CompileError`) left no mutant to score now
   exits `1` with a warning instead of passing its threshold with nothing
   tested.

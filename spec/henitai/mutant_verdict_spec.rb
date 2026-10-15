@@ -75,6 +75,24 @@ RSpec.describe Henitai::MutantVerdict do
       .to eq([:compile_error, "no examples ran"])
   end
 
+  it "keeps a kill whose failure output quotes a zero-example summary" do
+    stdout = <<~OUT
+      Failures:
+        1) quotes source
+           Failure/Error: expect(run).to eq("0 examples, 0 failures")
+           # No examples found.
+
+      14 examples, 2 failures
+    OUT
+
+    expect(verdict(exited(1), tests_finished(1), stdout:)).to eq([:killed, nil])
+  end
+
+  it "judges a run by its last summary line" do
+    expect(verdict(exited(0), tests_finished(0), stdout: "3 examples, 0 failures\n0 examples, 0 failures\n"))
+      .to eq([:compile_error, "no examples ran"])
+  end
+
   it "keeps a kill when examples ran and an error occurred outside of them" do
     stdout = "10 examples, 0 failures, 1 error occurred outside of examples\n"
 
