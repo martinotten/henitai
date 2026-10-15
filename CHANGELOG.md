@@ -89,6 +89,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as `Foo#empty?`, `Foo#save!`, `Foo#name=` and `Foo#==`, select their method
   instead of nothing.
 - Mutants from different operators that produce the same program run once.
+- The implicit value of a shorthand hash pair (`build(config:)`) is no longer
+  mutated. Its replacement rewrote the key to `build(nil:)`.
 - A mutant that removes the only assignment of a local variable read later in
   the method is no longer generated. Ruby parses the later read as a method
   call, so every such mutant failed with a `NameError` wherever it ran.

@@ -350,6 +350,16 @@ RSpec.describe Henitai::MutantGenerator do
       end
     end
 
+    it "does not mutate the implicit value of a shorthand hash pair" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "lib/short.rb", "class Short\n  def run = build(config:)\nend\n")
+        subjects = Henitai::SubjectResolver.new.resolve_from_files([path])
+        mutants = described_class.new.generate(subjects, [Henitai::Operators::MethodExpression.new])
+
+        expect(mutants.map { |mutant| mutant.original_node.location.expression.source }).to eq(["build(config:)"])
+      end
+    end
+
     it "keeps the identity of a mutant that does not collide" do
       Dir.mktmpdir do |dir|
         path = write_source(dir, "lib/single.rb", "class Single\n  def run(x) = x + 1\nend\n")
