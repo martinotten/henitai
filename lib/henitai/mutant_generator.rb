@@ -22,7 +22,7 @@ module Henitai
         )
       end
 
-      sample_mutants(distinct_identities(mutants), config:, sampling_strategy:)
+      sample_mutants(distinct_programs(distinct_identities(mutants)), config:, sampling_strategy:)
     end
 
     private
@@ -141,6 +141,19 @@ module Henitai
         group.each { |mutant| mutant.identity_discriminator = node_end(mutant) } if group.size > 1
       end
       mutants.uniq { |mutant| MutantIdentity.stable_id(mutant) }
+    end
+
+    # Different operators can produce the same program -- BooleanLiteral's
+    # `return false` for `return true if x` is also ReturnValue's. Running it
+    # twice would count one result twice; the first mutant is kept. Mutants
+    # without a computable activation are left to the later checks.
+    def distinct_programs(mutants)
+      seen = {}
+      mutants.select do |mutant|
+        program = Mutant::Activator.activation_source_for(mutant)
+        key = [mutant.subject, program]
+        program.nil? || (!seen.key?(key) && (seen[key] = true))
+      end
     end
 
     def node_end(mutant)
