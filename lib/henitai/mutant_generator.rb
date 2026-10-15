@@ -76,7 +76,7 @@ module Henitai
         # Replacing it would insert a quoted literal into the text -- a
         # different mutation than reported, or a SyntaxError -- so it is not
         # a StringLiteral site; its container is mutated instead.
-        return if raw_text_segment?(node, parent)
+        return if raw_text_segment?(node, parent) || shorthand_value?(node, parent)
 
         apply_operators(node) if node_within_subject_range?(node)
         node.children.each do |child|
@@ -91,6 +91,14 @@ module Henitai
         return false unless node.type == :str && parent
 
         RAW_TEXT_CONTAINERS.include?(parent.type) || word_array?(parent)
+      end
+
+      # The value of +build(config:)+ is an implicit call that shares its
+      # source range with the key; replacing it would rewrite the key.
+      def shorthand_value?(node, parent)
+        return false unless parent&.type == :pair && node.equal?(parent.children[1])
+
+        node.location.expression == parent.children[0].location.expression
       end
 
       def word_array?(node)
