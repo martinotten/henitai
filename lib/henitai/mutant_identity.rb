@@ -19,8 +19,12 @@ module Henitai
       digest(legacy_identity_components(mutant))
     end
 
+    # The discriminator is present only for mutants that would otherwise
+    # share an identity -- nested nodes starting at the same position, such
+    # as the calls of `x.a.b.c` -- so every other identity stays unchanged.
     def self.identity_components(mutant)
-      legacy_identity_components(mutant) + [site_offset(mutant)]
+      discriminator = mutant.respond_to?(:identity_discriminator) && mutant.identity_discriminator
+      legacy_identity_components(mutant) + [site_offset(mutant)] + [discriminator].compact
     end
     private_class_method :identity_components
 

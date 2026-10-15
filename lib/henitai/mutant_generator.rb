@@ -22,7 +22,7 @@ module Henitai
         )
       end
 
-      sample_mutants(mutants, config:, sampling_strategy:)
+      sample_mutants(distinct_identities(mutants), config:, sampling_strategy:)
     end
 
     private
@@ -131,6 +131,22 @@ module Henitai
           end
         end
       end
+    end
+
+    # Mutants sharing an identity are told apart by where their original node
+    # ends; those that also end at the same place are the same mutation
+    # twice, and only the first is kept.
+    def distinct_identities(mutants)
+      mutants.group_by { |mutant| MutantIdentity.stable_id(mutant) }.each_value do |group|
+        group.each { |mutant| mutant.identity_discriminator = node_end(mutant) } if group.size > 1
+      end
+      mutants.uniq { |mutant| MutantIdentity.stable_id(mutant) }
+    end
+
+    def node_end(mutant)
+      range = mutant.original_node&.location&.expression
+      start = mutant.subject.source_range&.begin
+      range && start ? "#{range.last_line - start}:#{range.last_column}" : range&.end_pos.to_s
     end
 
     def sample_mutants(mutants, config:, sampling_strategy:)

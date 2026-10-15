@@ -46,6 +46,9 @@ module Henitai
                 :precomputed_stable_id, :precomputed_activation
     attr_accessor :status, :killing_test, :duration, :covered_by, :tests_completed,
                   :ignore_reason, :status_reason, :from_cache
+    # Set by MutantGenerator only for mutants whose identity would otherwise
+    # collide with another one (see MutantIdentity).
+    attr_accessor :identity_discriminator
 
     # @param subject [Subject] the subject being mutated
     # @param operator [Symbol] operator name, e.g. :ArithmeticOperator

@@ -284,6 +284,7 @@ module Henitai
     attr_accessor tests_completed: Integer?
     attr_accessor ignore_reason: String?
     attr_accessor status_reason: String?
+    attr_accessor identity_discriminator: String?
     attr_accessor from_cache: bool
     attr_reader precomputed_stable_id: String?
     attr_reader precomputed_activation: untyped
