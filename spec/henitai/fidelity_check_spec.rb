@@ -147,6 +147,18 @@ RSpec.describe Henitai::FidelityCheck do
     expect(violation(mutant)).to be_nil
   end
 
+  it "accepts a mutant that removes all keyword arguments" do
+    mutant = mutant_for(<<~RUBY, "removed keyword arguments", operators: :full)
+      class Sample
+        def call(x)
+          build(x, size: 2)
+        end
+      end
+    RUBY
+
+    expect(violation(mutant)).to be_nil
+  end
+
   it "accepts a mutant that removes a keyword argument" do
     mutant = mutant_for(<<~RUBY, /removed hash pair/, operators: :full)
       class Sample

@@ -567,6 +567,24 @@ RSpec.describe Henitai::MutantGenerator do
       end
     end
 
+    {
+      "a heredoc" => "<<~TXT\n      hello \#{x}\n    TXT",
+      "a regexp" => "/abc/",
+      "a word array" => "%w[alpha beta]",
+      "an interpolated symbol" => ":\"k\#{x}\""
+    }.each do |container, expression|
+      it "does not mutate raw text segments inside #{container}" do
+        Dir.mktmpdir do |dir|
+          path = write_source(dir, "lib/sample.rb", "class Sample\n  def run(x)\n    #{expression}\n  end\nend\n")
+          subject = make_subject_for(path, "Sample#run")
+          visitor = new_visitor(subject, [Henitai::Operators::StringLiteral.new])
+          visitor.process(Henitai::SourceParser.parse_file(path))
+
+          expect(visitor.mutants.map { |m| m.original_node.type }).not_to include(:str)
+        end
+      end
+    end
+
     it "pre-computes subject source_range once during initialization" do
       subject = instance_double(
         Henitai::Subject,
