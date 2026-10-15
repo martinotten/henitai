@@ -32,8 +32,13 @@ RSpec.describe Henitai::Operators::ReturnValue do
     find_nodes(parse(source), :return).first
   end
 
-  def final_expression_node(source)
-    method_body = method_body_node(source)
+  # Taken from the subject's own AST: the operator recognises the final
+  # expression by identity, not by structure.
+  def final_expression_node(subject)
+    ast = subject.ast_node
+    definition = ast if %i[def defs].include?(ast.type)
+    definition ||= ast.children.find { |child| child.respond_to?(:type) && child.type == :def }
+    method_body = definition.children.last
     return method_body unless method_body.type == :begin
 
     method_body.children.reverse_each.find { |child| child.respond_to?(:type) }
@@ -102,6 +107,14 @@ RSpec.describe Henitai::Operators::ReturnValue do
     end
   end
 
+  it "mutates only the final expression, not an earlier one that looks the same" do
+    source = "def run(record)\n  record.save\n  record.save\nend\n"
+    subject = method_subject(source)
+    first, last = subject.ast_node.children.last.children
+
+    expect([mutate(first, subject:), mutate(last, subject:).size]).to eq([[], 3])
+  end
+
   it "ignores explicit return nil" do
     source = <<~RUBY
       def run
@@ -135,7 +148,7 @@ RSpec.describe Henitai::Operators::ReturnValue do
     RUBY
 
     subject = method_subject(source)
-    mutants = mutate(final_expression_node(source), subject:)
+    mutants = mutate(final_expression_node(subject), subject:)
 
     expect(mutants.map(&:description)).to contain_exactly(
       "replaced final expression with nil",
@@ -152,7 +165,7 @@ RSpec.describe Henitai::Operators::ReturnValue do
     RUBY
 
     subject = method_subject(source)
-    mutants = mutate(final_expression_node(source), subject:)
+    mutants = mutate(final_expression_node(subject), subject:)
 
     expect(mutants.map(&:description)).to contain_exactly(
       "replaced final expression with nil",
@@ -169,7 +182,7 @@ RSpec.describe Henitai::Operators::ReturnValue do
     RUBY
 
     subject = method_subject(source)
-    mutants = mutate(final_expression_node(source), subject:)
+    mutants = mutate(final_expression_node(subject), subject:)
 
     expect(mutants.map(&:description)).to contain_exactly(
       "replaced final expression with nil",
@@ -185,7 +198,7 @@ RSpec.describe Henitai::Operators::ReturnValue do
     RUBY
 
     subject = method_subject(source)
-    mutants = mutate(final_expression_node(source), subject:)
+    mutants = mutate(final_expression_node(subject), subject:)
 
     expect(mutants.map(&:description)).to contain_exactly(
       "replaced final expression with 0",

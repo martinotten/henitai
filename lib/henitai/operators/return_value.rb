@@ -47,7 +47,7 @@ module Henitai
       end
 
       def mutate_implicit_return(node, subject:)
-        return [] unless node == final_expression_node(subject&.ast_node)
+        return [] unless node.equal?(final_expression_node(subject&.ast_node))
 
         replacement_nodes(node).map do |replacement|
           build_mutant(
