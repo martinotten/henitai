@@ -101,7 +101,7 @@ Findings: ACT-01 to ACT-08, FLT-02, and EXE-13 (the activation order).
    - Mutations in default values become activatable (ACT-08).
    - Heredoc bodies are included in the range (ACT-04).
 3. **Restore what `def` does not carry over.** Capture the method's visibility and its `module_function` state before injection, and re-apply them afterwards (ACT-07). Keep the magic comments of the source file, including `frozen_string_literal`.
-4. **Keep `define_method` as a documented fallback** for subjects that cannot be reopened: `define_method` subjects, methods inside `Struct.new`/`Data.define` blocks, and `class << obj`. The report marks mutants activated this way.
+4. **Keep `define_method` as a documented fallback** for subjects that cannot be reopened, which after Phase B are only `define_method` subjects. Constructor blocks assigned to a constant reopen with `Point.class_eval do`; `class << CONST` reopens as written; `class << obj` for a non-constant `obj` yields no subjects. The report marks mutants activated this way.
 5. **Activate after the environment has loaded.** The order becomes: load the environment and the spec files, then activate, then run. This removes the activator's own `load` of the subject file and the `$LOADED_FEATURES` workaround (EXE-13). It interacts with WS4 (fork server).
 6. **Make the stillborn filter validate the real activation source** (FLT-02). It reuses the WS0 fidelity parse.
 7. **Bump the recipe format version** in `SurvivorActivationCache` and the precomputed activation sources, so stale recipes are not reused.
@@ -256,6 +256,31 @@ environment is loaded. A subject whose superclass lives in another file cannot
 be tested at all today. **Phase B should start with WS2.5 (activate after the
 environment has loaded) together with ADR-13**, before the rest of WS2 and
 WS3.
+
+## Phase B Status (2026-10-15)
+
+Phase B is implemented on branch `fix/phase-b-activation`, stacked on Phase A.
+
+| Item | Status | Notes |
+|---|---|---|
+| WS2.1 `def` in lexical nesting | done | `Mutant::DefInjection`, `Subject#lexical_scope`; ADR-13 accepted |
+| WS2.2 Splice in the full `def` range | done | character offsets, heredoc bodies, default values |
+| WS2.3 Restore visibility and `module_function` | done | a double `singleton_class` lookup for class methods was found and fixed (MISTAKES.md) |
+| WS2.4 `define_method` fallback | partly | the fallback now covers only `define_method` subjects; the report does not mark fallback mutants yet |
+| WS2.5 Activate after load | done | `run_tests` after-load hook; `environment_failed` outcome. The activator still loads a subject file whose constant is missing (EXE-13 workaround), now only as a fallback |
+| WS2.6 Stillborn filter on the real activation | done | also suppresses removed local assignments (ACT-10) |
+| WS2.7 Recipe format | done | recipes carry `activation`; older recipes are ignored |
+| WS3.1 Modern AST | done | `SourceParser::Builder` with `modernize` |
+| WS3.2 Precedence and `elsif` | done | `Mutant::Replacement` parenthesises operator replacements; `elsif` mutates only its condition |
+| WS3.3 Character offsets | done | |
+| WS3.5 GEN-04, GEN-05, GEN-06, GEN-07 | done | |
+| WS3.5 GEN-09 | done | `RegexMetacharacters`; dynamic and multi-line regexps are left unmutated rather than rewritten partially |
+| WS3.5 GEN-10 | done | `ConstantPath`; the activator resolves the real target lexically at runtime |
+| WS3.5 GEN-11 | done | deduplicated on the activated program per subject |
+| GEN-12 | done | `MethodExpression` replaces a call together with its block |
+| Shorthand hash values | done | found in Phase B: `build(config:)` became `build(nil:)` |
+
+Measurements follow once the final Phase B dogfood run has finished.
 
 ## Sequencing
 
