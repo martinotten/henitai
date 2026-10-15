@@ -5,8 +5,11 @@ require_relative "../parser_current"
 module Henitai
   module Operators
     # Replaces generic method call results with nil.
+    #
+    # A call with a block is replaced together with its block: replacing only
+    # the call would leave +nil { ... }+ behind, which does not parse.
     class MethodExpression < Henitai::Operator
-      NODE_TYPES = [:send].freeze
+      NODE_TYPES = %i[send block numblock].freeze
       EXCLUDED_METHODS = %i[
         +
         -
@@ -31,9 +34,10 @@ module Henitai
       end
 
       def mutate(node, subject:)
-        return [] unless node.type == :send
+        call = called_method(node)
+        return [] unless call&.type == :send
 
-        _receiver, method_name, *_arguments = node.children
+        _receiver, method_name, *_arguments = call.children
         return [] if excluded_method?(method_name)
 
         [
@@ -47,6 +51,13 @@ module Henitai
       end
 
       private
+
+      def called_method(node)
+        case node.type
+        when :send then node
+        when :block, :numblock then node.children.first
+        end
+      end
 
       def excluded_method?(method_name)
         method_name.to_s.end_with?("=") || EXCLUDED_METHODS.include?(method_name)

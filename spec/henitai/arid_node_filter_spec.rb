@@ -88,6 +88,12 @@ RSpec.describe Henitai::AridNodeFilter do
     expect(described_class.new.suppressed?(node, config)).to be(true)
   end
 
+  it "suppresses blocks attached to an arid call" do
+    node = parse('Rails.logger.debug { "x" }')
+
+    expect(described_class.new.suppressed?(node, config)).to be(true)
+  end
+
   it "suppresses invariant helper calls" do
     node = parse("foo.is_a?(String)")
 

@@ -19,8 +19,8 @@ RSpec.describe Henitai::Operators::MethodExpression do
     described_class.new.mutate(node, subject: mutation_subject)
   end
 
-  it "declares the generic send node type" do
-    expect(described_class.node_types).to eq([:send])
+  it "declares the send and block node types" do
+    expect(described_class.node_types).to eq(%i[send block numblock])
   end
 
   it "replaces generic method calls with nil" do
@@ -30,6 +30,24 @@ RSpec.describe Henitai::Operators::MethodExpression do
       description: "replaced method call with nil",
       mutated_node: satisfy { |node| node.type == :nil }
     )
+  end
+
+  it "replaces a call with its block as a whole" do
+    node = parse("items.map { |item| item * 2 }")
+
+    mutant = described_class.new.mutate(node, subject: mutation_subject).first
+
+    expect([mutant.original_node, mutant.mutated_node.type]).to eq([node, :nil])
+  end
+
+  it "replaces a call with a numbered-parameter block as a whole" do
+    node = parse("items.map { _1 * 2 }")
+
+    expect(described_class.new.mutate(node, subject: mutation_subject).map(&:original_node)).to eq([node])
+  end
+
+  it "ignores lambda literals" do
+    expect(described_class.new.mutate(parse("-> { work }"), subject: mutation_subject)).to eq([])
   end
 
   it "ignores non-send nodes" do
