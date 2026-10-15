@@ -140,6 +140,44 @@ RSpec.describe Henitai::Operators::RegexMutator do
     expect(mutate(node)).to be_empty
   end
 
+  def mutations_of(source)
+    mutate(find_nodes(parse(source), :regexp).first).to_h do |mutant|
+      [mutant.description, mutant.mutated_node.children.first.children.first]
+    end
+  end
+
+  it "does not mutate an interpolated regexp" do
+    expect(mutations_of("/ab+\#{y}cd/")).to eq({})
+  end
+
+  it "does not mutate a regexp that spans several lines" do
+    expect(mutations_of("%r{\n  a+\n  b*\n}x")).to eq({})
+  end
+
+  it "does not report the caret of a negated character class as an anchor" do
+    expect(mutations_of("/[^0-9]+/")).to eq("replaced + quantifier with *" => "[^0-9]*")
+  end
+
+  it "removes the anchor rather than an earlier negated-class caret" do
+    expect(mutations_of("/[^a]|^b/")["removed ^ anchor"]).to eq("[^a]|b")
+  end
+
+  it "leaves quantifier characters inside a character class alone" do
+    expect(mutations_of("/[+*]x/")).to eq("negated character class" => "[^+*]x")
+  end
+
+  it "leaves escaped metacharacters alone" do
+    expect(mutations_of('/\\[\\^\\$/')).to eq({})
+  end
+
+  it "swaps a quantifier that follows an escaped backslash" do
+    expect(mutations_of('/a\\\\+/')).to eq("replaced + quantifier with *" => 'a\\\\*')
+  end
+
+  it "negates a character class that contains a POSIX bracket" do
+    expect(mutations_of("/[[:alpha:]_]/")).to eq("negated character class" => "[^[:alpha:]_]")
+  end
+
   def regexp_node(source)
     Parser::AST::Node.new(
       :regexp,
