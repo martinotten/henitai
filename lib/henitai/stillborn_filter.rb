@@ -12,15 +12,62 @@ module Henitai
   # is only valid inside its call or block, so checking it on its own would
   # drop valid mutants. Without a method to splice into, the rendered
   # fragment is compiled inside a bare method instead.
+  #
+  # A mutant that removes the only assignment of a local which is read later
+  # is suppressed as well (ACT-10): Ruby then parses the later read as a
+  # method call, so the mutant would fail with a NameError wherever it runs
+  # -- a trivial kill of a program other than the reported one.
   class StillbornFilter
+    # Collects the names of identifiers Ruby parses as method calls.
+    class VariableCalls < Prism::Visitor
+      def self.tally(node)
+        new.tap { |visitor| node.accept(visitor) }.names.tally
+      end
+
+      attr_reader :names
+
+      def initialize
+        super
+        @names = []
+      end
+
+      def visit_call_node(node)
+        @names << node.name if node.variable_call?
+        super
+      end
+    end
+
+    def initialize
+      @original_calls = {}.compare_by_identity
+    end
+
     def suppressed?(mutant)
       activation = in_context_activation(mutant)
-      return Prism.parse(activation.source).errors.any? if activation
+      return fragment_invalid?(mutant) unless activation
 
-      fragment_invalid?(mutant)
+      result = Prism.parse(activation.source)
+      result.errors.any? || drops_local?(mutant.subject.ast_node, result.value)
     end
 
     private
+
+    def drops_local?(method_node, activated)
+      original = @original_calls[method_node] ||= original_calls(method_node)
+      VariableCalls.tally(activated).any? do |name, count|
+        count > original.fetch(name, 0) && local_read?(method_node, name)
+      end
+    end
+
+    def original_calls(method_node)
+      VariableCalls.tally(Prism.parse(method_node.location.expression.source).value)
+    end
+
+    def local_read?(node, name)
+      return false unless node.is_a?(Parser::AST::Node)
+      return true if node.type == :lvar && node.children.first == name
+
+      node.children.any? { |child| local_read?(child, name) }
+    end
 
     def in_context_activation(mutant)
       return unless mutant.subject.respond_to?(:ast_node) && mutant.subject.ast_node

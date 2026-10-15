@@ -89,6 +89,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as `Foo#empty?`, `Foo#save!`, `Foo#name=` and `Foo#==`, select their method
   instead of nothing.
 - Mutants from different operators that produce the same program run once.
+- A mutant that removes the only assignment of a local variable read later in
+  the method is no longer generated. Ruby parses the later read as a method
+  call, so every such mutant failed with a `NameError` wherever it ran.
 - Subjects are attributed to the right namespace. A `class ::Top` inside
   `module Outer` is `Top`, not `Outer::Top`. A `def Other.name` inside `Outer`
   belongs to `Other`, not `Outer`. Methods of `class << obj` or `def obj.name`
