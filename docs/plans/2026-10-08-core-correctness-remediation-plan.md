@@ -280,7 +280,37 @@ Phase B is implemented on branch `fix/phase-b-activation`, stacked on Phase A.
 | GEN-12 | done | `MethodExpression` replaces a call together with its block |
 | Shorthand hash values | done | found in Phase B: `build(config:)` became `build(nil:)` |
 
-Measurements follow once the final Phase B dogfood run has finished.
+Measurements:
+
+| Run | Mutants | Killed | Survived | CompileError | RuntimeError | Timeout | NoCoverage | MS / MSI | Wall time |
+|---|---|---|---|---|---|---|---|---|---|
+| Dogfood 0.5.3 | 1025 | 876 | 68 | 17 | 0 | 11 | 53 | 92.88 % / 85.46 % | 22.0 min |
+| Dogfood Phase A | 1082 | 801 | 65 | 145 | 11 | 11 | 49 | 92.68 % / 74.03 % | 18.9 min |
+| Dogfood Phase B | 1135 | 966 | 90 | 1 | 9 | 12 | 57 | 91.64 % / 85.11 % | 26.7 min |
+| Oracle weak, Phase B | 134 | **0** | 131 | 0 | 0 | 0 | 3 | — | — |
+| Oracle strong, Phase B | 134 | 127 | 1 (expected) | 0 | 3 | 0 | 3 | — | — |
+
+Notes on the measurements:
+
+- **Harness errors are nearly gone.** 145 `CompileError` in Phase A became
+  one: `activator.rb:71`, where the mutation shifts `__LINE__`, a genuine
+  difference the fidelity check is right to reject. No control run failed,
+  so no detection was reclassified (Phase A: 63).
+- **MSI recovers to the 0.5.3 level, now with genuine kills.** The kills
+  Phase A rejected as harness artefacts are tested faithfully.
+- **Remaining `RuntimeError`s are self-hosting artefacts:** mutants of
+  Henitai's own CLI, configuration and process code that make the test run
+  exit or signal itself. They are correctly not counted as kills.
+- **Unfaithful mutants in `lib`:** 3 of 9,388 (light) and 3 of 16,305
+  (full), all at `activator.rb:71`. Before Phase B: 7.3 % and 13.3 %.
+- **Wall time rose** from 18.9 to 26.7 minutes. Each child now loads the
+  spec files before activation, and more mutants run tests instead of
+  failing fast as harness errors. This is the main target of Phase C (WS4,
+  fork server).
+- **The final run exposed three defects, all fixed before it was repeated:**
+  - A control activation lost the body of a heredoc.
+  - A spec failed when run alone, for lack of `require "tmpdir"`.
+  - The zero-example check matched texts quoted in failure output.
 
 ## Sequencing
 
