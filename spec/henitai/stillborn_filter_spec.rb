@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "tmpdir"
 
 RSpec.describe Henitai::StillbornFilter do
   def build_mutant(source)
@@ -19,6 +20,39 @@ RSpec.describe Henitai::StillbornFilter do
         end_col: 1
       }
     )
+  end
+
+  describe "for a resolved method" do
+    # Raw operator output, before the generator's own stillborn filtering.
+    def mutants_of(source, operators: :full)
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "sample.rb")
+        File.write(path, source)
+        subjects = Henitai::SubjectResolver.new.resolve_from_files([path])
+        Henitai::Operator.for_set(operators).flat_map do |operator|
+          subjects.flat_map { |subject| operator_mutants(operator, subject) }
+        end
+      end
+    end
+
+    def operator_mutants(operator, subject)
+      nodes = operator.class.node_types.flat_map { |type| find_nodes(subject.ast_node, type) }
+      nodes.flat_map { |node| operator.mutate(node, subject:) }
+    end
+
+    it "keeps a keyword-argument removal that is only valid inside its call" do
+      mutants = mutants_of("class Sample\n  def call(x) = build(name: x, size: 2)\nend\n")
+      removals = mutants.select { |mutant| mutant.description.start_with?("removed hash pair") }
+
+      expect(removals.map { |mutant| described_class.new.suppressed?(mutant) }).to eq([false, false])
+    end
+
+    it "keeps a mutated next guard inside a block" do
+      mutants = mutants_of("class Sample\n  def call(xs) = xs.each { |x| next if x > 3 }\nend\n", operators: :light)
+      guards = mutants.select { |mutant| mutant.description == "replaced condition with true" }
+
+      expect(guards.map { |mutant| described_class.new.suppressed?(mutant) }).to eq([false])
+    end
   end
 
   it "keeps syntactically valid mutants" do

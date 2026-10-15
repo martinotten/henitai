@@ -33,7 +33,7 @@ RSpec.describe Henitai::Operators::BlockStatement do
   it "preserves block arguments while removing the body" do
     mutant = mutate("foo { |x| x * 2 }").first
 
-    expect(mutant.mutated_node.children[1].children.first.type).to eq(:arg)
+    expect(mutant.mutated_node.children[1].children.first.type).to eq(:procarg0)
   end
 
   it "ignores empty blocks" do

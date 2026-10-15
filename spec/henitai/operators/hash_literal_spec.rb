@@ -17,8 +17,16 @@ RSpec.describe Henitai::Operators::HashLiteral do
     described_class.new.mutate(node, subject: mutation_subject)
   end
 
-  it "declares the hash node type" do
-    expect(described_class.node_types).to eq([:hash])
+  it "declares the hash and keyword-argument node types" do
+    expect(described_class.node_types).to eq(%i[hash kwargs])
+  end
+
+  it "keeps keyword arguments keyword arguments when removing a pair" do
+    node = find_nodes(parse("build(name: x, size: 2)"), :kwargs).first
+    mutants = described_class.new.mutate(node, subject: mutation_subject)
+
+    expect(mutants.map { |mutant| Unparser.unparse(mutant.mutated_node) })
+      .to eq(["", "size: 2", "name: x"])
   end
 
   it "replaces non-empty hashes with empty hashes" do

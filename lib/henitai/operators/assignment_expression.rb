@@ -51,6 +51,8 @@ module Henitai
         when :casgn
           namespace, name = left.children
           Parser::AST::Node.new(:casgn, [namespace, name, right])
+        when :indexasgn
+          left.updated(nil, [*left.children, right])
         when :send
           assignment_name = left.children[1] == :[] ? :[]= : :"#{left.children[1]}="
           receiver, _method_name, *arguments = left.children
