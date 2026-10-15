@@ -102,9 +102,14 @@ spec.
 | ACT-10 | High | I1 | false kill | R1 | A removed assignment turns later reads of the local into method calls |
 | GEN-12 | Medium | I1 | wasted | R1 | MethodExpression leaves a block attached to a removed call |
 | EXE-14 | Medium | I2 | — | R1 | A run whose mutants are all harness errors exits 0 |
+| GEN-13 | Medium | I1 | wasted | R1 | The implicit value of a shorthand hash pair is mutated in place of its key |
+| GEN-14 | Medium | I1 | mislabelled mutant | R1 | RegexMutator ignores escapes and character classes |
+| GEN-15 | Medium | I1 | wrong target | R1 | Singleton methods of non-constant objects are reported as class methods |
 
-The last four rows were found during Phase A by the fidelity check and the
-oracle corpus; see "Findings Added During Phase A" below.
+ACT-09, ACT-10, GEN-12 and EXE-14 were found during Phase A by the fidelity
+check and the oracle corpus; see "Findings Added During Phase A" below.
+GEN-13 to GEN-15 were found during Phase B; see "Findings Added During
+Phase B".
 
 ## Activation (`lib/henitai/mutant/`)
 
@@ -482,6 +487,33 @@ or in the corpus.
 - **Reproduction:** the EXE-01 project after Phase A reports 9 of 9 `CompileError` and exits 0.
 - **Effect:** CI goes green although nothing was tested. Only `--strict-exit-codes` (exit 4) catches it.
 - **Fix direction:** treat an empty denominator with executed or generated mutants as a failed threshold, or at least warn loudly.
+
+## Findings Added During Phase B
+
+With fidelity violations down to a handful, the remaining ones, and the specs
+written for GEN-09 and GEN-10, exposed three more defects. All are fixed on
+`fix/phase-b-activation`.
+
+### GEN-13 The implicit value of a shorthand hash pair is mutated in place of its key
+
+- **Location:** `lib/henitai/mutant_generator.rb` (walk), any operator on `send`
+- **Defect:** in `build(config:)` the pair's value is an implicit call to `config` with the same source range as the key. "replaced method call with nil" splices `build(nil:)`.
+- **Reproduction:** `lib/henitai/runner.rb:93` and `lib/henitai/per_test_coverage_selector.rb:32`; 13 full-set mutants in this repository.
+- **Effect:** a different mutation than reported; the fidelity check rejected it as `CompileError`.
+- **Fix:** the generator skips a pair value whose range equals its key's.
+
+### GEN-14 RegexMutator ignores escapes and character classes
+
+- **Location:** `lib/henitai/operators/regex_mutator.rb`
+- **Defects:** beyond GEN-09, the `gsub` patterns turn `[+-]` into `[*-]` ("replaced + quantifier"), `\[` into `\[^` ("negated character class"), and keep only the first line of a multi-line `/x` regexp.
+- **Fix:** `RegexMetacharacters` scans the pattern, skipping escapes and class contents; only static single-segment regexps are mutated.
+
+### GEN-15 Singleton methods of non-constant objects are reported as class methods
+
+- **Location:** `lib/henitai/subject_resolver.rb`
+- **Defect:** `def obj.name` and methods in `class << registry` were attributed to the enclosing class as class methods.
+- **Effect:** activation patched a method on the wrong object.
+- **Fix:** such methods are no subjects; their owner is not known statically.
 
 ## Measurements
 
