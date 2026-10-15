@@ -2,6 +2,7 @@
 
 require_relative "source_parser"
 require_relative "subject"
+require_relative "constant_path"
 
 module Henitai
   # Resolves AST subjects from Ruby source files.
@@ -39,6 +40,7 @@ module Henitai
 
     def walk(node, namespace:, singleton_context:, subjects:)
       return unless node.respond_to?(:type)
+      return walk_constructor_body(node, namespace, subjects) if constructor_assignment?(node)
       return if anonymous_class_block?(node)
 
       namespace, singleton_context = update_context(
@@ -51,6 +53,26 @@ module Henitai
         collect_subject(node, namespace, singleton_context, subjects)
         traverse_children(node, namespace, singleton_context, subjects)
       end
+    end
+
+    # +Point = Struct.new(:x) do ... end+: the block is evaluated with
+    # class_eval on the new class, so its methods belong to +Point+ while
+    # constant lookup stays in the enclosing scope. +Point.class_eval do+
+    # reproduces exactly that when the method is re-evaluated.
+    def walk_constructor_body(node, namespace, subjects)
+      @scope.push("#{assigned_constant_source(node)}.class_eval do")
+      walk(node.children[2].children[2], namespace: ConstantPath.qualify(namespace, ConstantPath.of(node)),
+                                         singleton_context: false, subjects:)
+    ensure
+      @scope.pop
+    end
+
+    def constructor_assignment?(node)
+      node.type == :casgn && anonymous_class_block?(node.children[2])
+    end
+
+    def assigned_constant_source(node)
+      node.location.expression.begin.join(node.location.name).source
     end
 
     # Tracks the openers of the modules and classes around the walk position,
@@ -66,8 +88,15 @@ module Henitai
     def scope_opener(node)
       case node.type
       when :class, :module then "#{node.type} #{node.children.first.location.expression.source}"
-      when :sclass then node.children.first.type == :self ? "class << self" : nil
+      when :sclass then singleton_opener(node.children.first)
       else :none
+      end
+    end
+
+    def singleton_opener(receiver)
+      case receiver.type
+      when :self then "class << self"
+      when :const then "class << #{receiver.location.expression.source}"
       end
     end
 
@@ -96,7 +125,7 @@ module Henitai
 
       receiver = call_node.children.first
       method_name = call_node.children[1]
-      receiver_name = constant_name(receiver)
+      receiver_name = ConstantPath.of(receiver)&.delete_prefix("::")
 
       anonymous_constructor_call?(receiver_name, method_name)
     end
@@ -112,10 +141,10 @@ module Henitai
     def update_context(node, namespace, singleton_context)
       case node.type
       when :class, :module
-        [qualify_namespace(namespace, constant_name(node.children.first)),
+        [ConstantPath.qualify(namespace, ConstantPath.of(node.children.first)),
          singleton_context]
       when :sclass
-        [namespace, true]
+        [ConstantPath.owner(node.children.first, namespace), true]
       else
         [namespace, singleton_context]
       end
@@ -128,7 +157,7 @@ module Henitai
       when :def
         instance_subject(node, namespace, singleton_context)
       when :defs
-        class_subject(node, namespace)
+        class_subject(node, ConstantPath.owner(node.children.first, namespace))
       end
     end
 
@@ -173,29 +202,6 @@ module Henitai
         source_location: source_location_for(node),
         ast_node: node
       )
-    end
-
-    def qualify_namespace(namespace, name)
-      return name if namespace.nil? || namespace.empty?
-      return namespace if name.nil? || name.empty?
-
-      "#{namespace}::#{name}"
-    end
-
-    def constant_name(node)
-      return unless node.respond_to?(:type)
-
-      case node.type
-      when :const
-        parent_name = constant_name(node.children.first)
-        current_name = symbol_name(node.children.last)
-
-        return current_name if parent_name.nil? || parent_name.empty?
-
-        "#{parent_name}::#{current_name}"
-      when :cbase
-        ""
-      end
     end
 
     def method_name(value)

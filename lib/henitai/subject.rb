@@ -27,7 +27,8 @@ module Henitai
     # @param source_location [Hash] file/range metadata for the subject source
     # @param lexical_scope [Array<String>, nil] the openers of the modules and
     #   classes around the method as written ("module Outer", "class Inner",
-    #   "class << self"); nil when a scope cannot be reopened by name
+    #   "class << self", "Point.class_eval do"); nil when a scope cannot be
+    #   reopened by name
     # The explicit keyword API matches the public call sites and keeps the
     # metadata fields discoverable without a single options hash.
     # rubocop:disable Metrics/ParameterLists

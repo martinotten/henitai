@@ -48,6 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with a detected verdict runs once more with its unmutated method injected.
   If its tests fail, the subject's detected verdicts are reclassified as
   `CompileError`, because the injection itself broke them.
+- Methods defined in a constructor block assigned to a constant
+  (`Point = Struct.new(:x) do ... end`, likewise `Data.define` and
+  `Class.new`) and in `class << CONST` are now subjects. Top-level
+  `def Const.name` methods are subjects as well.
 - `rake oracle` runs a corpus whose verdicts follow from its construction and
   fails on false kills or false survivors. CI runs it.
 
@@ -85,6 +89,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as `Foo#empty?`, `Foo#save!`, `Foo#name=` and `Foo#==`, select their method
   instead of nothing.
 - Mutants from different operators that produce the same program run once.
+- Subjects are attributed to the right namespace. A `class ::Top` inside
+  `module Outer` is `Top`, not `Outer::Top`. A `def Other.name` inside `Outer`
+  belongs to `Other`, not `Outer`. Methods of `class << obj` or `def obj.name`
+  for a non-constant `obj` are no longer reported as class methods of the
+  enclosing class.
 - "replaced method call with nil" on a call with a block replaces the call
   together with its block. Replacing only the call left `nil { ... }`, which
   does not parse, so these sites were never tested. Blocks attached to

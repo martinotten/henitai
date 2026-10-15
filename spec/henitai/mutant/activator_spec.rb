@@ -958,6 +958,46 @@ RSpec.describe Henitai::Mutant::Activator do
       end
     end
 
+    it "reopens a constructor block's class with the block's constant lookup" do
+      Dir.mktmpdir do |dir|
+        source = <<~RUBY
+          module DiStructs
+            SCALE = 3
+            Point = Struct.new(:x) do
+              def scaled = (x * SCALE) + 1
+            end
+          end
+        RUBY
+        activate_in(dir, source, "DiStructs::Point#scaled", constants: ["DiStructs"],
+                                                            mutate: first_int(1).merge(to: int(2)))
+
+        expect(DiStructs::Point.new(2).scaled).to eq(8)
+      end
+    end
+
+    it "reopens the singleton class of a constant and a singleton method defined at the top level" do
+      Dir.mktmpdir do |dir|
+        source = <<~RUBY
+          class DiHost
+            class << self
+              def plain = 1
+            end
+          end
+          class DiAnchor
+            class << DiHost
+              def tagged = 2
+            end
+          end
+          def DiHost.loose = 3
+        RUBY
+        constants = %w[DiHost DiAnchor]
+        activate_in(dir, source, "DiAnchor::DiHost.tagged", constants:, mutate: first_int(2).merge(to: int(20)))
+        activate_in(dir, source, "DiHost.loose", constants:, mutate: first_int(3).merge(to: int(30)))
+
+        expect([DiHost.tagged, DiHost.loose]).to eq([20, 30])
+      end
+    end
+
     # (a && b) && c with the inner && replaced by || must run as (a || b) && c,
     # not as the a || (b && c) a textual splice would produce.
     it "keeps the reported mutation when it sits inside a longer expression" do

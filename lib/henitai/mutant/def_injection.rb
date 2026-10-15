@@ -36,8 +36,12 @@ module Henitai
 
       private
 
+      # A top-level +def Other.name+ has no openers; an instance method needs
+      # at least one, or it would land on Object.
       def injectable?(node, scope)
-        node && %i[def defs].include?(node.type) && scope && !scope.empty?
+        return false unless node && scope
+
+        node.type == :defs || (node.type == :def && !scope.empty?)
       end
 
       # Splices by character offsets, as parser ranges count characters. A

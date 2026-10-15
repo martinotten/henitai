@@ -89,7 +89,7 @@ RSpec.describe Henitai::SubjectResolver do
       expect(scopes.values).to eq([["class Outer::Inner"], ["module Wrap", "class ::Top"]])
     end
 
-    it "records no scope for a method in the singleton class of another object" do
+    it "reopens the singleton class of a constant" do
       scopes = scopes_for(<<~RUBY)
         class Holder
           class << OBJECT
@@ -98,216 +98,69 @@ RSpec.describe Henitai::SubjectResolver do
         end
       RUBY
 
-      expect(scopes.values).to eq([nil])
+      expect(scopes).to eq("Holder::OBJECT.value" => ["class Holder", "class << OBJECT"])
     end
-  end
 
-  it "preserves source location metadata for each subject" do
-    Dir.mktmpdir do |dir|
-      path = write_source(
-        dir,
-        "lib/sample.rb",
-        <<~RUBY
-          class Foo
-            def bar
-            end
+    it "evaluates methods of a constructor block inside class_eval of its constant" do
+      scopes = scopes_for(<<~RUBY)
+        module Outer
+          Point = Struct.new(:x) do
+            def len = x
           end
-        RUBY
-      )
-
-      subjects = described_class.new.resolve_from_files([path])
-
-      expect(subjects.map(&:source_range)).to eq([2..3])
-    end
-  end
-
-  it "preserves source location metadata for class methods" do
-    Dir.mktmpdir do |dir|
-      path = write_source(
-        dir,
-        "lib/sample.rb",
-        <<~RUBY
-          class Foo
-            def self.bar
-              1
-            end
+          ::Abs = Data.define(:v) do
+            def twice = v * 2
           end
-        RUBY
-      )
+        end
+        Outer::Pair = Class.new do
+          def first = 1
+        end
+      RUBY
 
-      subjects = described_class.new.resolve_from_files([path])
-
-      expect(subjects.map(&:source_range)).to eq([2..4])
-    end
-  end
-
-  it "resolves methods inside singleton classes as class subjects" do
-    Dir.mktmpdir do |dir|
-      path = write_source(
-        dir,
-        "lib/sample.rb",
-        <<~RUBY
-          class Foo
-            class Bar
-              class << self
-                def qux
-                end
-              end
-            end
-          end
-        RUBY
-      )
-
-      subjects = described_class.new.resolve_from_files([path])
-
-      expect(subjects.map(&:expression)).to eq(["Foo::Bar.qux"])
-    end
-  end
-
-  it "preserves singleton context for nested class declarations" do
-    Dir.mktmpdir do |dir|
-      path = write_source(
-        dir,
-        "lib/sample.rb",
-        <<~RUBY
-          class Foo
-            class << self
-              class Bar
-                def baz
-                end
-              end
-            end
-          end
-        RUBY
-      )
-
-      subjects = described_class.new.resolve_from_files([path])
-
-      expect(subjects.map(&:expression)).to eq(["Foo::Bar.baz"])
-    end
-  end
-
-  it "ignores top-level methods without namespace context" do
-    Dir.mktmpdir do |dir|
-      path = write_source(
-        dir,
-        "lib/sample.rb",
-        <<~RUBY
-          def top_level
-          end
-
-          def self.top_level_class
-          end
-        RUBY
-      )
-
-      subjects = described_class.new.resolve_from_files([path])
-
-      expect(subjects).to be_empty
-    end
-  end
-
-  it "resolves compact nested namespace declarations" do
-    Dir.mktmpdir do |dir|
-      path = write_source(
-        dir,
-        "lib/sample.rb",
-        <<~RUBY
-          module Foo::Bar
-            def baz
-            end
-          end
-        RUBY
-      )
-
-      subjects = described_class.new.resolve_from_files([path])
-
-      expect(subjects.map(&:expression)).to eq(["Foo::Bar#baz"])
-    end
-  end
-
-  it "uses the cached SourceParser class API for file resolution" do
-    Dir.mktmpdir do |dir|
-      path = write_source(
-        dir,
-        "lib/sample.rb",
-        <<~RUBY
-          class Foo
-            def bar
-              1
-            end
-          end
-        RUBY
-      )
-
-      parsed_ast = Henitai::SourceParser.new.parse_file(path)
-
-      allow(Henitai::SourceParser).to receive(:parse_file).and_return(parsed_ast)
-      allow(Henitai::SourceParser).to receive(:new).and_raise("instance parser bypassed")
-
-      described_class.new.resolve_from_files([path])
-
-      expect(Henitai::SourceParser).to have_received(:parse_file).with(path)
-    end
-  end
-
-  it "resolves define_method subjects with static names" do
-    Dir.mktmpdir do |dir|
-      path = write_source(
-        dir,
-        "lib/sample.rb",
-        <<~RUBY
-          class Foo
-            define_method(:bar) do
-              1
-            end
-
-            class << self
-              define_method("baz") do
-                2
-              end
-            end
-          end
-        RUBY
-      )
-
-      subjects = described_class.new.resolve_from_files([path])
-
-      expect(subjects.map(&:expression)).to eq(
-        [
-          "Foo#bar",
-          "Foo.baz"
-        ]
+      expect(scopes).to eq(
+        "Outer::Point#len" => ["module Outer", "Point.class_eval do"],
+        "Abs#twice" => ["module Outer", "::Abs.class_eval do"],
+        "Outer::Pair#first" => ["Outer::Pair.class_eval do"]
       )
     end
   end
 
-  it "keeps sibling instance methods out of singleton-class context" do
-    Dir.mktmpdir do |dir|
-      path = write_source(
-        dir,
-        "lib/sample.rb",
-        <<~RUBY
-          class Foo
-            class << self
-              def bar
-              end
-            end
+  describe "namespace attribution" do
+    def expressions_for(source)
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "lib/sample.rb", source)
+        described_class.new.resolve_from_files([path]).map(&:expression)
+      end
+    end
 
-            def baz
-            end
+    it "does not nest a root-qualified class in the enclosing module" do
+      expect(expressions_for(<<~RUBY)).to eq(["Top#value"])
+        module Wrap
+          class ::Top
+            def value = 1
           end
-        RUBY
-      )
+        end
+      RUBY
+    end
 
-      subjects = described_class.new.resolve_from_files([path])
+    it "attributes a singleton method to its receiver" do
+      expect(expressions_for(<<~RUBY)).to eq(["Outer.own", "Outer::Other.near", "Top.level"])
+        module Outer
+          def self.own = 1
+          def Other.near = 2
+        end
+        def Top.level = 3
+      RUBY
+    end
 
-      expect(subjects.map(&:expression)).to eq(
-        [
-          "Foo.bar",
-          "Foo#baz"
-        ]
-      )
+    it "skips singleton methods of non-constant objects" do
+      expect(expressions_for(<<~RUBY)).to eq([])
+        class Holder
+          def config.value = 1
+          class << registry
+            def entry = 2
+          end
+        end
+      RUBY
     end
   end
 

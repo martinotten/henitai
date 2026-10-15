@@ -40,7 +40,11 @@ the leaked nesting.
 2. **Copy the original `def` header verbatim and splice the mutation inside the full `def` source range,** including default values and heredoc bodies.
 3. **Capture the visibility and the `module_function` state before injection, and re-apply them afterwards.**
 4. **Activate after the test environment has loaded** (see remediation plan WS2 and WS4), so that every constant the method refers to already exists.
-5. **Keep `define_method` only as a fallback** for subjects that cannot be reopened: `define_method` subjects, methods inside `Struct.new`/`Data.define` blocks, and `class << obj`. Mutants activated through the fallback are marked in the report.
+5. **Keep `define_method` only as a fallback** for subjects that cannot be reopened: `define_method` subjects. Mutants activated through the fallback are marked in the report.
+   - Methods inside a constructor block assigned to a constant (`Point = Struct.new(:x) do ... end`, likewise `Data.define` and `Class.new`) are reopened with `Point.class_eval do`. That reproduces the block's semantics exactly: `def` defines on `Point`, while constant lookup stays in the enclosing scope.
+   - `class << CONST` is reopened as written.
+   - Methods in `class << obj` or `def obj.name` for a non-constant `obj` are not subjects, because their owner is not known statically.
+   - The activator evaluates the openers once with `self`, or the receiver of `def Other.name`, as their body to obtain the object the method is defined on. The resolver's subject name is a static reading of the source and cannot tell `Outer::Other` from `::Other`.
 6. **Guard every activation with the static fidelity check** (plan WS0): parse the activation source and diff it against the original. Any difference other than the reported mutation becomes a harness status, never a test run.
 
 ## Consequences
