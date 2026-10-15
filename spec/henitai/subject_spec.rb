@@ -9,6 +9,13 @@ RSpec.describe Henitai::Subject do
     expect(subject.expression).to eq("Foo::Bar.baz")
   end
 
+  it "parses predicate, bang, setter and operator method names" do
+    expressions = %w[Foo#empty? Foo#save! Foo#name= Foo#== Foo#[] Foo::Bar.<=>]
+
+    expect(expressions.map { |expression| described_class.parse(expression).method_name })
+      .to eq(%w[empty? save! name= == [] <=>])
+  end
+
   it "parses wildcard expressions" do
     subject = described_class.parse("Foo::Bar*")
 
