@@ -119,6 +119,33 @@ RSpec.describe Henitai::FidelityCheck do
     expect(violation(mutant)).to include("not valid Ruby")
   end
 
+  it "accepts an inner logical operator mutation inside a longer chain" do
+    mutants = mutants_for(<<~RUBY).select { |mutant| mutant.description == "replaced && with ||" }
+      class Sample
+        def all?(a, b, c)
+          a && b && c
+        end
+      end
+    RUBY
+    inner = mutants.find { |mutant| mutant.original_node.children.none? { |child| child.type == :and } }
+
+    expect(violation(inner)).to be_nil
+  end
+
+  it "accepts a method that reads __LINE__" do
+    mutant = mutant_for(<<~RUBY, "replaced + with -")
+      # The def is not on the line it would have in the activation source.
+
+      class Sample
+        def here(x)
+          [__LINE__, x + 1]
+        end
+      end
+    RUBY
+
+    expect(violation(mutant)).to be_nil
+  end
+
   it "accepts a negated binary condition" do
     mutant = mutant_for(<<~RUBY, "negated condition")
       class Sample
