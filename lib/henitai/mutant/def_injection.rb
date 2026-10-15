@@ -51,6 +51,9 @@ module Henitai
       def spliced_def(def_range, original_node, replacement)
         original_range = original_node&.location&.expression
         return unless original_range && within?(original_range, def_range)
+        # An unmutated control splices the original text back. Its heredoc
+        # bodies must stay, so the def is used verbatim.
+        return def_range.source if replacement == original_range.source
 
         edits = heredoc_bodies(original_node).map { |range| [range, ""] } << [original_range, replacement]
         apply(def_range, edits)

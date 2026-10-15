@@ -1012,6 +1012,19 @@ RSpec.describe Henitai::Mutant::Activator do
       end
     end
 
+    it "keeps a heredoc's body in an unmutated control of the heredoc" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "class DiDoc\n  def text\n    <<~TXT\n      body\n    TXT\n  end\nend\n")
+        subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+        node = subject.ast_node.children.last
+        activation = described_class.activation_for(build_mutant(subject:, original_node: node, mutated_node: node,
+                                                                 location: location_for(node)))
+
+        expect(activation.source.lines.drop(activation.def_offset).first(4).join)
+          .to eq(File.read(path).lines[1, 4].join)
+      end
+    end
+
     it "describes a top-level activation in the original file and at the def's line" do
       Dir.mktmpdir do |dir|
         path = write_source(dir, "module DiPlace\n  class Spot\n    def value = 1\n  end\nend\n")
