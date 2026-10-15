@@ -53,7 +53,7 @@ RSpec.describe Henitai::Operators::AssignmentExpression do
 
     expect(mutant).to have_attributes(
       description: "removed ||=",
-      mutated_node: satisfy { |node| node.type == :send && node.children[1] == :[]= }
+      mutated_node: satisfy { |node| node.type == :indexasgn && node.children.last.type == :send }
     )
   end
 

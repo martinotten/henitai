@@ -107,16 +107,14 @@ RSpec.describe Henitai::FidelityCheck do
     expect(violation(mutant)).to include("differs from the reported mutation")
   end
 
-  it "rejects a mutant that leaves a block attached to a removed call" do
-    mutant = mutant_for(<<~RUBY, "replaced method call with nil", operators: :full)
+  it "rejects an activation source that is not valid Ruby" do
+    mutant = mutant_for(<<~RUBY, "replaced + with -")
       class Sample
-        def any_match?(patterns, text)
-          patterns.any? do |pattern|
-            pattern.match?(text)
-          end
-        end
+        def total(a, b) = a + b
       end
     RUBY
+    broken = Henitai::Mutant::Activation.new(source: "class Sample\n  def total(a, b) = a - \nend\n", mode: :toplevel)
+    allow(Henitai::Mutant::Activator).to receive(:activation_for).and_return(broken)
 
     expect(violation(mutant)).to include("not valid Ruby")
   end
@@ -137,7 +135,7 @@ RSpec.describe Henitai::FidelityCheck do
     expect(violation(mutant)).to be_nil
   end
 
-  it "rejects a mutant that re-renders a one-parameter block as a destructuring block" do
+  it "accepts a mutant around a one-parameter block" do
     mutant = mutant_for(<<~RUBY, "replaced + with -")
       class Sample
         def sum(pairs)
@@ -146,10 +144,10 @@ RSpec.describe Henitai::FidelityCheck do
       end
     RUBY
 
-    expect(violation(mutant)).to include("changes the syntax form of `procarg0`")
+    expect(violation(mutant)).to be_nil
   end
 
-  it "rejects a mutant that turns keyword arguments into a positional hash" do
+  it "accepts a mutant that removes a keyword argument" do
     mutant = mutant_for(<<~RUBY, /removed hash pair/, operators: :full)
       class Sample
         def call(x)
@@ -158,7 +156,7 @@ RSpec.describe Henitai::FidelityCheck do
       end
     RUBY
 
-    expect(violation(mutant)).to include("changes the syntax form of `kwargs`")
+    expect(violation(mutant)).to be_nil
   end
 
   it "accepts a mutant after multibyte characters in the method" do

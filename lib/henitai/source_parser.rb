@@ -12,6 +12,14 @@ module Henitai
   class SourceParser
     DEFAULT_PATH = "(string)"
 
+    # Emits the modern parser-gem AST format (procarg0, kwargs, index, lambda,
+    # forward_arg, ...). The legacy format cannot tell `|x|` from `|x,|` or
+    # keyword arguments from a braced hash, so re-rendering a mutated subtree
+    # through the unparser would silently change its meaning.
+    class Builder < Prism::Translation::Parser::Builder
+      modernize
+    end
+
     @cache = {}
 
     def self.parse(source, path: DEFAULT_PATH)
@@ -32,7 +40,7 @@ module Henitai
     end
 
     def parse(source, path: DEFAULT_PATH)
-      Prism::Translation::ParserCurrent.new.parse(source_buffer(source, path))
+      Prism::Translation::ParserCurrent.new(Builder.new).parse(source_buffer(source, path))
     end
 
     # Read as UTF-8, Ruby's own default source encoding, not the process

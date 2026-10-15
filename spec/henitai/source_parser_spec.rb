@@ -94,6 +94,13 @@ RSpec.describe Henitai::SourceParser do
     end
   end
 
+  it "emits the modern AST format, which round-trips through the unparser" do
+    tree = described_class.parse("pairs.map { |pair| pair.first }\nbuild(name: x)\n")
+
+    expect([find_nodes(tree, :procarg0).size, find_nodes(tree, :kwargs).size, Unparser.unparse(tree)])
+      .to eq([1, 1, "pairs.map { |pair|\n  pair.first\n}\nbuild(name: x)\n"])
+  end
+
   it "exposes the node types needed for mutation operators" do
     ast = described_class.parse(mutation_surface_source, path: "sample.rb")
 

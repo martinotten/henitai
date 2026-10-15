@@ -20,28 +20,10 @@ module Henitai
   #    Both sides are normalised first: an interpolation-free +dstr+ is the
   #    same value as one +str+, nested statement sequences flatten, and
   #    +__FILE__+ compares as an absolute path.
-  # 4. Syntax form: the legacy AST format the pipeline uses cannot tell some
-  #    constructs apart (keyword arguments vs. a braced hash, +|x|+ vs.
-  #    +|x,|+). A modern-format parse of both sides must show the same of
-  #    these forms at every source range the mutant kept from the original.
   #
   # A violation is a harness defect, not a test verdict: the mutant must not
   # run, and the reason must be reported.
   class FidelityCheck
-    # Modern-format node types whose legacy encoding is shared with a construct
-    # of different meaning. Forms that re-render into an equivalent call are
-    # deliberately absent: `->` vs. `lambda`, and `a[i]` vs. `a.[](i)`.
-    FORMAT_TYPES = %i[kwargs procarg0 forward_arg match_pattern match_pattern_p].freeze
-
-    # Parser builder that emits the modern AST format.
-    class ModernBuilder < Prism::Translation::Parser::Builder
-      modernize
-    end
-
-    def initialize
-      @format_index_cache = {}
-    end
-
     # @return [String, nil] the reason the mutant is unfaithful, or nil
     def violation(mutant)
       return unless checkable?(mutant)
@@ -77,20 +59,15 @@ module Henitai
       tree = SourceParser.parse(source, path: activation.file || Mutant::Activator::EVAL_FILE)
       actual = normalize(activated_tree(tree, mutant.subject.method_name, whole_def))
       expected = normalize(expected)
-      return "activated code differs from the reported mutation" unless actual == expected
-
-      form_violation(expected, actual, original_index(mutant), format_index(source))
+      "activated code differs from the reported mutation" unless actual == expected
     end
 
-    # The mutated node takes the original node's location, so the syntax-form
-    # check can compare the mutation site itself; operators often build the
-    # replacement without one. A re-evaluated def (ADR-13) is compared as a
-    # whole, parameters included; the define_method fallback only by body.
+    # A re-evaluated def (ADR-13) is compared as a whole, parameters
+    # included; the define_method fallback only by body.
     def expected_tree(mutant, whole_def)
-      original = mutant.original_node
-      replacement = mutant.mutated_node&.updated(nil, nil, location: original.location)
       definition = mutant.subject.ast_node
-      replaced, found = substitute(whole_def ? definition : method_body(definition), original, replacement)
+      scope = whole_def ? definition : method_body(definition)
+      replaced, found = substitute(scope, mutant.original_node, mutant.mutated_node)
       replaced if found
     end
 
@@ -176,63 +153,6 @@ module Henitai
       return node.children[0] if node.type == :str
 
       node.children.map { |child| literal_text(child) }.join
-    end
-
-    def form_violation(expected, actual, original_forms, actual_forms)
-      each_pair(expected, actual) do |expected_node, actual_node|
-        before = forms_at(original_forms, expected_node)
-        next unless before
-
-        after = forms_at(actual_forms, actual_node) || []
-        changed = (before - after) + (after - before)
-        return form_message(changed.first, expected_node) unless changed.empty?
-      end
-      nil
-    end
-
-    def form_message(type, node)
-      "activated code changes the syntax form of `#{type}` at line #{node.location.expression.line}"
-    end
-
-    def each_pair(expected, actual, &)
-      return unless expected.is_a?(Parser::AST::Node)
-
-      yield expected, actual
-      expected.children.zip(actual.children).each do |expected_child, actual_child|
-        each_pair(expected_child, actual_child, &)
-      end
-    end
-
-    def forms_at(index, node)
-      range = node.location&.expression
-      return unless range
-
-      index.fetch([range.begin_pos, range.end_pos], [])
-    end
-
-    def original_index(mutant)
-      buffer = mutant.subject.ast_node.location.expression.source_buffer
-      @format_index_cache[buffer] ||= format_index(buffer.source)
-    end
-
-    def format_index(source)
-      index = Hash.new { |hash, key| hash[key] = [] }
-      collect_forms(modern_parse(source), index)
-      index
-    end
-
-    def collect_forms(node, index)
-      return unless node.is_a?(Parser::AST::Node)
-
-      range = node.location&.expression
-      index[[range.begin_pos, range.end_pos]] << node.type if range && FORMAT_TYPES.include?(node.type)
-      node.children.each { |child| collect_forms(child, index) }
-    end
-
-    def modern_parse(source)
-      buffer = Parser::Source::Buffer.new("(fidelity)")
-      buffer.source = source
-      Prism::Translation::ParserCurrent.new(ModernBuilder.new).parse(buffer)
     end
   end
 end

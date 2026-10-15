@@ -9,7 +9,10 @@ module Henitai
     # set) because framework key normalization makes it frequently unkillable
     # (ADR-12).
     class HashLiteral < Henitai::Operator
-      NODE_TYPES = [:hash].freeze
+      # Keyword arguments (kwargs) are mutated like hash literals; the mutant
+      # keeps the node type, so a removed keyword never turns the remaining
+      # ones into a positional hash.
+      NODE_TYPES = %i[hash kwargs].freeze
 
       def self.node_types
         NODE_TYPES
@@ -29,7 +32,7 @@ module Henitai
         build_mutant(
           subject:,
           original_node: node,
-          mutated_node: Parser::AST::Node.new(:hash, []),
+          mutated_node: node.updated(nil, []),
           description: "replaced hash with empty hash"
         )
       end
@@ -52,7 +55,7 @@ module Henitai
 
       def hash_without_pair(node, pair_index)
         remaining = node.children.reject.with_index { |_pair, index| index == pair_index }
-        Parser::AST::Node.new(:hash, remaining)
+        node.updated(nil, remaining)
       end
 
       # Pair keys are always AST nodes (sym/str/…); their first child is the
