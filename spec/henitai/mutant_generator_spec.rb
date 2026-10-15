@@ -324,6 +324,35 @@ RSpec.describe Henitai::MutantGenerator do
     it { expect(descriptions.length).to be > 1 }
   end
 
+  describe "mutant identities" do
+    def chain_mutants(dir)
+      path = write_source(dir, "lib/chain.rb", "class Chain\n  def run(x)\n    x.a.b.c\n  end\nend\n")
+      subjects = Henitai::SubjectResolver.new.resolve_from_files([path])
+      described_class.new.generate(subjects, [Henitai::Operators::MethodExpression.new])
+    end
+
+    it "gives nested calls that start at the same position distinct identities" do
+      Dir.mktmpdir do |dir|
+        ids = chain_mutants(dir).map(&:stable_id)
+
+        expect(ids.uniq.size).to eq(ids.size)
+      end
+    end
+
+    it "keeps the identity of a mutant that does not collide" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "lib/single.rb", "class Single\n  def run(x) = x + 1\nend\n")
+        subjects = Henitai::SubjectResolver.new.resolve_from_files([path])
+        mutant = described_class.new.generate(subjects, [Henitai::Operators::ArithmeticOperator.new]).first
+        undisambiguated = Henitai::Mutant.new(subject: mutant.subject, operator: mutant.operator,
+                                              nodes: { original: mutant.original_node, mutated: mutant.mutated_node },
+                                              description: mutant.description, location: mutant.location)
+
+        expect(mutant.stable_id).to eq(undisambiguated.stable_id)
+      end
+    end
+  end
+
   it "applies stratified sampling when configured" do
     Dir.mktmpdir do |dir|
       path = write_source(dir, "lib/sample.rb", <<~RUBY)
