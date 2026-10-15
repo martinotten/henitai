@@ -35,7 +35,7 @@ module Henitai
       case node.type
       when :send
         send_match?(node)
-      when :block
+      when :block, :numblock
         block_match?(node)
       when :or_asgn
         # Memoization-style ||= is treated as arid on purpose. UpdateOperator
@@ -64,7 +64,7 @@ module Henitai
       return false unless send_node&.type == :send
 
       receiver, method_name, = send_node.children
-      receiver.nil? && DSL_METHODS.include?(method_name.to_sym)
+      (receiver.nil? && DSL_METHODS.include?(method_name.to_sym)) || send_match?(send_node)
     end
 
     def direct_output_call?(receiver, method_name)

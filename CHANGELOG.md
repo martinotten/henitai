@@ -85,6 +85,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as `Foo#empty?`, `Foo#save!`, `Foo#name=` and `Foo#==`, select their method
   instead of nothing.
 - Mutants from different operators that produce the same program run once.
+- "replaced method call with nil" on a call with a block replaces the call
+  together with its block. Replacing only the call left `nil { ... }`, which
+  does not parse, so these sites were never tested. Blocks attached to
+  logger, output and debug calls stay arid.
 
 ## [0.5.3] - 2026-08-26
 
