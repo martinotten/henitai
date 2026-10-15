@@ -47,6 +47,51 @@ RSpec.describe Henitai::StillbornFilter do
       expect(removals.map { |mutant| described_class.new.suppressed?(mutant) }).to eq([false, false])
     end
 
+    def verdicts(source, operators: :light)
+      mutants_of(source, operators:).to_h { |mutant| [mutant.description, described_class.new.suppressed?(mutant)] }
+    end
+
+    it "suppresses a mutant that removes the assignment of a local read later" do
+      source = <<~RUBY
+        class Sample
+          def call(x)
+            return fast if ready? && (fast = compute(x))
+            fast
+          end
+        end
+      RUBY
+
+      expect(verdicts(source).values_at("replaced condition with true", "replaced && with lhs", "negated condition"))
+        .to eq([true, true, false])
+    end
+
+    it "keeps a mutant whose removed local is still assigned elsewhere or never read" do
+      source = <<~RUBY
+        class Sample
+          def call(x, fast = nil)
+            if ready? && (slow = compute(x)) then 1 end
+            fast
+          end
+        end
+      RUBY
+
+      expect(verdicts(source).values_at("replaced condition with true", "replaced && with lhs")).to eq([false, false])
+    end
+
+    it "keeps a mutant of a method that already calls a method named like one of its locals" do
+      source = <<~RUBY
+        class Sample
+          def call(x)
+            value + 1
+            value = x
+            value
+          end
+        end
+      RUBY
+
+      expect(verdicts(source)["replaced + with -"]).to be(false)
+    end
+
     it "keeps a mutated next guard inside a block" do
       mutants = mutants_of("class Sample\n  def call(xs) = xs.each { |x| next if x > 3 }\nend\n", operators: :light)
       guards = mutants.select { |mutant| mutant.description == "replaced condition with true" }

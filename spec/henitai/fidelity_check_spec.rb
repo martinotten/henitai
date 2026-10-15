@@ -20,6 +20,21 @@ RSpec.describe Henitai::FidelityCheck do
       raise("no mutant #{description.inspect} in #{mutants.map(&:description).uniq.inspect}")
   end
 
+  # Raw operator output, for mutants the generator already filters out.
+  def raw_mutant_for(source, operator, description)
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "sample.rb")
+      File.write(path, source)
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      operator_mutants(operator, subject).find { |mutant| mutant.description == description }
+    end
+  end
+
+  def operator_mutants(operator, subject)
+    nodes = operator.class.node_types.flat_map { |type| find_nodes(subject.ast_node, type) }
+    nodes.flat_map { |node| operator.mutate(node, subject:) }
+  end
+
   def violation(mutant) = described_class.new.violation(mutant)
 
   it "accepts a mutant whose activated body differs only by the mutation" do
@@ -91,8 +106,9 @@ RSpec.describe Henitai::FidelityCheck do
     expect(violation(mutant)).to be_nil
   end
 
+  # The generator drops these as stillborn; the check stays a safety net.
   it "rejects a mutant that turns a local variable read into a method call" do
-    mutant = mutant_for(<<~RUBY, "replaced && with lhs")
+    mutant = raw_mutant_for(<<~RUBY, Henitai::Operators::LogicalOperator.new, "replaced && with lhs")
       class Sample
         def fetch(ready)
           if ready && (found = lookup)
