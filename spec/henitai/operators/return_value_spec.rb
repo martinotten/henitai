@@ -35,13 +35,16 @@ RSpec.describe Henitai::Operators::ReturnValue do
   # Taken from the subject's own AST: the operator recognises the final
   # expression by identity, not by structure.
   def final_expression_node(subject)
-    ast = subject.ast_node
-    definition = ast if %i[def defs].include?(ast.type)
-    definition ||= ast.children.find { |child| child.respond_to?(:type) && child.type == :def }
-    method_body = definition.children.last
+    method_body = subject_definition(subject.ast_node).children.last
     return method_body unless method_body.type == :begin
 
     method_body.children.reverse_each.find { |child| child.respond_to?(:type) }
+  end
+
+  def subject_definition(ast)
+    return ast if %i[def defs].include?(ast.type)
+
+    ast.children.find { |child| child.respond_to?(:type) && child.type == :def }
   end
 
   def mutate(node, subject:)
