@@ -89,6 +89,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   together with its block. Replacing only the call left `nil { ... }`, which
   does not parse, so these sites were never tested. Blocks attached to
   logger, output and debug calls stay arid.
+- `RegexMutator` no longer drops the interpolations and later lines of a
+  dynamic or multi-line regexp, which it now leaves unmutated. It skips
+  escaped characters and the contents of character classes, so `[^0-9]` is
+  no longer reported as a removed `^` anchor and `[+-]` no longer as a
+  quantifier swap.
 
 ## [0.5.3] - 2026-08-26
 

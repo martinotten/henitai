@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../parser_current"
+require_relative "regex_metacharacters"
 
 module Henitai
   module Operators
@@ -8,7 +9,10 @@ module Henitai
     # and character-class negation.
     #
     # Each applicable transformation yields a separate mutant. Invalid
-    # results (unparseable regex) are discarded before emission.
+    # results (unparseable regex) are discarded before emission. Only static,
+    # single-segment literals are mutated: an interpolated or multi-line
+    # regexp is split into several parts, and rewriting one part alone would
+    # drop or misread the others.
     # Anchor removal and character-class negation are intentionally one-way:
     # they reduce noisy patterns rather than mirroring a full edit matrix.
     class RegexMutator < Henitai::Operator
@@ -30,11 +34,11 @@ module Henitai
       private
 
       def extract_parts(node)
-        str_child  = node.children.find { |c| c.is_a?(Parser::AST::Node) && c.type == :str }
-        opts_node  = node.children.find { |c| c.is_a?(Parser::AST::Node) && c.type == :regopt }
-        return nil unless str_child
+        *parts, opts_node = node.children
+        return unless opts_node.is_a?(Parser::AST::Node) && opts_node.type == :regopt
+        return unless parts.size == 1 && parts.first.is_a?(Parser::AST::Node) && parts.first.type == :str
 
-        [str_child.children[0], opts_node]
+        [parts.first.children[0], opts_node]
       end
 
       def build_regex_mutant(node, opts_node, new_source, original, description, subject:) # rubocop:disable Metrics/ParameterLists
@@ -47,35 +51,26 @@ module Henitai
       end
 
       def transformations(source)
+        found = RegexMetacharacters.new(source)
         [
-          *quantifier_swaps(source),
-          *anchor_removals(source),
-          *char_class_negations(source)
+          [edit(source, found.quantifiers("+"), "*"), "replaced + quantifier with *"],
+          [edit(source, found.quantifiers("*"), "+"), "replaced * quantifier with +"],
+          # Anchors are removed, never added, and character classes are only
+          # negated: the reverse edits would just recreate an input.
+          [edit(source, found.anchors("^").first(1), ""), "removed ^ anchor"],
+          [edit(source, found.anchors("$").last(1), ""), "removed $ anchor"],
+          [insert_after(source, found.class_openers, "^"), "negated character class"]
         ]
       end
 
-      def quantifier_swaps(source)
-        # Quantifier swaps are symmetric. The other transforms are intentionally
-        # one-way because they model reductions instead of reversible edits.
-        [
-          [source.gsub(/(?<=[^*+?\\])\+/, "*"), "replaced + quantifier with *"],
-          [source.gsub(/(?<=[^*+?\\])\*/, "+"), "replaced * quantifier with +"]
-        ]
+      # Replaces the single characters at +indices+, from the last to the
+      # first so earlier indices stay valid.
+      def edit(source, indices, text)
+        indices.sort.reverse.each_with_object(source.dup) { |index, result| result[index] = text }
       end
 
-      def anchor_removals(source)
-        # Anchors are removed, not added back. The mutation is deliberately
-        # asymmetric because "restoring" anchors would just recreate the input.
-        [
-          [source.sub("^", ""), "removed ^ anchor"],
-          [source.sub(/\$$/, ""), "removed $ anchor"]
-        ]
-      end
-
-      def char_class_negations(source)
-        # Negation only flips a positive class into a negated one. We do not
-        # emit the reverse mutation because that would mirror the same edit.
-        [[source.gsub(/\[(?!\^)/, "[^"), "negated character class"]]
+      def insert_after(source, indices, text)
+        indices.sort.reverse.each_with_object(source.dup) { |index, result| result.insert(index + 1, text) }
       end
 
       def valid_regex?(source)
