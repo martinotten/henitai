@@ -92,7 +92,9 @@ module Henitai
       path    = File.join(File.dirname(@survivors_from), SurvivorActivationCache::FILENAME)
       recipes = SurvivorActivationCache.load(path)
       return nil if recipes.nil?
-      return nil unless survivor_ids.all? { |id| recipes.key?(id) }
+      # Recipes without an "activation" entry predate ADR-13: their
+      # define_method sources lose lexical scope, so they are not replayed.
+      return nil unless survivor_ids.all? { |id| recipes[id].is_a?(Hash) && recipes[id].key?("activation") }
 
       recipes
     end
@@ -105,7 +107,7 @@ module Henitai
         description: recipe.fetch("description"),
         location: recipe_location(recipe["location"]),
         precomputed_stable_id: stable_id,
-        precomputed_activation_source: recipe.fetch("activationSource")
+        precomputed_activation: Mutant::Activation.from_h(recipe.fetch("activation"))
       )
       mutant.covered_by = recipe["coveredBy"]
       mutant

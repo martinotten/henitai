@@ -252,9 +252,10 @@ module Henitai
     attr_reader method_type: Symbol
     attr_reader source_file: String?
     attr_reader source_range: Range[Integer]?
+    attr_reader lexical_scope: Array[String]?
 
     def self.parse: (String) -> Subject
-    def initialize: (?expression: String, ?namespace: String, ?method_name: String, ?method_type: Symbol, ?source_location: Hash[Symbol, untyped], ?ast_node: untyped) -> void
+    def initialize: (?expression: String, ?namespace: String, ?method_name: String, ?method_type: Symbol, ?source_location: Hash[Symbol, untyped], ?ast_node: untyped, ?lexical_scope: Array[String]?) -> void
     def expression: () -> String
     def wildcard?: () -> bool
 
@@ -285,9 +286,9 @@ module Henitai
     attr_accessor status_reason: String?
     attr_accessor from_cache: bool
     attr_reader precomputed_stable_id: String?
-    attr_reader precomputed_activation_source: String?
+    attr_reader precomputed_activation: untyped
 
-    def initialize: (subject: Subject, operator: String, nodes: Hash[Symbol, untyped], description: String, location: Hash[Symbol, untyped], ?precomputed_stable_id: String?, ?precomputed_activation_source: String?) -> void
+    def initialize: (subject: Subject, operator: String, nodes: Hash[Symbol, untyped], description: String, location: Hash[Symbol, untyped], ?precomputed_stable_id: String?, ?precomputed_activation: untyped) -> void
     def stable_id: () -> String
     def mutated_source: () -> String
     def from_cache?: () -> bool

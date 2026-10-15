@@ -1355,7 +1355,7 @@ RSpec.describe Henitai::Runner do
   describe "cached activation recipes" do
     def base_recipe
       {
-        "activationSource" => "define_method(:value) do\n  2\nend\n",
+        "activation" => { "source" => "define_method(:value) do\n  2\nend\n", "mode" => "class_eval" },
         "namespace" => "Sample",
         "methodName" => "value",
         "sourceFile" => "lib/sample.rb",
@@ -1476,7 +1476,7 @@ RSpec.describe Henitai::Runner do
                                 ))
 
         recipe = {
-          "activationSource" => "define_method(:value) do\n  nil\nend\n",
+          "activation" => { "source" => "define_method(:value) do\n  nil\nend\n", "mode" => "class_eval" },
           "namespace" => "Sample",
           "methodName" => "value",
           "methodType" => "instance",
@@ -1607,7 +1607,8 @@ RSpec.describe Henitai::Runner do
         recipe_path = File.join(dir, Henitai::SurvivorActivationCache::FILENAME)
         File.write(recipe_path, JSON.generate(
                                   stable_id => {
-                                    "activationSource" => "define_method(:value) { nil }",
+                                    "activation" => { "source" => "define_method(:value) { nil }",
+                                                      "mode" => "class_eval" },
                                     "namespace" => "Sample",
                                     "methodName" => "value",
                                     "sourceFile" => "lib/sample.rb",
@@ -1686,7 +1687,7 @@ RSpec.describe Henitai::Runner do
           File.write(report_path, JSON.generate(report_data))
 
           recipe = {
-            "activationSource" => "define_method(:value) do\n  nil\nend\n",
+            "activation" => { "source" => "define_method(:value) do\n  nil\nend\n", "mode" => "class_eval" },
             "namespace" => "Sample",
             "methodName" => "value",
             "methodType" => "instance",

@@ -22,12 +22,16 @@ RSpec.describe Henitai::Mutant::Activator do
     }
   end
 
+  def class_eval_activation(source)
+    Henitai::Mutant::Activation.new(source:, mode: :class_eval, file: described_class::EVAL_FILE)
+  end
+
   def build_mutant(
     subject:,
     original_node:,
     mutated_node:,
     location:,
-    precomputed_activation_source: nil
+    precomputed_activation: nil
   )
     Henitai::Mutant.new(
       subject:,
@@ -38,7 +42,7 @@ RSpec.describe Henitai::Mutant::Activator do
       },
       description: "replace node",
       location:,
-      precomputed_activation_source:
+      precomputed_activation:
     )
   end
 
@@ -176,22 +180,19 @@ RSpec.describe Henitai::Mutant::Activator do
         start_col: 0,
         end_col: 1
       },
-      precomputed_activation_source: "define_method(:value) do\n  2\nend\n"
+      precomputed_activation: class_eval_activation("define_method(:value) do\n  2\nend\n")
     )
 
     allow(activator).to receive(:target_for).and_return(target)
-
-    activator_file, activate_line = described_class.instance_method(:activate!).source_location
-    expected_line = activate_line + 8
 
     allow(target).to receive(:class_eval).and_return(nil)
 
     activator.activate!(mutant)
 
     expect(target).to have_received(:class_eval).with(
-      mutant.precomputed_activation_source,
-      activator_file,
-      expected_line
+      mutant.precomputed_activation.source,
+      described_class::EVAL_FILE,
+      kind_of(Integer)
     )
   end
 
@@ -374,7 +375,7 @@ RSpec.describe Henitai::Mutant::Activator do
         original_node:,
         mutated_node: original_node,
         location: location_for(original_node),
-        precomputed_activation_source: "define_method(:value) do ||\n"
+        precomputed_activation: class_eval_activation("define_method(:value) do ||\n")
       )
 
       expect(described_class.activate!(mutant)).to eq(:compile_error)
@@ -819,8 +820,144 @@ RSpec.describe Henitai::Mutant::Activator do
     end
   end
 
+  describe "def injection in the original lexical scope" do
+    # Loads the source (as the test environment would), resolves its subject
+    # and activates an unmutated control or the given mutation.
+    let(:defined_constants) { [] }
+
+    after do
+      defined_constants.each { |name| Object.class_eval { remove_const(name) if const_defined?(name, false) } }
+    end
+
+    def activate_in(dir, source, expression, constants:, mutate: nil)
+      defined_constants.concat(constants)
+      path = load_once(dir, source)
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).find { |s| s.expression == expression }
+      described_class.activate!(mutation_of(subject, mutate))
+    end
+
+    # Without +mutate+, an unmutated control of the method's body.
+    def mutation_of(subject, mutate)
+      node = mutate ? mutate.fetch(:find).call(subject.ast_node) : subject.ast_node.children.last
+      mutated = mutate ? mutate.fetch(:to) : node
+      build_mutant(subject:, original_node: node, mutated_node: mutated, location: location_for(node))
+    end
+
+    def load_once(dir, source)
+      path = File.join(dir, "sample.rb")
+      return path if File.exist?(path)
+
+      write_source(dir, source)
+      load path
+      path
+    end
+
+    def int(value) = Parser::AST::Node.new(:int, [value])
+
+    def first_int(value) = { find: ->(ast) { find_nodes(ast, :int).find { |n| n.children == [value] } }, to: nil }
+
+    it "resolves constants of an enclosing module" do
+      Dir.mktmpdir do |dir|
+        source = <<~RUBY
+          module DiOuter
+            LIMIT = 10
+            class Inner
+              def capped(x) = [x, LIMIT].min + 1
+            end
+          end
+        RUBY
+        activate_in(dir, source, "DiOuter::Inner#capped", constants: ["DiOuter"],
+                                                          mutate: first_int(1).merge(to: int(2)))
+
+        expect(DiOuter::Inner.new.capped(20)).to eq(12)
+      end
+    end
+
+    it "resolves a class method's own constants" do
+      Dir.mktmpdir do |dir|
+        source = <<~RUBY
+          class DiConfig
+            RATE = 3
+            def self.rate = RATE + 1
+          end
+        RUBY
+        activate_in(dir, source, "DiConfig.rate", constants: ["DiConfig"], mutate: first_int(1).merge(to: int(5)))
+
+        expect(DiConfig.rate).to eq(8)
+      end
+    end
+
+    it "keeps implicit super, yield and block_given? working" do
+      Dir.mktmpdir do |dir|
+        source = <<~RUBY
+          class DiBase
+            def total(x) = x * 2
+          end
+          class DiChild < DiBase
+            def total(x) = super + 1
+            def each_tier = yield(4)
+            def maybe = block_given? ? yield : :none
+          end
+        RUBY
+        constants = %w[DiBase DiChild]
+        activate_in(dir, source, "DiChild#total", constants:, mutate: first_int(1).merge(to: int(3)))
+        activate_in(dir, source, "DiChild#each_tier", constants:)
+        activate_in(dir, source, "DiChild#maybe", constants:)
+
+        expect([DiChild.new.total(2), DiChild.new.each_tier { |n| n * 10 }, DiChild.new.maybe { :given }])
+          .to eq([7, 40, :given])
+      end
+    end
+
+    it "keeps argument forwarding and default values with operators" do
+      Dir.mktmpdir do |dir|
+        source = <<~RUBY
+          class DiForward
+            def build(a, b = 1 + 1) = [a, b]
+            def forward(...) = build(...)
+          end
+        RUBY
+        activate_in(dir, source, "DiForward#forward", constants: ["DiForward"])
+        activate_in(dir, source, "DiForward#build", constants: ["DiForward"])
+
+        expect([DiForward.new.forward(5), DiForward.new.forward(5, 9)]).to eq([[5, 2], [5, 9]])
+      end
+    end
+
+    it "keeps __FILE__, __LINE__, frozen string literals and private visibility" do
+      Dir.mktmpdir do |dir|
+        source = <<~RUBY
+          # frozen_string_literal: true
+
+          class DiFacts
+            private
+
+            def facts = [File.basename(__FILE__), __LINE__, "s".frozen?]
+          end
+        RUBY
+        activate_in(dir, source, "DiFacts#facts", constants: ["DiFacts"])
+
+        expect([DiFacts.instance_method(:facts).bind_call(DiFacts.new), DiFacts.private_method_defined?(:facts)])
+          .to eq([["sample.rb", 6, true], true])
+      end
+    end
+
+    it "describes a top-level activation in the original file and at the def's line" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "module DiPlace\n  class Spot\n    def value = 1\n  end\nend\n")
+        subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+        node = subject.ast_node.children.last
+        activation = described_class.activation_for(build_mutant(subject:, original_node: node, mutated_node: node,
+                                                                 location: location_for(node)))
+
+        expect([activation.mode, activation.file, activation.source.lines[activation.def_offset]])
+          .to eq([:toplevel, path, "    def value = 1\n"])
+      end
+    end
+  end
+
   describe ".activation_source_for" do
-    it "includes define_method(:value) in the returned source" do
+    it "returns the subject's def inside its class opener" do
       Dir.mktmpdir do |dir|
         path = write_source(dir, <<~RUBY)
           class ActivationSourceSample
@@ -838,19 +975,34 @@ RSpec.describe Henitai::Mutant::Activator do
 
         source = described_class.activation_source_for(mutant)
 
-        expect(source).to include("define_method(:value)")
+        expect(source).to eq("class ActivationSourceSample\n  def value\n    1 - 1\n  end\nend\n")
       end
     end
 
     it "returns nil when the source cannot be computed" do
-      mutant = instance_double(Henitai::Mutant)
+      mutant = instance_double(Henitai::Mutant, original_node: nil)
       allow(mutant).to receive(:subject).and_raise(RuntimeError, "boom")
 
       expect(described_class.activation_source_for(mutant)).to be_nil
     end
   end
 
-  describe "#activate! with precomputed_activation_source" do
+  it "falls back to define_method for a subject without a recorded lexical scope" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "class FallbackSample\n  def value = 1 + 1\nend\n")
+      resolved = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      subject = Henitai::Subject.new(namespace: "FallbackSample", method_name: "value",
+                                     source_location: { file: path, range: 2..2 }, ast_node: resolved.ast_node)
+      node = find_nodes(subject.ast_node, :send).first
+
+      activation = described_class.activation_for(build_mutant(subject:, original_node: node, mutated_node: node,
+                                                               location: location_for(node)))
+
+      expect([activation.mode, activation.source.include?("define_method(:value)")]).to eq([:class_eval, true])
+    end
+  end
+
+  describe "#activate! with precomputed_activation" do
     it "uses the precomputed source instead of recomputing from AST" do
       Dir.mktmpdir do |dir|
         path = write_source(dir, <<~RUBY)
@@ -867,13 +1019,13 @@ RSpec.describe Henitai::Mutant::Activator do
           [Henitai::Operators::ArithmeticOperator.new]
         ).first
 
-        precomputed = "define_method(:value) do\n  42\nend\n"
+        precomputed = class_eval_activation("define_method(:value) do\n  42\nend\n")
         mutant = build_mutant(
           subject: mutant.subject,
           original_node: mutant.original_node,
           mutated_node: mutant.mutated_node,
           location: mutant.location,
-          precomputed_activation_source: precomputed
+          precomputed_activation: precomputed
         )
 
         described_class.activate!(mutant)

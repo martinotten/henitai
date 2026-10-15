@@ -4,7 +4,7 @@ require "json"
 require "fileutils"
 
 module Henitai
-  # Stores and retrieves pre-computed +define_method+ activation sources for
+  # Stores and retrieves pre-computed activations (see Mutant::Activation) for
   # survived mutants, enabling survivor reruns to skip the full mutant-generation
   # pipeline.
   #
@@ -14,7 +14,7 @@ module Henitai
   # objects directly and execute them without re-parsing source files.
   #
   # A recipe entry encodes everything needed to activate and re-report a mutant:
-  # the +define_method+ source, subject coordinates, operator, description,
+  # the activation (source, mode, file, line), subject coordinates, operator, description,
   # location, and the coveredBy test list.
   class SurvivorActivationCache
     FILENAME = "activation-recipes.json"
@@ -26,10 +26,10 @@ module Henitai
     # @return [Hash<String, Hash>] stableId → recipe
     def self.compute(survived_mutants)
       survived_mutants.each_with_object({}) do |mutant, cache|
-        source = Mutant::Activator.activation_source_for(mutant)
-        next unless source
+        activation = Mutant::Activator.activation_for(mutant)
+        next unless activation
 
-        cache[mutant.stable_id] = build_recipe(mutant, source)
+        cache[mutant.stable_id] = build_recipe(mutant, activation)
       end
     end
 
@@ -53,9 +53,9 @@ module Henitai
     class << self
       private
 
-      def build_recipe(mutant, activation_source)
+      def build_recipe(mutant, activation)
         {
-          "activationSource" => activation_source,
+          "activation" => activation.to_h,
           "namespace" => mutant.subject.namespace,
           "methodName" => mutant.subject.method_name,
           "methodType" => mutant.subject.method_type.to_s,

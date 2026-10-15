@@ -20,7 +20,7 @@ RSpec.describe Henitai::SurvivorRerunStrategy do
 
   def recipe(overrides = {})
     {
-      "activationSource" => "1",
+      "activation" => { "source" => "1", "mode" => "class_eval" },
       "namespace" => "Sample",
       "methodName" => "value",
       "sourceFile" => "lib/sample.rb",

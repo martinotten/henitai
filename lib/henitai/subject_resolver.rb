@@ -26,6 +26,7 @@ module Henitai
     private
 
     def resolve_from_file(path)
+      @scope = []
       subjects = []
       walk(
         SourceParser.parse_file(path),
@@ -46,8 +47,33 @@ module Henitai
         singleton_context
       )
 
-      collect_subject(node, namespace, singleton_context, subjects)
-      traverse_children(node, namespace, singleton_context, subjects)
+      within_scope(node) do
+        collect_subject(node, namespace, singleton_context, subjects)
+        traverse_children(node, namespace, singleton_context, subjects)
+      end
+    end
+
+    # Tracks the openers of the modules and classes around the walk position,
+    # so a method can later be re-evaluated in its original lexical scope.
+    def within_scope(node)
+      opener = scope_opener(node)
+      @scope.push(opener) unless opener == :none
+      yield
+    ensure
+      @scope.pop unless opener == :none
+    end
+
+    def scope_opener(node)
+      case node.type
+      when :class, :module then "#{node.type} #{node.children.first.location.expression.source}"
+      when :sclass then node.children.first.type == :self ? "class << self" : nil
+      else :none
+      end
+    end
+
+    # nil when some enclosing scope cannot be reopened by name (class << obj).
+    def lexical_scope
+      @scope.include?(nil) ? nil : @scope.dup
     end
 
     def collect_subject(node, namespace, singleton_context, subjects)
@@ -114,7 +140,8 @@ module Henitai
         method_name: method_name(node.children.first),
         method_type: singleton_context ? :class : :instance,
         source_location: source_location_for(node),
-        ast_node: node
+        ast_node: node,
+        lexical_scope:
       )
     end
 
@@ -126,7 +153,8 @@ module Henitai
         method_name: method_name(node.children[1]),
         method_type: :class,
         source_location: source_location_for(node),
-        ast_node: node
+        ast_node: node,
+        lexical_scope:
       )
     end
 

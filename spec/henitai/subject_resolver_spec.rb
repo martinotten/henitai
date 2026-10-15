@@ -46,6 +46,62 @@ RSpec.describe Henitai::SubjectResolver do
     end
   end
 
+  describe "lexical scope" do
+    def scopes_for(source)
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "lib/sample.rb", source)
+        described_class.new.resolve_from_files([path]).to_h { |subject| [subject.expression, subject.lexical_scope] }
+      end
+    end
+
+    it "records the openers of the modules and classes around a method" do
+      scopes = scopes_for(<<~RUBY)
+        module Outer
+          class Inner < Base
+            def value = 1
+            def self.build = 2
+            class << self
+              def make = 3
+            end
+          end
+        end
+      RUBY
+
+      expect(scopes).to eq(
+        "Outer::Inner#value" => ["module Outer", "class Inner"],
+        "Outer::Inner.build" => ["module Outer", "class Inner"],
+        "Outer::Inner.make" => ["module Outer", "class Inner", "class << self"]
+      )
+    end
+
+    it "keeps compact and root-qualified constant paths as written" do
+      scopes = scopes_for(<<~RUBY)
+        class Outer::Inner
+          def value = 1
+        end
+        module Wrap
+          class ::Top
+            def value = 2
+          end
+        end
+      RUBY
+
+      expect(scopes.values).to eq([["class Outer::Inner"], ["module Wrap", "class ::Top"]])
+    end
+
+    it "records no scope for a method in the singleton class of another object" do
+      scopes = scopes_for(<<~RUBY)
+        class Holder
+          class << OBJECT
+            def value = 1
+          end
+        end
+      RUBY
+
+      expect(scopes.values).to eq([nil])
+    end
+  end
+
   it "preserves source location metadata for each subject" do
     Dir.mktmpdir do |dir|
       path = write_source(

@@ -158,7 +158,7 @@ Ruby-specific execution notes:
 
 - source parsing is based on Prism's translation layer, because the framework needs a real AST and not regular-expression heuristics
 - `RubyVM::AbstractSyntaxTree` is useful for inspection and future experiments, but not the primary mutation backend
-- the default execution model uses `Module#define_method` injection inside a forked worker process
+- the default execution model re-evaluates the subject's own `def`, with the mutation spliced in, inside its original module and class openers in a forked worker process, after the test files have loaded (ADR-13); `Module#define_method` is the fallback for subjects that cannot be reopened by name
 - process-based parallelism is the default for test execution, because it gives isolation and avoids shared-state surprises
 - Ractor may be useful for narrowly isolated generation tasks later, but it is not the default runtime model
 - Fibers are not a parallel execution strategy for this problem and are not used as such
@@ -648,7 +648,7 @@ Soundness rests on the per-test map being a complete over-approximation of reach
 
 Reused mutants stay visible: `fromCache: true` beside `stableId` in the JSON report, a `N of M verdicts reused from history (K killed, S survived)` terminal line, and an executed-only MS/MSI line so cached verdicts are never mistaken for fresh results. Documented blindness (accepted, mirrors Stryker): non-subject production files in the call graph, test order/seed effects on state-leaking tests, and environment drift not reflected in the fingerprinted files.
 
-Mutant activation covers `module_function` subjects: `module_function` copies the private instance method onto the module's singleton, and `define_method` alone only replaces the instance side, so the activator re-runs `module_function` for the injected method when the pre-injection shape proves such a copy — without this, every mutant in a `module_function` module falsely survives.
+Mutant activation covers `module_function` subjects: `module_function` copies the private instance method onto the module's singleton, and re-defining the method only replaces the instance side, so the activator re-runs `module_function` for the injected method when the pre-injection shape proves such a copy — without this, every mutant in a `module_function` module falsely survives. A re-evaluated `def` is public, so the activator also reads the method's visibility before injection and restores it afterwards.
 
 ## 9. Architecture Decisions
 
