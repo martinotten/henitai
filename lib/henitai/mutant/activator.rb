@@ -56,7 +56,7 @@ module Henitai
         raise ArgumentError, "Cannot activate wildcard subjects" if subject.method_name.nil?
 
         activation = mutant.precomputed_activation || activation_for(mutant)
-        target = target_for(subject)
+        target = activation.mode == :toplevel ? lexical_target(subject, activation) : target_for(subject)
         Henitai::WarningSilencer.silence do
           evaluate(activation, target, subject)
           nil
@@ -84,6 +84,32 @@ module Henitai
         return target.send(:module_function, name) if copy
 
         target.send(visibility, name) if visibility
+      end
+
+      # The object the re-evaluated +def+ defines its method on, as Ruby
+      # resolves it: the openers are evaluated with +self+ -- or the receiver
+      # of +def Other.name+ -- as their body. The subject's namespace is only
+      # the resolver's static reading of the source, which cannot tell
+      # whether +Other+ inside +module Outer+ is +Outer::Other+ or +::Other+.
+      # It still loads the subject's file first, so that evaluating the
+      # openers reopens the loaded class instead of creating an empty one.
+      def lexical_target(subject, activation)
+        ensure_loaded(subject)
+        node = subject.ast_node
+        scope = subject.lexical_scope
+        source = "#{scope.join('; ')}\n#{owner_source(node)}\n#{Array.new(scope.size, 'end').join('; ')}"
+        owner = TOPLEVEL_BINDING.eval(source, activation.file, activation.line)
+        node.type == :defs ? owner.singleton_class : owner
+      end
+
+      def ensure_loaded(subject)
+        load_target(subject)
+      rescue NameError
+        nil
+      end
+
+      def owner_source(node)
+        node.type == :defs ? node.children.first.location.expression.source : "self"
       end
 
       def visibility_of(owner, name)

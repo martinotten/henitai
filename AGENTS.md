@@ -149,10 +149,13 @@ coverage and is excluded from `includes` in `.henitai.yml`.
   activated, by re-evaluating the subject's own `def` with the mutation
   spliced in, inside its original `module`/`class` openers and at its original
   file and line (ADR-13, `Mutant::DefInjection`). Visibility and
-  `module_function` copies are restored. `define_method` remains only as the
-  fallback for subjects that cannot be reopened by name (`define_method`
-  subjects, `class << obj`). Process isolation is the required default model,
-  not thread-only parallelism.
+  `module_function` copies are restored. Methods in a
+  `Point = Struct.new(...) do ... end` block (also `Data.define`, `Class.new`)
+  are re-evaluated inside `Point.class_eval do`, and methods of
+  `class << CONST` inside `class << CONST`. Methods of `class << obj` and
+  `def obj.name` for a non-constant `obj` are no subjects. `define_method`
+  remains only as the fallback for `define_method` subjects. Process isolation
+  is the required default model, not thread-only parallelism.
 - `ExecutionEngine` runs mutants linearly by default (`config.jobs`, default
   `1`). With more jobs, `ProcessWorkerRunner` drives a single-threaded event
   loop and `SlotScheduler` owns spawning, reaping, timeouts and draining. Every

@@ -34,6 +34,7 @@ module Henitai
   autoload :Operator, "henitai/operator"
   autoload :Operators, "henitai/operators"
   autoload :SourceParser, "henitai/source_parser"
+  autoload :ConstantPath, "henitai/constant_path"
   autoload :SubjectResolver, "henitai/subject_resolver"
   autoload :GeneratedArtifacts, "henitai/generated_artifacts"
   autoload :GitDiffAnalyzer, "henitai/git_diff_analyzer"
