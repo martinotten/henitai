@@ -124,14 +124,13 @@ module Henitai
       end
 
       def no_examples_found?(stdout, stderr)
-        stdout.to_s.include?("No examples found.") || stderr.to_s.include?("No examples found.")
+        ExampleSummary::NO_EXAMPLES_FOUND.match?(stdout.to_s) || ExampleSummary::NO_EXAMPLES_FOUND.match?(stderr.to_s)
       end
 
       def zero_examples_failure?(wait_result, stdout, stderr)
         return false unless exit_status_for(wait_result) == 1
 
-        output = [stdout.to_s, stderr.to_s].join("\n")
-        output.match?(/\b0 examples, 0 failures/)
+        ExampleSummary.none_ran?([stdout.to_s, stderr.to_s].join("\n"))
       end
     end
 

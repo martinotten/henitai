@@ -165,6 +165,17 @@ RSpec.describe Henitai::ScenarioExecutionResult do
     expect(result.status).to eq(:killed)
   end
 
+  it "keeps a kill whose failure output quotes a zero-example text" do
+    result = described_class.build(
+      wait_result: build_wait_result(success: false, exitstatus: 1),
+      stdout: "  # No examples found.\n  eq(\"0 examples, 0 failures\")\n4 examples, 1 failure\n",
+      stderr: "",
+      log_path: "/tmp/henitai-test.log"
+    )
+
+    expect(result.status).to eq(:killed)
+  end
+
   it "classifies a mutant run from the child's report" do
     result = described_class.build_for_mutant(
       wait_result: Struct.new(:exitstatus, :signaled?).new(2, false),

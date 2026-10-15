@@ -11,8 +11,6 @@ module Henitai
   # the detected count. In particular a child that died without a report, or
   # was killed by a signal, is a RuntimeError, never a kill.
   class MutantVerdict
-    NO_EXAMPLES = /No examples found\.|\b0 examples, 0 failures/
-
     def initialize(wait_result:, report:, stdout:, stderr:)
       @wait_result = wait_result
       @report = report
@@ -43,7 +41,7 @@ module Henitai
     end
 
     def test_verdict
-      return [:compile_error, "no examples ran"] if NO_EXAMPLES.match?(@output)
+      return [:compile_error, "no examples ran"] if ExampleSummary.none_ran?(@output)
 
       @report["exit_code"].to_i.zero? ? [:survived, nil] : [:killed, nil]
     end
