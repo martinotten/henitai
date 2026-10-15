@@ -62,7 +62,7 @@ RSpec.describe Henitai::MutantGenerator do
               build_mutant(
                 subject:,
                 original_node: node,
-                mutated_node: node,
+                mutated_node: node.updated(nil, [node.children.first + 10]),
                 description: "fake int"
               )
             ]
@@ -336,6 +336,17 @@ RSpec.describe Henitai::MutantGenerator do
         ids = chain_mutants(dir).map(&:stable_id)
 
         expect(ids.uniq.size).to eq(ids.size)
+      end
+    end
+
+    it "keeps one mutant when two operators produce the same program" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "lib/guard.rb", "class Guard\n  def run(x)\n    return true if x\n    1\n  end\nend\n")
+        subjects = Henitai::SubjectResolver.new.resolve_from_files([path])
+        mutants = described_class.new.generate(subjects, Henitai::Operator.for_set(:light))
+        programs = mutants.map { |mutant| Henitai::Mutant::Activator.activation_source_for(mutant) }
+
+        expect(programs.size).to eq(programs.uniq.size)
       end
     end
 

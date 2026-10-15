@@ -70,6 +70,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A run in which harness errors (`CompileError`) left no mutant to score now
   exits `1` with a warning instead of passing its threshold with nothing
   tested.
+- Mutating an `elsif` condition no longer rewrites the whole `if` chain; only
+  the condition changes.
+- String parts of interpolated strings, symbols, backticks and regexps, and
+  elements of `%w` arrays, are no longer mutated as standalone strings. Their
+  replacement text changed the literal's syntax rather than its value.
+- Operator replacements are parenthesised when spliced, so `a && b && c`
+  mutated to `a || b` no longer reads as `a || (b && c)`.
+- Two mutants at the same position with the same description no longer share
+  one stable identity and history entry.
+- `ReturnValue` mutates only the method's final expression, not every
+  expression that happens to equal it.
+- Subject expressions for predicate, bang, setter and operator methods, such
+  as `Foo#empty?`, `Foo#save!`, `Foo#name=` and `Foo#==`, select their method
+  instead of nothing.
+- Mutants from different operators that produce the same program run once.
 
 ## [0.5.3] - 2026-08-26
 
