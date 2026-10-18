@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "delegate"
 require "digest"
 require "securerandom"
 require "parser/current"
@@ -96,6 +97,14 @@ RSpec.describe Henitai::Result do
 
     Dir.mktmpdir do |temp_dir|
       build_mutant(status:, duration:, dir: temp_dir)
+    end
+  end
+
+  describe "#detected" do
+    it "counts killed, timed out and runtime error mutants" do
+      mutants = %i[killed timeout runtime_error survived].map { |status| status_mutant(status) }
+
+      expect(result(mutants).detected).to eq(3)
     end
   end
 
@@ -266,6 +275,12 @@ RSpec.describe Henitai::Result do
 
   it "serialises the expected schema version" do
     expect(result([build_mutant(status: :pending)]).to_stryker_schema[:schemaVersion]).to eq("1.0")
+  end
+
+  it "marks every file section as ruby" do
+    schema = result([build_mutant(status: :pending)]).to_stryker_schema
+
+    expect(schema[:files].values.map { |file| file[:language] }).to eq(["ruby"])
   end
 
   it "serialises the pre-site-offset stable id for canonical report migration" do
@@ -483,6 +498,31 @@ RSpec.describe Henitai::Result do
         mutation_score_indicator: nil
       )
     end
+  end
+
+  # A mutant from before mutated_source, status_reason and from_cache? existed.
+  def legacy_mutant(mutant)
+    hidden = %i[mutated_source status_reason from_cache?]
+    Class.new(SimpleDelegator) do
+      define_method(:respond_to_missing?) do |name, include_private = false|
+        !hidden.include?(name) && super(name, include_private)
+      end
+      define_method(:method_missing) do |name, *args, &block|
+        raise NoMethodError, "undefined method #{name}" if hidden.include?(name)
+
+        super(name, *args, &block)
+      end
+    end.new(mutant)
+  end
+
+  it "serialises a mutant that lacks the newer reason and cache readers", :aggregate_failures do
+    mutant = build_mutant(status: :ignored)
+    mutant.ignore_reason = "log-format noise"
+    serialized = result([legacy_mutant(mutant)]).to_stryker_schema[:files].values.first[:mutants].first
+
+    expect(serialized[:replacement]).to eq(mutant.mutated_source)
+    expect(serialized[:statusReason]).to eq("log-format noise")
+    expect(serialized.key?(:fromCache)).to be(false)
   end
 
   it "omits fromCache for executed mutants" do

@@ -15,7 +15,10 @@ module Henitai
 
     def none_ran?(output)
       text = output.to_s
-      NO_EXAMPLES_FOUND.match?(text) || text.scan(SUMMARY).last == ["0"]
+      summaries = text.scan(SUMMARY)
+      return NO_EXAMPLES_FOUND.match?(text) if summaries.empty?
+
+      summaries.last == ["0"]
     end
   end
 end

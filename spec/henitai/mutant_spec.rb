@@ -63,6 +63,15 @@ RSpec.describe Henitai::Mutant do
     expect(mutant.equivalent?).to be(true)
   end
 
+  it "reports whether its verdict came from the cache", :aggregate_failures do
+    mutant = build_mutant
+    fresh = mutant.from_cache?
+    mutant.from_cache = true
+
+    expect(fresh).to be(false)
+    expect(mutant.from_cache?).to be(true)
+  end
+
   describe "#stable_id" do
     it "returns a 64-character hex string" do
       expect(build_mutant.stable_id).to match(/\A[0-9a-f]{64}\z/)

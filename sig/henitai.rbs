@@ -131,7 +131,7 @@ module Henitai
   module Integration::RspecChildRunner
     private
 
-    def run_rspec_runner: (Array[String]) -> untyped
+    def run_rspec_runner: (Array[String]) ?{ () -> untyped } -> untyped
     def build_rspec_runner: () -> untyped
     def configure_rspec_runner: (untyped) -> void
     def load_rspec_spec_files: (Array[String]) -> void
@@ -228,9 +228,13 @@ module Henitai
     attr_reader stderr: String
     attr_reader exit_status: Integer?
     attr_reader log_path: String
+    attr_reader status_reason: String?
 
     def self.build: (wait_result: untyped, stdout: String?, stderr: String?, log_path: String) -> ScenarioExecutionResult
-    def initialize: (status: Symbol, stdout: String?, stderr: String?, log_path: String, ?exit_status: Integer?) -> void
+    def self.build_for_mutant: (wait_result: untyped, report: untyped, stdout: String?, stderr: String?, log_path: String) -> ScenarioExecutionResult
+    def self.copy_reason: (untyped, untyped) -> String?
+    def initialize: (status: Symbol, stdout: String?, stderr: String?, log_path: String, ?exit_status: Integer?, ?status_reason: String?) -> void
+    def release_output!: () -> self
     def survived?: () -> bool
     def killed?: () -> bool
     def timeout?: () -> bool
@@ -508,7 +512,7 @@ module Henitai
 
       private
 
-      def run_tests: (Array[String]) -> Integer
+      def run_tests: (Array[String]) ?{ () -> untyped } -> Integer
     end
 
     module CoverageRuntimeSuppressors
@@ -539,7 +543,7 @@ module Henitai
 
       private
 
-      def run_tests: (Array[String]) -> Integer
+      def run_tests: (Array[String]) ?{ () -> untyped } -> Integer
       def preload_environment: () -> void
       def setup_load_path: () -> void
       def suppress_minitest_autorun!: () -> nil
@@ -797,8 +801,6 @@ module Henitai
 
     private
 
-    def load_target: (Subject) -> untyped
-    def load_source_file: (Subject) -> void
     def target_for: (Subject) -> untyped
     def method_source: (Mutant) -> String
     def body_source: (Mutant) -> String
@@ -807,9 +809,26 @@ module Henitai
     def same_node?: (untyped, untyped) -> bool
     def replace_child: (untyped, untyped, untyped) -> untyped
     def method_body: (untyped) -> untyped
-    def source_file_from_ast: (Subject) -> String?
     def node_location_signature: (untyped) -> Array[untyped]?
     def compile_safe_unparse: (untyped) -> String
+  end
+
+  class Mutant::LexicalTarget
+    class SubjectNotLoadedError < StandardError
+    end
+
+    def self.resolve: (Subject, untyped) -> untyped
+    def self.load_target: (Subject) -> untyped
+    def resolve: (Subject, untyped) -> untyped
+    def load_target: (Subject) -> untyped
+
+    private
+
+    def ensure_loaded: (Subject, Array[String]) -> void
+    def load_toplevel_source: (Subject) -> untyped
+    def load_subject_source: (Subject) -> void
+    def load_source_file: (Subject) -> void
+    def source_file_from_ast: (Subject) -> String?
   end
 
   class Mutant::ParameterSource

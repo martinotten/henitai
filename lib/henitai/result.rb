@@ -26,9 +26,8 @@ module Henitai
       process_abort: true
     }.freeze
 
-    # Maps each criterion to the mutant status it governs. process_abort has no
-    # producer in lib/ yet -- nothing classifies a mutant as :runtime_error --
-    # so that entry is forward-looking wiring rather than a live code path.
+    # Maps each criterion to the mutant status it governs. MutantVerdict emits
+    # :runtime_error for process aborts, signals, and unknown child outcomes.
     CRITERION_STATUSES = {
       test_result: :killed,
       timeout: :timeout,

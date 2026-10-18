@@ -16,7 +16,12 @@ module Henitai
     # +define_method+ subject, a method in +class << obj+, a subject without
     # recorded scope); the Activator then falls back to +define_method+.
     class DefInjection
-      MAGIC_COMMENT = /\A#.*\b(frozen_string_literal|shareable_constant_value|warn_indent)\s*:/i
+      # Matches +# key: value+ and the emacs form +# -*- key: value -*-+ only,
+      # so prose that merely mentions a magic comment does not match.
+      MAGIC_COMMENT = /
+        \A\#\s*(?:-\*-(?:[^;:]*:[^;]*;)*\s*)?
+        (?:frozen_string_literal|shareable_constant_value|warn_indent)\s*:
+      /ix
 
       def self.build(mutant, replacement)
         new.build(mutant, replacement)
@@ -31,7 +36,7 @@ module Henitai
         def_source = spliced_def(node.location.expression, mutant.original_node, replacement)
         return unless def_source
 
-        assemble(node.location.expression, scope, def_source)
+        assemble(node, scope, def_source)
       end
 
       private
@@ -80,16 +85,46 @@ module Henitai
         inner.begin_pos.between?(outer.begin_pos, inner.end_pos) && inner.end_pos <= outer.end_pos
       end
 
-      def assemble(def_range, scope, def_source)
-        prefix = magic_comments(def_range.source_buffer.source) + [scope.join("; ")]
-        Activation.new(source: source_lines(prefix, def_range, scope, def_source), mode: :toplevel,
-                       file: File.expand_path(def_range.source_buffer.name),
-                       line: def_range.line - prefix.size, def_offset: prefix.size)
+      def assemble(node, scope, def_source)
+        def_range = node.location.expression
+        prefix = prefix_lines(def_range)
+        Activation.new(source: source_lines(prefix, scope, def_source), mode: :toplevel,
+                       **location_fields(def_range, prefix), **owner_fields(node, scope))
       end
 
-      def source_lines(prefix, def_range, scope, def_source)
-        lines = prefix + ["#{' ' * def_range.column}#{def_source}", Array.new(scope.size, "end").join("; ")]
+      # Only magic-comment header lines precede the def; the openers share
+      # its line, so the def keeps its original line number.
+      def prefix_lines(def_range)
+        magic_comments(def_range.source_buffer.source)
+      end
+
+      def location_fields(def_range, prefix)
+        { file: File.expand_path(def_range.source_buffer.name),
+          line: [def_range.line - prefix.size, 1].max, def_offset: prefix.size }
+      end
+
+      def owner_fields(node, scope)
+        { lexical_scope: scope, owner: owner_source(node), singleton: node.type == :defs }
+      end
+
+      # The expression the +def+ is defined on, as the openers must evaluate
+      # it: +self+, or the receiver of +def Other.name+.
+      def owner_source(node)
+        node.type == :defs ? node.children.first.location.expression.source : "self"
+      end
+
+      # The expression starts at column 0, so its leading indent is dropped.
+      def source_lines(prefix, scope, def_source)
+        lines = prefix + [wrap_in_scope(def_source.lstrip, scope)]
         "#{lines.join("\n")}\n"
+      end
+
+      # Openers and closers go on the def's own line; with an empty scope
+      # the def stands alone.
+      def wrap_in_scope(definition, scope)
+        return definition if scope.empty?
+
+        "#{scope.join('; ')}; #{definition}; #{Array.new(scope.size, 'end').join('; ')}"
       end
 
       def magic_comments(file_source)

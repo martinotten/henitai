@@ -124,7 +124,11 @@ module Henitai
       end
 
       def no_examples_found?(stdout, stderr)
-        ExampleSummary::NO_EXAMPLES_FOUND.match?(stdout.to_s) || ExampleSummary::NO_EXAMPLES_FOUND.match?(stderr.to_s)
+        output = [stdout.to_s, stderr.to_s].join("\n")
+        return false unless ExampleSummary::NO_EXAMPLES_FOUND.match?(output)
+
+        last_summary = output.scan(ExampleSummary::SUMMARY).last
+        last_summary.nil? || last_summary == ["0"]
       end
 
       def zero_examples_failure?(wait_result, stdout, stderr)

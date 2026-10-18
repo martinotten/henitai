@@ -339,6 +339,20 @@ RSpec.describe Henitai::MutantGenerator do
       end
     end
 
+    it "keeps disambiguated identities stable when lines are added above the subject" do
+      Dir.mktmpdir do |dir|
+        ids = chain_mutants(dir).map(&:stable_id)
+        path = File.join(dir, "lib/chain.rb")
+        File.write(path, "# drift\n#{File.read(path)}")
+        drifted_ids = described_class.new.generate(
+          Henitai::SubjectResolver.new.resolve_from_files([path]),
+          [Henitai::Operators::MethodExpression.new]
+        ).map(&:stable_id)
+
+        expect(drifted_ids).to eq(ids)
+      end
+    end
+
     it "keeps one mutant when two operators produce the same program" do
       Dir.mktmpdir do |dir|
         path = write_source(dir, "lib/guard.rb", "class Guard\n  def run(x)\n    return true if x\n    1\n  end\nend\n")
@@ -402,6 +416,36 @@ RSpec.describe Henitai::MutantGenerator do
       )
 
       expect(mutants).to eq([])
+    end
+  end
+
+  it "computes activation sources only for the sampled mutants", :aggregate_failures do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", <<~RUBY)
+        class Sample
+          def announce
+            1 + 2 + 3 + 4 + 5 + 6
+          end
+        end
+      RUBY
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      operators = [Henitai::Operators::ArithmeticOperator.new]
+      config = write_configuration(
+        dir,
+        <<~YAML
+          mutation:
+            sampling:
+              ratio: 0.5
+              strategy: stratified
+        YAML
+      )
+      unsampled = described_class.new.generate([subject], operators).size
+
+      allow(Henitai::Mutant::Activator).to receive(:activation_source_for).and_call_original
+      sampled = described_class.new.generate([subject], operators, config:)
+
+      expect(sampled.size).to be < unsampled
+      expect(Henitai::Mutant::Activator).to have_received(:activation_source_for).exactly(sampled.size).times
     end
   end
 
@@ -632,6 +676,17 @@ RSpec.describe Henitai::MutantGenerator do
 
           expect(visitor.mutants.map { |m| m.original_node.type }).not_to include(:str)
         end
+      end
+    end
+
+    it "mutates string elements of a bracketed array literal" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "lib/sample.rb", "class Sample\n  def run\n    [\"alpha\", \"beta\"]\n  end\nend\n")
+        subject = make_subject_for(path, "Sample#run")
+        visitor = new_visitor(subject, [Henitai::Operators::StringLiteral.new])
+        visitor.process(Henitai::SourceParser.parse_file(path))
+
+        expect(visitor.mutants.map { |m| m.original_node.type }).to include(:str)
       end
     end
 

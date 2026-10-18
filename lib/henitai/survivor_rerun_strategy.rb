@@ -92,11 +92,27 @@ module Henitai
       path    = File.join(File.dirname(@survivors_from), SurvivorActivationCache::FILENAME)
       recipes = SurvivorActivationCache.load(path)
       return nil if recipes.nil?
-      # Recipes without an "activation" entry predate ADR-13: their
-      # define_method sources lose lexical scope, so they are not replayed.
-      return nil unless survivor_ids.all? { |id| recipes[id].is_a?(Hash) && recipes[id].key?("activation") }
+      return nil unless survivor_ids.all? { |id| replayable_recipe?(recipes[id]) }
 
       recipes
+    end
+
+    # Recipes without an "activation" entry predate ADR-13: their
+    # define_method sources lose lexical scope, so they are not replayed.
+    # A :toplevel activation needs the persisted scope and owner, because the
+    # stub subject has no AST to resolve them from.
+    def replayable_recipe?(recipe)
+      return false unless recipe.is_a?(Hash) && recipe["activation"].is_a?(Hash)
+
+      activation = recipe["activation"]
+      activation["mode"] != "toplevel" || toplevel_fields_valid?(activation)
+    end
+
+    def toplevel_fields_valid?(activation)
+      scope = activation["lexicalScope"]
+      scope.is_a?(Array) && scope.all?(String) &&
+        activation["owner"].is_a?(String) &&
+        [true, false].include?(activation["singleton"])
     end
 
     def build_stub_mutant(stable_id, recipe)
