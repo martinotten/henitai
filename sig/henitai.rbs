@@ -325,11 +325,20 @@ module Henitai
     def current_snapshot: () -> untyped
     def warn_missing_coverage: () -> void
     def new_lines: (untyped) -> Hash[String, Array[Integer]]
-    def new_line_numbers: (untyped, untyped) -> Array[Integer]
-    def previous_line_counts: (String) -> Array[untyped]
-    def line_counts_for: (untyped) -> Array[untyped]
     def source_file?: (String) -> bool
     def serializable_report: () -> Hash[String, Hash[String, Array[Integer]]]
+  end
+
+  class PerTestCoverageDelta
+    def executed_lines: (untyped, untyped) -> Array[Integer]
+
+    private
+
+    def counted_lines: (untyped, untyped) -> Array[Integer]
+    def called_method_lines: (untyped, untyped) -> Array[Integer]
+    def untracked_method_lines: (Array[untyped], Array[untyped]) -> Array[Integer]
+    def line_counts: (untyped) -> Array[untyped]
+    def method_counts: (untyped) -> Hash[untyped, untyped]
   end
 
   class CoverageFormatter
