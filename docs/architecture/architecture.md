@@ -420,7 +420,7 @@ If an optional LLM-based detector is introduced later, it must remain a plugin a
 The scoring model is explicit:
 
 ```text
-MS  = (killed + timeout) / (total - ignored - no_coverage - compile_error - equivalent)
+MS  = (killed + timeout + runtime_error) / (total - ignored - no_coverage - compile_error - equivalent)
 MSI = killed / total
 ```
 
@@ -474,10 +474,9 @@ Henitai reuses the idea of subject expressions from the Ruby `mutant` ecosystem:
 - file-based selection for bulk analysis
 - longest-prefix matching for RSpec-style examples
 
-Inline directives are documented as a future extension for local control, for
-example disabling a subject or a specific operator family in generated or
-intentionally unstable code. They are not implemented in the current codebase
-yet.
+Inline directives provide local control, for example disabling a subject or a
+specific operator family in generated or intentionally unstable code. They are
+implemented; see the `# henitai:disable` section above.
 
 Example directives:
 

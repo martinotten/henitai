@@ -159,7 +159,7 @@ RSpec.describe Henitai::ScenarioExecutionResult do
       wait_result: build_wait_result(success: false, exitstatus: 1),
       stdout: "10 examples, 0 failures, 1 error occurred outside of examples\n",
       stderr: "",
-      log_path: "/tmp/henitai-test.log"
+      log_path: "reports/henitai-test.log"
     )
 
     expect(result.status).to eq(:killed)
@@ -170,7 +170,18 @@ RSpec.describe Henitai::ScenarioExecutionResult do
       wait_result: build_wait_result(success: false, exitstatus: 1),
       stdout: "  # No examples found.\n  eq(\"0 examples, 0 failures\")\n4 examples, 1 failure\n",
       stderr: "",
-      log_path: "/tmp/henitai-test.log"
+      log_path: "reports/henitai-test.log"
+    )
+
+    expect(result.status).to eq(:killed)
+  end
+
+  it "keeps a kill when an unindented no-examples line precedes a run with examples" do
+    result = described_class.build(
+      wait_result: build_wait_result(success: false, exitstatus: 1),
+      stdout: "No examples found.\n14 examples, 2 failures\n",
+      stderr: "",
+      log_path: "reports/henitai-test.log"
     )
 
     expect(result.status).to eq(:killed)

@@ -22,7 +22,11 @@ module Henitai
         )
       end
 
-      sample_mutants(distinct_programs(distinct_identities(mutants)), config:, sampling_strategy:)
+      # Sample before deduplicating programs: distinct_programs computes activation sources for every
+      # mutant it receives, so running it last avoids that work for discarded mutants. Sampling keeps
+      # the first N per subject in order and deduplication keeps first occurrences, so the result is
+      # still a deterministic, duplicate-free prefix.
+      distinct_programs(sample_mutants(distinct_identities(mutants), config:, sampling_strategy:))
     end
 
     private

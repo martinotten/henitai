@@ -161,6 +161,42 @@ RSpec.describe Henitai::Mutant::Activator do
     end
   end
 
+  it "leaves an independent singleton method alone when mutating a private module method" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, <<~RUBY)
+        module SampleModuleWithSingleton
+          def foo
+            1
+          end
+          private :foo
+
+          def self.foo
+            :class_level
+          end
+        end
+      RUBY
+
+      stub_const("SampleModuleWithSingleton", Module.new do
+        def self.foo = :class_level
+        def foo = 1
+        private :foo
+      end)
+
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      original_node = find_nodes(subject.ast_node, :int).first
+      mutant = build_mutant(
+        subject:,
+        original_node: original_node,
+        mutated_node: Parser::AST::Node.new(:int, [2]),
+        location: location_for(original_node)
+      )
+
+      described_class.activate!(mutant)
+
+      expect(SampleModuleWithSingleton.foo).to eq(:class_level)
+    end
+  end
+
   it "passes the activator file and line to class_eval" do
     activator = described_class.new
     target = Class.new
@@ -856,6 +892,69 @@ RSpec.describe Henitai::Mutant::Activator do
 
     def first_int(value) = { find: ->(ast) { find_nodes(ast, :int).find { |n| n.children == [value] } }, to: nil }
 
+    def unloadable_host_mutant(dir)
+      path = write_source(dir, <<~RUBY)
+        class ActUnloadableHost < ActMissingSuperclass
+          def run = 1
+        end
+      RUBY
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path])
+                                        .find { |s| s.expression == "ActUnloadableHost#run" }
+      node = subject.ast_node.children.last
+      build_mutant(subject:, original_node: node, mutated_node: int(2), location: location_for(node))
+    end
+
+    it "refuses to activate when the subject's file fails to define its class" do
+      Dir.mktmpdir do |dir|
+        mutant = unloadable_host_mutant(dir)
+
+        expect { described_class.activate!(mutant) }
+          .to raise_error(described_class::SubjectNotLoadedError, /ActUnloadableHost/)
+      end
+    end
+
+    it "does not define a phantom class for an unloadable subject" do
+      Dir.mktmpdir do |dir|
+        mutant = unloadable_host_mutant(dir)
+
+        begin
+          described_class.activate!(mutant)
+        rescue described_class::SubjectNotLoadedError
+          nil
+        end
+
+        expect(Object.const_defined?(:ActUnloadableHost, false)).to be(false)
+      end
+    end
+
+    def unloadable_nested_mutant(dir)
+      path = write_source(dir, <<~RUBY)
+        module ActOuterHost
+          class ActInnerHost < ActMissingBase
+            def run = 1 > 0
+          end
+        end
+      RUBY
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path])
+                                        .find { |s| s.expression == "ActOuterHost::ActInnerHost#run" }
+      node = subject.ast_node.children.last
+      build_mutant(subject:, original_node: node.children.first, mutated_node: int(2),
+                   location: location_for(node.children.first))
+    end
+
+    it "refuses to create a phantom class when the outer module exists but the subject's class does not load",
+       :aggregate_failures do
+      stub_const("ActOuterHost", Module.new)
+
+      Dir.mktmpdir do |dir|
+        mutant = unloadable_nested_mutant(dir)
+
+        expect { described_class.activate!(mutant) }
+          .to raise_error(described_class::SubjectNotLoadedError, /ActOuterHost::ActInnerHost/)
+        expect(ActOuterHost.const_defined?(:ActInnerHost, false)).to be(false)
+      end
+    end
+
     it "resolves constants of an enclosing module" do
       Dir.mktmpdir do |dir|
         source = <<~RUBY
@@ -1020,8 +1119,7 @@ RSpec.describe Henitai::Mutant::Activator do
         activation = described_class.activation_for(build_mutant(subject:, original_node: node, mutated_node: node,
                                                                  location: location_for(node)))
 
-        expect(activation.source.lines.drop(activation.def_offset).first(4).join)
-          .to eq(File.read(path).lines[1, 4].join)
+        expect(activation.source).to include(File.read(path).lines[2, 3].join)
       end
     end
 
@@ -1034,7 +1132,7 @@ RSpec.describe Henitai::Mutant::Activator do
                                                                  location: location_for(node)))
 
         expect([activation.mode, activation.file, activation.source.lines[activation.def_offset]])
-          .to eq([:toplevel, path, "    def value = 1\n"])
+          .to eq([:toplevel, path, "module DiPlace; class Spot; def value = 1; end; end\n"])
       end
     end
   end
@@ -1058,7 +1156,7 @@ RSpec.describe Henitai::Mutant::Activator do
 
         source = described_class.activation_source_for(mutant)
 
-        expect(source).to eq("class ActivationSourceSample\n  def value\n    (1 - 1)\n  end\nend\n")
+        expect(source).to eq("class ActivationSourceSample; def value\n    (1 - 1)\n  end; end\n")
       end
     end
 
@@ -1082,6 +1180,30 @@ RSpec.describe Henitai::Mutant::Activator do
                                                                location: location_for(node)))
 
       expect([activation.mode, activation.source.include?("define_method(:value)")]).to eq([:class_eval, true])
+    end
+  end
+
+  describe "fallback activation after multibyte characters" do
+    let(:multibyte_activation) do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "class FallbackMultibyte\n  def value\n    [\"ä€\", 1 + 1].last\n  end\nend\n")
+        resolved = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+        subject = Henitai::Subject.new(namespace: "FallbackMultibyte", method_name: "value",
+                                       source_location: { file: path, range: 2..4 }, ast_node: resolved.ast_node)
+        node = find_nodes(subject.ast_node, :send).find { |send| send.children[1] == :+ }
+        mutated = node.updated(nil, [node.children[0], :-, node.children[2]])
+
+        described_class.activation_for(build_mutant(subject:, original_node: node, mutated_node: mutated,
+                                                    location: location_for(node)))
+      end
+    end
+
+    it "splices the mutation at the correct character offsets" do
+      expect(multibyte_activation.source).to include("[\"ä€\", (1 - 1)].last")
+    end
+
+    it "produces activation source that compiles" do
+      expect { RubyVM::InstructionSequence.compile(multibyte_activation.source) }.not_to raise_error
     end
   end
 
@@ -1115,6 +1237,38 @@ RSpec.describe Henitai::Mutant::Activator do
 
         expect(PrecomputedActivationSample.new.value).to eq(42)
       end
+    end
+
+    def stub_subject(method_type: :instance)
+      Henitai::Subject.new(namespace: "PrecomputedHost", method_name: "value", method_type:,
+                           source_location: { file: "lib/precomputed_host.rb", range: nil })
+    end
+
+    def toplevel_mutant(subject, definition, singleton:)
+      activation = Henitai::Mutant::Activation.new(
+        source: "class PrecomputedHost; #{definition}; end\n", mode: :toplevel,
+        file: "lib/precomputed_host.rb", line: 1, def_offset: 0,
+        lexical_scope: ["class PrecomputedHost"], owner: "self", singleton:
+      )
+      build_mutant(subject:, original_node: nil, mutated_node: nil, location: {},
+                   precomputed_activation: activation)
+    end
+
+    it "activates a toplevel instance method on an AST-less stub subject" do
+      stub_const("PrecomputedHost", Class.new { def value = 1 })
+
+      described_class.activate!(toplevel_mutant(stub_subject, "def value = 2", singleton: false))
+
+      expect(PrecomputedHost.new.value).to eq(2)
+    end
+
+    it "activates a toplevel singleton method on an AST-less stub subject" do
+      stub_const("PrecomputedHost", Class.new { def self.value = 1 })
+
+      subject = stub_subject(method_type: :class)
+      described_class.activate!(toplevel_mutant(subject, "def self.value = 2", singleton: true))
+
+      expect(PrecomputedHost.value).to eq(2)
     end
   end
 

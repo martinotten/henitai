@@ -405,6 +405,36 @@ RSpec.describe Henitai::MutantGenerator do
     end
   end
 
+  it "computes activation sources only for the sampled mutants", :aggregate_failures do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", <<~RUBY)
+        class Sample
+          def announce
+            1 + 2 + 3 + 4 + 5 + 6
+          end
+        end
+      RUBY
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      operators = [Henitai::Operators::ArithmeticOperator.new]
+      config = write_configuration(
+        dir,
+        <<~YAML
+          mutation:
+            sampling:
+              ratio: 0.5
+              strategy: stratified
+        YAML
+      )
+      unsampled = described_class.new.generate([subject], operators).size
+
+      allow(Henitai::Mutant::Activator).to receive(:activation_source_for).and_call_original
+      sampled = described_class.new.generate([subject], operators, config:)
+
+      expect(sampled.size).to be < unsampled
+      expect(Henitai::Mutant::Activator).to have_received(:activation_source_for).exactly(sampled.size).times
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # SubjectVisitor — direkte Tests der nested class
   # Ursache aller Survived-Mutanten L73–L106: Der Coverage-Tracker attributiert

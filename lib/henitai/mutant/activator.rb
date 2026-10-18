@@ -7,6 +7,8 @@ module Henitai
   class Mutant
     # Activates a mutant inside the forked child process.
     class Activator
+      SubjectNotLoadedError = LexicalTarget::SubjectNotLoadedError
+
       # File name the activation source is evaluated under. It decides what
       # +__FILE__+ and +__LINE__+ mean inside an activated mutant.
       EVAL_FILE = __FILE__
@@ -14,7 +16,7 @@ module Henitai
       # Filters "already initialized constant" C-level warnings that fire when
       # a source file is loaded into a process that already has the constant
       # defined via require. Uses a thread-local flag so the filter is active
-      # only during load_source_file, leaving all other warnings untouched.
+      # only during LexicalTarget#load_source_file, leaving all other warnings untouched.
       module ConstantRedefinitionFilter
         PATTERN = /already initialized constant|previous definition of/
         private_constant :PATTERN
@@ -56,7 +58,7 @@ module Henitai
         raise ArgumentError, "Cannot activate wildcard subjects" if subject.method_name.nil?
 
         activation = mutant.precomputed_activation || activation_for(mutant)
-        target = activation.mode == :toplevel ? lexical_target(subject, activation) : target_for(subject)
+        target = activation.mode == :toplevel ? LexicalTarget.resolve(subject, activation) : target_for(subject)
         Henitai::WarningSilencer.silence do
           evaluate(activation, target, subject)
           nil
@@ -86,32 +88,6 @@ module Henitai
         target.send(visibility, name) if visibility
       end
 
-      # The object the re-evaluated +def+ defines its method on, as Ruby
-      # resolves it: the openers are evaluated with +self+ -- or the receiver
-      # of +def Other.name+ -- as their body. The subject's namespace is only
-      # the resolver's static reading of the source, which cannot tell
-      # whether +Other+ inside +module Outer+ is +Outer::Other+ or +::Other+.
-      # It still loads the subject's file first, so that evaluating the
-      # openers reopens the loaded class instead of creating an empty one.
-      def lexical_target(subject, activation)
-        ensure_loaded(subject)
-        node = subject.ast_node
-        scope = subject.lexical_scope
-        source = "#{scope.join('; ')}\n#{owner_source(node)}\n#{Array.new(scope.size, 'end').join('; ')}"
-        owner = TOPLEVEL_BINDING.eval(source, activation.file, activation.line)
-        node.type == :defs ? owner.singleton_class : owner
-      end
-
-      def ensure_loaded(subject)
-        load_target(subject)
-      rescue NameError
-        nil
-      end
-
-      def owner_source(node)
-        node.type == :defs ? node.children.first.location.expression.source : "self"
-      end
-
       def visibility_of(owner, name)
         return :private if owner.private_method_defined?(name)
 
@@ -120,7 +96,8 @@ module Henitai
 
       def module_function_copy?(target, name, subject)
         subject.method_type == :instance && !target.is_a?(Class) &&
-          target.private_method_defined?(name) && target.singleton_class.method_defined?(name)
+          target.private_method_defined?(name) && target.singleton_class.method_defined?(name) &&
+          target.instance_method(name).source_location == target.method(name).source_location
       end
 
       def def_replacement(mutant)
@@ -129,7 +106,7 @@ module Henitai
       end
 
       def target_for(subject)
-        target = load_target(subject)
+        target = LexicalTarget.load_target(subject)
         subject.method_type == :class ? target.singleton_class : target
       end
 
@@ -149,7 +126,8 @@ module Henitai
         <<~RUBY
           __henitai_module_function__ = !is_a?(Class) &&
             private_method_defined?(:#{method_name}) &&
-            singleton_class.method_defined?(:#{method_name})
+            singleton_class.method_defined?(:#{method_name}) &&
+            instance_method(:#{method_name}).source_location == method(:#{method_name}).source_location
           define_method(:#{method_name}) do |#{parameters}|
             #{replacement}
           end
@@ -244,49 +222,13 @@ module Henitai
         replace_source_fragment(source_range, original_range, replacement)
       end
 
-      def load_target(subject)
-        Object.const_get(subject.namespace.delete_prefix("::"))
-      rescue NameError
-        load_source_file(subject)
-        Object.const_get(subject.namespace.delete_prefix("::"))
-      end
-
-      def load_source_file(subject)
-        source_file = subject.source_file || source_file_from_ast(subject)
-        return unless source_file && File.file?(source_file)
-
-        Thread.current[:henitai_filter_const_warnings] = true
-        load(source_file)
-        loaded_feature = File.expand_path(source_file)
-        $LOADED_FEATURES << loaded_feature unless $LOADED_FEATURES.include?(loaded_feature)
-      ensure
-        Thread.current[:henitai_filter_const_warnings] = false
-      end
-
-      def source_file_from_ast(subject)
-        ast_node = subject.ast_node
-        return unless ast_node
-
-        location = ast_node.location
-        return unless location
-
-        expression = location.expression
-        return unless expression
-
-        expression.source_buffer.name
-      end
-
       def replace_source_fragment(source_range, original_range, replacement)
         source = source_range.source
         start = original_range.begin_pos - source_range.begin_pos
         stop = original_range.end_pos - source_range.begin_pos
-        return unless start >= 0 && stop <= source.bytesize && start <= stop
+        return unless start >= 0 && stop <= source.length && start <= stop
 
-        prefix = source.byteslice(0, start)
-        suffix = source.byteslice(stop, source.bytesize - stop)
-        return unless prefix && suffix
-
-        prefix + replacement + suffix
+        source[0, start] + replacement + source[stop..]
       end
 
       def compile_safe_unparse(node)

@@ -19,8 +19,11 @@ module Henitai
   #
   #   Gate 4 — Mutant execution
   #     Run surviving mutants in isolated child processes (fork isolation).
-  #     Each child process loads the test suite with the mutated method
-  #     injected via Module#define_method. Collect kill/survive/timeout results.
+  #     Each child process loads the test suite, then re-evaluates the
+  #     subject's own `def` with the mutation spliced in, inside its original
+  #     module/class openers (ADR-13). Module#define_method is only the fallback
+  #     for subjects that cannot be reopened by name. Collect kill/survive/
+  #     timeout results.
   #
   #   Gate 5 — Reporting
   #     Write results to configured reporters (terminal, html, json, dashboard).

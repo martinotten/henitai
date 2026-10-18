@@ -22,6 +22,8 @@ module Henitai
     autoload :Activator, "henitai/mutant/activator"
     autoload :ParameterSource, "henitai/mutant/parameter_source"
     autoload :Activation, "henitai/mutant/activation"
+    autoload :LexicalScopeCheck, "henitai/mutant/lexical_scope_check"
+    autoload :LexicalTarget, "henitai/mutant/lexical_target"
     autoload :DefInjection, "henitai/mutant/def_injection"
     autoload :Replacement, "henitai/mutant/replacement"
 

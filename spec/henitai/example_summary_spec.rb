@@ -26,6 +26,12 @@ RSpec.describe Henitai::ExampleSummary do
             described_class.none_ran?("3 examples, 1 failure\n0 examples, 0 failures\n")]).to eq([false, true])
   end
 
+  it "lets the last summary line override an unindented no-examples line" do
+    output = "No examples found.\n14 examples, 2 failures\n"
+
+    expect(described_class.none_ran?(output)).to be(false)
+  end
+
   it "treats empty output as a run with no summary" do
     expect(described_class.none_ran?(nil)).to be(false)
   end
