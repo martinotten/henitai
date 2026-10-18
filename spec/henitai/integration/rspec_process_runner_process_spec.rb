@@ -11,6 +11,7 @@ RSpec.describe Henitai::Integration::RspecProcessRunner do
     reader, writer = IO.pipe
     integration = instance_double(Henitai::Integration::Rspec)
     allow(integration).to receive(:run_in_child) do |**|
+      Henitai::Integration::CoverageRuntimeSuppressors.suppress_simplecov!
       writer.write(ENV.fetch("HENITAI_MUTANT_ID"))
       writer.close
       0

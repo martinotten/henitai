@@ -2,6 +2,40 @@
 
 What went wrong, why, and what stops it recurring. Newest first.
 
+## 2026-10-18 — A full RSpec run left a partial coverage result
+
+**What happened.** After a full `bundle exec rspec`, `coverage/.resultset.json`
+held only ~25 lib files under two command names (`"RSpec"` and
+`"Unknown Test Framework"`). Line coverage read about 69 %, and clearly
+executed code such as `Henitai::Mutant#initialize` showed as missed.
+
+**Root cause.** Three separate issues combined:
+1. The parent RSpec process never wrote its own coverage at exit because
+   `SimpleCov.external_at_exit` was flipped to `true` in-process during the
+   suite: `MinitestTestRunner#call` called
+   `CoverageRuntimeSuppressors.suppress_simplecov!` directly (invoked in-process
+   by `minitest_test_runner_spec.rb`), and `rspec_spec.rb` / `minitest_spec.rb`
+   stubbed `Process.fork` to run `MutantRunSupport#run_in_child` in-process
+   without stubbing `CoverageRuntimeSuppressors`.
+2. Forked child processes in `rspec_process_runner_process_spec.rb` (which
+   stubbed `run_in_child` on an `instance_double`, bypassing child SimpleCov
+   suppression) and `process_worker_runner_process_spec.rb` exited with
+   `Process.exit(0)`, running the parent's inherited SimpleCov `at_exit` hook
+   mid-suite and writing the ~20 files loaded at that point under `"RSpec"`.
+3. `smoke:integration:dogfood_rspec` ran `ruby -r henitai/rspec_coverage_formatter -e ...`
+   in the repo root without isolating `HENITAI_COVERAGE_DIR`; because `$0` was
+   `"-e"`, `SimpleCov::CommandGuesser` fell back to `"Unknown Test Framework"`
+   and wrote the 25 files loaded by `spec/henitai/cli_spec.rb` into `coverage/`.
+
+**Prevention.** `MinitestTestRunner#call` no longer calls
+`suppress_simplecov!` (forked mutant children already suppress coverage in
+`MutantRunSupport#run_in_child`). Specs that stub `Process.fork` in-process
+stub `CoverageRuntimeSuppressors` alongside `OrphanWatchdog`, and specs that
+fork real child processes either suppress SimpleCov or exit with
+`Process.exit!`. `DogfoodRspec` isolates `HENITAI_COVERAGE_DIR` and
+`HENITAI_REPORTS_DIR` in a temp directory, and
+`spec/infra/shared_coverage_process_spec.rb` guards against regressions.
+
 ## 2026-10-08 — The dogfood run could not see the activation bugs it was meant to catch
 
 **What happened.** Henitai scores itself, and the dogfood score stayed above

@@ -14,6 +14,8 @@ RSpec.describe Henitai::Integration::Rspec do
     # see ppid != parent_pid, conclude it had been orphaned, and call exit!(2),
     # killing the RSpec run with no output at all.
     allow(Henitai::OrphanWatchdog).to receive(:start)
+    allow(Henitai::Integration::CoverageRuntimeSuppressors).to receive(:suppress_simplecov!)
+    allow(Henitai::Integration::CoverageRuntimeSuppressors).to receive(:suppress_coverage!)
   end
 
   def with_temp_workspace
