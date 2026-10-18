@@ -1237,6 +1237,18 @@ RSpec.describe Henitai::Mutant::Activator do
       end
     end
 
+    it "keeps the heredoc body when the mutated range lies outside it" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "class HeredocOpener\n  def text\n    <<~TXT\n      kept line\n    TXT\n  end\nend\n")
+        subject = unscoped_subject(path, namespace: "HeredocOpener", method_name: "text")
+        node = subject.ast_node.children[2]
+        mutant = build_mutant(subject:, original_node: node, mutated_node: Parser::AST::Node.new(:str, [""]),
+                              location: location_for(node))
+
+        expect(described_class.activation_for(mutant).source).to include("kept line\n")
+      end
+    end
+
     it "replaces the body of a singleton method without a lexical scope" do
       stub_const("SingletonFallback", Class.new)
       Dir.mktmpdir do |dir|

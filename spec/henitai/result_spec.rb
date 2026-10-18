@@ -277,6 +277,12 @@ RSpec.describe Henitai::Result do
     expect(result([build_mutant(status: :pending)]).to_stryker_schema[:schemaVersion]).to eq("1.0")
   end
 
+  it "marks every file section as ruby" do
+    schema = result([build_mutant(status: :pending)]).to_stryker_schema
+
+    expect(schema[:files].values.map { |file| file[:language] }).to eq(["ruby"])
+  end
+
   it "serialises the pre-site-offset stable id for canonical report migration" do
     mutant = build_mutant(status: :killed)
     legacy_id = Digest::SHA256.hexdigest(
