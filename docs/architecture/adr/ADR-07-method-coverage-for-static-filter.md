@@ -103,6 +103,8 @@ pipeline change and is better treated as a separate decision.
 - the per-test coverage path (`henitai_per_test.json`) remains line-based; the same blind
   spot persists there until `CoverageFormatter` is extended to emit method call counts —
   this is a known remaining gap and is out of scope for this ADR
+  (update: `PerTestCoverageDelta` now uses per-test method call-count deltas to attribute
+  endless-method lines, which line coverage never counts on a call; see architecture §8.9)
 - existing score semantics are preserved: this change only improves coverage classification
   before execution, it does not alter what counts as killed or survived
 - method coverage data is the prerequisite for Option E (explicit test-to-subject mapping,

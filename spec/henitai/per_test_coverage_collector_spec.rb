@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "json"
 require "spec_helper"
 require "tmpdir"
@@ -349,6 +350,27 @@ RSpec.describe Henitai::PerTestCoverageCollector do
         report = JSON.parse(File.read(report_path))
         source_files = report.values.flat_map(&:keys)
         expect(source_files).not_to include(include("/spec/"))
+      end
+    end
+  end
+
+  it "attributes a real endless method call to the test that made it" do
+    skip "requires running method coverage" unless Coverage.running?
+
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        source = File.expand_path("lib/endless_sample.rb")
+        FileUtils.mkdir_p(File.dirname(source))
+        File.write(source, "class HenitaiEndlessSample\n  def value = 1 + 1\nend\n")
+        collector = described_class.new
+        sandbox = Module.new
+        load source, sandbox
+        collector.record_test("spec/loader_spec.rb")
+        sandbox::HenitaiEndlessSample.new.value
+        collector.record_test("spec/caller_spec.rb")
+        collector.write_report
+
+        expect(JSON.parse(File.read(report_path)).dig("spec/caller_spec.rb", "coverage", source)).to eq([2])
       end
     end
   end

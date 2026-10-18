@@ -617,8 +617,14 @@ two libraries coexist without conflict.
 is hit or the enclosing method has a positive call count. If the `methods` key is absent
 (older artifacts), the filter degrades gracefully to line-only coverage.
 
-The per-test coverage path (`henitai_per_test.json`) remains line-based; method granularity
-for per-test data is a known remaining gap tracked separately.
+The per-test coverage path (`henitai_per_test.json`) stays line-based but also reads the
+`methods` key of each `Coverage.peek_result` snapshot. Line coverage never counts a call to
+an endless method (`def x = expr`), so its line would otherwise be attributed only to the
+test that loaded the file. `PerTestCoverageDelta` therefore attributes, for every method
+whose call count a test increased, the `def` line plus every line in the method's range that
+line coverage does not track. Tracked body lines keep plain count-delta attribution, so
+regular methods' untaken branches are not over-attributed. Without method coverage the
+collector degrades to line-only deltas.
 
 ### 8.10 Mutation Switching
 

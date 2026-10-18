@@ -3,9 +3,11 @@
 require "coverage"
 require "fileutils"
 require "json"
+require_relative "per_test_coverage_delta"
 
 module Henitai
   # Accumulates per-test line coverage deltas across test examples.
+  # {PerTestCoverageDelta} decides which lines a single test executed.
   #
   # Framework-agnostic core used by both the RSpec and Minitest adapters.
   # Callers invoke record_test after each test completes and write_report
@@ -20,6 +22,7 @@ module Henitai
       end
       @duration_by_test = Hash.new(0.0)
       @previous_snapshot = {}
+      @delta = PerTestCoverageDelta.new
       @warned_missing_coverage = false
     end
 
@@ -81,36 +84,8 @@ module Henitai
       snapshot.each_with_object({}) do |(source_file, file_coverage), result|
         next unless source_file?(source_file)
 
-        lines = new_line_numbers(
-          file_coverage,
-          previous_line_counts(source_file)
-        )
+        lines = @delta.executed_lines(file_coverage, @previous_snapshot.fetch(source_file, []))
         result[source_file] = lines unless lines.empty?
-      end
-    end
-
-    # Count-delta attribution: a line belongs to every test whose run
-    # incremented its cumulative count, not just the first toucher. This keeps
-    # the per-test map a complete over-approximation of reachability — the
-    # soundness precondition for survivor verdict reuse (ADR-11).
-    def new_line_numbers(file_coverage, previous_counts)
-      line_counts_for(file_coverage).each_with_index.filter_map do |count, index|
-        next unless count.to_i > previous_counts.fetch(index, 0).to_i
-
-        index + 1
-      end
-    end
-
-    def previous_line_counts(source_file)
-      line_counts_for(@previous_snapshot.fetch(source_file, []))
-    end
-
-    def line_counts_for(file_coverage)
-      case file_coverage
-      when Hash
-        Array(file_coverage[:lines] || file_coverage["lines"])
-      else
-        Array(file_coverage)
       end
     end
 
