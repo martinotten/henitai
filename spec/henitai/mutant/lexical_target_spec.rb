@@ -109,6 +109,27 @@ RSpec.describe Henitai::Mutant::LexicalTarget do
                           "cannot activate LtRaising: its source failed to load (lt boom)")
       end
     end
+
+    it "fails the activation when the loaded source still does not define the scope" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "# defines nothing\n")
+        subject = subject_for("LtAbsent", source_file: path)
+
+        expect { described_class.resolve(subject, activation(["class LtAbsent"])) }
+          .to raise_error(described_class::SubjectNotLoadedError,
+                          "cannot activate LtAbsent#value: its source did not define LtAbsent")
+      end
+    end
+
+    it "leaves an undefined top-level owner to fail as a NameError after loading the source" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "# defines nothing\n")
+        subject = subject_for("LtAbsentTop", source_file: path)
+
+        expect { described_class.resolve(subject, activation([], owner: "LtAbsentTop")) }
+          .to raise_error(NameError, /LtAbsentTop/)
+      end
+    end
   end
 
   describe ".load_target" do

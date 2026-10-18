@@ -81,32 +81,12 @@ module Henitai
     # the terminal reporter — compute once per mutant.
     def mutated_source = @mutated_source ||= safe_unparse(mutated_node)
 
-    # Regular defs, not endless ones: line coverage does not count calls of
-    # a one-line endless method, so per-test coverage would not attribute
-    # these predicates to the specs that exercise them.
-    def killed?
-      @status == :killed
-    end
-
-    def from_cache?
-      @from_cache == true
-    end
-
-    def survived?
-      @status == :survived
-    end
-
-    def pending?
-      @status == :pending
-    end
-
-    def ignored?
-      @status == :ignored
-    end
-
-    def equivalent?
-      @status == :equivalent
-    end
+    def killed?      = @status == :killed
+    def from_cache?  = @from_cache == true
+    def survived?    = @status == :survived
+    def pending?     = @status == :pending
+    def ignored?     = @status == :ignored
+    def equivalent?  = @status == :equivalent
 
     def to_s
       "#{operator}@#{location[:file]}:#{location[:start_line]} — #{description}"

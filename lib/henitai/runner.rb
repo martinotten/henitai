@@ -208,13 +208,7 @@ module Henitai
     def static_filter = deps.static_filter
     def execution_engine = deps.execution_engine
     def coverage_bootstrapper = deps.coverage_bootstrapper
-
-    # A regular def: line coverage does not count calls of a one-line endless
-    # method, so per-test coverage would miss the specs that reach it.
-    def integration
-      deps.integration
-    end
-
+    def integration = deps.integration
     def operators = deps.operators
     def history_store = deps.history_store
     def per_test_coverage = deps.per_test_coverage

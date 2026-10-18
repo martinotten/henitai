@@ -181,5 +181,11 @@ RSpec.describe Henitai::Mutant::LexicalScopeCheck do
 
       expect(described_class.resolves?(["class LscValue::Inner"])).to be(false)
     end
+
+    it "rejects a singleton opener on a value that has no singleton class" do
+      stub_const("LscValue", 1)
+
+      expect(described_class.resolves?(["class << LscValue"])).to be(false)
+    end
   end
 end

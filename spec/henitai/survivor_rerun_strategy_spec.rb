@@ -65,6 +65,22 @@ RSpec.describe Henitai::SurvivorRerunStrategy do
   end
 
   describe "#try_recipe_run" do
+    it "skips the recipe fast path when the worktree changes cannot be read" do
+      Dir.mktmpdir do |dir|
+        report_path = write_survivor_report(dir)
+        write_recipes(dir, recipe)
+        analyzer = instance_double(Henitai::GitDiffAnalyzer)
+        allow(analyzer).to receive(:working_tree_changed_files).and_raise(RuntimeError, "git unavailable")
+        strategy = described_class.new(
+          survivors_from: report_path,
+          config: Struct.new(:includes).new(["lib"]),
+          git_diff_analyzer: analyzer
+        )
+
+        expect(strategy.try_recipe_run).to be_nil
+      end
+    end
+
     it "builds mutants with the cached operator" do
       Dir.mktmpdir do |dir|
         report_path = write_survivor_report(dir)

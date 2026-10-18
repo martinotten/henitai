@@ -1197,6 +1197,101 @@ RSpec.describe Henitai::Mutant::Activator do
     end
   end
 
+  describe "fallback activation of heredoc, singleton, block and non-def subjects" do
+    def unscoped_subject(path, namespace:, method_name:, method_type: :instance)
+      resolved = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      Henitai::Subject.new(
+        namespace:,
+        method_name:,
+        method_type:,
+        source_location: { file: path, range: nil },
+        ast_node: resolved.ast_node
+      )
+    end
+
+    def mutate_addition(node)
+      node.updated(nil, [node.children[0], :-, node.children[2]])
+    end
+
+    def addition_in(node)
+      find_nodes(node, :send).find { |send| send.children[1] == :+ }
+    end
+
+    it "splices a mutated interpolation into a heredoc body" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, <<~'RUBY')
+          class HeredocFallback
+            def text
+              <<~TXT
+                value #{1 + 1}
+              TXT
+            end
+          end
+        RUBY
+        subject = unscoped_subject(path, namespace: "HeredocFallback", method_name: "text")
+        node = addition_in(subject.ast_node)
+        mutant = build_mutant(subject:, original_node: node, mutated_node: mutate_addition(node),
+                              location: location_for(node))
+
+        expect(described_class.activation_for(mutant).source).to include("value \#{(1 - 1)}\n")
+      end
+    end
+
+    it "replaces the body of a singleton method without a lexical scope" do
+      stub_const("SingletonFallback", Class.new)
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "class SingletonFallback\n  def self.value = 1 + 1\nend\n")
+        load path
+        subject = unscoped_subject(path, namespace: "SingletonFallback", method_name: "value", method_type: :class)
+        node = addition_in(subject.ast_node)
+        mutant = build_mutant(subject:, original_node: node, mutated_node: mutate_addition(node),
+                              location: location_for(node))
+
+        described_class.activate!(mutant)
+
+        expect(SingletonFallback.value).to eq(0)
+      end
+    end
+
+    it "replaces the body of a define_method block" do
+      stub_const("BlockFallback", Class.new)
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "class BlockFallback\n  define_method(:value) { 1 + 1 }\nend\n")
+        load path
+        subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+        node = addition_in(subject.ast_node)
+        mutant = build_mutant(subject:, original_node: node, mutated_node: mutate_addition(node),
+                              location: location_for(node))
+
+        described_class.activate!(mutant)
+
+        expect(BlockFallback.new.value).to eq(0)
+      end
+    end
+
+    it "uses the subject node itself as the body when it is neither a def, defs nor block" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "class ExpressionFallback\n  def value = 1 + 1\nend\n")
+        resolved = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+        node = addition_in(resolved.ast_node)
+        subject = Henitai::Subject.new(namespace: "ExpressionFallback", method_name: "value",
+                                       source_location: { file: path, range: nil }, ast_node: node)
+        mutant = build_mutant(subject:, original_node: node, mutated_node: mutate_addition(node),
+                              location: location_for(node))
+
+        expect(described_class.activation_for(mutant).source).to include("(1 - 1)")
+      end
+    end
+
+    it "reports a compile error for a mutated node that cannot be unparsed" do
+      subject = Henitai::Subject.new(namespace: "UnparseFallback", method_name: "value", method_type: :instance)
+      mutant = build_mutant(subject:, original_node: Parser::AST::Node.new(:int, [5]),
+                            mutated_node: Parser::AST::Node.new(:bogus, []), location: {})
+
+      expect(described_class.activate!(mutant)).to eq(:compile_error)
+    end
+  end
+
   describe "fallback activation after multibyte characters" do
     let(:multibyte_activation) do
       Dir.mktmpdir do |dir|

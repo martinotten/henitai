@@ -100,6 +100,14 @@ RSpec.describe Henitai::Result do
     end
   end
 
+  describe "#detected" do
+    it "counts killed, timed out and runtime error mutants" do
+      mutants = %i[killed timeout runtime_error survived].map { |status| status_mutant(status) }
+
+      expect(result(mutants).detected).to eq(3)
+    end
+  end
+
   def build_mutant_in_dir(status:, duration:, dir:)
     path = write_sample_file(dir)
     mutant = Henitai::Mutant.new(
