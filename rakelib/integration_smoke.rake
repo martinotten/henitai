@@ -4,6 +4,7 @@ require "bundler"
 require "json"
 require "open3"
 require "timeout"
+require "tmpdir"
 require_relative "../lib/henitai"
 
 #
@@ -52,8 +53,14 @@ module IntegrationSmoke
       status.success? || stdout.match?(/\b0 failures\b/)
     end
 
+    # The child writes its SimpleCov and per-test coverage results to
+    # HENITAI_COVERAGE_DIR / HENITAI_REPORTS_DIR, so it gets its own directory
+    # and cannot replace the caller's coverage/ result.
     def capture(*command)
-      Open3.capture3(*command, chdir: root)
+      Dir.mktmpdir("henitai-dogfood-coverage") do |coverage_dir|
+        env = { "HENITAI_COVERAGE_DIR" => coverage_dir, "HENITAI_REPORTS_DIR" => coverage_dir }
+        Open3.capture3(env, *command, chdir: root)
+      end
     end
   end
 

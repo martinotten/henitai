@@ -53,7 +53,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       pid = Process.fork do
         release_writer.close
         release_reader.read
-        Process.exit(0)
+        Process.exit!(0)
       end
       Henitai::Integration::ChildHandle.new(pid, fake_log_paths)
     end
@@ -69,7 +69,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
 
       Thread.pass
     end
-    Process.exit(0)
+    Process.exit!(0)
   end
 
   it "runs four mutants concurrently with real OS-level overlap" do # rubocop:disable RSpec/MultipleExpectations

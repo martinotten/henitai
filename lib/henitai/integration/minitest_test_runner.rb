@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "coverage_suppression"
-
 module Henitai
   module Integration
     # Runs Minitest test files in-process and normalizes the result to an
@@ -10,7 +8,6 @@ module Henitai
       # Yields once the test files are required and before Minitest runs; a
       # falsy block result skips the run.
       def call(test_files, &after_load)
-        CoverageRuntimeSuppressors.suppress_simplecov!
         suppress_autorun!
         test_files.each { |file| require File.expand_path(file) }
         return 1 if after_load && !after_load.call
