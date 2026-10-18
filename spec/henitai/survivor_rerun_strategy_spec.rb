@@ -74,6 +74,24 @@ RSpec.describe Henitai::SurvivorRerunStrategy do
       end
     end
 
+    it "does not replay a recipe without an activation" do
+      Dir.mktmpdir do |dir|
+        report_path = write_survivor_report(dir)
+        write_recipes(dir, recipe.except("activation"))
+
+        expect(strategy_for(report_path).try_recipe_run).to be_nil
+      end
+    end
+
+    it "does not replay a recipe that is not a hash" do
+      Dir.mktmpdir do |dir|
+        report_path = write_survivor_report(dir)
+        write_recipes(dir, "activation")
+
+        expect(strategy_for(report_path).try_recipe_run).to be_nil
+      end
+    end
+
     it "uses an empty location when the recipe omits it" do
       Dir.mktmpdir do |dir|
         report_path = write_survivor_report(dir)

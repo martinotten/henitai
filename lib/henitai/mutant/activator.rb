@@ -216,10 +216,7 @@ module Henitai
       end
 
       def expression_source(location, original_range, replacement)
-        source_range = location.expression
-        return unless source_range
-
-        replace_source_fragment(source_range, original_range, replacement)
+        replace_source_fragment(location.expression, original_range, replacement)
       end
 
       def replace_source_fragment(source_range, original_range, replacement)

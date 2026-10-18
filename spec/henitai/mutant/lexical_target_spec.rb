@@ -98,6 +98,17 @@ RSpec.describe Henitai::Mutant::LexicalTarget do
           .to raise_error(described_class::SubjectNotLoadedError, /failed to load/)
       end
     end
+
+    it "names the namespace and the load error when a top-level subject's source raises" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "raise \"lt boom\"\n")
+        subject = subject_for("LtRaising", source_file: path)
+
+        expect { described_class.resolve(subject, activation([], owner: "LtRaising")) }
+          .to raise_error(described_class::SubjectNotLoadedError,
+                          "cannot activate LtRaising: its source failed to load (lt boom)")
+      end
+    end
   end
 
   describe ".load_target" do
@@ -116,6 +127,17 @@ RSpec.describe Henitai::Mutant::LexicalTarget do
       ensure
         Object.class_eval { remove_const(:LtLoadedModule) if const_defined?(:LtLoadedModule, false) }
       end
+    end
+
+    it "returns a top-level prefixed namespace constant" do
+      stub_const("LtHost", Class.new)
+
+      expect(described_class.load_target(subject_for("::LtHost"))).to equal(LtHost)
+    end
+
+    it "raises the missing constant when the subject has neither a source file nor an AST" do
+      expect { described_class.load_target(subject_for("LtNowhere")) }
+        .to raise_error(NameError, /uninitialized constant LtNowhere/)
     end
   end
 end

@@ -137,6 +137,17 @@ RSpec.describe Henitai::ScenarioExecutionResult do
     )
   end
 
+  it "detects a no-examples line that ends stdout without a trailing newline" do
+    result = described_class.build(
+      wait_result: build_exitstatus_only_result(3),
+      stdout: "No examples found.",
+      stderr: "warning: loaded twice\n",
+      log_path: "/tmp/run.log"
+    )
+
+    expect(result.status).to eq(:compile_error)
+  end
+
   it "builds a compile error result when RSpec exits 1 with zero examples" do
     result = described_class.build(
       wait_result: build_wait_result(success: false, exitstatus: 1),

@@ -157,5 +157,29 @@ RSpec.describe Henitai::Mutant::LexicalScopeCheck do
       expect(described_class.resolves?(["module LscOuter", "class << self"])).to be(true)
       expect(described_class.resolves?(["module LscMissing", "class << self"])).to be(false)
     end
+
+    it "resolves the receiver of a singleton opener through a top-level qualified path", :aggregate_failures do
+      stub_const("LscOuter", Module.new)
+      stub_const("LscOuter::Inner", Class.new)
+
+      expect(described_class.resolves?(["class << ::LscOuter::Inner"])).to be(true)
+      expect(described_class.resolves?(["class << ::LscOuter::Missing"])).to be(false)
+    end
+
+    it "rejects a qualified opener whose intermediate segment is undefined" do
+      expect(described_class.resolves?(["class ::LscMissing::Inner::Leaf"])).to be(false)
+    end
+
+    it "rejects a module opener for a constant that is not a module" do
+      stub_const("LscValue", 1)
+
+      expect(described_class.resolves?(["module LscValue"])).to be(false)
+    end
+
+    it "rejects an opener nested in a constant that is not a module" do
+      stub_const("LscValue", 1)
+
+      expect(described_class.resolves?(["class LscValue::Inner"])).to be(false)
+    end
   end
 end

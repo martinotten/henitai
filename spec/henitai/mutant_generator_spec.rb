@@ -339,6 +339,20 @@ RSpec.describe Henitai::MutantGenerator do
       end
     end
 
+    it "keeps disambiguated identities stable when lines are added above the subject" do
+      Dir.mktmpdir do |dir|
+        ids = chain_mutants(dir).map(&:stable_id)
+        path = File.join(dir, "lib/chain.rb")
+        File.write(path, "# drift\n#{File.read(path)}")
+        drifted_ids = described_class.new.generate(
+          Henitai::SubjectResolver.new.resolve_from_files([path]),
+          [Henitai::Operators::MethodExpression.new]
+        ).map(&:stable_id)
+
+        expect(drifted_ids).to eq(ids)
+      end
+    end
+
     it "keeps one mutant when two operators produce the same program" do
       Dir.mktmpdir do |dir|
         path = write_source(dir, "lib/guard.rb", "class Guard\n  def run(x)\n    return true if x\n    1\n  end\nend\n")
@@ -662,6 +676,17 @@ RSpec.describe Henitai::MutantGenerator do
 
           expect(visitor.mutants.map { |m| m.original_node.type }).not_to include(:str)
         end
+      end
+    end
+
+    it "mutates string elements of a bracketed array literal" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "lib/sample.rb", "class Sample\n  def run\n    [\"alpha\", \"beta\"]\n  end\nend\n")
+        subject = make_subject_for(path, "Sample#run")
+        visitor = new_visitor(subject, [Henitai::Operators::StringLiteral.new])
+        visitor.process(Henitai::SourceParser.parse_file(path))
+
+        expect(visitor.mutants.map { |m| m.original_node.type }).to include(:str)
       end
     end
 

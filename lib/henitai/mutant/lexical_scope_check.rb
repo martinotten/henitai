@@ -59,7 +59,7 @@ module Henitai
         kind, path = opener.split(" ", 2)
         segments = path.delete_prefix("::").split("::")
         parent = path.start_with?("::") ? walk(Object, segments[0...-1]) : parent_of(segments[0...-1], scope)
-        value = parent && constant_value(parent, segments.last)
+        value = parent.is_a?(Module) && constant_value(parent, segments.last)
         value if matches_kind?(value, kind)
       end
 

@@ -102,6 +102,43 @@ RSpec.describe Henitai::Mutant::DefInjection do
     expect(activation.source).not_to include("mode: ruby")
   end
 
+  it "declines a mutant whose original node lies after the def" do
+    subject = subject_from("class E\n  def a = 1\n  def b = 2\nend\n", "E#a")
+    sibling = subject_from("class E\n  def a = 1\n  def b = 2\nend\n", "E#b")
+    node = find_nodes(sibling.ast_node, :int).first
+
+    expect(described_class.build(mutant_for(subject, node), "3")).to be_nil
+  end
+
+  it "declines a mutant whose original node lies before the def" do
+    source = "class E\n  def a = 1\n  def b = 2\nend\n"
+    subject = subject_from(source, "E#b")
+    node = find_nodes(subject_from(source, "E#a").ast_node, :int).first
+
+    expect(described_class.build(mutant_for(subject, node), "3")).to be_nil
+  end
+
+  it "records the scope and self as owner of a nested singleton def", :aggregate_failures do
+    activation = replace_literal("module A\n  class B\n    def self.x = 1\n  end\nend\n", "A::B.x", "2")
+
+    expect(activation.lexical_scope).to eq(["module A", "class B"])
+    expect(activation.owner).to eq("self")
+    expect(activation.singleton).to be(true)
+  end
+
+  it "records the receiver as owner of a def on another constant", :aggregate_failures do
+    activation = replace_literal("def Other.x = 1\n", "Other.x", "2")
+
+    expect(activation.owner).to eq("Other")
+    expect(activation.singleton).to be(true)
+  end
+
+  it "marks an instance def as not singleton" do
+    activation = replace_literal("class C\n  def x = 1\nend\n", "C#x", "2")
+
+    expect(activation.singleton).to be(false)
+  end
+
   it "declines a subject without a recorded lexical scope" do
     resolved = subject_from("class D\n  def value = 1\nend\n", "D#value")
     subject = Henitai::Subject.new(namespace: "D", method_name: "value", ast_node: resolved.ast_node)

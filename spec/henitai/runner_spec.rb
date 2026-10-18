@@ -285,6 +285,26 @@ RSpec.describe Henitai::Runner do
       end
     end
 
+    it "hands the dependencies' integration to the execution engine" do
+      Dir.mktmpdir do |dir|
+        config = build_config(reporters: [], includes: [], reports_dir: File.join(dir, "reports"))
+        deps = Henitai::RunnerDependencies.new(config:)
+        integration = instance_double(Henitai::Integration::Rspec)
+        execution_engine = instance_double(Henitai::ExecutionEngine, run: [])
+        allow(deps).to receive_messages(
+          subject_resolver: instance_double(Henitai::SubjectResolver, resolve_from_files: []),
+          mutant_generator: instance_double(Henitai::MutantGenerator, generate: []),
+          static_filter: instance_double(Henitai::StaticFilter, apply: []),
+          execution_engine:, integration:, history_store: build_history_store
+        )
+        allow(Henitai::Reporter).to receive(:run_all)
+
+        described_class.new(config:, deps:).run
+
+        expect(execution_engine).to have_received(:run).with([], integration, config, progress_reporter: anything)
+      end
+    end
+
     it "returns an empty source string and nil git sha when the run cannot read source" do
       Dir.mktmpdir do |dir|
         FileUtils.mkdir_p(File.join(dir, "lib"))

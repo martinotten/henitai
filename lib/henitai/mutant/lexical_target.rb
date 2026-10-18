@@ -35,10 +35,10 @@ module Henitai
       end
 
       def load_target(subject)
-        Object.const_get(subject.namespace.delete_prefix("::"))
+        Object.const_get(subject.namespace)
       rescue NameError
         load_source_file(subject)
-        Object.const_get(subject.namespace.delete_prefix("::"))
+        Object.const_get(subject.namespace)
       end
 
       private

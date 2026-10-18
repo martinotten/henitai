@@ -480,6 +480,20 @@ RSpec.describe Henitai::Mutant::Activator do
     end
   end
 
+  it "unparses a body without location metadata" do
+    body = Parser::AST::Node.new(:int, [1])
+    subject = Henitai::Subject.new(
+      namespace: "ActivatorLocationlessBody",
+      method_name: "value",
+      method_type: :instance,
+      ast_node: Parser::AST::Node.new(:def, [:value, Parser::AST::Node.new(:args, []), body])
+    )
+    mutant = build_mutant(subject:, original_node: Parser::AST::Node.new(:int, [5]),
+                          mutated_node: Parser::AST::Node.new(:int, [6]), location: {})
+
+    expect(described_class.activation_source_for(mutant)).to include("define_method(:value) do ||\n  1\nend")
+  end
+
   it "raises when source file metadata cannot be determined" do
     subject = Henitai::Subject.new(
       namespace: "MissingActivatorSource",
