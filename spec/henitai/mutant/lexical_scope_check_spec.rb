@@ -95,8 +95,60 @@ RSpec.describe Henitai::Mutant::LexicalScopeCheck do
       expect(described_class.resolves?(["module LscOuter", "module LscShared"])).to be(false)
     end
 
-    it "stops at a singleton opener and accepts it" do
-      expect(described_class.resolves?(["class << LscSingletonMissing"])).to be(true)
+    it "rejects a singleton opener whose receiver is undefined" do
+      expect(described_class.resolves?(["class << LscSingletonMissing"])).to be(false)
+    end
+
+    it "accepts a singleton opener on an existing constant" do
+      stub_const("LscHost", Class.new)
+
+      expect(described_class.resolves?(["class << LscHost"])).to be(true)
+    end
+
+    it "keeps checking the openers after a singleton opener", :aggregate_failures do
+      stub_const("LscHost", Class.new)
+      LscHost.singleton_class.const_set(:Meta, Class.new)
+
+      expect(described_class.resolves?(["class << LscHost", "class Meta"])).to be(true)
+      expect(described_class.resolves?(["class << LscHost", "class Missing"])).to be(false)
+    end
+
+    it "resolves self-prefixed paths against the receiver of an enclosing class_eval" do
+      stub_const("LscOuter", Module.new)
+      stub_const("LscOuter::Point", Class.new)
+      stub_const("LscOuter::Point::Inner", Class.new)
+
+      openers = ["module LscOuter", "Point.class_eval do", "self::Inner.class_eval do"]
+
+      expect(described_class.resolves?(openers)).to be(true)
+    end
+
+    it "resolves every segment of a multi-segment top-level path", :aggregate_failures do
+      stub_const("LscOuter", Module.new)
+      stub_const("LscOuter::Inner", Class.new)
+
+      expect(described_class.resolves?(["class ::LscOuter::Inner"])).to be(true)
+      expect(described_class.resolves?(["class ::LscMissing::Inner"])).to be(false)
+    end
+
+    it "resolves the first segment of a qualified opener through the ancestors of the enclosing class" do
+      stub_const("LscBase", Class.new)
+      stub_const("LscBase::Ns", Module.new)
+      stub_const("LscBase::Ns::Leaf", Class.new)
+      stub_const("LscChild", Class.new(LscBase))
+
+      expect(described_class.resolves?(["class LscChild", "class Ns::Leaf"])).to be(true)
+    end
+
+    it "prefers the lexical scope over ancestors for the first segment of a qualified opener" do
+      stub_const("LscBase", Class.new)
+      stub_const("LscBase::Ns", Module.new)
+      stub_const("LscBase::Ns::Leaf", Class.new)
+      stub_const("LscOuter", Module.new)
+      stub_const("LscOuter::Ns", Module.new)
+      stub_const("LscOuter::Child", Class.new(LscBase))
+
+      expect(described_class.resolves?(["module LscOuter", "class Child", "class Ns::Leaf"])).to be(false)
     end
 
     it "checks the openers before a singleton opener", :aggregate_failures do

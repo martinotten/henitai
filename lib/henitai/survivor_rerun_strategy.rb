@@ -105,8 +105,14 @@ module Henitai
       return false unless recipe.is_a?(Hash) && recipe["activation"].is_a?(Hash)
 
       activation = recipe["activation"]
-      activation["mode"] != "toplevel" ||
-        (activation["lexicalScope"].is_a?(Array) && activation["owner"].is_a?(String) && !activation["singleton"].nil?)
+      activation["mode"] != "toplevel" || toplevel_fields_valid?(activation)
+    end
+
+    def toplevel_fields_valid?(activation)
+      scope = activation["lexicalScope"]
+      scope.is_a?(Array) && scope.all?(String) &&
+        activation["owner"].is_a?(String) &&
+        [true, false].include?(activation["singleton"])
     end
 
     def build_stub_mutant(stable_id, recipe)

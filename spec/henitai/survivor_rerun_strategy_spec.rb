@@ -179,6 +179,24 @@ RSpec.describe Henitai::SurvivorRerunStrategy do
           expect(strategy_for(report_path).try_recipe_run).to be_nil
         end
       end
+
+      it "does not replay a toplevel activation whose lexical scope holds a non-string opener" do
+        Dir.mktmpdir do |dir|
+          report_path = write_survivor_report(dir)
+          write_recipes(dir, recipe("activation" => toplevel_activation.merge("lexicalScope" => [nil])))
+
+          expect(strategy_for(report_path).try_recipe_run).to be_nil
+        end
+      end
+
+      it "does not replay a toplevel activation whose singleton flag is not a boolean" do
+        Dir.mktmpdir do |dir|
+          report_path = write_survivor_report(dir)
+          write_recipes(dir, recipe("activation" => toplevel_activation.merge("singleton" => "false")))
+
+          expect(strategy_for(report_path).try_recipe_run).to be_nil
+        end
+      end
     end
   end
 

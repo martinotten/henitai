@@ -63,6 +63,20 @@ RSpec.describe Henitai::Mutant::LexicalTarget do
       end
     end
 
+    it "loads the subject's source file when a singleton opener's receiver is not defined yet" do
+      Dir.mktmpdir do |dir|
+        path = write_source(dir, "class LtSingletonHost; end\nclass << LtSingletonHost; end\n")
+        hide_const("LtSingletonHost")
+
+        result = described_class.resolve(subject_for("LtSingletonHost", source_file: path),
+                                         activation(["class << LtSingletonHost"]))
+
+        expect(result).to equal(LtSingletonHost.singleton_class)
+      ensure
+        Object.class_eval { remove_const(:LtSingletonHost) if const_defined?(:LtSingletonHost, false) }
+      end
+    end
+
     it "refuses to create a phantom class when the subject's source fails to define it", :aggregate_failures do
       stub_const("LtOuter", Module.new)
       Dir.mktmpdir do |dir|
