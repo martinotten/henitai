@@ -129,7 +129,7 @@ stratified sampling.
 | Subject resolution | `subject.rb`, `subject_resolver.rb`, `git_diff_analyzer.rb` |
 | Mutant generation | `operator.rb`, `operators.rb`, `operators/*`, `mutant_generator.rb`, `mutant.rb`, `mutant/activator.rb` |
 | Filtering | `arid_node_filter.rb`, `static_filter.rb`, `mutation_skip_directives.rb`, `stillborn_filter.rb`, `syntax_validator.rb`, `equivalence_detector.rb` |
-| Coverage | `coverage_bootstrapper.rb`, `coverage_report_reader.rb`, `coverage_formatter.rb`, `per_test_coverage_collector.rb`, `per_test_coverage_selector.rb` |
+| Coverage | `coverage_bootstrapper.rb`, `coverage_report_reader.rb`, `coverage_formatter.rb`, `per_test_coverage_collector.rb`, `per_test_coverage_delta.rb`, `per_test_coverage_selector.rb` |
 | Execution | `execution_engine.rb`, `process_worker_runner.rb`, `slot_scheduler.rb`, `process_wakeup.rb` |
 | Survivor reruns | `survivor_loader.rb`, `survivor_selector.rb`, `survivor_rerun_strategy.rb`, `survivor_activation_cache.rb`, `survivor_test_filter.rb` |
 | Results / history | `result.rb`, `scenario_execution_result.rb`, `mutant_history_store.rb` (SQLite), `mutant_identity.rb` |
