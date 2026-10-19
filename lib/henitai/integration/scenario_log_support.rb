@@ -81,9 +81,12 @@ module Henitai
 
       # Drains until EOF or until +stop_reader+ becomes readable. Never killed:
       # the stop signal ends it cooperatively between sink writes.
+      # Uses Kernel#select rather than IO.select: the drain runs beside the
+      # tests under mutation, and specs that stub or count IO.select must not
+      # see the harness's own waits.
       def drain_capped(reader, stop_reader, sink)
         loop do
-          ready, = IO.select([reader, stop_reader])
+          ready, = select([reader, stop_reader])
           break drain_available(reader, sink) if ready.include?(stop_reader)
 
           sink.write(reader.readpartial(DRAIN_CHUNK_BYTES))
