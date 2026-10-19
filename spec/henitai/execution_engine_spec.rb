@@ -681,6 +681,23 @@ RSpec.describe Henitai::ExecutionEngine do
     expect(engine).to have_received(:warn).with(/Flaky-test mitigation: 1 killed mutant\(s\)/)
   end
 
+  it "hands the known flaky tests to the parallel worker runner" do
+    engine = described_class.new
+    mutants = 2.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
+    runner = instance_double(Henitai::ProcessWorkerRunner, flaky_retry_count: 0)
+    allow(runner).to receive(:run).and_return([])
+    allow(Henitai::ProcessWorkerRunner).to receive(:new).and_return(runner)
+
+    with_temp_reports_dir do |dir|
+      write_flaky_registry(dir, ["spec/foo_spec.rb"])
+      engine.run(mutants, build_integration, flaky_config(dir).tap { |config| config.jobs = 2 })
+    end
+
+    expect(Henitai::ProcessWorkerRunner).to have_received(:new).with(
+      hash_including(flaky_tests: satisfy { |registry| registry.flaky?("spec/foo_spec.rb") })
+    )
+  end
+
   it "filters candidate tests by per-test coverage before executing a mutant" do
     pending = build_located_mutant("Foo#bar", file: "lib/foo.rb", line: 3)
     integration = build_integration

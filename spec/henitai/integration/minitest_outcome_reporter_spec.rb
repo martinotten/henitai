@@ -35,6 +35,28 @@ RSpec.describe Henitai::Integration::MinitestOutcomeReporter do
     expect(outcomes.failed_files).to be_empty
   end
 
+  it "skips results without a source location instead of crashing" do
+    unlocated = instance_double(Minitest::Result, source_location: nil, passed?: false, skipped?: false)
+
+    expect { described_class.new(outcomes).record(unlocated) }.not_to raise_error
+  end
+
+  it "records nothing for results without a source location" do
+    unlocated = instance_double(Minitest::Result, source_location: nil, passed?: false, skipped?: false)
+
+    described_class.new(outcomes).record(unlocated)
+
+    expect(outcomes.outcomes).to be_empty
+  end
+
+  it "skips results whose source location is not a file" do
+    unknown = instance_double(Minitest::Result, source_location: ["unknown", 0], passed?: false, skipped?: false)
+
+    described_class.new(outcomes).record(unknown)
+
+    expect(outcomes.outcomes).to be_empty
+  end
+
   it "writes the outcomes when a report path is given" do
     Dir.mktmpdir do |dir|
       path = File.join(dir, "outcomes.json")

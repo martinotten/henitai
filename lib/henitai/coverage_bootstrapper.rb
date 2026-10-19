@@ -137,7 +137,7 @@ module Henitai
             return
           end
 
-          raise CoverageError, build_bootstrap_error(result)
+          raise CoverageError, BootstrapErrorMessage.build(result)
         end
       end
     end
@@ -156,16 +156,6 @@ module Henitai
           record_dependency_manifest(config)
         end
       end
-    end
-
-    def build_bootstrap_error(result)
-      return "Configured test suite failed while generating coverage" unless result.respond_to?(:log_path)
-
-      tail = result.tail(12).strip
-      message = +"Configured test suite failed while generating coverage"
-      message << " (see #{result.log_path})"
-      message << "\n#{tail}" unless tail.empty?
-      message
     end
 
     def with_coverage_dir(config)

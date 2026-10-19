@@ -15,17 +15,22 @@ RSpec.describe Henitai::FlakyDetectionBaseline do
   # scripted outcome map exactly like the coverage formatter does.
   def scripted_suite(runs, statuses)
     path = Henitai::TestFileOutcomes.report_path(reports_dir)
+    build = method(:scenario_result)
     suite = Object.new
     suite.define_singleton_method(:run_suite) do |_test_files, **|
       outcomes = runs.shift
-      next :failed if outcomes.nil?
+      next build.call(:failed) if outcomes.nil?
 
       recorder = Henitai::TestFileOutcomes.new
       outcomes.each { |file, outcome| recorder.record(file, failed: outcome == "failed") }
       recorder.write(path)
-      statuses.shift || :survived
+      build.call(statuses.shift || :survived)
     end
     suite
+  end
+
+  def scenario_result(status, log_path: File.join(reports_dir, "suite.log"))
+    Henitai::ScenarioExecutionResult.new(status:, stdout: "", stderr: "", log_path:)
   end
 
   def run_baseline(runs, statuses = [])
@@ -91,5 +96,14 @@ RSpec.describe Henitai::FlakyDetectionBaseline do
 
     expect { run_baseline([outcomes, outcomes], %i[survived failed]) }
       .to raise_error(Henitai::CoverageError, /test suite failed/)
+  end
+
+  it "includes the log path and log tail when the failing run has a log" do
+    log_path = File.join(reports_dir, "suite.log")
+    File.write(log_path, "boot ok\nLoadError: cannot load such file -- missing\n")
+    outcomes = { "a_spec.rb" => "passed" }
+
+    expect { run_baseline([outcomes, outcomes], %i[survived failed]) }
+      .to raise_error(Henitai::CoverageError, /\(see #{Regexp.escape(log_path)}\).*LoadError/m)
   end
 end

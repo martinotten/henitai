@@ -78,7 +78,11 @@ module Henitai
     end
 
     def run_parallel(mutants, integration, config, progress_reporter)
-      runner = ProcessWorkerRunner.new(worker_count: worker_count(config), **parallel_runtime_options)
+      runner = ProcessWorkerRunner.new(
+        worker_count: worker_count(config),
+        flaky_tests: @flaky_tests,
+        **parallel_runtime_options
+      )
       results = runner.run(
         mutants,
         @fork_server_runner || integration,

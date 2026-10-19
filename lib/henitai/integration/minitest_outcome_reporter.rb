@@ -15,15 +15,22 @@ module Henitai
 
       def record(result)
         super
-        @outcomes.record(
-          result.source_location.first,
-          failed: !result.passed? && !result.skipped?
-        )
+        file, = result.source_location
+        return unless usable_source?(file)
+
+        @outcomes.record(file, failed: !result.passed? && !result.skipped?)
       end
 
       def report
         super
         @outcomes.write(@report_path) if @report_path
+      end
+
+      private
+
+      # Minitest reports no location for some results and "unknown" for others.
+      def usable_source?(file)
+        file.is_a?(String) && !file.empty? && file != "unknown"
       end
     end
   end

@@ -270,6 +270,35 @@ RSpec.describe Henitai::CoverageBootstrapper do
     end
   end
 
+  it "runs the flaky baseline and writes the flaky test registry when flaky_detection is enabled" do
+    Dir.mktmpdir do |dir|
+      static_filter = instance_double(Henitai::StaticFilter)
+      integration = instance_double(Henitai::Integration::Rspec, test_files: [], per_test_coverage_supported?: true)
+      spec_file = File.expand_path("spec/sample_spec.rb")
+      config = Struct.new(:reports_dir, :flaky_detection).new(dir, true)
+      run_count = 0
+
+      allow(static_filter).to receive(:coverage_lines_for).and_return({ File.expand_path("lib/sample.rb") => [2] })
+      allow(integration).to receive(:run_suite) do
+        run_count += 1
+        Henitai::TestFileOutcomes.new.tap do |outcomes|
+          outcomes.record(spec_file, failed: run_count.even?)
+          outcomes.write(Henitai::TestFileOutcomes.report_path(dir))
+        end
+        Henitai::ScenarioExecutionResult.new(status: :survived, stdout: "", stderr: "", log_path: nil)
+      end
+
+      build_bootstrapper(static_filter:).ensure!(
+        source_files: [File.expand_path("lib/sample.rb")],
+        config:,
+        integration:
+      )
+
+      registry_path = File.join(dir, Henitai::FlakyTestRegistry::FILE_NAME)
+      expect(JSON.parse(File.read(registry_path))).to eq("flaky_tests" => [spec_file])
+    end
+  end
+
   it "raises when the coverage bootstrap produces no usable coverage" do
     static_filter = instance_double(Henitai::StaticFilter)
     integration = build_integration(

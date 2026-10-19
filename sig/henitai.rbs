@@ -1342,6 +1342,12 @@ module Henitai
     def run: (integration: untyped, test_files: Array[String]) -> FlakyTestRegistry
   end
 
+  module BootstrapErrorMessage
+    GENERIC: String
+
+    def self.build: (untyped) -> String
+  end
+
   class FlakyRetryDecision
     def initialize: (flaky_tests: FlakyTestRegistry, max_retries: Integer) -> void
     def retry?: (status: Symbol, killing_tests: Array[String], attempts: Integer) -> bool

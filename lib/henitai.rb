@@ -55,6 +55,7 @@ module Henitai
   autoload :CanonicalReportWriter, "henitai/canonical_report_writer"
   autoload :CheckpointReporter, "henitai/checkpoint_reporter"
   autoload :CompositeProgressReporter, "henitai/composite_progress_reporter"
+  autoload :BootstrapErrorMessage, "henitai/bootstrap_error_message"
   autoload :ReportsDirectoryLock, "henitai/reports_directory_lock"
   autoload :SurvivorLoader,          "henitai/survivor_loader"
   autoload :SurvivorSelector,        "henitai/survivor_selector"

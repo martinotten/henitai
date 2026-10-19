@@ -15,10 +15,10 @@ module Henitai
 
     def run(integration:, test_files:)
       FileUtils.mkdir_p(@reports_dir)
-      first, first_status = run_once(integration, test_files)
-      second, second_status = run_once(integration, test_files)
+      first, first_result = run_once(integration, test_files)
+      second, second_result = run_once(integration, test_files)
       registry = FlakyTestRegistry.from_outcomes(first, second)
-      ensure_usable_suite(registry, [first_status, second_status])
+      ensure_usable_suite(registry, [first_result, second_result])
       registry.write(File.join(@reports_dir, FlakyTestRegistry::FILE_NAME))
       warn_flaky(registry)
       registry
@@ -29,19 +29,20 @@ module Henitai
     def run_once(integration, test_files)
       outcome_path = TestFileOutcomes.report_path(@reports_dir)
       FileUtils.rm_f(outcome_path)
-      status = integration.run_suite(test_files)
+      result = integration.run_suite(test_files)
       raise CoverageError, "could not record suite outcomes" unless File.exist?(outcome_path)
 
-      [TestFileOutcomes.load(outcome_path).outcomes, status]
+      [TestFileOutcomes.load(outcome_path).outcomes, result]
     end
 
     # A failing run is only acceptable as evidence of flakiness: the suite
     # must pass at least once and the failure must be explained by a flaky file.
-    def ensure_usable_suite(registry, statuses)
-      return if statuses.all?(:survived)
-      return if statuses.any?(:survived) && !registry.empty?
+    def ensure_usable_suite(registry, results)
+      return if results.all?(&:survived?)
+      return if results.any?(&:survived?) && !registry.empty?
 
-      raise CoverageError, "Configured test suite failed while generating coverage"
+      failed = results.find { |result| !result.survived? }
+      raise CoverageError, BootstrapErrorMessage.build(failed)
     end
 
     def warn_flaky(registry)
