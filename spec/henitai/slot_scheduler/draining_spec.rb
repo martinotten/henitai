@@ -294,21 +294,58 @@ RSpec.describe Henitai::SlotScheduler::Draining do
     end
   end
 
-  describe "#wait_for_drain_window" do
+  describe "the SIGTERM grace window of #drain_draining_slots" do
+    def drain_with(wakeup, clock)
+      runtime = build_runtime
+      allow(runtime).to receive(:clock_gettime) { clock.call }
+      scheduler = build_scheduler(
+        runtime: runtime, wakeup: wakeup,
+        integration: build_integration(build_result(status: :timeout))
+      )
+      inject_slot(scheduler, build_slot(slot_id: 0, pid: 10, draining: true, forced_outcome: :timeout))
+      scheduler.drain_draining_slots
+    end
+
     it "waits then drains the wakeup when present", :aggregate_failures do
       wakeup = instance_double(Henitai::ProcessWakeup, wait: nil, drain: nil)
-      scheduler = build_scheduler(wakeup: wakeup)
 
-      scheduler.send(:wait_for_drain_window)
+      drain_with(wakeup, -> { 0.0 })
 
       expect(wakeup).to have_received(:wait).with(Henitai::SlotScheduler::PROCESS_DRAIN_WINDOW)
       expect(wakeup).to have_received(:drain)
     end
 
     it "does not raise when there is no wakeup" do
-      scheduler = build_scheduler(wakeup: nil)
+      expect { drain_with(nil, -> { 0.0 }) }.not_to raise_error
+    end
 
-      expect { scheduler.send(:wait_for_drain_window) }.not_to raise_error
+    it "keeps waiting out the window when an unrelated event wakes it early", :aggregate_failures do
+      now = 0.0
+      waits = []
+      wakeup = instance_double(Henitai::ProcessWakeup, drain: nil)
+      allow(wakeup).to receive(:wait) do |timeout|
+        waits << timeout
+        now += 0.05
+        waits.size < 3 ? [wakeup] : nil
+      end
+
+      drain_with(wakeup, -> { now })
+
+      expect(waits.size).to eq(3)
+      expect(waits.last).to be_within(1e-9).of(0.1)
+    end
+
+    it "stops waiting once the deadline has passed even if events keep arriving" do
+      now = 0.0
+      wakeup = instance_double(Henitai::ProcessWakeup, drain: nil)
+      allow(wakeup).to receive(:wait) do
+        now += 0.5
+        [wakeup]
+      end
+
+      drain_with(wakeup, -> { now })
+
+      expect(wakeup).to have_received(:wait).once
     end
   end
 

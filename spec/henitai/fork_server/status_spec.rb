@@ -24,6 +24,13 @@ RSpec.describe Henitai::ForkServer::Status do
     expect([status.success?, status.signaled?, status.termsig]).to eq([false, true, 9])
   end
 
+  it "marks a status synthesized for a lost server", :aggregate_failures do
+    lost = described_class.lost
+
+    expect([lost.lost?, lost.signaled?, lost.termsig]).to eq([true, true, 9])
+    expect(described_class.new(exitstatus: nil, termsig: 9)).not_to be_lost
+  end
+
   it "round-trips through an event" do
     status = described_class.from_event(described_class.new(exitstatus: nil, termsig: 15).to_event)
 

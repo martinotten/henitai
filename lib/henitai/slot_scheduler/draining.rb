@@ -80,9 +80,17 @@ module Henitai
         end
       end
 
+      # Unrelated events (CHLD of another slot, server traffic) wake the select
+      # early; the SIGTERM grace window must still run its full length.
       def wait_for_drain_window
-        wakeup&.wait(PROCESS_DRAIN_WINDOW)
-        wakeup&.drain
+        return unless wakeup
+
+        deadline = monotonic_time + PROCESS_DRAIN_WINDOW
+        while (remaining = deadline - monotonic_time).positive?
+          woken = wakeup.wait(remaining)
+          wakeup.drain
+          break unless woken
+        end
       end
 
       def signal_draining_slots(draining)

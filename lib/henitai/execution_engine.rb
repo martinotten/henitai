@@ -159,10 +159,10 @@ module Henitai
     # Fixed `mutation.timeout` wins untouched; when unset, the timeout is
     # calibrated per mutant from its selected tests' measured durations, with
     # a single warning per run when no timing data is available.
-    def resolved_timeout(test_files, config)
+    def resolved_timeout(test_files, config, include_boot: calibration_includes_boot?)
       return config.timeout unless calibration_enabled?(config)
 
-      calibrator = timeout_calibrator(config)
+      calibrator = timeout_calibrator(config, include_boot)
       calibrated = calibrator.timeout_for(test_files)
       unless calibrated
         warn_timeout_fallback_once
@@ -192,8 +192,7 @@ module Henitai
       config.respond_to?(:timeout_configured?) && !config.timeout_configured?
     end
 
-    def timeout_calibrator(config)
-      include_boot = calibration_includes_boot?
+    def timeout_calibrator(config, include_boot)
       @timeout_calibrators ||= {}
       @timeout_calibrators[include_boot] ||= TimeoutCalibrator.new(
         timing_source: timing_source(config),

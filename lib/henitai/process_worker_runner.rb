@@ -136,8 +136,15 @@ module Henitai
     end
 
     def wait_for_next_event
-      @wakeup&.wait(@scheduler.next_event_timeout)
+      @wakeup&.wait(next_wait_timeout)
       @wakeup&.drain
+    end
+
+    # An event the runtime already read off its socket cannot wake the select.
+    def next_wait_timeout
+      return 0 if @runtime.respond_to?(:pending_events?) && @runtime.pending_events?
+
+      @scheduler.next_event_timeout
     end
 
     def install_signal_traps

@@ -46,9 +46,26 @@ ADR-14 guarantees hold.
   env (`HENITAI_WORKER_SLOT`) travels in `run`. Each grandchild leads its own
   process group, so timeouts and INT/TERM teardown signal it directly from
   the parent; the server follows the parent's death through its watchdog.
-- If the server dies mid-run, its outstanding mutants are reported with a
-  synthesized SIGKILL status (never a kill) and later mutants run on the
-  per-mutant-boot path.
+- If the server dies or stalls mid-run, the client abandons it (kills and
+  reaps it) and its outstanding mutants complete with `Status.lost`. A lost
+  status is never a verdict: the scheduler runs that mutant again on the
+  per-mutant-boot path (no `runtime_error`, no retry count), and later
+  mutants take that path too. The mutant processes the dead server left behind
+  are killed so a rerun cannot race them.
+- Every path that boots the suite in the parent (fallback, lost-server rerun,
+  control runs) uses a boot-inclusive timeout (`resolved_timeout(include_boot:
+  true)`), handed over through `fallback_timeout:` and `ChildHandle#timeout`;
+  the boot-excluded timeout is only right for processes forked from the
+  booted server.
+- Grandchildren are not our children: `waitpid` raises ECHILD, and one that
+  has not yet run `setpgid` has no process group. `ForkServer::GroupKiller`
+  therefore signals the group and falls back to the pid itself, and
+  `GroupTerminator` (SIGTERM, grace, SIGKILL) probes liveness with
+  `kill(0)` instead of waiting. The same fallback serves `Runtime#kill` for
+  scheduler timeouts and the server's teardown of live mutants.
+  `Integration::Base#cleanup_process_group` is unchanged for direct children.
+- The parent socket and the server's wake pipe are registered in
+  `InheritedFdRegistry`, so mutant processes close them after the fork.
 - If the server cannot boot (`boot_failed`, or it dies), the run falls back to
   per-mutant boot with a one-time warning. A mutant the server cannot spawn is
   run on the old path.

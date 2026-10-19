@@ -35,6 +35,11 @@ module Henitai
         @client.lost? ? [] : [@client.io]
       end
 
+      # An event already read off the socket does not wake a select on it.
+      def pending_events?
+        @client.pending_events?
+      end
+
       def wait2(pid, flags = nil)
         return any_exit(flags) if pid == ANY_PID
         return served_exit(pid) if @served.include?(pid)
@@ -50,8 +55,17 @@ module Henitai
         status
       end
 
+      # A served process leads no group until its bootstrap ran +setpgid+;
+      # until then the signal goes to the process itself.
+      def kill(signal, pid)
+        @base.kill(signal, pid)
+      rescue Errno::ESRCH
+        raise unless pid.negative? && @served.include?(-pid)
+
+        @base.kill(signal, -pid)
+      end
+
       def clock_gettime(clock_id) = @base.clock_gettime(clock_id)
-      def kill(signal, pid) = @base.kill(signal, pid)
       def pause(seconds) = @base.pause(seconds)
       def trap(signal, handler = nil, &) = @base.trap(signal, handler, &)
 

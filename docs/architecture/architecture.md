@@ -511,7 +511,12 @@ environment and the union of the run's test files are loaded once in a
 long-lived server and every mutant process is forked from it. With `jobs > 1`
 the scheduler runs on `ForkServer::Runtime`, which completes mutants from the
 server's `exited` events instead of `waitpid`. If the server is unavailable
-the run falls back to per-mutant boot with a warning. See
+the run falls back to per-mutant boot with a warning. A server lost mid-run
+does not turn its in-flight mutants into `runtime_error`: they complete as
+lost and are rerun on the fallback path, whose timeouts include suite boot.
+Mutant processes forked by the server (not children of the parent, possibly
+without a process group yet) are stopped by signalling the group, falling
+back to the pid, and probing liveness with `kill(0)`. See
 [ADR-15](adr/ADR-15-fork-server-execution-model.md).
 
 ### 8.6 Parallel Execution and Flaky Test Mitigation

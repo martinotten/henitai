@@ -22,16 +22,27 @@ module Henitai
 
       def_delegators :@integration, :build_result, :select_tests, :test_files
 
-      def initialize(integration:, client:, env: {}, warner: nil, report_store: Integration::ChildReportStore.new)
+      # @param fallback_timeout [#call, nil] test files -> timeout for a mutant
+      #   the parent boots itself; the timeout handed to #run_mutant excludes
+      #   boot while the server is active and would be far too short for it.
+      # rubocop:disable Metrics/ParameterLists
+      def initialize(integration:, client:, env: {}, warner: nil, fallback_timeout: nil,
+                     report_store: Integration::ChildReportStore.new, terminator: GroupTerminator.new)
+        # rubocop:enable Metrics/ParameterLists
         @integration = integration
         @client = client
         @env = env
         @warner = warner || ->(message) { Kernel.warn(message) }
+        @fallback_timeout = fallback_timeout
         @report_store = report_store
+        @terminator = terminator
         @active = true
       end
 
+      # False once the server is gone; a lost connection is noticed here even
+      # when no request is pending.
       def active?
+        deactivate("the fork server closed the connection") if @active && @client.lost?
         @active
       end
 
@@ -80,7 +91,8 @@ module Henitai
       def spawn_locally(mutant, test_files)
         handle = @integration.spawn_mutant(mutant:, test_files:)
         runtime.local(handle.pid)
-        handle
+        Integration::ChildHandle.new(pid: handle.pid, log_paths: handle.log_paths,
+                                     timeout: fallback_timeout(test_files))
       end
 
       # The scheduler exports the slot of the process it is about to spawn.
@@ -96,25 +108,32 @@ module Henitai
         wait_result = wait_for(pid, timeout)
         @integration.build_result(wait_result, log_paths)
       ensure
-        @integration.cleanup_process_group(pid) if pid && wait_result != :timeout
+        @terminator.terminate(pid, leader: false) if pid && wait_result != :timeout
       end
 
       def wait_for(pid, timeout)
         status = @client.wait_exit(pid, timeout)
         return status if status
 
-        @integration.cleanup_process_group(pid)
+        @terminator.terminate(pid)
         @client.wait_exit(pid, EXIT_GRACE_SECONDS)
         @client.forget(pid)
         :timeout
       end
 
       def fallback(mutant, test_files, timeout)
-        @integration.run_mutant(mutant:, test_files:, timeout:)
+        @integration.run_mutant(mutant:, test_files:, timeout: fallback_timeout(test_files) || timeout)
+      end
+
+      def fallback_timeout(test_files)
+        @fallback_timeout&.call(test_files)
       end
 
       def deactivate(reason)
+        return unless @active
+
         @active = false
+        @client.abandon
         @warner.call("henitai: the fork server stopped (#{reason}); falling back to per-mutant boot")
       end
     end

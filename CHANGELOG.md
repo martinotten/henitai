@@ -9,12 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`--incremental` no longer reuses stale survived verdicts for def-line
+  mutants.** Their test selection is widened with name-matched tests that the
+  survivor fingerprint does not cover, so survived verdicts for mutants on a
+  method's def line always re-execute (killed reuse is unaffected: a kill by
+  an unchanged covering test remains valid).
+
 - **Output capture no longer delays or races on lingering grandchildren.**
   Closing a mutant child's captured stdout/stderr no longer waits up to 1 s
   per stream for EOF and no longer kills the drain thread mid-write (which
   could exceed the cap or write the truncation marker twice). The drain
   thread is stopped cooperatively through a stop pipe and takes what is
   already readable.
+
+- **Fork-server lifecycle.** A server lost or stalled mid-run no longer turns
+  its in-flight mutants into `runtime_error`: they are rerun through the
+  per-mutant-boot fallback. Fallback runs use boot-inclusive timeouts. Mutant
+  processes forked by the server are cleaned up on timeout, loss and teardown
+  even before they lead a process group, and the connection and wake-pipe fds
+  are no longer inherited by mutant processes. The parallel event loop no
+  longer stalls on an exit event already buffered in the client, and the
+  SIGTERM drain window always runs its full length.
 
 ### Added
 

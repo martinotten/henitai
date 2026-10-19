@@ -552,8 +552,9 @@ module Henitai
     class ChildHandle
       attr_accessor pid: Integer?
       attr_accessor log_paths: Hash[Symbol, String]
+      attr_accessor timeout: Float?
 
-      def initialize: (pid: Integer?, log_paths: Hash[Symbol, String]) -> void
+      def initialize: (pid: Integer?, log_paths: Hash[Symbol, String], ?timeout: Float?) -> void
     end
 
     class RspecProcessRunner
@@ -829,6 +830,10 @@ module Henitai
     def coverage_lines_for: (String, untyped) -> Array[Integer]
     def mutant_lines: (untyped) -> Array[Integer]
     def map: () -> Hash[String, Hash[String, Array[Integer]]]
+  end
+
+  module SignatureLine
+    def self.on?: (untyped) -> bool
   end
 
   class PerTestCoverageSelector

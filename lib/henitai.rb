@@ -28,6 +28,7 @@ module Henitai
   autoload :CoverageReportReader, "henitai/coverage_report_reader"
   autoload :PerTestCoverage, "henitai/per_test_coverage"
   autoload :PerTestCoverageSelector, "henitai/per_test_coverage_selector"
+  autoload :SignatureLine, "henitai/signature_line"
   autoload :Subject, "henitai/subject"
   autoload :Mutant, "henitai/mutant"
   autoload :MutantIdentity, "henitai/mutant_identity"

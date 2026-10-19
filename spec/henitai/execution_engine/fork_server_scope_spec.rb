@@ -32,6 +32,10 @@ RSpec.describe Henitai::ExecutionEngine::ForkServerScope, :aggregate_failures do
       def prioritized_tests_for(_mutant, _integration, _config)
         ["a_spec.rb"]
       end
+
+      def resolved_timeout(test_files, _config, include_boot: calibration_includes_boot?)
+        [test_files, include_boot]
+      end
     end
   end
   let(:host) { host_class.new }
@@ -48,7 +52,16 @@ RSpec.describe Henitai::ExecutionEngine::ForkServerScope, :aggregate_failures do
     expect(host.inside).to eq(runner)
     expect(runner).to have_received(:stop)
     expect(Henitai::ForkServer).to have_received(:start)
-      .with(integration:, mutants:, test_files: ["a_spec.rb"], log_path: "reports/mutation-logs/fork-server.log")
+      .with(hash_including(integration:, mutants:, test_files: ["a_spec.rb"],
+                           log_path: "reports/mutation-logs/fork-server.log"))
+  end
+
+  it "hands the server a timeout for fallback runs that includes booting the suite" do
+    host.run(mutants, integration, config)
+
+    expect(Henitai::ForkServer).to have_received(:start) do |fallback_timeout:, **|
+      expect(fallback_timeout.call(["a_spec.rb"])).to eq([["a_spec.rb"], true])
+    end
   end
 
   it "does not start a server when the flag is off" do

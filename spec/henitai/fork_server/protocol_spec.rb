@@ -26,6 +26,17 @@ RSpec.describe Henitai::ForkServer::Protocol, :aggregate_failures do
     expect(reader.next_message(1)).to eq("a" => 1)
   end
 
+  it "knows whether a whole message is already buffered" do
+    pair.last.write([described_class.encode("a" => 1), described_class.encode("b" => 2), %({"c":)].join)
+    expect(reader.buffered_message?).to be(false)
+
+    reader.next_message(1)
+    expect(reader.buffered_message?).to be(true)
+
+    reader.next_message(1)
+    expect(reader.buffered_message?).to be(false)
+  end
+
   it "returns nil at end of stream" do
     pair.last.close
 

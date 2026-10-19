@@ -57,7 +57,7 @@ module Henitai
         send_message("type" => "run", "request_id" => request_id, "mutant_id" => mutant_id,
                      "test_files" => test_files, "log_paths" => log_paths, "env" => env)
         outcome = await(SPAWN_TIMEOUT) { @spawned.delete(request_id) }
-        raise ServerLost, "the fork server did not answer a run request" unless outcome
+        lose_server("the fork server did not answer a run request") unless outcome
         raise SpawnFailed, outcome.last if outcome.first == :failed
 
         @outstanding << outcome.last
@@ -72,8 +72,8 @@ module Henitai
 
       # Non-blocking variants for the parallel scheduler, which reaps
       # completions from relayed events. A lost server completes every
-      # outstanding process as killed instead of raising, so no slot waits
-      # for an event that cannot arrive.
+      # outstanding process with a {Status.lost} instead of raising, so no
+      # slot waits for an event that cannot arrive and no verdict is invented.
       #
       # @return [Status, nil]
       def poll_exit(pid)
@@ -91,6 +91,12 @@ module Henitai
         [pid, status]
       end
 
+      # Whether an event is already in user space (read off the socket but not
+      # yet handed out), which the socket's readability no longer signals.
+      def pending_events?
+        !@exits.empty? || @reader.buffered_message?
+      end
+
       # Stops tracking a pid whose result is no longer wanted, such as a child
       # the caller gave up on after a timeout. Its exit, if one already
       # arrived or arrives later, is dropped rather than left for a recycled pid.
@@ -100,16 +106,38 @@ module Henitai
         @exits.delete(pid)
       end
 
+      # Gives up on a server that is lost or stalled: it must not fork another
+      # mutant that a local run is about to repeat.
+      def abandon
+        @lost = true
+        kill_outstanding
+        close_socket
+        reap_server
+        @pid = nil
+      end
+
       def shutdown
         send_message("type" => "shutdown")
       rescue ServerLost
         nil
       ensure
-        @socket.close unless @socket.closed?
+        close_socket
         reap_server
       end
 
       private
+
+      # The registry keeps fallback children from inheriting this connection.
+      def close_socket
+        InheritedFdRegistry.unregister(@socket)
+        @socket.close unless @socket.closed?
+      end
+
+      # Without its server a mutant process has no one to reap it, and a local
+      # rerun of the same mutant must not race it.
+      def kill_outstanding
+        @outstanding.each { |pid| GroupKiller.kill(pid) }
+      end
 
       def await(timeout)
         deadline = now + timeout
@@ -141,11 +169,12 @@ module Henitai
         nil
       end
 
-      def lose_server
+      def lose_server(reason = "the fork server closed the connection")
         @lost = true
-        @outstanding.each { |pid| @exits[pid] ||= Status.new(exitstatus: nil, termsig: 9) }
+        kill_outstanding
+        @outstanding.each { |pid| @exits[pid] ||= Status.lost }
         @outstanding.clear
-        raise ServerLost, "the fork server closed the connection"
+        raise ServerLost, reason
       end
 
       def record(message)

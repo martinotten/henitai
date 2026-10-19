@@ -62,12 +62,46 @@ RSpec.describe Henitai::ForkServer::Runtime, :aggregate_failures do
     expect(runtime.wait(7)).to eq(status)
   end
 
+  it "reports pending events the socket can no longer signal" do
+    allow(client).to receive(:pending_events?).and_return(true, false)
+
+    expect([runtime.pending_events?, runtime.pending_events?]).to eq([true, false])
+  end
+
   it "wakes the event loop on the server connection until it is lost" do
     expect(runtime.wakeup_ios).to eq([:socket])
 
     allow(client).to receive(:lost?).and_return(true)
 
     expect(runtime.wakeup_ios).to eq([])
+  end
+
+  describe "#kill" do
+    before do
+      runtime.served(5)
+      allow(base).to receive(:kill)
+      allow(base).to receive(:kill).with(:SIGTERM, -5).and_raise(Errno::ESRCH)
+    end
+
+    it "signals the process itself while a served process leads no group yet" do
+      runtime.kill(:SIGTERM, -5)
+
+      expect(base).to have_received(:kill).with(:SIGTERM, 5)
+    end
+
+    it "does not guess for a pid that is not served" do
+      allow(base).to receive(:kill).with(:SIGTERM, -6).and_raise(Errno::ESRCH)
+
+      expect { runtime.kill(:SIGTERM, -6) }.to raise_error(Errno::ESRCH)
+      expect(base).not_to have_received(:kill).with(:SIGTERM, 6)
+    end
+
+    it "does not retry a signal aimed at a single process" do
+      allow(base).to receive(:kill).with(:SIGTERM, 5).and_raise(Errno::ESRCH)
+
+      expect { runtime.kill(:SIGTERM, 5) }.to raise_error(Errno::ESRCH)
+      expect(base).to have_received(:kill).once
+    end
   end
 
   it "delegates clock, signals, pausing and traps to the base runtime" do

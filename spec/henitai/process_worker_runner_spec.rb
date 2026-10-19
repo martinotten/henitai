@@ -36,7 +36,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
     wakeup.define_singleton_method(:wait) do |timeout|
       state[:wait_calls] << timeout
       on_wait&.call(timeout)
-      [[], nil, nil]
+      nil # IO.select timed out
     end
     wakeup.define_singleton_method(:drain) { nil }
     wakeup.define_singleton_method(:signal) { state[:signal_count] += 1 }
@@ -270,6 +270,24 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       described_class.new(worker_count: 1, runtime:, wakeup:).run([], nil, config, nil)
 
       expect(provider.call).to eq([:socket])
+    end
+
+    it "does not wait for an event the runtime already holds in user space" do
+      pending = [true, false]
+      runtime, = build_fake_runtime(
+        clock_times: Array.new(20, 0.0),
+        wait2_results: { -1 => [nil, [10, build_wait_status(1)]] }
+      )
+      runtime.define_singleton_method(:pending_events?) { pending.shift }
+      wakeup, wakeup_state = build_fake_wakeup
+      integration = instance_double(Henitai::Integration::Rspec)
+      stub_fake_spawn(integration, 10)
+      stub_result_builder(integration)
+      config = Struct.new(:timeout, :max_flaky_retries).new(10.0, 0)
+
+      described_class.new(worker_count: 1, runtime:, wakeup:).run([build_mutant("a")], integration, config, nil)
+
+      expect(wakeup_state[:wait_calls]).to eq([0])
     end
 
     it "returns empty array immediately when given zero mutants" do

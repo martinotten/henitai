@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "signature_line"
 require_relative "verdict_fingerprint"
 
 module Henitai
@@ -84,6 +85,7 @@ module Henitai
     # unknowable means re-execute.
     def survived_reusable?(mutant, verdict)
       return false unless per_test_coverage&.available?
+      return false if SignatureLine.on?(mutant)
       return false unless subject_source_unchanged?(mutant, verdict)
 
       VerdictFingerprint.survivor_fingerprint_current?(

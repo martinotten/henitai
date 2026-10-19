@@ -4,6 +4,7 @@ require_relative "fork_server/protocol"
 require_relative "fork_server/status"
 require_relative "fork_server/reaper"
 require_relative "fork_server/group_killer"
+require_relative "fork_server/group_terminator"
 require_relative "fork_server/server"
 require_relative "fork_server/launcher"
 require_relative "fork_server/client"
@@ -23,7 +24,8 @@ module Henitai
     #
     # @return [MutantRunner, nil]
     # rubocop:disable Metrics/ParameterLists
-    def self.start(integration:, mutants:, test_files:, log_path:, warner: nil, boot_timeout: BOOT_TIMEOUT)
+    def self.start(integration:, mutants:, test_files:, log_path:, warner: nil, boot_timeout: BOOT_TIMEOUT,
+                   fallback_timeout: nil)
       warner ||= ->(message) { Kernel.warn(message) }
       client = ServerProcess.start(integration:, mutants:, test_files:, log_path:)
       begin
@@ -34,7 +36,7 @@ module Henitai
                     "falling back to per-mutant boot")
         return nil
       end
-      MutantRunner.new(integration:, client:, warner:)
+      MutantRunner.new(integration:, client:, warner:, fallback_timeout:)
     end
     # rubocop:enable Metrics/ParameterLists
   end

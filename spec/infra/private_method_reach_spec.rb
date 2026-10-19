@@ -55,7 +55,7 @@ RSpec.describe "Private method reach in specs" do
         "(docs/backlog/2026-07-08-review-send-slot-scheduler-spec.md)"
       ],
       "spec/henitai/slot_scheduler/draining_spec.rb" => [
-        14,
+        12,
         "residue is the drain state machine itself, reached slot-by-slot; needs the " \
         "DrainCycle follow-up " \
         "(docs/backlog/2026-08-21-review-send-slot-scheduler-draining-spec.md)"

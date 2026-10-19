@@ -4,20 +4,21 @@ require "spec_helper"
 
 # rubocop:disable RSpec/MultipleMemoizedHelpers
 RSpec.describe Henitai::ForkServer::MutantRunner, :aggregate_failures do
-  let(:client) { instance_double(Henitai::ForkServer::Client, shutdown: nil) }
+  let(:client) { instance_double(Henitai::ForkServer::Client, shutdown: nil, abandon: nil, lost?: false) }
   let(:integration) do
     instance_double(
       Henitai::Integration::Rspec,
       mutant_log_paths: { report_path: "r.json" },
       build_result: :result,
-      cleanup_process_group: nil,
       run_mutant: :fallback_result
     )
   end
   let(:report_store) { instance_double(Henitai::Integration::ChildReportStore, clear: nil) }
+  let(:terminator) { instance_double(Henitai::ForkServer::GroupTerminator, terminate: nil) }
   let(:warnings) { [] }
   let(:runner) do
-    described_class.new(integration:, client:, report_store:, warner: ->(message) { warnings << message })
+    described_class.new(integration:, client:, report_store:, terminator:,
+                        warner: ->(message) { warnings << message })
   end
   let(:mutant) { instance_double(Henitai::Mutant, id: "m1") }
   let(:status) { Henitai::ForkServer::Status.new(exitstatus: 1, termsig: nil) }
@@ -34,6 +35,7 @@ RSpec.describe Henitai::ForkServer::MutantRunner, :aggregate_failures do
       .with(mutant_id: "m1", test_files: ["a_spec.rb"], log_paths: { report_path: "r.json" }, env: {})
     expect(integration).to have_received(:build_result).with(status, { report_path: "r.json" })
     expect(report_store).to have_received(:clear).with("r.json")
+    expect(terminator).to have_received(:terminate).with(77, leader: false).once
   end
 
   it "kills the process group and reports a timeout when no exit arrives" do
@@ -41,7 +43,7 @@ RSpec.describe Henitai::ForkServer::MutantRunner, :aggregate_failures do
 
     run
 
-    expect(integration).to have_received(:cleanup_process_group).with(77).once
+    expect(terminator).to have_received(:terminate).with(77).once
     expect(client).to have_received(:forget).with(77)
     expect(integration).to have_received(:build_result).with(:timeout, anything)
   end
@@ -59,6 +61,66 @@ RSpec.describe Henitai::ForkServer::MutantRunner, :aggregate_failures do
     2.times { expect(run).to eq(:fallback_result) }
 
     expect([runner.active?, warnings.size]).to eq([false, 1])
+  end
+
+  it "abandons the server when it is lost, so it cannot fork a mutant that runs locally" do
+    allow(client).to receive(:spawn_mutant).and_raise(Henitai::ForkServer::Client::ServerLost, "gone")
+
+    run
+
+    expect(client).to have_received(:abandon).once
+    expect(warnings.first).to include("gone")
+  end
+
+  it "deactivates as soon as the client reports the server lost, even with nothing pending" do
+    allow(client).to receive(:lost?).and_return(true)
+
+    2.times { expect(runner.active?).to be(false) }
+
+    expect(warnings.size).to eq(1)
+    expect(client).to have_received(:abandon).once
+  end
+
+  describe "the fallback timeout" do
+    let(:fallback_timeout) { ->(test_files) { test_files.size + 100.0 } }
+    let(:runner) do
+      described_class.new(integration:, client:, report_store:, fallback_timeout:, warner: ->(_) {})
+    end
+
+    it "gives a mutant run on the per-mutant path a timeout that includes booting the suite" do
+      allow(client).to receive(:spawn_mutant).and_raise(Henitai::ForkServer::Client::SpawnFailed)
+
+      run
+
+      expect(integration).to have_received(:run_mutant)
+        .with(mutant:, test_files: ["a_spec.rb"], timeout: 101.0)
+    end
+
+    it "keeps the given timeout for a run through the server" do
+      allow(client).to receive_messages(spawn_mutant: 77, wait_exit: status)
+
+      run
+
+      expect(integration).not_to have_received(:run_mutant)
+    end
+
+    it "keeps the given timeout when no fallback timeout is known" do
+      allow(client).to receive(:spawn_mutant).and_raise(Henitai::ForkServer::Client::SpawnFailed)
+
+      described_class.new(integration:, client:, report_store:).run_mutant(mutant:, test_files: ["a"], timeout: 2.0)
+
+      expect(integration).to have_received(:run_mutant).with(mutant:, test_files: ["a"], timeout: 2.0)
+    end
+
+    it "gives a locally spawned child the same boot-inclusive timeout" do
+      allow(client).to receive(:spawn_mutant).and_raise(Henitai::ForkServer::Client::SpawnFailed)
+      allow(integration).to receive(:spawn_mutant).and_return(Henitai::Integration::ChildHandle.new(5, {}))
+      allow(runner.runtime).to receive(:local)
+
+      handle = runner.spawn_mutant(mutant:, test_files: ["a_spec.rb"])
+
+      expect([handle.pid, handle.timeout]).to eq([5, 101.0])
+    end
   end
 
   describe "#spawn_mutant" do
@@ -81,7 +143,7 @@ RSpec.describe Henitai::ForkServer::MutantRunner, :aggregate_failures do
       ENV["HENITAI_WORKER_SLOT"] = "2"
       handle = spawn
 
-      expect(handle.to_a).to eq([77, { report_path: "r.json" }])
+      expect(handle.to_a).to eq([77, { report_path: "r.json" }, nil])
       expect(runtime).to have_received(:served).with(77)
       expect(client).to have_received(:spawn_mutant)
         .with(hash_including(env: { "HENITAI_WORKER_SLOT" => "2" }))

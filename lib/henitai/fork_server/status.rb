@@ -16,9 +16,20 @@ module Henitai
         new(exitstatus: status.exitstatus, termsig: status.termsig)
       end
 
-      def initialize(exitstatus:, termsig:)
+      # Stands in for a process whose end the lost server never relayed. It
+      # says nothing about the mutant, so it must never become a verdict.
+      def self.lost
+        new(exitstatus: nil, termsig: 9, lost: true)
+      end
+
+      def initialize(exitstatus:, termsig:, lost: false)
         @exitstatus = exitstatus
         @termsig = termsig
+        @lost = lost
+      end
+
+      def lost?
+        @lost
       end
 
       def exited?

@@ -46,6 +46,12 @@ module Henitai
           end
         end
 
+        # True when a whole message is already read off the socket, so the
+        # socket itself will not signal it as readable.
+        def buffered_message?
+          @buffer.include?("\n")
+        end
+
         private
 
         def fill(deadline)

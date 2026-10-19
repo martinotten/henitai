@@ -65,6 +65,14 @@ RSpec.describe Henitai::ForkServer::Client, :aggregate_failures do
       .to raise_error(described_class::SpawnFailed, "unknown")
   end
 
+  it "marks the server lost when it does not answer a run request" do
+    stub_const("#{described_class}::SPAWN_TIMEOUT", 0.05)
+
+    expect { client.spawn_mutant(mutant_id: "m", test_files: [], log_paths: {}) }
+      .to raise_error(described_class::ServerLost, /did not answer/)
+    expect(client).to be_lost
+  end
+
   it "returns the status relayed for a pid, and nil while it still runs" do
     spawn_outstanding(5)
     expect(client.wait_exit(5, 0.05)).to be_nil
@@ -133,14 +141,36 @@ RSpec.describe Henitai::ForkServer::Client, :aggregate_failures do
       expect([pid, status.exitstatus, client.poll_any_exit]).to eq([5, 1, nil])
     end
 
-    it "completes outstanding processes as killed when the server is lost" do
+    it "completes outstanding processes as lost when the server is lost" do
       tell("type" => "spawned", "request_id" => 1, "pid" => 99)
       client.spawn_mutant(mutant_id: "m", test_files: [], log_paths: {})
       server.close
 
       pid, status = client.poll_any_exit
 
-      expect([pid, status.termsig, client.lost?]).to eq([99, 9, true])
+      expect([pid, status.lost?, client.lost?]).to eq([99, true, true])
+    end
+
+    it "reports an exit that spawning already buffered as a pending event" do
+      tell("type" => "spawned", "request_id" => 1, "pid" => 5)
+      tell("type" => "exited", "pid" => 5, "exitstatus" => 0, "termsig" => nil)
+      expect(client.pending_events?).to be(false)
+
+      client.spawn_mutant(mutant_id: "m", test_files: [], log_paths: {})
+      expect(client.pending_events?).to be(true)
+
+      client.poll_any_exit
+      expect(client.pending_events?).to be(false)
+    end
+
+    it "reports an exit recorded for another pid as pending until it is polled" do
+      spawn_outstanding(5, 6)
+      tell("type" => "exited", "pid" => 6, "exitstatus" => 0, "termsig" => nil)
+      client.wait_exit(5, 0.05)
+      expect(client.pending_events?).to be(true)
+
+      client.poll_exit(6)
+      expect(client.pending_events?).to be(false)
     end
 
     it "does not report a lost server while it is connected" do
@@ -152,6 +182,48 @@ RSpec.describe Henitai::ForkServer::Client, :aggregate_failures do
     it "exposes the connection to select on" do
       expect(client.io).to eq(sockets.first)
     end
+  end
+
+  describe "#abandon" do
+    let(:client) { described_class.new(socket: sockets.first, pid: 4242) }
+
+    it "closes the connection, kills and reaps the server and marks it lost" do
+      allow(Process).to receive(:kill)
+      allow(Process).to receive(:wait)
+
+      client.abandon
+
+      expect(Process).to have_received(:kill).with(:SIGKILL, 4242)
+      expect(Process).to have_received(:wait).with(4242)
+      expect([sockets.first.closed?, client.lost?]).to eq([true, true])
+    end
+
+    it "tolerates a server that is already gone, and a later shutdown" do
+      allow(Process).to receive(:kill).and_raise(Errno::ESRCH)
+
+      expect { client.abandon }.not_to raise_error
+      expect { client.shutdown }.not_to raise_error
+    end
+
+    it "kills the mutant processes the server left running" do
+      allow(Process).to receive(:kill)
+      allow(Process).to receive(:wait)
+      spawn_outstanding(99)
+
+      client.abandon
+
+      expect(Process).to have_received(:kill).with(:SIGKILL, -99)
+    end
+  end
+
+  it "kills the mutant processes outstanding when the connection drops" do
+    allow(Process).to receive(:kill)
+    spawn_outstanding(99)
+    server.close
+
+    client.poll_any_exit
+
+    expect(Process).to have_received(:kill).with(:SIGKILL, -99)
   end
 
   it "tells the server to shut down and closes the socket" do

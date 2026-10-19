@@ -629,6 +629,115 @@ RSpec.describe Henitai::SlotScheduler do
     end
   end
 
+  describe "children the spawner timed itself" do
+    def lost_status(lost) = Struct.new(:lost?).new(lost)
+
+    def build_handle(pid, timeout: nil)
+      Henitai::Integration::ChildHandle.new(
+        pid, { stdout_path: "/dev/null", stderr_path: "/dev/null", log_path: "/dev/null" }, timeout
+      )
+    end
+
+    def build_timed_scheduler(handles, shutdown: false, runtime: build_group_runtime(members_remain: false), **extra)
+      integration = instance_double(Henitai::Integration::Rspec, select_tests: [])
+      allow(integration).to receive(:spawn_mutant) { handles.shift }
+      scheduler = build_worker_scheduler(
+        [], worker_count: 1, integration: integration, shutdown: shutdown, **extra,
+            host: build_host(1, runtime: runtime, shutdown: shutdown),
+            options: { test_files: %w[a_spec.rb], timeout_resolver: ->(_mutant, _files) { 1.5 } }
+      )
+      [scheduler, integration, runtime]
+    end
+
+    def complete_with(runtime, slot, status)
+      allow(runtime).to receive(:wait2).and_return([slot.pid, status], nil)
+    end
+
+    it "uses the handle's timeout instead of the resolver's for a locally booted child" do
+      scheduler, = build_timed_scheduler([build_handle(100, timeout: 42.0)])
+      scheduler.enqueue([build_worker_mutant("a")])
+
+      scheduler.fill_idle_slots
+
+      expect(slot_table.each_value.first.timeout).to eq(42.0)
+    end
+
+    it "falls back to the resolver's timeout when the handle carries none" do
+      scheduler, = build_timed_scheduler([build_handle(100)])
+      scheduler.enqueue([build_worker_mutant("a")])
+
+      scheduler.fill_idle_slots
+
+      expect(slot_table.each_value.first.timeout).to eq(1.5)
+    end
+
+    it "gives a flaky retry the timeout of the handle it was respawned with", :aggregate_failures do
+      handles = [build_handle(100), build_handle(101, timeout: 42.0), build_handle(102)]
+      scheduler, integration, runtime = build_timed_scheduler(
+        handles, max_flaky_retries: 2, flaky_tests: Henitai::FlakyTestRegistry.new(["a_spec.rb"])
+      )
+      flaky_kill = instance_double(Henitai::ScenarioExecutionResult, status: :killed, killing_tests: ["a_spec.rb"])
+      allow(integration).to receive(:build_result).and_return(flaky_kill)
+      scheduler.enqueue([build_worker_mutant("a")])
+      scheduler.fill_idle_slots
+      slot = slot_table.each_value.first
+
+      complete_with(runtime, slot, :first)
+      scheduler.reap_all_completed_children
+      expect(slot.timeout).to eq(42.0)
+
+      complete_with(runtime, slot, :second)
+      scheduler.reap_all_completed_children
+      expect(slot.timeout).to eq(1.5)
+    end
+
+    it "re-runs a mutant whose fork server was lost, without counting a flaky retry", :aggregate_failures do
+      handles = [build_handle(100), build_handle(101, timeout: 42.0)]
+      scheduler, integration, runtime = build_timed_scheduler(handles)
+      mutant = build_worker_mutant("a")
+      scheduler.enqueue([mutant])
+      scheduler.fill_idle_slots
+      slot = slot_table.each_value.first
+      complete_with(runtime, slot, lost_status(true))
+
+      scheduler.reap_all_completed_children
+
+      expect(integration).to have_received(:spawn_mutant).with(mutant: mutant, test_files: %w[a_spec.rb]).twice
+      expect(scheduler.results).to be_empty
+      expect(mutant.status).to eq(:pending)
+      expect([slot.pid, slot.timeout, slot.retry_count, scheduler.flaky_retry_count]).to eq([101, 42.0, 0, 0])
+      expect(slot_table.release_pid(101)).to eq(slot.slot_id)
+    end
+
+    it "drops a lost mutant without a verdict when a shutdown is under way", :aggregate_failures do
+      scheduler, integration, runtime = build_timed_scheduler([build_handle(100)], shutdown: true)
+      mutant = build_worker_mutant("a")
+      scheduler.enqueue([mutant])
+      scheduler.fill_idle_slots
+      complete_with(runtime, slot_table.each_value.first, lost_status(true))
+
+      scheduler.reap_all_completed_children
+
+      expect(integration).to have_received(:spawn_mutant).once
+      expect(slot_table).to be_empty
+      expect(scheduler.results).to be_empty
+    end
+
+    it "classifies an ordinary status as before", :aggregate_failures do
+      scheduler, integration, runtime = build_timed_scheduler([build_handle(100)])
+      allow(integration).to receive(:build_result).and_return(killed_result)
+      mutant = build_worker_mutant("a")
+      scheduler.enqueue([mutant])
+      scheduler.fill_idle_slots
+      complete_with(runtime, slot_table.each_value.first, lost_status(false))
+
+      scheduler.reap_all_completed_children
+
+      expect(mutant.status).to eq(:killed)
+      expect(integration).to have_received(:spawn_mutant).once
+    end
+  end
+
   describe "#record_spawn_failure" do
     it "reports the compile_error result to the progress_reporter", :aggregate_failures do
       progress_reporter = double("progress_reporter") # rubocop:disable RSpec/VerifiedDoubles -- avoid loading Reporter::Terminal/unparser just to stub #progress

@@ -25,6 +25,7 @@ module Henitai
       def start
         FileUtils.mkdir_p(File.dirname(@log_path))
         parent_socket, server_socket = UNIXSocket.pair
+        InheritedFdRegistry.register(parent_socket)
         parent_pid = Process.pid
         pid = Process.fork do
           parent_socket.close
@@ -40,6 +41,7 @@ module Henitai
         Integration::ChildBootstrap.after_fork!(parent_pid:)
         redirect_output
         wake_reader, wake_writer = IO.pipe
+        [wake_reader, wake_writer].each { |io| InheritedFdRegistry.register(io) }
         launcher = Launcher.new(integration: @integration, mutants: @mutants, socket:)
         boot = -> { boot_environment(wake_writer) }
         Server.new(socket:, boot:, launcher:, wake_reader:).serve

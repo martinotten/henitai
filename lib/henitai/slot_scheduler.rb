@@ -121,7 +121,7 @@ module Henitai
       worker_index = slot_table.next_free_worker_index(worker_count)
       with_worker_slot(worker_index) do
         handle = integration.spawn_mutant(mutant: mutant, test_files: test_files)
-        register_slot(handle, mutant, worker_index, slot_timeout(mutant, test_files))
+        register_slot(handle, mutant, worker_index, handle.timeout || slot_timeout(mutant, test_files))
       end
     rescue StandardError => e
       record_spawn_failure(mutant, e)
@@ -167,6 +167,8 @@ module Henitai
       return unless slot
 
       Integration::SchedulerDiagnostics.child_ended(pid)
+      return rerun_lost_slot(slot) if lost?(wait_result)
+
       result = integration.build_result(wait_result, slot.log_paths)
       dispatch_slot_result(slot, result)
     end
@@ -211,20 +213,43 @@ module Henitai
       @test_file_selection ||= TestFileSelection.new(options: options, integration: integration)
     end
 
+    # The fork server died while the mutant ran, so nothing is known about
+    # it. It is run again on the local path and never becomes a verdict.
+    def lost?(wait_result)
+      wait_result.respond_to?(:lost?) && wait_result.lost?
+    end
+
+    def rerun_lost_slot(slot)
+      return slot_table.delete(slot.slot_id) if shutdown?
+
+      respawn_slot(slot) { |handle| restart_slot(slot, handle) }
+    end
+
     def retry_slot(slot)
-      test_files = test_file_selection.for(slot.mutant)
-      with_worker_slot(slot.worker_index) do
-        handle = integration.spawn_mutant(mutant: slot.mutant, test_files: test_files)
-        finish_retry(slot, handle)
-      end
+      respawn_slot(slot) { |handle| finish_retry(slot, handle) }
+    end
+
+    def respawn_slot(slot)
+      with_worker_slot(slot.worker_index) { yield respawn_handle(slot) }
     rescue StandardError => e
       slot_table.delete(slot.slot_id)
       record_spawn_failure(slot.mutant, e)
     end
 
+    def respawn_handle(slot)
+      test_files = test_file_selection.for(slot.mutant)
+      handle = integration.spawn_mutant(mutant: slot.mutant, test_files: test_files)
+      slot.timeout = handle.timeout || slot_timeout(slot.mutant, test_files)
+      handle
+    end
+
     def finish_retry(slot, handle)
       @flaky_retry_count += 1 if slot.retry_count.zero?
       slot.retry_count += 1
+      restart_slot(slot, handle)
+    end
+
+    def restart_slot(slot, handle)
       reset_slot_for_retry(slot, handle)
       slot_table.register_pid(handle.pid, slot.slot_id)
       Integration::SchedulerDiagnostics.child_started(handle.pid)

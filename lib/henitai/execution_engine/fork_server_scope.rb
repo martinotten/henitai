@@ -27,7 +27,8 @@ module Henitai
         test_files = mutants.flat_map { |mutant| prioritized_tests_for(mutant, integration, config) }.uniq
         return if test_files.empty?
 
-        ForkServer.start(integration:, mutants:, test_files:, log_path: fork_server_log_path(config))
+        ForkServer.start(integration:, mutants:, test_files:, log_path: fork_server_log_path(config),
+                         fallback_timeout: ->(files) { resolved_timeout(files, config, include_boot: true) })
       end
 
       def fork_server_requested?(config)
