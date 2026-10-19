@@ -87,7 +87,6 @@ module Henitai
         pid, status = runtime.wait2(-1, Process::WNOHANG)
         break unless pid
 
-        tear_down_process_group(pid)
         complete_slot(pid, status)
       end
     rescue Errno::ECHILD
@@ -157,7 +156,10 @@ module Henitai
       resolver ? resolver.call(mutant, test_files) : config.timeout
     end
 
+    # Every path that reaps a child ends here, so this is the single place
+    # that tears down the child's process group.
     def complete_slot(pid, wait_result)
+      tear_down_process_group(pid)
       slot_id = slot_table.release_pid(pid)
       return unless slot_id
 

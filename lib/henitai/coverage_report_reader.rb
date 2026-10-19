@@ -44,9 +44,18 @@ module Henitai
       return 0.0 unless File.exist?(path)
 
       parsed = JSON.parse(File.read(path))
-      parsed.is_a?(Hash) ? Float(parsed.fetch("boot_seconds", 0.0)) : 0.0
+      parsed.is_a?(Hash) ? usable_boot_seconds(parsed["boot_seconds"]) : 0.0
     rescue JSON::ParserError, ArgumentError, TypeError
       0.0
+    end
+
+    # Only a finite, non-negative number is a usable measurement; anything
+    # else is treated as unknown.
+    def usable_boot_seconds(value)
+      return 0.0 unless value.is_a?(Numeric)
+
+      seconds = Float(value)
+      seconds.finite? && seconds >= 0 ? seconds : 0.0
     end
 
     private

@@ -115,6 +115,7 @@ module Henitai
       def reap_and_finalize_slot(slot)
         _, final_status = wnohang_reap(slot.pid)
         reap_pid(slot.pid) unless final_status
+        tear_down_process_group(slot.pid)
 
         slot_table.release_pid(slot.pid)
         slot_table.delete(slot.slot_id)

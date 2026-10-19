@@ -71,7 +71,25 @@ module Henitai
     def coverage_ready?(source_files, config, integration, test_files)
       coverage_fresh?(source_files, config, test_files) &&
         coverage_available?(source_files, config) &&
-        per_test_coverage_ready?(source_files, config, integration, test_files)
+        per_test_coverage_ready?(source_files, config, integration, test_files) &&
+        boot_seconds_ready?(config, integration)
+    end
+
+    # Timeout calibration reads the boot time the per-test collector writes
+    # next to the coverage artifacts, so a missing boot file means the
+    # baseline must run again to measure it.
+    def boot_seconds_ready?(config, integration)
+      return true unless calibration_enabled?(config) && per_test_coverage_supported?(integration)
+
+      File.exist?(boot_seconds_report_path(config))
+    end
+
+    def calibration_enabled?(config)
+      config.respond_to?(:timeout_configured?) && !config.timeout_configured?
+    end
+
+    def boot_seconds_report_path(config)
+      File.join(reports_dir(config), PerTestCoverageCollector::BOOT_FILE_NAME)
     end
 
     def covered_source_files(source_files, coverage_lines)

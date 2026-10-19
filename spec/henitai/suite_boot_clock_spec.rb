@@ -29,6 +29,26 @@ RSpec.describe Henitai::SuiteBootClock do
     expect(build_clock(now: 102.5).boot_seconds).to eq(0.0)
   end
 
+  it "reports no measurement before any test has started" do
+    expect(build_clock(now: 102.5)).not_to be_measured
+  end
+
+  it "reports a measurement once the first test has started" do
+    clock = build_clock(now: 102.5)
+
+    clock.mark_first_test_started
+
+    expect(clock).to be_measured
+  end
+
+  it "reports no measurement when no suite start stamp is known" do
+    clock = described_class.new(started_at: nil, clock: -> { 102.5 })
+
+    clock.mark_first_test_started
+
+    expect(clock).not_to be_measured
+  end
+
   it "reports zero when no suite start stamp is known" do
     clock = described_class.new(started_at: nil, clock: -> { 102.5 })
 

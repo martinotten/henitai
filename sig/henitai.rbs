@@ -395,13 +395,43 @@ module Henitai
   class TimeoutCalibrator
     FLOOR_SECONDS: Float
 
-    def initialize: (timing_source: untyped, multiplier: untyped) -> void
+    def initialize: (timing_source: untyped, multiplier: untyped, ?boot_seconds: ^() -> Float, ?include_boot: bool) -> void
     def timeout_for: (untyped) -> Float?
 
     private
 
+    def boot_component: () -> Float
     def durations: () -> Hash[String, untyped]
     def normalize: (untyped) -> String
+  end
+
+  class TimeoutCeiling
+    def initialize: (ceiling: Float?, warner: untyped) -> void
+    def cap: (Float, Float) -> Float
+
+    private
+
+    def warn_baseline_exceeds_ceiling: (Float) -> void
+  end
+
+  class SuiteBootClock
+    STARTED_AT_ENV: String
+
+    def self.from_env: (Hash[String, String], ?clock: ^() -> Float) -> SuiteBootClock
+    def self.parse_timestamp: (untyped) -> Float?
+    def initialize: (started_at: Float?, ?clock: ^() -> Float) -> void
+    def mark_first_test_started: () -> void
+    def boot_seconds: () -> Float
+    def measured?: () -> bool
+  end
+
+  class ProcessWakeup
+    def initialize: (?signal_name: String) -> void
+    def install: () -> self
+    def watch: () { () -> Array[untyped] } -> void
+    def wait: (Float?) -> void
+    def drain: () -> void
+    def close: () -> void
   end
 
   class TestPrioritizer
@@ -659,6 +689,7 @@ module Henitai
     def coverage_lines_by_file: (?String) -> Hash[String, Array[Integer]]
     def test_lines_by_file: (?String) -> Hash[String, Hash[String, Array[Integer]]]
     def durations_by_test: (?String) -> Hash[String, Float]
+    def boot_seconds: (?String) -> Float
   end
 
   class ProcessWorkerRunner

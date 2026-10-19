@@ -192,6 +192,62 @@ RSpec.describe Henitai::CoverageBootstrapper do
     expect(integration).to have_received(:run_suite).with(["spec/sample_spec.rb"])
   end
 
+  def build_timeout_config(reports_dir, timeout_configured:)
+    Struct.new(:reports_dir, :timeout_configured_flag) do
+      def timeout_configured?
+        timeout_configured_flag
+      end
+    end.new(reports_dir, timeout_configured)
+  end
+
+  def stub_ready_coverage(bootstrapper)
+    allow(bootstrapper).to receive_messages(
+      coverage_fresh?: true,
+      coverage_available?: true,
+      per_test_coverage_ready?: true
+    )
+  end
+
+  def run_bootstrap_with_boot_file(dir, timeout_configured:, boot_file:)
+    reports_dir = File.join(dir, "reports")
+    FileUtils.mkdir_p(reports_dir)
+    File.write(File.join(reports_dir, "henitai_suite_boot.json"), "{}") if boot_file
+    integration = build_integration(test_files: ["spec/sample_spec.rb"], run_suite_result: :survived)
+    bootstrapper = build_bootstrapper(static_filter: instance_double(Henitai::StaticFilter))
+    stub_ready_coverage(bootstrapper)
+
+    bootstrapper.ensure!(
+      source_files: [File.expand_path("lib/sample.rb")],
+      config: build_timeout_config(reports_dir, timeout_configured:),
+      integration:
+    )
+    integration
+  end
+
+  it "reruns the baseline when calibration is enabled and the boot file is missing" do
+    Dir.mktmpdir do |dir|
+      integration = run_bootstrap_with_boot_file(dir, timeout_configured: false, boot_file: false)
+
+      expect(integration).to have_received(:run_suite)
+    end
+  end
+
+  it "keeps the existing coverage when calibration is enabled and the boot file exists" do
+    Dir.mktmpdir do |dir|
+      integration = run_bootstrap_with_boot_file(dir, timeout_configured: false, boot_file: true)
+
+      expect(integration).not_to have_received(:run_suite)
+    end
+  end
+
+  it "does not require the boot file when the timeout is configured explicitly" do
+    Dir.mktmpdir do |dir|
+      integration = run_bootstrap_with_boot_file(dir, timeout_configured: true, boot_file: false)
+
+      expect(integration).not_to have_received(:run_suite)
+    end
+  end
+
   it "runs the suite when the per-test coverage report is missing" do
     static_filter = instance_double(Henitai::StaticFilter)
     integration = build_integration(

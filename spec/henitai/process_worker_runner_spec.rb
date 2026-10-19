@@ -360,7 +360,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
 
       aggregate_failures do
         expect(results.map(&:status)).to eq([:timeout])
-        expect(runtime_state[:kill_calls]).to eq([[:SIGTERM, -12], [:SIGKILL, -12]])
+        expect(runtime_state[:kill_calls]).to eq([[:SIGTERM, -12], [:SIGKILL, -12], [:SIGTERM, -12]])
         expect(runtime_state[:wait_calls]).to eq([12])
       end
     end
@@ -415,7 +415,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
 
       expect { runner.run([mutant], integration, config, nil) }.to raise_error(Interrupt)
       expect(mutant.status).to eq(:pending)
-      expect(runtime_state[:kill_calls]).to eq([[:SIGTERM, -21], [:SIGKILL, -21]])
+      expect(runtime_state[:kill_calls]).to eq([[:SIGTERM, -21], [:SIGKILL, -21], [:SIGTERM, -21]])
       expect(runtime_state[:wait_calls]).to eq([21])
     end
 

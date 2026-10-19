@@ -131,6 +131,42 @@ RSpec.describe Henitai::SlotScheduler::Draining do
     end
   end
 
+  describe "process group teardown" do
+    it "tears down the process group of a slot that a targeted reap completes on the timeout path",
+       :aggregate_failures do
+      runtime = build_runtime(now: 5.0, wait2_results: { 10 => [10, instance_double(Process::Status)] })
+      scheduler = build_scheduler(runtime: runtime, integration: build_integration(build_result))
+      inject_slot(scheduler, build_slot(slot_id: 0, pid: 10, started_at: 0.0, timeout: 5.0))
+
+      scheduler.check_timeouts
+
+      expect(runtime).to have_received(:kill).with(0, -10).once
+    end
+
+    it "tears down the process group of a timed-out slot when it is drained", :aggregate_failures do
+      runtime = build_runtime(now: 10.0, wait2_results: { 10 => [nil, nil] })
+      scheduler = build_scheduler(runtime: runtime, integration: build_integration(build_result))
+      inject_slot(scheduler, build_slot(slot_id: 0, pid: 10, started_at: 0.0, timeout: 5.0))
+
+      scheduler.check_timeouts
+      scheduler.drain_draining_slots
+
+      expect(runtime).to have_received(:kill).with(0, -10).once
+    end
+
+    it "tears down the process group of a raced draining slot exactly once", :aggregate_failures do
+      runtime = build_runtime(now: 10.0, wait2_results: { 10 => [10, instance_double(Process::Status)] })
+      scheduler = build_scheduler(runtime: runtime, integration: build_integration(build_result))
+      inject_slot(scheduler, build_slot(slot_id: 0, pid: 10, started_at: 0.0, timeout: 5.0, draining: true,
+                                        forced_outcome: :timeout))
+
+      scheduler.drain_draining_slots
+
+      expect(runtime).to have_received(:kill).with(0, -10).once
+      expect(slot_table).to be_empty
+    end
+  end
+
   describe "#draining_slots?" do
     it "is false when no slot is draining" do
       scheduler = build_scheduler
@@ -204,7 +240,7 @@ RSpec.describe Henitai::SlotScheduler::Draining do
 
       scheduler.drain_draining_slots
 
-      expect(runtime).not_to have_received(:kill)
+      expect(runtime).not_to have_received(:kill).with(anything, 10)
       expect(slot_table).to be_empty
     end
 
@@ -212,7 +248,10 @@ RSpec.describe Henitai::SlotScheduler::Draining do
       wakeup = instance_double(Henitai::ProcessWakeup, wait: nil, drain: nil)
       runtime = build_runtime
       calls = []
-      allow(runtime).to receive(:kill) { |signal, pid| calls << [signal, pid] }
+      allow(runtime).to receive(:kill) do |signal, pid|
+        calls << [signal, pid]
+        raise Errno::ESRCH if signal == 0
+      end
       scheduler = build_scheduler(
         runtime: runtime, wakeup: wakeup,
         integration: build_integration(build_result(status: :timeout))
@@ -221,7 +260,7 @@ RSpec.describe Henitai::SlotScheduler::Draining do
 
       scheduler.drain_draining_slots
 
-      expect(calls).to eq([[:SIGTERM, -10], [:SIGKILL, -10]])
+      expect(calls.first(2)).to eq([[:SIGTERM, -10], [:SIGKILL, -10]])
       expect(wakeup).to have_received(:wait).with(Henitai::SlotScheduler::PROCESS_DRAIN_WINDOW)
       expect(slot_table).to be_empty
     end

@@ -195,6 +195,22 @@ RSpec.describe Henitai::CoverageReportReader do
       end
     end
 
+    {
+      "a negative duration" => "-1.0",
+      "an infinite duration" => "1e400",
+      "a string duration" => "\"2.5\"",
+      "a null duration" => "null"
+    }.each do |label, raw_value|
+      it "returns zero boot seconds for #{label}" do
+        Dir.mktmpdir do |dir|
+          path = File.join(dir, "henitai_suite_boot.json")
+          File.write(path, %({"boot_seconds": #{raw_value}}))
+
+          expect(described_class.new.boot_seconds(path)).to eq(0.0)
+        end
+      end
+    end
+
     it "returns an empty duration map when the report is missing" do
       expect(described_class.new.durations_by_test("/tmp/missing-per-test.json")).to eq({})
     end

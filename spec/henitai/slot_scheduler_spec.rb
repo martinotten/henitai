@@ -367,7 +367,12 @@ RSpec.describe Henitai::SlotScheduler do
     end
 
     it "does nothing when the slot table has no entry for the pid" do
-      scheduler = build_scheduler
+      runtime = instance_double(Henitai::ProcessWorkerRunner::Runtime, pause: nil)
+      allow(runtime).to receive(:kill).and_raise(Errno::ESRCH)
+      scheduler = described_class.new(
+        integration: nil, config: nil, progress_reporter: nil, options: {},
+        host: build_host(0, runtime: runtime), slot_table: slot_table
+      )
       slot_table.register_pid(42, "stale-slot-id")
 
       expect { scheduler.send(:complete_slot, 42, nil) }.not_to raise_error

@@ -39,5 +39,10 @@ module Henitai
     def boot_seconds
       @boot_seconds || 0.0
     end
+
+    # @return [Boolean] true once a boot time has been recorded
+    def measured?
+      !@boot_seconds.nil?
+    end
   end
 end

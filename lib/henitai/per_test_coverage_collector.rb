@@ -53,10 +53,14 @@ module Henitai
 
       FileUtils.mkdir_p(reports_dir)
       File.write(report_path, JSON.pretty_generate(serializable_report))
-      File.write(boot_path, JSON.pretty_generate("boot_seconds" => @boot_clock.boot_seconds))
+      write_boot_report if @boot_clock.measured?
     end
 
     private
+
+    def write_boot_report
+      File.write(boot_path, JSON.pretty_generate("boot_seconds" => @boot_clock.boot_seconds))
+    end
 
     def report_path
       File.join(reports_dir, REPORT_FILE_NAME)

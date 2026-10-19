@@ -90,6 +90,26 @@ RSpec.describe Henitai::PerTestCoverageCollector do
     end
   end
 
+  it "keeps an existing boot file when no boot time was measured" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        boot_path = File.join(ENV.fetch("HENITAI_REPORTS_DIR", "coverage"), described_class::BOOT_FILE_NAME)
+        FileUtils.mkdir_p(File.dirname(boot_path))
+        File.write(boot_path, JSON.dump("boot_seconds" => 7.0))
+        boot_clock = Henitai::SuiteBootClock.new(started_at: nil, clock: -> { 102.5 })
+        collector = described_class.new(boot_clock:)
+
+        allow(Coverage).to receive(:peek_result).and_return(coverage_snapshot(source_lines: [nil, 1]))
+
+        collector.test_started
+        collector.record_test("test/sample_test.rb", duration: 0.25)
+        collector.write_report
+
+        expect(JSON.parse(File.read(boot_path))).to eq("boot_seconds" => 7.0)
+      end
+    end
+  end
+
   it "keeps the per-test report format unchanged when boot time is recorded" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
