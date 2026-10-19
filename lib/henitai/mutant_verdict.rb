@@ -26,6 +26,14 @@ module Henitai
       reported_verdict
     end
 
+    # @return [Array<String>] expanded paths of the test files that failed
+    #   in the child, or an empty list when the child did not report them
+    def killing_tests
+      return [] unless @report
+
+      Array(@report["failed_tests"]).map { |path| File.expand_path(path) }
+    end
+
     private
 
     def reported_verdict

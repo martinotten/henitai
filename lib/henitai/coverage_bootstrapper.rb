@@ -45,7 +45,9 @@ module Henitai
       # but irrelevant report (e.g. from a different working directory) must
       # still trigger a re-bootstrap rather than silently proceeding with no
       # usable coverage.
-      unless coverage_ready?(source_files, config, integration, resolved_test_files)
+      if flaky_detection?(config)
+        run_flaky_baseline(integration, config, resolved_test_files)
+      elsif !coverage_ready?(source_files, config, integration, resolved_test_files)
         bootstrap_coverage(integration, config, resolved_test_files)
       end
 
@@ -136,6 +138,22 @@ module Henitai
           end
 
           raise CoverageError, build_bootstrap_error(result)
+        end
+      end
+    end
+
+    # Flaky detection needs two complete baseline runs, so the existing
+    # coverage is never reused in this mode.
+    def flaky_detection?(config)
+      config.respond_to?(:flaky_detection) && config.flaky_detection
+    end
+
+    def run_flaky_baseline(integration, config, test_files)
+      with_reports_dir(config) do
+        with_coverage_dir(config) do
+          FlakyDetectionBaseline.new(reports_dir: reports_dir(config))
+                                .run(integration:, test_files:)
+          record_dependency_manifest(config)
         end
       end
     end

@@ -23,16 +23,18 @@ module Henitai
     private
 
     def execute(mutants, integration, config, progress_reporter)
-      @flaky_retry_count = 0
       pending_mutants = Array(mutants).select(&:pending?)
       mutex = Mutex.new
+      @flaky_tests = flaky_tests_for(config)
+      @retrier = FlakyMutantRetrier.new(flaky_tests: @flaky_tests, max_retries: max_flaky_retries(config))
       if parallel_execution?(config, pending_mutants)
         run_parallel(pending_mutants, integration, config, progress_reporter)
       else
         run_linear(pending_mutants, integration, config, progress_reporter, mutex)
+        @flaky_retry_count = @retrier.retried_count
       end
 
-      warn_flaky_mutants(pending_mutants.size)
+      warn_flaky_mutants
       verify_controls(pending_mutants, integration, config)
       mutants
     end
@@ -87,7 +89,10 @@ module Henitai
       record_test_files(mutant, test_files)
       return record_no_coverage(mutant, progress_reporter, mutex) if test_files.empty?
 
-      scenario_result = run_with_flaky_retry(mutant, integration, config, test_files, mutex)
+      scenario_result = @retrier.run(
+        mutant: mutant, integration: integration, test_files: test_files,
+        timeout: resolved_timeout(test_files, config)
+      )
       mutant.status = scenario_status(scenario_result)
       ScenarioExecutionResult.copy_reason(scenario_result, mutant)
 
@@ -207,34 +212,9 @@ module Henitai
       config.history || {}
     end
 
-    # Retry logic is kept in one place to preserve the status transition flow.
-    # The retry budget is configurable because repeated survivors can multiply
-    # runtime on real CI workloads.
-    # rubocop:disable Metrics/MethodLength
-    def run_with_flaky_retry(mutant, integration, config, test_files, mutex)
-      timeout = resolved_timeout(test_files, config)
-      scenario_result = integration.run_mutant(
-        mutant:,
-        test_files:,
-        timeout: timeout
-      )
-      return scenario_result unless scenario_status(scenario_result) == :survived
-
-      retries = 0
-      max_flaky_retries(config).times do
-        retries += 1
-        scenario_result = integration.run_mutant(
-          mutant:,
-          test_files:,
-          timeout: timeout
-        )
-        break unless scenario_status(scenario_result) == :survived
-      end
-
-      mutex.synchronize { @flaky_retry_count += 1 } if retries.positive?
-      scenario_result
+    def flaky_tests_for(config)
+      FlakyTestRegistry.for_config(config)
     end
-    # rubocop:enable Metrics/MethodLength
 
     def scenario_status(result)
       return result if result.is_a?(Symbol)
@@ -242,17 +222,14 @@ module Henitai
       result.status
     end
 
-    def warn_flaky_mutants(total_mutants)
-      return if total_mutants.zero?
-
-      flaky_ratio = @flaky_retry_count.to_f / total_mutants
-      return unless flaky_ratio > 0.05
+    def warn_flaky_mutants
+      return if @flaky_retry_count.to_i.zero?
 
       warn format(
-        "Flaky-test mitigation: %<flaky>d/%<total>d mutants required retries (%<ratio>.2f%%)",
-        flaky: @flaky_retry_count,
-        total: total_mutants,
-        ratio: flaky_ratio * 100.0
+        "Flaky-test mitigation: %<count>d killed mutant(s) were re-checked because their killing tests " \
+        "are flaky (%<files>s)",
+        count: @flaky_retry_count,
+        files: @flaky_tests.all.join(", ")
       )
     end
 

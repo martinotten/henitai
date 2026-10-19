@@ -84,6 +84,7 @@ mutation:
   timeout: 10.0
   timeout_multiplier: 3.0
   max_flaky_retries: 3
+  flaky_detection: false   # run the baseline twice to find flaky test files
   max_log_bytes: 5000000
   max_timeout: 30.0
   control_runs: true   # re-run detected subjects with the unmutated method
@@ -137,8 +138,18 @@ suite once to bootstrap a usable coverage baseline. If coverage is still
 unavailable for the current sources, `henitai run` aborts with
 `Henitai::CoverageError`.
 
-Surviving mutants are retried up to `mutation.max_flaky_retries` times before
-they are classified as survivors. The default retry budget is 3.
+Survivors are never retried: flakiness can only turn a survivor into a kill, so
+a retry could only inflate the score. A killed mutant is retried, up to
+`mutation.max_flaky_retries` times (default 3), only when every test file that
+failed for it is a known flaky test; if any retry survives, the mutant is
+reported as `Survived`.
+
+Known flaky tests come from the opt-in `mutation.flaky_detection: true`. The
+baseline suite then runs twice (existing coverage is not reused), and test files
+whose pass/fail outcome differs between the runs are written to
+`reports/henitai_flaky_tests.json`. Without `flaky_detection` there is no flaky
+set and nothing is retried. At the end of the run Henitai reports the flaky
+tests and how many kills were re-checked.
 
 A mutant only counts as detected when a test failed because of the mutation.
 Before a mutant runs, Henitai checks that its activated code differs from the

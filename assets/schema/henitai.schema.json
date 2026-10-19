@@ -65,6 +65,11 @@
           "type": "number",
           "exclusiveMinimum": 0
         },
+        "flaky_detection": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run the baseline suite twice and mark test files whose outcome differs between runs as flaky. Only killed mutants whose killing tests are all flaky are re-checked, up to max_flaky_retries times."
+        },
         "control_runs": {
           "type": "boolean",
           "default": true,

@@ -51,7 +51,8 @@ module Henitai
     # rubocop:disable Metrics/ParameterLists -- every one of these is a distinct
     # collaborator supplied by ProcessWorkerRunner; bundling them into a context
     # object would only move the list.
-    def initialize(integration:, config:, progress_reporter:, options:, host:, slot_table: SlotTable.new)
+    def initialize(integration:, config:, progress_reporter:, options:, host:, slot_table: SlotTable.new,
+                   flaky_tests: nil)
       # rubocop:enable Metrics/ParameterLists
       @integration = integration
       @config = config
@@ -59,6 +60,7 @@ module Henitai
       @options = options
       @host = host
       @slot_table = slot_table
+      @injected_flaky_tests = flaky_tests
       @pending = []
       @results = []
       @flaky_retry_count = 0
@@ -186,7 +188,13 @@ module Henitai
     # the runner builds when nothing is pending) pass `config: nil`, and this
     # is only reached once a slot has actually finished.
     def retry_policy
-      @retry_policy ||= RetryPolicy.new(max_retries: config.max_flaky_retries)
+      @retry_policy ||= RetryPolicy.new(max_retries: config.max_flaky_retries, flaky_tests: flaky_tests)
+    end
+
+    def flaky_tests
+      return @injected_flaky_tests if @injected_flaky_tests
+
+      FlakyTestRegistry.for_config(config)
     end
 
     def drain_verdict

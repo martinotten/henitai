@@ -43,7 +43,7 @@ module Henitai
 
     attr_reader :integration, :includes, :excludes, :test_excludes, :operators, :timeout,
                 :timeout_multiplier, :ignore_patterns, :sampling, :jobs,
-                :max_flaky_retries, :max_log_bytes, :max_timeout, :control_runs,
+                :max_flaky_retries, :max_log_bytes, :max_timeout, :control_runs, :flaky_detection,
                 :coverage_criteria, :thresholds,
                 :reporters, :reports_dir,
                 :checkpoint_enabled, :checkpoint_every, :checkpoint_interval,
@@ -125,6 +125,7 @@ module Henitai
       @max_log_bytes = mutation[:max_log_bytes] || DEFAULT_MAX_LOG_BYTES
       @max_timeout = mutation[:max_timeout] || DEFAULT_MAX_TIMEOUT
       @control_runs = mutation.fetch(:control_runs, true)
+      @flaky_detection = mutation.fetch(:flaky_detection, false)
     end
 
     def apply_reports_defaults(raw)

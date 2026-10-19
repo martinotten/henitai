@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Flaky-test handling.** Survivors are no longer retried: a retry could only
+  turn a survivor into a kill and inflate the score. Kills are re-checked, up
+  to `max_flaky_retries`, only when every failing test file is known to be
+  flaky, as found by the new opt-in `mutation.flaky_detection` (baseline suite
+  runs twice; flaky files go to `henitai_flaky_tests.json`, removed by
+  `henitai clean`). Without it nothing is retried, so runtime on survivor-heavy
+  suites drops. The ">5% of mutants needed a retry" warning is replaced by a
+  report of flaky tests and re-checked kills. Child reports now carry
+  `failed_tests`.
+
 - **Scores will drop, by design.** A mutant now counts as detected only when a
   test failed because of its mutation (ADR-14). Harness failures that used to
   be credited as kills are now reported as `CompileError` or `RuntimeError`,

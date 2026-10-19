@@ -6,12 +6,46 @@ require "stringio"
 require "tmpdir"
 
 RSpec.describe Henitai::CoverageFormatter do
-  def build_notification(file_path, run_time: 0.25)
+  def build_notification(file_path, run_time: 0.25, status: :passed)
     example = Struct.new(:metadata, :execution_result).new(
       { file_path: file_path },
-      Struct.new(:run_time).new(run_time)
+      Struct.new(:run_time, :status).new(run_time, status)
     )
     Struct.new(:example).new(example)
+  end
+
+  def outcomes_path
+    Henitai::TestFileOutcomes.report_path(ENV.fetch("HENITAI_REPORTS_DIR", "coverage"))
+  end
+
+  it "writes per-file outcomes, marking files with a failed example" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        formatter = described_class.new(StringIO.new)
+        allow(Coverage).to receive(:peek_result).and_return({})
+
+        formatter.example_finished(build_notification("spec/a_spec.rb", status: :failed))
+        formatter.example_finished(build_notification("spec/b_spec.rb"))
+        formatter.dump_summary(nil)
+
+        expect(JSON.parse(File.read(outcomes_path))).to eq(
+          "outcomes" => {
+            File.expand_path("spec/a_spec.rb") => "failed",
+            File.expand_path("spec/b_spec.rb") => "passed"
+          }
+        )
+      end
+    end
+  end
+
+  it "writes the outcomes file even when no coverage was collected" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        described_class.new(StringIO.new).dump_summary(nil)
+
+        expect(JSON.parse(File.read(outcomes_path))).to eq("outcomes" => {})
+      end
+    end
   end
 
   def report_path

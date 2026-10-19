@@ -38,7 +38,9 @@ module Henitai
       %w[coverage .last_run.json],
       ["henitai_per_test.json"],
       [PerTestCoverageCollector::BOOT_FILE_NAME],
-      [CoverageBootstrapper::DEPENDENCY_MANIFEST_FILE]
+      [CoverageBootstrapper::DEPENDENCY_MANIFEST_FILE],
+      [FlakyTestRegistry::FILE_NAME],
+      [TestFileOutcomes::REPORT_FILE_NAME]
     ].freeze
 
     # Whole directories of per-mutant scratch artifacts, removed recursively.

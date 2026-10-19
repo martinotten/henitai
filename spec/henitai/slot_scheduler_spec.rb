@@ -56,7 +56,8 @@ RSpec.describe Henitai::SlotScheduler do
       progress_reporter: opts[:progress_reporter],
       options: opts[:options] || { test_files: [] },
       host: opts[:host] || build_host(worker_count, shutdown: opts.fetch(:shutdown, false)),
-      slot_table: opts[:slot_table] || slot_table
+      slot_table: opts[:slot_table] || slot_table,
+      flaky_tests: opts[:flaky_tests] || Henitai::FlakyTestRegistry.new([])
     )
   end
 
@@ -265,7 +266,7 @@ RSpec.describe Henitai::SlotScheduler do
       captured = []
       integration = build_capturing_integration(captured)
       allow(integration).to receive(:build_result).and_return(
-        instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed)
+        instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed, killing_tests: [])
       )
       host = build_host(2)
       scheduler = build_worker_scheduler(captured, worker_count: 2, integration: integration, host: host)
@@ -380,7 +381,7 @@ RSpec.describe Henitai::SlotScheduler do
       scheduler.fill_idle_slots
       slot = slot_table.each_value.first
       allow(Henitai::Integration::SchedulerDiagnostics).to receive(:child_ended)
-      killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed)
+      killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed, killing_tests: [])
       allow(integration).to receive(:build_result).with(:wait_result, slot.log_paths).and_return(killed)
 
       scheduler.send(:complete_slot, slot.pid, :wait_result)
@@ -423,7 +424,7 @@ RSpec.describe Henitai::SlotScheduler do
   end
 
   def killed_result
-    instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed)
+    instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed, killing_tests: [])
   end
 
   def build_completed_integration(captured)
@@ -455,7 +456,7 @@ RSpec.describe Henitai::SlotScheduler do
       scheduler.enqueue([mutant])
       scheduler.fill_idle_slots
       slot = slot_table.each_value.first
-      killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed)
+      killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed, killing_tests: [])
 
       scheduler.send(:dispatch_slot_result, slot, killed)
 
@@ -465,15 +466,17 @@ RSpec.describe Henitai::SlotScheduler do
       expect(progress_reporter).to have_received(:progress).with(mutant, scenario_result: killed)
     end
 
-    it "retries instead of finalizing when should_retry? is true", :aggregate_failures do
+    it "retries a killed mutant whose killing tests are all flaky", :aggregate_failures do
       captured = []
-      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 1)
+      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 1,
+                                                   flaky_tests: Henitai::FlakyTestRegistry.new(["a_spec.rb"]))
       scheduler.enqueue([build_worker_mutant("a")])
       scheduler.fill_idle_slots
       slot = slot_table.each_value.first
-      survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true, status: :survived)
+      killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed,
+                                                                 killing_tests: ["a_spec.rb"])
 
-      scheduler.send(:dispatch_slot_result, slot, survived)
+      scheduler.send(:dispatch_slot_result, slot, killed)
 
       expect(scheduler.results).to be_empty
       expect(scheduler.flaky_retry_count).to eq(1)
@@ -546,42 +549,48 @@ RSpec.describe Henitai::SlotScheduler do
   describe "#finish_retry" do
     it "counts the first retry toward flaky_retry_count but not later ones", :aggregate_failures do
       captured = []
-      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 2)
+      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 2,
+                                                   flaky_tests: Henitai::FlakyTestRegistry.new(["a_spec.rb"]))
       scheduler.enqueue([build_worker_mutant("a")])
       scheduler.fill_idle_slots
       slot = slot_table.each_value.first
-      survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true, status: :survived)
+      killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed,
+                                                                 killing_tests: ["a_spec.rb"])
 
-      scheduler.send(:dispatch_slot_result, slot, survived)
+      scheduler.send(:dispatch_slot_result, slot, killed)
       expect(scheduler.flaky_retry_count).to eq(1)
 
-      scheduler.send(:dispatch_slot_result, slot, survived)
+      scheduler.send(:dispatch_slot_result, slot, killed)
       expect(scheduler.flaky_retry_count).to eq(1)
     end
 
     it "increments the slot's retry_count on every retry" do
       captured = []
-      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 2)
+      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 2,
+                                                   flaky_tests: Henitai::FlakyTestRegistry.new(["a_spec.rb"]))
       scheduler.enqueue([build_worker_mutant("a")])
       scheduler.fill_idle_slots
       slot = slot_table.each_value.first
-      survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true, status: :survived)
+      killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed,
+                                                                 killing_tests: ["a_spec.rb"])
 
-      scheduler.send(:dispatch_slot_result, slot, survived)
+      scheduler.send(:dispatch_slot_result, slot, killed)
 
       expect(slot.retry_count).to eq(1)
     end
 
     it "reports the new pid to SchedulerDiagnostics" do
       captured = []
-      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 1)
+      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 1,
+                                                   flaky_tests: Henitai::FlakyTestRegistry.new(["a_spec.rb"]))
       scheduler.enqueue([build_worker_mutant("a")])
       scheduler.fill_idle_slots
       slot = slot_table.each_value.first
-      survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true, status: :survived)
+      killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed,
+                                                                 killing_tests: ["a_spec.rb"])
       allow(Henitai::Integration::SchedulerDiagnostics).to receive(:child_started)
 
-      scheduler.send(:dispatch_slot_result, slot, survived)
+      scheduler.send(:dispatch_slot_result, slot, killed)
 
       expect(Henitai::Integration::SchedulerDiagnostics).to have_received(:child_started).with(slot.pid)
     end
@@ -669,27 +678,31 @@ RSpec.describe Henitai::SlotScheduler do
 
     it "keeps the original slot value on a flaky-retry respawn" do
       captured = []
-      scheduler = build_worker_scheduler(captured, worker_count: 2, max_flaky_retries: 1)
+      scheduler = build_worker_scheduler(captured, worker_count: 2, max_flaky_retries: 1,
+                                                   flaky_tests: Henitai::FlakyTestRegistry.new(["a_spec.rb"]))
       scheduler.enqueue([build_worker_mutant("a"), build_worker_mutant("b")])
       scheduler.fill_idle_slots
-      survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true, status: :survived)
+      killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed,
+                                                                 killing_tests: ["a_spec.rb"])
 
       slot_one = slot_table.each_value.to_a.last
-      scheduler.send(:dispatch_slot_result, slot_one, survived)
+      scheduler.send(:dispatch_slot_result, slot_one, killed)
 
       expect(captured).to eq(%w[0 1 1])
     end
 
     it "restores the parent slot value after a flaky retry" do
       captured = []
-      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 1)
+      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 1,
+                                                   flaky_tests: Henitai::FlakyTestRegistry.new(["a_spec.rb"]))
       scheduler.enqueue([build_worker_mutant("a")])
       scheduler.fill_idle_slots
-      survived = instance_double(Henitai::ScenarioExecutionResult, survived?: true, status: :survived)
+      killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed,
+                                                                 killing_tests: ["a_spec.rb"])
 
       ENV["HENITAI_WORKER_SLOT"] = "parent"
       slot = slot_table.each_value.first
-      scheduler.send(:dispatch_slot_result, slot, survived)
+      scheduler.send(:dispatch_slot_result, slot, killed)
 
       expect(ENV.fetch("HENITAI_WORKER_SLOT", nil)).to eq("parent")
     end
@@ -699,7 +712,7 @@ RSpec.describe Henitai::SlotScheduler do
       scheduler = build_worker_scheduler(captured, worker_count: 2)
       scheduler.enqueue([build_worker_mutant("a"), build_worker_mutant("b"), build_worker_mutant("c")])
       scheduler.fill_idle_slots
-      killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed)
+      killed = instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed, killing_tests: [])
 
       slot_zero = slot_table.each_value.first
       scheduler.send(:dispatch_slot_result, slot_zero, killed)

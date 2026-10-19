@@ -138,6 +138,16 @@ module Henitai
     def run_rspec_specs: (untyped) -> untyped
   end
 
+  module Integration::RspecOutcomes
+    def self.record: (TestFileOutcomes, untyped) -> void
+    def self.register: (TestFileOutcomes, untyped) -> void
+  end
+
+  class Integration::RspecOutcomes::Listener
+    def initialize: (TestFileOutcomes) -> void
+    def example_finished: (untyped) -> void
+  end
+
   module Integration::RspecTestSelection
     REQUIRE_DIRECTIVE_PATTERN: Regexp
 
@@ -188,6 +198,7 @@ module Henitai
     attr_reader max_mutants_per_line: Integer
     attr_reader max_flaky_retries: Integer
     attr_reader control_runs: bool
+    attr_reader flaky_detection: bool
     attr_reader max_log_bytes: Integer
     attr_reader max_timeout: Float
     attr_reader sampling: untyped
@@ -229,11 +240,12 @@ module Henitai
     attr_reader exit_status: Integer?
     attr_reader log_path: String
     attr_reader status_reason: String?
+    attr_reader killing_tests: Array[String]
 
     def self.build: (wait_result: untyped, stdout: String?, stderr: String?, log_path: String) -> ScenarioExecutionResult
     def self.build_for_mutant: (wait_result: untyped, report: untyped, stdout: String?, stderr: String?, log_path: String) -> ScenarioExecutionResult
     def self.copy_reason: (untyped, untyped) -> String?
-    def initialize: (status: Symbol, stdout: String?, stderr: String?, log_path: String, ?exit_status: Integer?, ?status_reason: String?) -> void
+    def initialize: (status: Symbol, stdout: String?, stderr: String?, log_path: String, ?exit_status: Integer?, ?status_reason: String?, ?killing_tests: Array[String]) -> void
     def release_output!: () -> self
     def survived?: () -> bool
     def killed?: () -> bool
@@ -518,7 +530,8 @@ module Henitai
 
       private
 
-      def run_tests: (Array[String]) ?{ () -> untyped } -> Integer
+      def outcome_recording_hook: (TestFileOutcomes, (^() -> untyped)?) -> (^() -> untyped)
+      def run_tests: (Array[String], TestFileOutcomes) ?{ () -> untyped } -> Integer
     end
 
     module CoverageRuntimeSuppressors
@@ -549,7 +562,7 @@ module Henitai
 
       private
 
-      def run_tests: (Array[String]) ?{ () -> untyped } -> Integer
+      def run_tests: (Array[String], TestFileOutcomes) ?{ () -> untyped } -> Integer
       def preload_environment: () -> void
       def setup_load_path: () -> void
       def suppress_minitest_autorun!: () -> nil
@@ -794,7 +807,6 @@ module Henitai
     def test_prioritizer: (untyped) -> TestPrioritizer
     def timing_source: (untyped) -> untyped
     def test_history: (untyped) -> Hash[untyped, untyped]
-    def run_with_flaky_retry: (Mutant, untyped, untyped, Array[String], ?untyped) -> ScenarioExecutionResult
     def warn_flaky_mutants: (Integer) -> void
     def with_reports_dir: (untyped) { () -> untyped } -> untyped
   end
@@ -1253,6 +1265,8 @@ module Henitai
     def coverage_fresh?: (Array[String], Configuration, Integration::Base, Array[String]?) -> bool
     def coverage_report_path: (Configuration) -> String
     def bootstrap_coverage: (Integration::Base, Configuration, ?Array[String]?) -> void
+    def flaky_detection?: (Configuration) -> bool
+    def run_flaky_baseline: (Integration::Base, Configuration, Array[String]) -> void
     def resolve_test_files: (Integration::Base, Array[String]?, Configuration) -> Array[String]
     def configured_test_excludes: (Configuration) -> Array[String]?
     def source_file_paths: (Array[String]) -> Array[String]
@@ -1279,5 +1293,52 @@ module RSpec
     class Runner
       def self.run: (Array[String]) -> Integer
     end
+
+  end
+end
+
+module Henitai
+  class TestFileOutcomes
+    REPORT_FILE_NAME: String
+
+    def self.report_path: (String) -> String
+    def self.default_report_path: () -> String
+    def self.load: (String) -> TestFileOutcomes
+    def initialize: () -> void
+    def record: (String, failed: bool) -> void
+    def failed_files: () -> Array[String]
+    def outcomes: () -> Hash[String, String]
+    def write: (String) -> void
+  end
+
+  class FlakyTestRegistry
+    FILE_NAME: String
+
+    def self.from_outcomes: (Hash[String, String], Hash[String, String]) -> FlakyTestRegistry
+    def self.load: (String) -> FlakyTestRegistry
+    def self.for_config: (untyped) -> FlakyTestRegistry
+    def self.for_reports_dir: (String?) -> FlakyTestRegistry
+    def initialize: (Array[String]) -> void
+    def all: () -> Array[String]
+    def flaky?: (String) -> bool
+    def empty?: () -> bool
+    def write: (String) -> void
+  end
+
+  class FlakyDetectionBaseline
+    def initialize: (reports_dir: String) -> void
+    def run: (integration: untyped, test_files: Array[String]) -> FlakyTestRegistry
+  end
+
+  class FlakyRetryDecision
+    def initialize: (flaky_tests: FlakyTestRegistry, max_retries: Integer) -> void
+    def retry?: (status: Symbol, killing_tests: Array[String], attempts: Integer) -> bool
+  end
+
+  class FlakyMutantRetrier
+    attr_reader retried_count: Integer
+
+    def initialize: (flaky_tests: FlakyTestRegistry, max_retries: Integer) -> void
+    def run: (mutant: Mutant, integration: untyped, test_files: Array[String], timeout: Float) -> untyped
   end
 end

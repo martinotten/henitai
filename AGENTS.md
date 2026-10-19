@@ -172,9 +172,12 @@ coverage and is excluded from `includes` in `.henitai.yml`.
   signals and `SystemExit` never count as kills; `ControlRun` re-runs
   detected subjects with the unmutated method and reclassifies their
   detections if that fails. `rake oracle` measures false kills and survivors.
-- Survived mutants are retried up to `config.max_flaky_retries` (default `3`)
-  before being classified as survived. A warning is emitted if more than `5%`
-  of mutants needed a retry.
+- Survivors are never retried. With opt-in `mutation.flaky_detection` the
+  baseline suite runs twice and test files whose outcome differs are written to
+  `henitai_flaky_tests.json`; a `Killed` mutant is retried up to
+  `config.max_flaky_retries` (default `3`) only when every test file in the
+  child report's `failed_tests` is flaky, and any surviving retry makes it
+  `Survived`. No flaky set means no retries (linear and parallel paths alike).
 - Coverage is a required gate before subject resolution. If existing coverage
   does not cover configured sources, the configured test suite runs once to
   bootstrap it. If coverage remains unusable, `Henitai::CoverageError` aborts
@@ -242,7 +245,8 @@ deliberate even though `||=` is a valid `UpdateOperator`/
   `mutation-history.json` (trend export), `henitai_per_test.json` (per-test
   coverage propagated to forked children through `HENITAI_REPORTS_DIR`), and
   `henitai_suite_boot.json` (`{"boot_seconds": x}`, the measured suite boot
-  time that feeds timeout calibration).
+  time that feeds timeout calibration), and `henitai_flaky_tests.json` (flaky
+  test files, only with `flaky_detection`).
 - Timeout calibration: calibrated timeout = `timeout_multiplier` × (sum of the
   selected test-file durations + measured boot), floored at 2 s. `max_timeout`
   caps it but never below baseline + 2 s, with a one-time warning.

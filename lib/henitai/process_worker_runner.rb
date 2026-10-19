@@ -39,10 +39,11 @@ module Henitai
     # Loop primitives the {SlotScheduler} reads back from its host.
     attr_reader :worker_count, :runtime, :wakeup
 
-    def initialize(worker_count:, runtime: Runtime.new, wakeup: nil)
+    def initialize(worker_count:, runtime: Runtime.new, wakeup: nil, flaky_tests: nil)
       @worker_count = worker_count
       @runtime = runtime
       @wakeup = wakeup
+      @flaky_tests = flaky_tests
       @shutdown_requested = false
     end
 
@@ -94,7 +95,8 @@ module Henitai
         config: config,
         progress_reporter: progress_reporter,
         options: options,
-        host: self
+        host: self,
+        flaky_tests: @flaky_tests
       )
       @scheduler.enqueue(mutants)
     end

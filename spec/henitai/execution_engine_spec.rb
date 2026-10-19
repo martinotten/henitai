@@ -356,6 +356,15 @@ RSpec.describe Henitai::ExecutionEngine do
     end
   end
 
+  def write_flaky_registry(dir, files)
+    Henitai::FlakyTestRegistry.new(files).write(File.join(dir, Henitai::FlakyTestRegistry::FILE_NAME))
+  end
+
+  def flaky_config(reports_dir, max_retries: 3)
+    Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :flaky_detection)
+          .new(12.5, reports_dir, 1, max_retries, true)
+  end
+
   def build_located_mutant(expression, file:, line:)
     Struct.new(:status, :subject, :location) do
       def pending?
@@ -469,48 +478,9 @@ RSpec.describe Henitai::ExecutionEngine do
     )
   end
 
-  it "retries survived mutants up to three times" do
+  it "never retries a survived mutant" do
     pending = build_mutant(:pending, "Foo#bar")
     integration = build_integration
-    call_count = 0
-
-    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
-    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
-      call_count += 1
-      mutant.status = call_count < 3 ? :survived : :killed
-    end
-
-    described_class.new.run([pending], integration, build_config)
-
-    expect([pending.status, call_count]).to eq([:killed, 3])
-  end
-
-  it "honors a configured flaky retry budget" do
-    pending = build_mutant(:pending, "Foo#bar")
-    integration = build_integration
-    call_count = 0
-    config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(
-      12.5,
-      "coverage",
-      1,
-      1
-    )
-
-    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
-    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
-      call_count += 1
-      mutant.status = :survived
-    end
-
-    described_class.new.run([pending], integration, config)
-
-    expect(call_count).to eq(2)
-  end
-
-  it "uses the default flaky retry budget when config omits it" do
-    pending = build_mutant(:pending, "Foo#bar")
-    integration = build_integration
-    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", 1)
     call_count = 0
 
     allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
@@ -519,52 +489,104 @@ RSpec.describe Henitai::ExecutionEngine do
       :survived
     end
 
-    described_class.new.run([pending], integration, config)
+    with_temp_reports_dir do |dir|
+      write_flaky_registry(dir, ["spec/foo_spec.rb"])
+      described_class.new.run([pending], integration, flaky_config(dir))
+    end
 
-    expect(call_count).to eq(4)
+    expect([pending.status, call_count]).to eq([:survived, 1])
   end
 
-  it "warns when a significant share of mutants required retries" do
+  it "retries a kill whose killing tests are all flaky, up to the configured budget" do
+    pending = build_mutant(:pending, "Foo#bar")
+    integration = build_integration
+    call_count = 0
+    killed = Struct.new(:status, :killing_tests).new(:killed, ["spec/foo_spec.rb"])
+
+    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
+    allow(integration).to receive(:run_mutant) do
+      call_count += 1
+      killed
+    end
+
+    with_temp_reports_dir do |dir|
+      write_flaky_registry(dir, ["spec/foo_spec.rb"])
+      described_class.new.run([pending], integration, flaky_config(dir, max_retries: 2))
+    end
+
+    expect([pending.status, call_count]).to eq([:killed, 3])
+  end
+
+  it "does not retry a kill when a killing test is stable" do
+    pending = build_mutant(:pending, "Foo#bar")
+    integration = build_integration
+    call_count = 0
+    killed = Struct.new(:status, :killing_tests).new(:killed, ["spec/foo_spec.rb", "spec/stable_spec.rb"])
+
+    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
+    allow(integration).to receive(:run_mutant) do
+      call_count += 1
+      killed
+    end
+
+    with_temp_reports_dir do |dir|
+      write_flaky_registry(dir, ["spec/foo_spec.rb"])
+      described_class.new.run([pending], integration, flaky_config(dir))
+    end
+
+    expect(call_count).to eq(1)
+  end
+
+  it "does not retry any kill when no flaky-test registry exists" do
+    pending = build_mutant(:pending, "Foo#bar")
+    integration = build_integration
+    call_count = 0
+    killed = Struct.new(:status, :killing_tests).new(:killed, ["spec/foo_spec.rb"])
+
+    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
+    allow(integration).to receive(:run_mutant) do
+      call_count += 1
+      killed
+    end
+
+    with_temp_reports_dir do |dir|
+      described_class.new.run([pending], integration, flaky_config(dir))
+    end
+
+    expect(call_count).to eq(1)
+  end
+
+  it "warns with the flaky test files when killed mutants are re-checked" do
     pending = build_mutant(:pending, "Foo#bar")
     integration = build_integration
     engine = described_class.new
+    killed = Struct.new(:status, :killing_tests).new(:killed, ["spec/foo_spec.rb"])
 
-    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
-    allow(integration).to receive(:run_mutant).and_return(
-      :survived,
-      :survived,
-      :survived,
-      :survived
-    )
+    allow(integration).to receive_messages(select_tests: ["spec/foo_spec.rb"], run_mutant: killed)
     allow(engine).to receive(:warn)
 
-    engine.run([pending], integration, build_config)
+    with_temp_reports_dir do |dir|
+      write_flaky_registry(dir, ["spec/foo_spec.rb"])
+      engine.run([pending], integration, flaky_config(dir, max_retries: 1))
+    end
 
-    expect(engine).to have_received(:warn).with(/Flaky-test mitigation:/)
+    expect(engine).to have_received(:warn).with(/Flaky-test mitigation: 1 killed mutant\(s\).*foo_spec\.rb/)
   end
 
-  it "does not warn about flaky mitigation below the retry threshold" do
+  it "does not warn when no killed mutant is re-checked" do
     mutants = 25.times.map do |index|
       build_mutant(:pending, "Foo#bar#{index}")
     end
     integration = build_integration
-    call_counts = Hash.new(0)
 
-    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
-    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
-      expression = mutant.subject.expression
-      call_counts[expression] += 1
+    allow(integration).to receive_messages(select_tests: ["spec/foo_spec.rb"], run_mutant: :survived)
 
-      if expression == "Foo#bar0" && call_counts[expression] == 1
-        :survived
-      else
-        mutant.status = :killed
-      end
+    with_temp_reports_dir do |dir|
+      write_flaky_registry(dir, ["spec/foo_spec.rb"])
+      expect do
+        described_class.new.run(mutants, integration, flaky_config(dir))
+      end.not_to output(/Flaky-test mitigation:/).to_stderr
     end
-
-    expect do
-      described_class.new.run(mutants, integration, build_config)
-    end.not_to output(/Flaky-test mitigation:/).to_stderr
   end
 
   it "keeps a single pending mutant on the linear path even with parallel jobs configured" do
@@ -642,52 +664,21 @@ RSpec.describe Henitai::ExecutionEngine do
     expect(pending.status).to eq(:killed)
   end
 
-  it "formats the flaky retry ratio as a percentage" do
+  it "reports flaky-test re-checks that happened on the parallel path" do
     engine = described_class.new
     mutants = 4.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
     integration = build_integration
-    call_counts = Hash.new(0)
-    allow(engine).to receive(:warn)
-    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
-    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
-      expression = mutant.subject.expression
-      call_counts[expression] += 1
-
-      if expression == "Foo#bar0" && call_counts[expression] == 1
-        Struct.new(:status).new(:survived)
-      else
-        Struct.new(:status).new(:killed)
-      end
-    end
-
-    engine.run(mutants, integration, build_config)
-
-    expect(engine).to have_received(:warn).with(
-      "Flaky-test mitigation: 1/4 mutants required retries (25.00%)"
-    )
-  end
-
-  it "reports flaky retries that happened on the parallel path" do
-    engine = described_class.new
-    mutants = 4.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
-    integration = build_integration
-    config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(
-      12.5,
-      "coverage",
-      2,
-      3
-    )
-
     runner = instance_double(Henitai::ProcessWorkerRunner, flaky_retry_count: 1)
     allow(runner).to receive(:run).and_return([])
     allow(Henitai::ProcessWorkerRunner).to receive(:new).and_return(runner)
     allow(engine).to receive(:warn)
 
-    engine.run(mutants, integration, config)
+    with_temp_reports_dir do |dir|
+      write_flaky_registry(dir, ["spec/foo_spec.rb"])
+      engine.run(mutants, integration, flaky_config(dir).tap { |config| config.jobs = 2 })
+    end
 
-    expect(engine).to have_received(:warn).with(
-      "Flaky-test mitigation: 1/4 mutants required retries (25.00%)"
-    )
+    expect(engine).to have_received(:warn).with(/Flaky-test mitigation: 1 killed mutant\(s\)/)
   end
 
   it "filters candidate tests by per-test coverage before executing a mutant" do

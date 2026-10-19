@@ -17,7 +17,11 @@ RSpec.describe Henitai::MinitestCoverageReporter do
   end
 
   def build_result(absolute_path, time: 0.25)
-    Struct.new(:source_location, :time).new([absolute_path, 5], time)
+    Struct.new(:source_location, :time) do
+      def passed? = true
+
+      def skipped? = false
+    end.new([absolute_path, 5], time)
   end
 
   def coverage_snapshot(source_lines:)

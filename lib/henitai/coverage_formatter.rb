@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "henitai/per_test_coverage_collector"
+require "henitai/test_file_outcomes"
 
 module Henitai
   # Collects per-test coverage data for static filtering heuristics.
@@ -10,6 +11,7 @@ module Henitai
 
     def initialize(_output, boot_clock: SuiteBootClock.from_env(ENV))
       @collector = PerTestCoverageCollector.new(boot_clock:)
+      @outcomes = TestFileOutcomes.new
     end
 
     def example_started(_notification)
@@ -22,10 +24,12 @@ module Henitai
         example.metadata[:file_path],
         duration: example.execution_result.run_time
       )
+      @outcomes.record(example.metadata[:file_path], failed: example.execution_result.status == :failed)
     end
 
     def dump_summary(_summary)
       @collector.write_report
+      @outcomes.write(TestFileOutcomes.default_report_path)
     end
   end
 end

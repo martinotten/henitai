@@ -210,6 +210,7 @@ mutation:
   timeout_multiplier: 3.0
   max_timeout: 30.0
   max_flaky_retries: 3
+  flaky_detection: false
   sampling:
     ratio: 0.05
     strategy: stratified
@@ -550,8 +551,10 @@ runs it exists for.
 Test instability is handled conservatively:
 
 - process isolation is the default execution model
-- survived mutants are retried up to `config.max_flaky_retries` times (default: 3) before being classified as survived
-- if more than 5% of executed mutants required at least one retry, a warning is emitted at the end of the run
+- survivors are never retried; flakiness can only fake a kill, not a survivor
+- with `mutation.flaky_detection` enabled the baseline suite runs twice; test files whose outcome differs are persisted to `henitai_flaky_tests.json`
+- a killed mutant is retried up to `config.max_flaky_retries` times (default: 3) only when all of its killing test files (`failed_tests` in the child report) are flaky; any surviving retry makes it `Survived`. Without a flaky set nothing is retried. Both execution paths share this rule (`FlakyRetryDecision`)
+- the end of the run reports the flaky tests and the number of re-checked kills
 - unknown or flaky outcomes must be surfaced, not hidden
 
 ### 8.7 Latent Mutant Tracking
@@ -753,7 +756,7 @@ CI and developer-feedback features:
 - per-test coverage analysis via `CoverageFormatter` and `henitai_per_test.json`
 - sampling and test prioritization via `TestPrioritizer` with path normalization and historical kill counts
 - parallel execution via an event-loop process scheduler with configurable `jobs`
-- flaky-test mitigation with configurable `max_flaky_retries` and 5% retry-rate warning
+- flaky-test mitigation: opt-in `flaky_detection` baseline, kill re-checks bounded by `max_flaky_retries`
 - latent-mutant tracking via `MutantHistoryStore` (SQLite) and `mutation-history.json` trend export
 - conservative equivalence detection via `EquivalenceDetector` (arithmetic neutral-element heuristics)
 - HTML reporter implemented (was stub)

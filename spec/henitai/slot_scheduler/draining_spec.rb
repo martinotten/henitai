@@ -33,7 +33,7 @@ RSpec.describe Henitai::SlotScheduler::Draining do
   end
 
   def build_result(status: :killed, survived: false)
-    instance_double(Henitai::ScenarioExecutionResult, survived?: survived, status: status)
+    instance_double(Henitai::ScenarioExecutionResult, survived?: survived, status: status, killing_tests: [])
   end
 
   # One table per example, injected into the scheduler, so an example can seed
@@ -380,7 +380,7 @@ RSpec.describe Henitai::SlotScheduler::Draining do
     it "sets mutant status, appends the result, and reports progress", :aggregate_failures do
       progress_reporter = double("progress_reporter") # rubocop:disable RSpec/VerifiedDoubles -- avoid loading Reporter::Terminal/unparser just to stub #progress
       allow(progress_reporter).to receive(:progress)
-      killed = instance_double(Henitai::ScenarioExecutionResult, status: :killed)
+      killed = instance_double(Henitai::ScenarioExecutionResult, status: :killed, killing_tests: [])
       scheduler = build_scheduler(
         progress_reporter: progress_reporter, integration: build_integration(killed)
       )

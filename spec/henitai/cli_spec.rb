@@ -221,7 +221,7 @@ RSpec.describe Henitai::CLI do
       aggregate_failures do
         expect do
           described_class.new(["clean", "--config", config_path]).run
-        end.to output(/Removed 7 generated report artifacts/).to_stdout
+        end.to output(/Removed 9 generated report artifacts/).to_stdout
         expect(cleanup_paths.all? { |path| !File.exist?(path) }).to be(true)
         expect(File).to exist(sentinel_path)
       end

@@ -156,22 +156,26 @@ RSpec.describe Henitai::ProcessWorkerRunner do
     end
   end
 
-  def build_fake_runner(worker_count:, wait2_results:)
+  def build_fake_runner(worker_count:, wait2_results:, flaky_tests: nil)
     runtime, = build_fake_runtime(
       clock_times: Array.new(20, 0.0),
       wait2_results: { -1 => wait2_results }
     )
     wakeup, = build_fake_wakeup
-    described_class.new(worker_count:, runtime:, wakeup:)
+    described_class.new(worker_count:, runtime:, wakeup:, flaky_tests:)
   end
 
-  def stub_result_builder(integration)
+  def stub_result_builder(integration, killing_tests: [])
     allow(integration).to receive(:build_result) do |wait_result, log_paths|
-      Henitai::ScenarioExecutionResult.build(
+      base = Henitai::ScenarioExecutionResult.build(
         wait_result: wait_result,
         stdout: "",
         stderr: "",
         log_path: log_paths[:log_path]
+      )
+      Henitai::ScenarioExecutionResult.new(
+        status: base.status, stdout: "", stderr: "", log_path: log_paths[:log_path],
+        exit_status: base.exit_status, killing_tests:
       )
     end
   end
@@ -476,7 +480,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
   end
 
   describe "retry correctness" do
-    it "retries within the same slot when retries remain and returns the final outcome" do # rubocop:disable RSpec/MultipleExpectations
+    it "retries a kill whose killing tests are all flaky and returns the final outcome" do # rubocop:disable RSpec/MultipleExpectations
       mutant = build_mutant("flaky")
       call_count = 0
 
@@ -486,12 +490,13 @@ RSpec.describe Henitai::ProcessWorkerRunner do
         call_count += 1
         build_fake_handle(call_count == 1 ? 10 : 11)
       end
-      stub_result_builder(integration)
+      stub_result_builder(integration, killing_tests: ["flaky_spec.rb"])
 
       config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 1)
       runner = build_fake_runner(
         worker_count: 1,
-        wait2_results: [[10, build_wait_status(0)], [11, build_wait_status(1)]]
+        wait2_results: [[10, build_wait_status(1)], [11, build_wait_status(1)]],
+        flaky_tests: Henitai::FlakyTestRegistry.new(["flaky_spec.rb"])
       )
 
       results = runner.run([mutant], integration, config, nil)
@@ -515,15 +520,16 @@ RSpec.describe Henitai::ProcessWorkerRunner do
         pid = mutant.id == "flaky" ? 9 + call_counts[mutant.id] : 12
         build_fake_handle(pid)
       end
-      stub_result_builder(integration)
+      stub_result_builder(integration, killing_tests: ["flaky_spec.rb"])
 
       config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 1)
       runner = build_fake_runner(
         worker_count: 1,
         wait2_results: [
-          [10, build_wait_status(0)], [11, build_wait_status(1)], nil,
-          [12, build_wait_status(1)]
-        ]
+          [10, build_wait_status(1)], [11, build_wait_status(1)], nil,
+          [12, build_wait_status(0)]
+        ],
+        flaky_tests: Henitai::FlakyTestRegistry.new(["flaky_spec.rb"])
       )
 
       runner.run([flaky, stable], integration, config, nil)
@@ -531,11 +537,11 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       expect(runner.flaky_retry_count).to eq(1)
     end
 
-    it "reports zero retries when no mutant survives its first run" do
+    it "reports zero retries when a killed mutant has no flaky killers" do
       stable = build_mutant("stable")
       integration = instance_double(Henitai::Integration::Rspec)
       stub_fake_spawn_sequence(integration, [10])
-      stub_result_builder(integration)
+      stub_result_builder(integration, killing_tests: ["stable_spec.rb"])
       config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 3)
       runner = build_fake_runner(
         worker_count: 1,
@@ -559,12 +565,13 @@ RSpec.describe Henitai::ProcessWorkerRunner do
 
         build_fake_handle(10)
       end
-      stub_result_builder(integration)
+      stub_result_builder(integration, killing_tests: ["flaky_spec.rb"])
 
       config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 1)
       runner = build_fake_runner(
         worker_count: 1,
-        wait2_results: [[10, build_wait_status(0)]]
+        wait2_results: [[10, build_wait_status(1)]],
+        flaky_tests: Henitai::FlakyTestRegistry.new(["flaky_spec.rb"])
       )
 
       results = runner.run([mutant], integration, config, nil)
