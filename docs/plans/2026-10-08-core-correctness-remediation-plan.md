@@ -332,17 +332,23 @@ Measurements:
 |---|---|---|---|---|---|---|
 | Dogfood Phase B | 966 | 90 | 12 | 57 | 91.64 % / 85.11 % | 26.7 min |
 | Dogfood Phase C, default | 1184 | 75 | 29 | 80 | 94.23 % / 85.80 % | 26.5 min |
-| Dogfood Phase C, fork server | — | — | — | — | — | pending |
+| Dogfood Phase C, fork server | 1184 | 75 | 30 | 80 | 94.23 % / 85.80 % | 26.6 min |
 
 Notes on the measurements:
 
 - **No control run failed** in the Phase C dogfood run. A spec file slower
   than the 10 s mutation timeout makes control runs fail; the fork-server
   client specs crossed it once and now use a configurable shutdown grace.
-- **The fork-server measurement is pending.** A first attempt used a custom
-  `reports_dir`, which leaks into this repository's own specs through
-  `HENITAI_REPORTS_DIR`; the baseline suite failed. Re-measure with the
-  default `reports_dir` and only `fork_server: true`.
+- **The fork server does not speed up the dogfood run.** Verdicts are the
+  same (one mutant moved from `RuntimeError` to `Timeout`). One server
+  served the whole run. In both runs the mutant phase took about 17 minutes
+  and the control runs about 9.5 minutes. This repository's specs load in
+  0.03–0.05 s per mutant, so there is almost no boot to save; the fork
+  server targets slow-boot suites such as Rails. Control runs still boot
+  per subject and do not use the server.
+- **Measure with the default `reports_dir`.** A custom `reports_dir` leaks
+  into this repository's own specs through `HENITAI_REPORTS_DIR`, and the
+  baseline suite fails.
 - **Known equivalent survivors** kept on purpose: the `deactivate` guard in
   `fork_server/mutant_runner.rb` (defensive idempotence), the integer
   `slot_id` check in `slot_scheduler.rb`, and the refill after
