@@ -117,7 +117,8 @@ module Henitai
         report.call(
           "outcome" => "tests_finished",
           "exit_code" => exit_code,
-          "failed_tests" => outcomes.failed_files
+          "failed_tests" => outcomes.failed_files,
+          "unattributed_failures" => outcomes.unattributed_failures?
         )
         exit_code
       rescue SystemExit => e

@@ -51,6 +51,12 @@ RSpec.describe Henitai::FlakyTestRegistry do
 
       expect(registry.all).to be_empty
     end
+
+    it "does not call a file flaky that failed in one run and is missing from the other" do
+      registry = described_class.from_outcomes({ "/app/a_spec.rb" => "failed" }, { "/app/b_spec.rb" => "passed" })
+
+      expect(registry.all).to be_empty
+    end
   end
 
   describe ".load" do

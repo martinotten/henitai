@@ -17,8 +17,8 @@ module Henitai
       FileUtils.mkdir_p(@reports_dir)
       first, first_result = run_once(integration, test_files)
       second, second_result = run_once(integration, test_files)
-      registry = FlakyTestRegistry.from_outcomes(first, second)
-      ensure_usable_suite(registry, [first_result, second_result])
+      registry = FlakyTestRegistry.from_outcomes(first.outcomes, second.outcomes)
+      ensure_usable_suite(registry, [[first, first_result], [second, second_result]])
       registry.write(File.join(@reports_dir, FlakyTestRegistry::FILE_NAME))
       warn_flaky(registry)
       registry
@@ -32,17 +32,24 @@ module Henitai
       result = integration.run_suite(test_files)
       raise CoverageError, "could not record suite outcomes" unless File.exist?(outcome_path)
 
-      [TestFileOutcomes.load(outcome_path).outcomes, result]
+      [TestFileOutcomes.load(outcome_path), result]
     end
 
     # A failing run is only acceptable as evidence of flakiness: the suite
-    # must pass at least once and the failure must be explained by a flaky file.
-    def ensure_usable_suite(registry, results)
-      return if results.all?(&:survived?)
-      return if results.any?(&:survived?) && !registry.empty?
+    # must pass at least once and every file that failed in a failing run must
+    # be a flaky file. A run that failed without a file to blame (a load error,
+    # a suite-level hook) is never explained.
+    def ensure_usable_suite(registry, runs)
+      failing = runs.reject { |_outcomes, result| result.survived? }
+      return if failing.empty?
+      return if failing.size < runs.size && failing.all? { |outcomes, _result| explained?(registry, outcomes) }
 
-      failed = results.find { |result| !result.survived? }
-      raise CoverageError, BootstrapErrorMessage.build(failed)
+      raise CoverageError, BootstrapErrorMessage.build(failing.first.last)
+    end
+
+    def explained?(registry, outcomes)
+      failed = outcomes.failed_files
+      !outcomes.unattributed_failures? && !failed.empty? && failed.all? { |file| registry.flaky?(file) }
     end
 
     def warn_flaky(registry)

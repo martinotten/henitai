@@ -30,6 +30,16 @@ RSpec.describe Henitai::FlakyRetryDecision do
     expect(decision.retry?(status: :killed, killing_tests: [], attempts: 0)).to be(false)
   end
 
+  it "requires every failed file, not just one, to be flaky" do
+    expect(
+      decision.retry?(
+        status: :killed,
+        killing_tests: ["/app/spec/stable_spec.rb", "/app/spec/flaky_spec.rb"],
+        attempts: 0
+      )
+    ).to be(false)
+  end
+
   it "stops retrying once the retry budget is spent" do
     expect(
       decision.retry?(status: :killed, killing_tests: ["/app/spec/flaky_spec.rb"], attempts: 3)

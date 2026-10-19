@@ -11,6 +11,10 @@ module Henitai
   class FlakyTestRegistry
     FILE_NAME = "henitai_flaky_tests.json"
 
+    # A file is flaky only when both runs ran it and disagreed. A file seen in
+    # one run only has no second observation, so it is never called flaky;
+    # FlakyDetectionBaseline rejects a failing run that such a file leaves
+    # unexplained.
     def self.from_outcomes(first, second)
       shared = first.keys & second.keys
       flaky = shared.reject { |file| first[file] == second[file] }

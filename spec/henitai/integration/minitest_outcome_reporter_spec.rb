@@ -8,12 +8,23 @@ RSpec.describe Henitai::Integration::MinitestOutcomeReporter do
   let(:outcomes) { Henitai::TestFileOutcomes.new }
   let(:file) { File.expand_path("test/a_test.rb") }
 
-  def result(passed:, skipped: false)
+  def result(passed:, skipped: false, klass: "UnresolvableTest")
     instance_double(
       Minitest::Result,
       source_location: [file, 3],
+      klass: klass,
       passed?: passed,
       skipped?: skipped
+    )
+  end
+
+  def unlocated(source_location)
+    instance_double(
+      Minitest::Result,
+      source_location: source_location,
+      klass: "UnresolvableTest",
+      passed?: false,
+      skipped?: false
     )
   end
 
@@ -36,23 +47,23 @@ RSpec.describe Henitai::Integration::MinitestOutcomeReporter do
   end
 
   it "skips results without a source location instead of crashing" do
-    unlocated = instance_double(Minitest::Result, source_location: nil, passed?: false, skipped?: false)
-
-    expect { described_class.new(outcomes).record(unlocated) }.not_to raise_error
+    expect { described_class.new(outcomes).record(unlocated(nil)) }.not_to raise_error
   end
 
-  it "records nothing for results without a source location" do
-    unlocated = instance_double(Minitest::Result, source_location: nil, passed?: false, skipped?: false)
-
-    described_class.new(outcomes).record(unlocated)
+  it "records no file for a failing result without a source location" do
+    described_class.new(outcomes).record(unlocated(nil))
 
     expect(outcomes.outcomes).to be_empty
   end
 
-  it "skips results whose source location is not a file" do
-    unknown = instance_double(Minitest::Result, source_location: ["unknown", 0], passed?: false, skipped?: false)
+  it "records a failure without a source location as unattributed" do
+    described_class.new(outcomes).record(unlocated(nil))
 
-    described_class.new(outcomes).record(unknown)
+    expect(outcomes.unattributed_failures?).to be(true)
+  end
+
+  it "skips results whose source location is not a file" do
+    described_class.new(outcomes).record(unlocated(["unknown", 0]))
 
     expect(outcomes.outcomes).to be_empty
   end

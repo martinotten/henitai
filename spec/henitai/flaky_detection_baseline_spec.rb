@@ -16,17 +16,26 @@ RSpec.describe Henitai::FlakyDetectionBaseline do
   def scripted_suite(runs, statuses)
     path = Henitai::TestFileOutcomes.report_path(reports_dir)
     build = method(:scenario_result)
+    record = method(:recorded_outcomes)
     suite = Object.new
     suite.define_singleton_method(:run_suite) do |_test_files, **|
       outcomes = runs.shift
       next build.call(:failed) if outcomes.nil?
 
-      recorder = Henitai::TestFileOutcomes.new
-      outcomes.each { |file, outcome| recorder.record(file, failed: outcome == "failed") }
-      recorder.write(path)
+      record.call(outcomes).write(path)
       build.call(statuses.shift || :survived)
     end
     suite
+  end
+
+  def recorded_outcomes(outcomes)
+    Henitai::TestFileOutcomes.new.tap do |recorder|
+      outcomes.each do |file, outcome|
+        next recorder.record_unattributed_failure if file == :unattributed
+
+        recorder.record(file, failed: outcome == "failed")
+      end
+    end
   end
 
   def scenario_result(status, log_path: File.join(reports_dir, "suite.log"))
@@ -96,6 +105,24 @@ RSpec.describe Henitai::FlakyDetectionBaseline do
 
     expect { run_baseline([outcomes, outcomes], %i[survived failed]) }
       .to raise_error(Henitai::CoverageError, /test suite failed/)
+  end
+
+  it "raises CoverageError when a file fails in only one run and is missing from the other" do
+    runs = [
+      { "a_spec.rb" => "passed", "b_spec.rb" => "passed" },
+      { "a_spec.rb" => "failed", "c_spec.rb" => "failed" }
+    ]
+
+    expect { run_baseline(runs, %i[survived failed]) }.to raise_error(Henitai::CoverageError, /test suite failed/)
+  end
+
+  it "raises CoverageError when a failing run had a failure outside any spec file" do
+    runs = [
+      { "a_spec.rb" => "passed" },
+      { "a_spec.rb" => "failed", unattributed: true }
+    ]
+
+    expect { run_baseline(runs, %i[survived failed]) }.to raise_error(Henitai::CoverageError, /test suite failed/)
   end
 
   it "includes the log path and log tail when the failing run has a log" do

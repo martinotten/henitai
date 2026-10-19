@@ -565,6 +565,7 @@ Test instability is handled conservatively:
 - survivors are never retried; flakiness can only fake a kill, not a survivor
 - with `mutation.flaky_detection` enabled the baseline suite runs twice; test files whose outcome differs are persisted to `henitai_flaky_tests.json`
 - a killed mutant is retried up to `config.max_flaky_retries` times (default: 3) only when all of its killing test files (`failed_tests` in the child report) are flaky; any surviving retry makes it `Survived`. Without a flaky set nothing is retried. Both execution paths share this rule (`FlakyRetryDecision`)
+- failures outside an example are attributed to a spec file where the framework names it (RSpec `after(:context)` hook errors; `before(:context)` errors already fail the group's examples). Anything else (spec load errors, suite-level hooks, a Minitest result without a usable file) is recorded as `unattributed_failures`: the kill is then genuine and never retried, and the flaky baseline aborts because the failure cannot be explained by a flaky file. A file seen in only one baseline run is never called flaky. Minitest outcomes are keyed to the file that defines the test class, falling back to the test method's file
 - the end of the run reports the flaky tests and the number of re-checked kills
 - unknown or flaky outcomes must be surfaced, not hidden
 

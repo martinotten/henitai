@@ -2,6 +2,7 @@
 
 require "minitest"
 require "henitai/test_file_outcomes"
+require "henitai/integration/minitest_result_file"
 
 module Henitai
   module Integration
@@ -15,22 +16,12 @@ module Henitai
 
       def record(result)
         super
-        file, = result.source_location
-        return unless usable_source?(file)
-
-        @outcomes.record(file, failed: !result.passed? && !result.skipped?)
+        MinitestResultFile.record(@outcomes, result)
       end
 
       def report
         super
         @outcomes.write(@report_path) if @report_path
-      end
-
-      private
-
-      # Minitest reports no location for some results and "unknown" for others.
-      def usable_source?(file)
-        file.is_a?(String) && !file.empty? && file != "unknown"
       end
     end
   end

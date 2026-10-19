@@ -24,7 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `henitai clean`). Without it nothing is retried, so runtime on survivor-heavy
   suites drops. The ">5% of mutants needed a retry" warning is replaced by a
   report of flaky tests and re-checked kills. Child reports now carry
-  `failed_tests`.
+  `failed_tests`. Failures outside an example (an `after(:context)` hook error,
+  a suite-level hook, a Minitest result without a file) are attributed to their
+  spec file when RSpec names it; otherwise the run is flagged
+  `unattributed_failures`, which makes a kill genuine (never retried) and makes
+  the flaky baseline reject the run. Baseline runs that fail on a file the two
+  runs cannot call flaky (for example one seen in a single run) now abort
+  instead of being accepted. Minitest outcomes are keyed to the file defining
+  the test class, not to a shared module that supplies the test method.
 
 - **Scores will drop, by design.** A mutant now counts as detected only when a
   test failed because of its mutation (ADR-14). Harness failures that used to

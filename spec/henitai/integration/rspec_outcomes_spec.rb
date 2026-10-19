@@ -41,9 +41,9 @@ RSpec.describe Henitai::Integration::RspecOutcomes do
     expect(outcomes.failed_files).to eq([File.expand_path("spec/d_spec.rb")])
   end
 
-  it "registers the listener for finished examples only" do
+  it "registers the listener for example, group, message and summary events" do
     described_class.register(outcomes, reporter)
 
-    expect(reporter).to have_received(:register_listener).with(anything, :example_finished)
+    expect(reporter).to have_received(:register_listener).with(anything, *described_class::EVENTS)
   end
 end

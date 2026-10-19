@@ -18,6 +18,8 @@ RSpec.describe Henitai::MinitestCoverageReporter do
 
   def build_result(absolute_path, time: 0.25)
     Struct.new(:source_location, :time) do
+      def klass = "UnresolvableTest"
+
       def passed? = true
 
       def skipped? = false

@@ -149,13 +149,21 @@ module Henitai
   end
 
   module Integration::RspecOutcomes
+    EVENTS: Array[Symbol]
+    HOOK_ERROR: String
+
     def self.record: (TestFileOutcomes, untyped) -> void
     def self.register: (TestFileOutcomes, untyped) -> void
+    def self.group_file: (untyped) -> String
   end
 
   class Integration::RspecOutcomes::Listener
     def initialize: (TestFileOutcomes) -> void
     def example_finished: (untyped) -> void
+    def example_group_started: (untyped) -> void
+    def example_group_finished: (untyped) -> void
+    def message: (untyped) -> void
+    def dump_summary: (untyped) -> void
   end
 
   module Integration::RspecTestSelection
@@ -1349,6 +1357,8 @@ module Henitai
     def self.load: (String) -> TestFileOutcomes
     def initialize: () -> void
     def record: (String, failed: bool) -> void
+    def record_unattributed_failure: () -> void
+    def unattributed_failures?: () -> bool
     def failed_files: () -> Array[String]
     def outcomes: () -> Hash[String, String]
     def write: (String) -> void

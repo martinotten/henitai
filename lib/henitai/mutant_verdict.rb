@@ -27,9 +27,11 @@ module Henitai
     end
 
     # @return [Array<String>] expanded paths of the test files that failed
-    #   in the child, or an empty list when the child did not report them
+    #   in the child, or an empty list when the child did not report them or
+    #   also saw a failure it could not attribute to a file (which makes the
+    #   kill genuine, never one a flaky file alone may have caused)
     def killing_tests
-      return [] unless @report
+      return [] if @report.nil? || @report["unattributed_failures"]
 
       Array(@report["failed_tests"]).map { |path| File.expand_path(path) }
     end

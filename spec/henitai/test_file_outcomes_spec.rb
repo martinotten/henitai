@@ -48,4 +48,27 @@ RSpec.describe Henitai::TestFileOutcomes do
   it "resolves the report path inside the given reports directory" do
     expect(described_class.report_path("reports")).to eq(File.join("reports", "henitai_suite_outcomes.json"))
   end
+
+  it "has no unattributed failures by default" do
+    expect(outcomes.unattributed_failures?).to be(false)
+  end
+
+  it "round-trips an unattributed failure through the report file" do
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, described_class::REPORT_FILE_NAME)
+      outcomes.record_unattributed_failure
+      outcomes.write(path)
+
+      expect(described_class.load(path).unattributed_failures?).to be(true)
+    end
+  end
+
+  it "omits the unattributed marker from reports of clean runs" do
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, described_class::REPORT_FILE_NAME)
+      outcomes.write(path)
+
+      expect(JSON.parse(File.read(path))).to eq("outcomes" => {})
+    end
+  end
 end

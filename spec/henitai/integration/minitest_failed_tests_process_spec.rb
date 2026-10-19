@@ -24,6 +24,40 @@ RSpec.describe Henitai::Integration::Minitest do
     end
   end
 
+  it "attributes a test inherited from a shared module to the including test file" do
+    Dir.mktmpdir do |dir|
+      source = write(dir, "lib/sample.rb", "class Sample\n  def self.sum(a, b)\n    a + b\n  end\nend\n")
+      write(dir, "test/shared_examples.rb", shared_source)
+      including = write(dir, "test/including_test.rb", including_source)
+
+      stdout, stderr, status = run_child(dir, source, [including])
+
+      expect([status.success?, JSON.parse(stdout)]).to eq([true, [File.expand_path(including)]]), stderr
+    end
+  end
+
+  def shared_source
+    <<~RUBY
+      module SharedExamples
+        def test_shared
+          assert_equal 4, Sample.sum(3, 1)
+        end
+      end
+    RUBY
+  end
+
+  def including_source
+    <<~RUBY
+      require "minitest/autorun"
+      require_relative "../lib/sample"
+      require_relative "shared_examples"
+
+      class IncludingTest < Minitest::Test
+        include SharedExamples
+      end
+    RUBY
+  end
+
   def write(dir, relative, source)
     path = File.join(dir, relative)
     FileUtils.mkdir_p(File.dirname(path))

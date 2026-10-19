@@ -3,6 +3,7 @@
 require "minitest"
 require "henitai/per_test_coverage_collector"
 require "henitai/test_file_outcomes"
+require "henitai/integration/minitest_result_file"
 
 module Henitai
   # Minitest reporter that collects per-test line coverage deltas.
@@ -27,7 +28,7 @@ module Henitai
       super
       file = relative_to_pwd(result.source_location.first)
       @collector.record_test(file, duration: result.time)
-      @outcomes.record(file, failed: !result.passed? && !result.skipped?)
+      Integration::MinitestResultFile.record(@outcomes, result)
     end
 
     def report
