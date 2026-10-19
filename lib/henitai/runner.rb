@@ -212,6 +212,7 @@ module Henitai
     def operators = deps.operators
     def history_store = deps.history_store
     def per_test_coverage = deps.per_test_coverage
+    def source_selection_coverage = deps.source_selection_coverage
     def source_provider = deps.source_provider
 
     def progress_reporter = deps.progress_reporter(full_run: full_run?)
@@ -223,7 +224,7 @@ module Henitai
     def source_file_selection
       @source_file_selection ||= SourceFileSelection.new(
         config: config, since: @since,
-        git_diff_analyzer: git_diff_analyzer, per_test_coverage: per_test_coverage
+        git_diff_analyzer: git_diff_analyzer, per_test_coverage: source_selection_coverage
       )
     end
 

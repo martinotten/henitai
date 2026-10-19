@@ -1195,6 +1195,7 @@ module Henitai
     def integration: () -> untyped
     def operators: () -> Array[Operator]
     def per_test_coverage: () -> PerTestCoverage
+    def source_selection_coverage: () -> PerTestCoverage
     def history_store: () -> untyped
     def progress_reporter: (full_run: bool) -> untyped
     def source_provider: () -> ^(String) -> String
@@ -1253,6 +1254,7 @@ module Henitai
     def progress_reporter: () -> untyped?
     def history_store: () -> untyped
     def per_test_coverage: () -> PerTestCoverage
+    def source_selection_coverage: () -> PerTestCoverage
     def history_store_path: () -> String
     def source_files: () -> Array[String]
     def source_file_selection: () -> SourceFileSelection

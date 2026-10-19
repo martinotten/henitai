@@ -1242,7 +1242,7 @@ RSpec.describe Henitai::Runner do
           path.end_with?("spec/sample_spec.rb") ? [File.expand_path("lib/sample.rb")] : []
         end
         collaborators = stub_pipeline(runner, history_store: build_history_store)
-        allow(runner).to receive(:per_test_coverage).and_return(per_test_coverage)
+        allow(runner).to receive(:source_selection_coverage).and_return(per_test_coverage)
 
         runner.run
 
