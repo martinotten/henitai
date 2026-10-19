@@ -453,7 +453,13 @@ module Henitai
       def run_child_activation_and_tests: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
     end
 
+    class CappedLogSink
+      def initialize: (untyped, Integer) -> void
+      def write: (String) -> void
+    end
+
     class ScenarioLogSupport
+      def initialize: (?drain_join_timeout: Float) -> void
       def capture_child_output: (Hash[Symbol, String]) { () -> untyped } -> untyped
       def with_coverage_dir: (String) { () -> untyped } -> untyped
       def read_log_file: (String) -> String
@@ -764,7 +770,7 @@ module Henitai
 
   class PerTestCoverageSelector
     def initialize: (?coverage_report_reader: CoverageReportReader) -> void
-    def filter: (Array[String], Mutant, reports_dir: String) -> Array[String]
+    def select: (Mutant, reports_dir: String, test_files: ^() -> Array[String], fallback: ^() -> Array[String]) -> Array[String]
 
     private
 

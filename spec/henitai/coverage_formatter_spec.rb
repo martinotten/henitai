@@ -61,6 +61,26 @@ RSpec.describe Henitai::CoverageFormatter do
     end
   end
 
+  it "marks the end of boot when the first example starts" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        boot_clock = Henitai::SuiteBootClock.new(started_at: 10.0, clock: -> { 11.5 })
+        formatter = described_class.new(StringIO.new, boot_clock:)
+
+        allow(Coverage).to receive(:peek_result).and_return(
+          coverage_snapshot(source_lines: [nil, 1])
+        )
+
+        formatter.example_started(build_notification("spec/models/sample_spec.rb"))
+        formatter.example_finished(build_notification("spec/models/sample_spec.rb"))
+        formatter.dump_summary(nil)
+
+        boot_path = File.join(File.dirname(report_path), Henitai::PerTestCoverageCollector::BOOT_FILE_NAME)
+        expect(JSON.parse(File.read(boot_path))).to eq("boot_seconds" => 1.5)
+      end
+    end
+  end
+
   it "creates the output directory when needed" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do

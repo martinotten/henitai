@@ -16,10 +16,10 @@ RSpec.describe Henitai::SlotScheduler::Draining do
   end
 
   def build_runtime(now: 0.0, wait2_results: {}, wait_results: {})
-    runtime = instance_double(Henitai::ProcessWorkerRunner::Runtime, clock_gettime: now)
+    runtime = instance_double(Henitai::ProcessWorkerRunner::Runtime, clock_gettime: now, pause: nil)
     allow(runtime).to receive(:wait2) { |pid, _flags| wait2_results.fetch(pid, [nil, nil]) }
     allow(runtime).to receive(:wait) { |pid| wait_results.fetch(pid, pid) }
-    allow(runtime).to receive(:kill)
+    allow(runtime).to receive(:kill) { |signal, _pid| raise Errno::ESRCH if signal == 0 }
     runtime
   end
 

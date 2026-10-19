@@ -15,6 +15,9 @@ module Henitai
     class Base
       include ChildRuntimeControl
 
+      EXITED_GROUP_POLL_INTERVAL = 0.05
+      EXITED_GROUP_POLL_COUNT = 40
+
       # Child-run diagnostics. Public so the child-side modules mixed into
       # concrete adapters can reach it without `send`.
       def child_debug_log
@@ -78,6 +81,29 @@ module Henitai
       end
 
       def cleanup_process_group(pid)
+        if leader_exited?(pid)
+          terminate_exited_group(pid)
+        else
+          terminate_running_group(pid)
+        end
+      rescue Errno::EPERM
+        cleanup_child_process(pid)
+      rescue Errno::ESRCH
+        nil
+      end
+
+      private
+
+      # A leader that already exited normally cannot be waited on again, so
+      # the group is polled for members instead of burning the grace period.
+      def terminate_exited_group(pid)
+        Process.kill(:SIGTERM, -pid)
+        return unless group_members_remain?(pid)
+
+        Process.kill(:SIGKILL, -pid)
+      end
+
+      def terminate_running_group(pid)
         grace_period = 2.0
         wakeup = Henitai.const_get(:ProcessWakeup).new.install
         Process.kill(:SIGTERM, -pid)
@@ -88,15 +114,34 @@ module Henitai
         return if wait_nonblocking(pid)
 
         Process.kill(:SIGKILL, -pid)
-      rescue Errno::EPERM
-        cleanup_child_process(pid)
-      rescue Errno::ESRCH
-        nil
       ensure
         wakeup&.close
       end
 
-      private
+      def leader_exited?(pid)
+        !Process.wait(pid, Process::WNOHANG).nil?
+      rescue Errno::ECHILD, Errno::ESRCH
+        true
+      end
+
+      def group_members_remain?(pid)
+        EXITED_GROUP_POLL_COUNT.times do
+          return false unless group_alive?(pid)
+
+          pause(EXITED_GROUP_POLL_INTERVAL)
+        end
+        group_alive?(pid)
+      end
+
+      # Signal 0 probes existence only: ESRCH means the group is empty.
+      def group_alive?(pid)
+        Process.kill(0, -pid)
+        true
+      rescue Errno::ESRCH
+        false
+      rescue Errno::EPERM
+        true
+      end
 
       def pause(seconds)
         sleep(seconds)
@@ -131,6 +176,10 @@ module Henitai
 
       def subprocess_env
         { "PARALLEL_WORKERS" => "1" }
+      end
+
+      def suite_process_env
+        subprocess_env.merge(SuiteBootClock::STARTED_AT_ENV => Time.now.to_f.to_s)
       end
 
       def wait_nonblocking(pid)

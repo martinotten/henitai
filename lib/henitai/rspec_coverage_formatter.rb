@@ -5,6 +5,7 @@ require "henitai/coverage_formatter"
 
 RSpec::Core::Formatters.register(
   Henitai::CoverageFormatter,
+  :example_started,
   :example_finished,
   :dump_summary
 )

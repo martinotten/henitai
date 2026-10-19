@@ -16,6 +16,10 @@ IntegrationSpy = Class.new do
     ["spec/foo_spec.rb"]
   end
 
+  def test_files
+    ["spec/foo_spec.rb"]
+  end
+
   def run_mutant(mutant:, test_files:, timeout:)
     @calls[:run_mutant] += 1
     @calls[:last_test_files] = test_files
@@ -133,6 +137,99 @@ RSpec.describe Henitai::ExecutionEngine do
         { "coverage" => {}, "duration" => duration }
       end
       File.write(File.join(dir, "henitai_per_test.json"), JSON.dump(payload))
+    end
+
+    def write_boot_report(dir, seconds)
+      File.write(File.join(dir, "henitai_suite_boot.json"), JSON.dump("boot_seconds" => seconds))
+    end
+
+    it "includes the measured suite boot time in the calibrated timeout" do
+      Dir.mktmpdir do |dir|
+        config = build_calibrating_config(dir, timeout_configured: false)
+        write_timing_report(dir, "spec/foo_spec.rb" => 2.0)
+        write_boot_report(dir, 1.0)
+        integration = build_integration
+
+        described_class.new.run([build_mutant(:pending, "Foo#bar")], integration, config)
+
+        expect(integration.calls[:last_timeout]).to eq(9.0)
+      end
+    end
+
+    it "never caps the timeout below the measured baseline" do
+      Dir.mktmpdir do |dir|
+        config = build_calibrating_config(dir, timeout_configured: false)
+        config.define_singleton_method(:max_timeout) { 30.0 }
+        write_timing_report(dir, "spec/foo_spec.rb" => 20.0)
+        write_boot_report(dir, 15.0) # baseline 35s, calibrated 105s
+        integration = build_integration
+
+        described_class.new.run([build_mutant(:pending, "Foo#bar")], integration, config)
+
+        expect(integration.calls[:last_timeout]).to eq(37.0)
+      end
+    end
+
+    it "warns once per run when the measured baseline exceeds max_timeout" do
+      Dir.mktmpdir do |dir|
+        config = build_calibrating_config(dir, timeout_configured: false)
+        config.define_singleton_method(:max_timeout) { 30.0 }
+        write_timing_report(dir, "spec/foo_spec.rb" => 20.0)
+        write_boot_report(dir, 15.0)
+        mutants = [build_mutant(:pending, "Foo#bar"), build_mutant(:pending, "Foo#baz")]
+        warnings = []
+        engine = described_class.new
+        allow(engine).to receive(:warn) { |message| warnings << message }
+
+        engine.run(mutants, build_integration, config)
+
+        expect(warnings).to eq(
+          ["henitai: measured test baseline of 35.0s exceeds max_timeout (30.0s); using 37.0s instead"]
+        )
+      end
+    end
+
+    it "does not warn when the baseline fits within max_timeout" do
+      Dir.mktmpdir do |dir|
+        config = build_calibrating_config(dir, timeout_configured: false)
+        config.define_singleton_method(:max_timeout) { 30.0 }
+        write_timing_report(dir, "spec/foo_spec.rb" => 20.0)
+        engine = described_class.new
+        allow(engine).to receive(:warn)
+
+        engine.run([build_mutant(:pending, "Foo#bar")], build_integration, config)
+
+        expect(engine).not_to have_received(:warn)
+      end
+    end
+
+    it "keeps a fixed timeout untouched even when the baseline exceeds max_timeout" do
+      Dir.mktmpdir do |dir|
+        config = build_calibrating_config(dir, timeout_configured: true)
+        config.define_singleton_method(:max_timeout) { 30.0 }
+        write_timing_report(dir, "spec/foo_spec.rb" => 20.0)
+        write_boot_report(dir, 15.0)
+        integration = build_integration
+
+        described_class.new.run([build_mutant(:pending, "Foo#bar")], integration, config)
+
+        expect(integration.calls[:last_timeout]).to eq(12.5)
+      end
+    end
+
+    it "does not warn about max_timeout when the timeout is a fixed config value" do
+      Dir.mktmpdir do |dir|
+        config = build_calibrating_config(dir, timeout_configured: true)
+        config.define_singleton_method(:max_timeout) { 30.0 }
+        write_timing_report(dir, "spec/foo_spec.rb" => 20.0)
+        write_boot_report(dir, 15.0)
+        engine = described_class.new
+        allow(engine).to receive(:warn)
+
+        engine.run([build_mutant(:pending, "Foo#bar")], build_integration, config)
+
+        expect(engine).not_to have_received(:warn)
+      end
     end
 
     it "passes a calibrated per-mutant timeout when mutation.timeout is unset" do
@@ -618,8 +715,9 @@ RSpec.describe Henitai::ExecutionEngine do
         {}
       )
 
-      allow(integration).to receive(:select_tests).and_return(
-        %w[spec/covered_spec.rb spec/uncovered_spec.rb]
+      allow(integration).to receive_messages(
+        select_tests: %w[spec/covered_spec.rb spec/uncovered_spec.rb],
+        test_files: %w[spec/covered_spec.rb spec/uncovered_spec.rb]
       )
       allow(integration).to receive(:run_mutant) do |mutant:, test_files:, **_kwargs|
         observed_tests = test_files
@@ -630,6 +728,36 @@ RSpec.describe Henitai::ExecutionEngine do
     end
 
     expect(observed_tests).to eq(["spec/covered_spec.rb"])
+  end
+
+  it "runs a test covering the mutant even when name matching would not select it" do
+    pending = build_located_mutant("Foo#bar", file: "lib/foo.rb", line: 3)
+    integration = build_integration
+    observed_tests = nil
+
+    with_temp_reports_dir do |reports_dir|
+      write_per_test_coverage_report(
+        reports_dir,
+        { "spec/unrelated_name_spec.rb" => { File.expand_path("lib/foo.rb") => [3] } }
+      )
+
+      config = Struct.new(:timeout, :reports_dir, :jobs, :history).new(
+        12.5, reports_dir, 1, {}
+      )
+
+      allow(integration).to receive_messages(
+        select_tests: ["spec/foo_spec.rb"],
+        test_files: %w[spec/foo_spec.rb spec/unrelated_name_spec.rb]
+      )
+      allow(integration).to receive(:run_mutant) do |mutant:, test_files:, **_kwargs|
+        observed_tests = test_files
+        mutant.status = :killed
+      end
+
+      described_class.new.run([pending], integration, config)
+    end
+
+    expect(observed_tests).to eq(["spec/unrelated_name_spec.rb"])
   end
 
   it "records the selected tests on the mutant for report serialization" do

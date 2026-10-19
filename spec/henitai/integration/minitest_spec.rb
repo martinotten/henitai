@@ -311,13 +311,34 @@ RSpec.describe Henitai::Integration::Minitest do
       integration.run_suite(["test/sample_test.rb"])
 
       expect(Process).to have_received(:spawn).with(
-        { "PARALLEL_WORKERS" => "1", "RAILS_ENV" => "test" },
+        hash_including("PARALLEL_WORKERS" => "1", "RAILS_ENV" => "test"),
         *integration.suite_command(["test/sample_test.rb"]),
         out: kind_of(File),
         err: kind_of(File),
         pgroup: true
       )
     end
+  end
+
+  it "stamps the baseline suite spawn time for boot measurement" do
+    integration = described_class.new
+    spawn_env = nil
+    before = Time.now.to_f
+
+    with_temp_workspace do
+      allow(Process).to receive(:spawn) do |env, *, **|
+        spawn_env = env
+        4321
+      end
+      allow(integration).to receive(:wait_with_timeout).and_return(
+        Struct.new(:success?, :exitstatus).new(true, 0)
+      )
+
+      integration.run_suite(["test/sample_test.rb"])
+    end
+
+    stamp = spawn_env.fetch(Henitai::SuiteBootClock::STARTED_AT_ENV).to_f
+    expect(stamp).to be_between(before, Time.now.to_f)
   end
 
   it "spawns the suite process with the expected env, command, and streams" do
@@ -337,7 +358,7 @@ RSpec.describe Henitai::Integration::Minitest do
         result = integration.run_suite(["test/sample_test.rb"], timeout: 4.0)
         env, *command = spawn_calls.fetch(0)
 
-        expect([result.stdout, result.stderr, env, command]).to eq(
+        expect([result.stdout, result.stderr, env.except(Henitai::SuiteBootClock::STARTED_AT_ENV), command]).to eq(
           [
             "out-line\n", "err-line\n",
             { "PARALLEL_WORKERS" => "1", "RAILS_ENV" => "test" },
@@ -422,6 +443,19 @@ RSpec.describe Henitai::Integration::Minitest do
 
       expect(described_class.new.test_files).to contain_exactly("test/models/sample_test.rb",
                                                                 "test/models/sample_spec.rb")
+    end
+  end
+
+  it "memoizes test file discovery across repeated calls" do
+    with_temp_workspace do |dir|
+      write_file(dir, "test/models/sample_test.rb", "")
+      integration = described_class.new
+
+      allow(Dir).to receive(:glob).and_call_original
+
+      2.times { integration.test_files }
+
+      expect(Dir).to have_received(:glob).with("test/**/*_test.rb").once
     end
   end
 

@@ -81,7 +81,7 @@ module Henitai
         File.open(log_paths[:stdout_path], "w") do |stdout_file|
           File.open(log_paths[:stderr_path], "w") do |stderr_file|
             Process.spawn(
-              subprocess_env,
+              suite_process_env,
               *suite_command(test_files),
               out: stdout_file,
               err: stderr_file,
@@ -101,8 +101,8 @@ module Henitai
       end
 
       def spec_files
-        (Dir.glob("test/**/*_test.rb") + Dir.glob("test/**/*_spec.rb"))
-          .reject { |f| f.start_with?("test/system/") }
+        @spec_files ||= (Dir.glob("test/**/*_test.rb") + Dir.glob("test/**/*_spec.rb"))
+                        .reject { |f| f.start_with?("test/system/") }
       end
     end
   end

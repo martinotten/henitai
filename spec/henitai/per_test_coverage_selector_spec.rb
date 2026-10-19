@@ -5,99 +5,171 @@ require "spec_helper"
 require "tmpdir"
 
 RSpec.describe Henitai::PerTestCoverageSelector do
-  def build_mutant(file)
-    Struct.new(:location).new(
-      {
-        file:,
-        start_line: 2,
-        end_line: 2
-      }
-    )
+  let(:source) { File.expand_path("lib/sample.rb") }
+  let(:selector) { described_class.new }
+
+  def build_mutant(file, start_line: 2, end_line: 2)
+    Struct.new(:location).new({ file:, start_line:, end_line: })
   end
 
-  it "filters tests using the coverage report reader" do
-    file = File.expand_path("lib/sample.rb")
-    reader = instance_double(Henitai::CoverageReportReader)
-    selector = described_class.new(coverage_report_reader: reader)
+  def write_report(dir, report)
+    File.write(File.join(dir, "henitai_per_test.json"), JSON.generate(report))
+  end
 
-    allow(reader).to receive(:test_lines_by_file).and_return(
-      "spec/foo_spec.rb" => {
-        file => [2]
+  # Records which lambda was consulted so specs can assert who decided.
+  def select_for(mutant, dir, tests:, fallback: [])
+    calls = []
+    result = selector.select(
+      mutant,
+      reports_dir: dir,
+      test_files: lambda {
+        calls << :test_files
+        tests
       },
-      "spec/bar_spec.rb" => {
-        file => [4]
+      fallback: lambda {
+        calls << :fallback
+        fallback
       }
     )
-
-    expect(
-      selector.filter(
-        ["spec/foo_spec.rb", "spec/bar_spec.rb"],
-        build_mutant(file),
-        reports_dir: "coverage"
-      )
-    ).to eq(["spec/foo_spec.rb"])
+    [result, calls]
   end
 
-  it "filters using a real CoverageReportReader parsing an on-disk per-test report" do
+  it "selects the covering test that name matching would not have found (EXE-12)", :aggregate_failures do
     Dir.mktmpdir do |dir|
-      file = File.expand_path("lib/sample.rb")
-      File.write(
-        File.join(dir, "henitai_per_test.json"),
-        JSON.generate(
-          "spec/foo_spec.rb" => { file => [2] },
-          "spec/bar_spec.rb" => { file => [4] }
-        )
-      )
-      selector = described_class.new
+      write_report(dir, "spec/cart_spec.rb" => { source => [2] })
 
-      expect(
-        selector.filter(
-          ["spec/foo_spec.rb", "spec/bar_spec.rb"],
-          build_mutant(file),
-          reports_dir: dir
-        )
-      ).to eq(["spec/foo_spec.rb"])
+      result, calls = select_for(
+        build_mutant(source),
+        dir,
+        tests: ["spec/tax_spec.rb", "spec/cart_spec.rb"],
+        fallback: ["spec/tax_spec.rb"]
+      )
+
+      expect(result).to eq(["spec/cart_spec.rb"])
+      expect(calls).not_to include(:fallback)
     end
   end
 
-  it "falls back to all candidates when the real reader finds no per-test report" do
+  it "drops a name-matched test whose coverage misses the mutant when another test covers it" do
     Dir.mktmpdir do |dir|
-      selector = described_class.new
+      write_report(
+        dir,
+        "spec/tax_spec.rb" => { source => [4] },
+        "spec/cart_spec.rb" => { source => [2] }
+      )
 
-      expect(
-        selector.filter(
-          ["spec/foo_spec.rb", "spec/bar_spec.rb"],
-          build_mutant(File.expand_path("lib/sample.rb")),
-          reports_dir: dir
-        )
-      ).to eq(["spec/foo_spec.rb", "spec/bar_spec.rb"])
+      result, = select_for(
+        build_mutant(source),
+        dir,
+        tests: ["spec/tax_spec.rb", "spec/cart_spec.rb"],
+        fallback: ["spec/tax_spec.rb"]
+      )
+
+      expect(result).to eq(["spec/cart_spec.rb"])
     end
   end
 
-  it "falls back to all candidates when the mutant location is incomplete" do
-    reader = instance_double(Henitai::CoverageReportReader)
-    selector = described_class.new(coverage_report_reader: reader)
-    mutant = build_mutant(nil)
-    allow(reader).to receive(:test_lines_by_file).and_return(
-      "spec/foo_spec.rb" => { File.expand_path("lib/sample.rb") => [2] }
-    )
+  it "returns the integration's own path form for map keys written as ./relative paths" do
+    Dir.mktmpdir do |dir|
+      write_report(dir, "./spec/a_spec.rb" => { source => [2] })
 
-    expect(
-      selector.filter(
-        ["spec/foo_spec.rb", "spec/bar_spec.rb"],
-        mutant,
-        reports_dir: "coverage"
-      )
-    ).to eq(["spec/foo_spec.rb", "spec/bar_spec.rb"])
+      result, = select_for(build_mutant(source), dir, tests: ["spec/a_spec.rb", "spec/b_spec.rb"])
+
+      expect(result).to eq(["spec/a_spec.rb"])
+    end
   end
 
-  it "does not read coverage when there are no candidates" do
-    reader = instance_double(Henitai::CoverageReportReader)
-    selector = described_class.new(coverage_report_reader: reader)
-    allow(reader).to receive(:test_lines_by_file)
+  it "drops a covering test that the integration no longer provides" do
+    Dir.mktmpdir do |dir|
+      write_report(
+        dir,
+        "spec/deleted_spec.rb" => { source => [2] },
+        "spec/a_spec.rb" => { source => [2] }
+      )
 
-    selector.filter([], build_mutant(File.expand_path("lib/sample.rb")), reports_dir: "coverage")
+      result, = select_for(build_mutant(source), dir, tests: ["spec/a_spec.rb"])
 
-    expect(reader).not_to have_received(:test_lines_by_file)
+      expect(result).to eq(["spec/a_spec.rb"])
+    end
+  end
+
+  it "falls back to name matching when every covering test has been removed", :aggregate_failures do
+    Dir.mktmpdir do |dir|
+      write_report(dir, "spec/deleted_spec.rb" => { source => [2] })
+
+      result, calls = select_for(
+        build_mutant(source),
+        dir,
+        tests: ["spec/other_spec.rb"],
+        fallback: ["spec/other_spec.rb"]
+      )
+
+      expect(result).to eq(["spec/other_spec.rb"])
+      expect(calls).to include(:fallback)
+    end
+  end
+
+  it "falls back to name matching when no test in the map covers the mutant", :aggregate_failures do
+    Dir.mktmpdir do |dir|
+      write_report(dir, "spec/tax_spec.rb" => { source => [40] })
+
+      result, calls = select_for(
+        build_mutant(source),
+        dir,
+        tests: ["spec/tax_spec.rb", "spec/cart_spec.rb"],
+        fallback: ["spec/cart_spec.rb"]
+      )
+
+      expect(result).to eq(["spec/cart_spec.rb"])
+      expect(calls).to include(:fallback)
+    end
+  end
+
+  it "falls back without reading integration test files when no per-test report exists", :aggregate_failures do
+    Dir.mktmpdir do |dir|
+      result, calls = select_for(
+        build_mutant(source),
+        dir,
+        tests: ["spec/tax_spec.rb"],
+        fallback: ["spec/tax_spec.rb", "spec/cart_spec.rb"]
+      )
+
+      expect(result).to eq(["spec/tax_spec.rb", "spec/cart_spec.rb"])
+      expect(calls).to eq([:fallback])
+    end
+  end
+
+  it "falls back when the mutant location is incomplete", :aggregate_failures do
+    Dir.mktmpdir do |dir|
+      write_report(dir, "spec/a_spec.rb" => { source => [2] })
+
+      result, calls = select_for(
+        build_mutant(nil),
+        dir,
+        tests: ["spec/a_spec.rb"],
+        fallback: ["spec/a_spec.rb", "spec/b_spec.rb"]
+      )
+
+      expect(result).to eq(["spec/a_spec.rb", "spec/b_spec.rb"])
+      expect(calls).to eq([:fallback])
+    end
+  end
+
+  it "keeps the integration order of the covering tests" do
+    Dir.mktmpdir do |dir|
+      write_report(
+        dir,
+        "spec/a_spec.rb" => { source => [2] },
+        "spec/c_spec.rb" => { source => [3] }
+      )
+
+      result, = select_for(
+        build_mutant(source, start_line: 2, end_line: 3),
+        dir,
+        tests: ["spec/c_spec.rb", "spec/b_spec.rb", "spec/a_spec.rb"]
+      )
+
+      expect(result).to eq(["spec/c_spec.rb", "spec/a_spec.rb"])
+    end
   end
 end

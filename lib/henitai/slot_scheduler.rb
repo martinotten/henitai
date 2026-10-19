@@ -85,6 +85,7 @@ module Henitai
         pid, status = runtime.wait2(-1, Process::WNOHANG)
         break unless pid
 
+        tear_down_process_group(pid)
         complete_slot(pid, status)
       end
     rescue Errno::ECHILD

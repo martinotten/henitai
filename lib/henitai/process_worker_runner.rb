@@ -27,6 +27,10 @@ module Henitai
         Process.wait(pid)
       end
 
+      def pause(seconds)
+        Kernel.sleep(seconds)
+      end
+
       def trap(signal, handler = nil, &block)
         Kernel.trap(signal, handler || block)
       end
@@ -136,7 +140,7 @@ module Henitai
     def install_signal_traps
       saved = {}
       %w[INT TERM HUP].each do |sig|
-        saved[sig] = @runtime.trap(sig) { @shutdown_requested = true }
+        saved[sig] = @runtime.trap(sig) { request_shutdown }
       end
       saved
     end

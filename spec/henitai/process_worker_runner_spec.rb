@@ -83,7 +83,12 @@ RSpec.describe Henitai::ProcessWorkerRunner do
 
   def define_fake_kill(runtime, state)
     record_kill = ->(signal, pid) { self.record_kill(state, signal, pid) }
-    runtime.define_singleton_method(:kill) { |signal, pid| record_kill.call(signal, pid) }
+    runtime.define_singleton_method(:kill) do |signal, pid|
+      next raise(Errno::ESRCH) if signal == 0
+
+      record_kill.call(signal, pid)
+    end
+    runtime.define_singleton_method(:pause) { |_seconds| nil }
   end
 
   def define_fake_wait(runtime, state)
@@ -395,6 +400,32 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       expect(mutant.status).to eq(:pending)
       expect(runtime_state[:kill_calls]).to eq([[:SIGTERM, -21], [:SIGKILL, -21]])
       expect(runtime_state[:wait_calls]).to eq([21])
+    end
+
+    it "wakes the event loop when a signal trap fires while it waits" do # rubocop:disable RSpec/MultipleExpectations
+      mutant = build_mutant("slow")
+      runtime, runtime_state = build_fake_runtime(
+        clock_times: [0.0, 0.0],
+        wait2_results: { -1 => [nil, nil], 21 => [nil, nil] },
+        wait_results: { 21 => build_wait_status(0) }
+      )
+      fired = false
+      wakeup, wakeup_state = build_fake_wakeup(
+        on_wait: lambda { |*|
+          next if fired
+
+          fired = true
+          runtime_state[:traps].fetch("INT").call
+        }
+      )
+      integration = instance_double(Henitai::Integration::Rspec)
+      stub_fake_spawn(integration, 21)
+      stub_result_builder(integration)
+      config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 0)
+      runner = described_class.new(worker_count: 1, runtime:, wakeup:)
+
+      expect { runner.run([mutant], integration, config, nil) }.to raise_error(Interrupt)
+      expect(wakeup_state[:signal_count]).to eq(1)
     end
 
     it "does not refill a slot after shutdown is requested", :aggregate_failures do

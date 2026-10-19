@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require_relative "capped_log_sink"
 
 module Henitai
   module Integration
@@ -12,6 +13,14 @@ module Henitai
       MAX_LOG_BYTES_ENV = "HENITAI_MAX_LOG_BYTES"
       DEFAULT_MAX_LOG_BYTES = 5_000_000
       DRAIN_CHUNK_BYTES = 65_536
+      # How long closing waits for the drain thread to reach EOF. Only a
+      # grandchild still holding the pipe makes this wait run out.
+      DRAIN_JOIN_TIMEOUT = 1.0
+      DRAIN_AVAILABLE_READS = 16
+
+      def initialize(drain_join_timeout: DRAIN_JOIN_TIMEOUT)
+        @drain_join_timeout = drain_join_timeout
+      end
 
       def capture_child_output(log_paths)
         output_files = open_child_output(log_paths)
@@ -69,37 +78,41 @@ module Henitai
         file = File.new(path, "wb")
         file.sync = true
         reader, writer = IO.pipe
-        thread = Thread.new { drain_capped(reader, file, cap) }
-        { file:, reader:, writer:, thread: }
+        sink = CappedLogSink.new(file, cap)
+        thread = Thread.new { drain_capped(reader, sink) }
+        { file:, reader:, writer:, thread:, sink: }
       end
 
-      def drain_capped(reader, file, cap)
-        written = 0
-        truncated = false
-        loop do
-          chunk = reader.readpartial(DRAIN_CHUNK_BYTES)
-          next unless written < cap
-
-          slice = chunk.byteslice(0, cap - written)
-          file.write(slice)
-          written += slice.bytesize
-          next unless written >= cap && !truncated
-
-          file.write("\n[henitai] output truncated at #{cap} bytes\n")
-          truncated = true
-        end
+      def drain_capped(reader, sink)
+        loop { sink.write(reader.readpartial(DRAIN_CHUNK_BYTES)) }
       rescue IOError
         # EOFError (a subclass) on writer close, or a closed pipe: draining done.
         nil
       end
 
+      # Closing the writer lets the drain thread reach EOF. If a grandchild
+      # still holds a copy of the writer, EOF never comes; stop the thread
+      # after the bound and take what is already buffered in the pipe.
       def finish_capped_stream(stream)
         return unless stream
 
         stream[:writer].close
-        stream[:thread].join
+        stop_capped_drain(stream) unless stream[:thread].join(@drain_join_timeout)
         stream[:reader].close
         stream[:file].close
+      end
+
+      def stop_capped_drain(stream)
+        stream[:thread].kill
+        stream[:thread].join
+        drain_available(stream[:reader], stream[:sink])
+      end
+
+      def drain_available(reader, sink)
+        DRAIN_AVAILABLE_READS.times { sink.write(reader.read_nonblock(DRAIN_CHUNK_BYTES)) }
+      rescue IO::WaitReadable, IOError
+        # Nothing more buffered right now, or the pipe is closed.
+        nil
       end
 
       def redirect_child_output(output_files)

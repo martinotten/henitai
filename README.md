@@ -82,6 +82,7 @@ test_excludes:
 mutation:
   operators: light   # light | full
   timeout: 10.0
+  timeout_multiplier: 3.0
   max_flaky_retries: 3
   max_log_bytes: 5000000
   max_timeout: 30.0
@@ -119,7 +120,12 @@ baseline suite has a fixed timeout. Lines covered only by excluded tests count
 as uncovered and are not mutated. Excluding every test file aborts with
 `Henitai::ConfigurationError`.
 `mutation.max_log_bytes` is a positive per-stream byte cap for captured child
-output. `mutation.max_timeout` caps auto-calibrated timeouts; an explicit
+output. Without an explicit `mutation.timeout`, each mutant's timeout is
+calibrated as `mutation.timeout_multiplier` (default `3.0`) × (the summed
+durations of the selected test files + the measured suite boot time), with a
+2 s floor. `mutation.max_timeout` (default `30.0`) caps the calibrated value,
+but never below the measured baseline plus 2 s; when the baseline alone exceeds
+`max_timeout`, Henitai warns once and uses baseline + 2 s. An explicit
 `mutation.timeout` still takes precedence. When JSON or HTML reporting is
 enabled, `reports.checkpoint*` controls periodic canonical-report checkpoints.
 Each checkpoint updates `mutation-report.json`; when the HTML reporter is
@@ -151,6 +157,11 @@ verdicts are reclassified as `CompileError`.
 Per-test coverage reporting is currently wired through the RSpec child runner.
 Minitest integration reuses the same selection and execution flow, but does not
 yet enable the per-test coverage formatter.
+
+Test selection is coverage first: the per-test coverage map is the primary source
+of candidate tests for a mutant, and name matching is only the fallback for when
+the map cannot decide (no map, no location, or no covering test left in the
+integration).
 
 Henitai currently defaults to linear mutant execution. Set `jobs` in
 `.henitai.yml` or pass `--jobs N` to opt into parallel mutant execution.

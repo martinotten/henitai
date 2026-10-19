@@ -37,6 +37,7 @@ module Henitai
       %w[coverage .resultset.json],
       %w[coverage .last_run.json],
       ["henitai_per_test.json"],
+      [PerTestCoverageCollector::BOOT_FILE_NAME],
       [CoverageBootstrapper::DEPENDENCY_MANIFEST_FILE]
     ].freeze
 

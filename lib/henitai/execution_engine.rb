@@ -113,11 +113,11 @@ module Henitai
     end
 
     def prioritized_tests_for(mutant, integration, config)
-      tests = reject_excluded_tests(integration.select_tests(mutant.subject), config)
-      tests = per_test_coverage_selector.filter(
-        tests,
+      tests = per_test_coverage_selector.select(
         mutant,
-        reports_dir: config.reports_dir
+        reports_dir: config.reports_dir,
+        test_files: -> { reject_excluded_tests(integration.test_files, config) },
+        fallback: -> { reject_excluded_tests(integration.select_tests(mutant.subject), config) }
       )
       test_prioritizer(config).sort(tests, mutant, test_history(config))
     end
@@ -146,11 +146,21 @@ module Henitai
     def resolved_timeout(test_files, config)
       return config.timeout unless calibration_enabled?(config)
 
-      calibrated = timeout_calibrator(config).timeout_for(test_files)
-      return [calibrated, max_timeout(config)].min if calibrated
+      calibrator = timeout_calibrator(config)
+      calibrated = calibrator.timeout_for(test_files)
+      unless calibrated
+        warn_timeout_fallback_once
+        return Configuration::DEFAULT_TIMEOUT
+      end
 
-      warn_timeout_fallback_once
-      Configuration::DEFAULT_TIMEOUT
+      timeout_ceiling(config).cap(calibrated, calibrator.baseline_for(test_files))
+    end
+
+    def timeout_ceiling(config)
+      @timeout_ceiling ||= TimeoutCeiling.new(
+        ceiling: max_timeout(config),
+        warner: ->(message) { warn(message) }
+      )
     end
 
     # Ceiling on the auto-calibrated timeout so a runaway mutant is killed in
@@ -169,8 +179,14 @@ module Henitai
     def timeout_calibrator(config)
       @timeout_calibrator ||= TimeoutCalibrator.new(
         timing_source: timing_source(config),
-        multiplier: config.timeout_multiplier
+        multiplier: config.timeout_multiplier,
+        boot_seconds: -> { boot_seconds(config) }
       )
+    end
+
+    def boot_seconds(config)
+      path = File.join(config.reports_dir, PerTestCoverageCollector::BOOT_FILE_NAME)
+      CoverageReportReader.new.boot_seconds(path)
     end
 
     def warn_timeout_fallback_once

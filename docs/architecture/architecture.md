@@ -207,6 +207,8 @@ Representative configuration contract:
 mutation:
   operators: light
   timeout: 10
+  timeout_multiplier: 3.0
+  max_timeout: 30.0
   max_flaky_retries: 3
   sampling:
     ratio: 0.05
@@ -225,6 +227,8 @@ reports_dir: reports
 dashboard:
   base_url: https://dashboard.stryker-mutator.io
 ```
+
+Timeout calibration: without an explicit `mutation.timeout`, the per-mutant timeout is `timeout_multiplier` × (sum of the selected test-file durations from `henitai_per_test.json` + the suite boot time from `henitai_suite_boot.json`), floored at 2 s. `max_timeout` caps the calibrated value but never below baseline + 2 s; when the baseline alone exceeds it, a single warning is emitted. Boot time is included so slow `spec_helper` or `before(:suite)` work is not misreported as mutant timeouts.
 
 Representative report contract:
 
@@ -278,7 +282,7 @@ The implementation maps onto the following module layout:
 3. If the current coverage artifacts do not cover the configured source files,
    Henitai runs the configured test suite once to bootstrap a usable baseline.
 4. If coverage is still missing or unusable after the bootstrap run, Henitai aborts with `Henitai::CoverageError`.
-5. Coverage data and test inventory are used to prioritize tests.
+5. Coverage data and test inventory are used to prioritize tests. Test selection is coverage first: the per-test coverage map (`henitai_per_test.json`) is the primary candidate source, and every integration test file that provably covers the mutant's lines is selected, whether or not its name matches the subject. Name matching is only the fallback when the map cannot decide (no map, no location, no covering test, or no covering test left in the integration).
 6. The execution engine runs the filtered mutant set.
 7. The analysis stage classifies killed, survived, ignored, timeout, and equivalent outcomes.
 8. The reporter emits JSON, HTML, and optional review feedback.

@@ -254,8 +254,10 @@ RSpec.describe Henitai::SlotScheduler do
 
   describe "#reap_all_completed_children" do
     def build_runtime_double(*wait2_results)
-      runtime = instance_double(Henitai::ProcessWorkerRunner::Runtime)
+      runtime = instance_double(Henitai::ProcessWorkerRunner::Runtime, pause: nil)
       allow(runtime).to receive(:wait2).and_return(*wait2_results, nil)
+      allow(runtime).to receive(:kill).and_return(1)
+      allow(runtime).to receive(:kill).with(0, anything).and_raise(Errno::ESRCH)
       runtime
     end
 
@@ -386,6 +388,61 @@ RSpec.describe Henitai::SlotScheduler do
       expect(Henitai::Integration::SchedulerDiagnostics).to have_received(:child_ended).with(slot.pid)
       expect(slot.mutant.status).to eq(:killed)
     end
+
+    it "tears down the child's process group after a normal reap", :aggregate_failures do
+      runtime = build_group_runtime(members_remain: false)
+      scheduler = build_completed_slot_scheduler(runtime)
+      pid = slot_table.each_value.first.pid
+
+      scheduler.reap_all_completed_children
+
+      expect(runtime).to have_received(:kill).with(:SIGTERM, -pid)
+      expect(runtime).not_to have_received(:kill).with(:SIGKILL, anything)
+    end
+
+    it "sends SIGKILL to the process group when members survive SIGTERM", :aggregate_failures do
+      runtime = build_group_runtime(members_remain: true)
+      scheduler = build_completed_slot_scheduler(runtime)
+      pid = slot_table.each_value.first.pid
+
+      scheduler.reap_all_completed_children
+
+      expect(runtime).to have_received(:kill).with(:SIGKILL, -pid)
+    end
+  end
+
+  def build_group_runtime(members_remain:)
+    runtime = instance_double(Henitai::ProcessWorkerRunner::Runtime, pause: nil, clock_gettime: 0.0)
+    allow(runtime).to receive(:kill).and_return(1)
+    allow(runtime).to receive(:kill).with(0, anything) do
+      raise Errno::ESRCH unless members_remain
+
+      1
+    end
+    runtime
+  end
+
+  def killed_result
+    instance_double(Henitai::ScenarioExecutionResult, survived?: false, status: :killed)
+  end
+
+  def build_completed_integration(captured)
+    build_capturing_integration(captured).tap do |integration|
+      allow(integration).to receive(:build_result).and_return(killed_result)
+    end
+  end
+
+  def build_completed_slot_scheduler(runtime)
+    captured = []
+    integration = build_completed_integration(captured)
+    scheduler = build_worker_scheduler(
+      captured, worker_count: 1, integration: integration, host: build_host(1, runtime: runtime)
+    )
+    scheduler.enqueue([build_worker_mutant("a")])
+    scheduler.fill_idle_slots
+    slot = slot_table.each_value.first
+    allow(runtime).to receive(:wait2).and_return([slot.pid, instance_double(Process::Status)], nil)
+    scheduler
   end
 
   describe "#dispatch_slot_result" do

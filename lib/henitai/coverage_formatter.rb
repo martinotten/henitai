@@ -8,8 +8,12 @@ module Henitai
     REPORT_DIR_ENV = PerTestCoverageCollector::REPORT_DIR_ENV
     REPORT_FILE_NAME = PerTestCoverageCollector::REPORT_FILE_NAME
 
-    def initialize(_output)
-      @collector = PerTestCoverageCollector.new
+    def initialize(_output, boot_clock: SuiteBootClock.from_env(ENV))
+      @collector = PerTestCoverageCollector.new(boot_clock:)
+    end
+
+    def example_started(_notification)
+      @collector.test_started
     end
 
     def example_finished(notification)

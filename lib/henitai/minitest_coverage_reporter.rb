@@ -11,9 +11,14 @@ module Henitai
   # to PerTestCoverageCollector so the JSON output format is identical to the
   # RSpec integration.
   class MinitestCoverageReporter < Minitest::Reporter
-    def initialize(io = $stdout, options = {})
+    def initialize(io = $stdout, options = {}, boot_clock: SuiteBootClock.from_env(ENV))
+      super(io, options)
+      @collector = PerTestCoverageCollector.new(boot_clock:)
+    end
+
+    def prerecord(klass, name)
       super
-      @collector = PerTestCoverageCollector.new
+      @collector.test_started
     end
 
     def record(result)

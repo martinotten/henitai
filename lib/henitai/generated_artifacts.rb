@@ -18,6 +18,7 @@ module Henitai
       mutation-history.sqlite3
       mutation-history.json
       henitai_per_test.json
+      henitai_suite_boot.json
       henitai_dependency_manifest.json
       .henitai-run.lock
       mutation-logs

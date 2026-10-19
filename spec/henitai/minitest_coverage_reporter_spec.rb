@@ -49,6 +49,26 @@ RSpec.describe Henitai::MinitestCoverageReporter do
     end
   end
 
+  it "marks the end of boot when the first test is prerecorded" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        boot_clock = Henitai::SuiteBootClock.new(started_at: 20.0, clock: -> { 23.0 })
+        reporter = described_class.new(StringIO.new, boot_clock:)
+
+        allow(Coverage).to receive(:peek_result).and_return(
+          coverage_snapshot(source_lines: [nil, 1])
+        )
+
+        reporter.prerecord(Object, "test_sample")
+        reporter.record(build_result(File.join(Dir.pwd, "test", "sample_test.rb")))
+        reporter.report
+
+        boot_path = File.join("coverage", Henitai::PerTestCoverageCollector::BOOT_FILE_NAME)
+        expect(JSON.parse(File.read(boot_path))).to eq("boot_seconds" => 3.0)
+      end
+    end
+  end
+
   it "does not write a report when no tests have been recorded" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do

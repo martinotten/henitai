@@ -160,6 +160,11 @@ coverage and is excluded from `includes` in `.henitai.yml`.
   `1`). With more jobs, `ProcessWorkerRunner` drives a single-threaded event
   loop and `SlotScheduler` owns spawning, reaping, timeouts and draining. Every
   mutant runs in its own forked child; forked processes provide the isolation.
+- Test selection is coverage first. The per-test coverage map
+  (`henitai_per_test.json`) is the primary source of candidate tests: every
+  integration test file that provably covers the mutant's lines is selected,
+  whether or not its name matches the subject. Name matching
+  (`select_tests`) is only the fallback when per-test data cannot decide.
 - A detected verdict must be caused by the mutation (ADR-14). `FidelityCheck`
   rejects a mutant whose activation source is not exactly the reported
   mutation before it runs; the child reports its outcome through
@@ -234,8 +239,13 @@ deliberate even though `||=` is a valid `UpdateOperator`/
   drift and supports latent-mutant tracking separately from the pass/fail model.
 - Reports default to `reports/` and can be overridden with `reports_dir`:
   `mutation-report.json` (canonical Stryker schema), `mutation-report.html`,
-  `mutation-history.json` (trend export), and `henitai_per_test.json` (per-test
-  coverage propagated to forked children through `HENITAI_REPORTS_DIR`).
+  `mutation-history.json` (trend export), `henitai_per_test.json` (per-test
+  coverage propagated to forked children through `HENITAI_REPORTS_DIR`), and
+  `henitai_suite_boot.json` (`{"boot_seconds": x}`, the measured suite boot
+  time that feeds timeout calibration).
+- Timeout calibration: calibrated timeout = `timeout_multiplier` × (sum of the
+  selected test-file durations + measured boot), floored at 2 s. `max_timeout`
+  caps it but never below baseline + 2 s, with a one-time warning.
 - Live terminal progress is separate from captured child stdout/stderr. Child
   logs are written to `reports/mutation-logs/` and shown only on failure or
   with `--all-logs`/`--verbose`.

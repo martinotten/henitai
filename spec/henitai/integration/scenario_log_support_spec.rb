@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "timeout"
 require "tmpdir"
 
 RSpec.describe Henitai::Integration::ScenarioLogSupport do
@@ -262,6 +263,78 @@ RSpec.describe Henitai::Integration::ScenarioLogSupport do
 
           expect(File.read(paths[:stdout_path])).to eq("small")
         end
+      end
+    end
+
+    describe "when a grandchild still holds the output pipe" do
+      def elapsed_seconds
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        yield
+        Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+      end
+
+      it "returns within the drain bound instead of waiting for EOF" do
+        Dir.mktmpdir do |dir|
+          support = described_class.new(drain_join_timeout: 0.05)
+          output_files = support.open_child_output(log_paths(dir))
+          grandchild_writer = output_files[:stdout][:writer].dup
+
+          elapsed = Timeout.timeout(5) do
+            elapsed_seconds { support.close_child_output(output_files) }
+          end
+
+          expect(elapsed).to be < 2.0
+        ensure
+          grandchild_writer&.close
+        end
+      end
+
+      it "keeps the output written before the stream closed" do
+        Dir.mktmpdir do |dir|
+          support = described_class.new(drain_join_timeout: 0.05)
+          paths = log_paths(dir)
+          output_files = support.open_child_output(paths)
+          output_files[:stdout][:writer].write("written before close")
+          grandchild_writer = output_files[:stdout][:writer].dup
+
+          Timeout.timeout(5) { support.close_child_output(output_files) }
+
+          expect(File.read(paths[:stdout_path])).to eq("written before close")
+        ensure
+          grandchild_writer&.close
+        end
+      end
+
+      it "applies the cap and truncation marker to output drained after the bound" do
+        with_env(described_class::MAX_LOG_BYTES_ENV, "100") do
+          Dir.mktmpdir do |dir|
+            support = described_class.new(drain_join_timeout: 0.05)
+            paths = log_paths(dir)
+            output_files = support.open_child_output(paths)
+            output_files[:stdout][:writer].write("a" * 5_000)
+            grandchild_writer = output_files[:stdout][:writer].dup
+
+            Timeout.timeout(5) { support.close_child_output(output_files) }
+
+            expect(File.read(paths[:stdout_path]))
+              .to eq("#{'a' * 100}\n[henitai] output truncated at 100 bytes\n")
+          ensure
+            grandchild_writer&.close
+          end
+        end
+      end
+    end
+
+    it "keeps all output of a large stream that closes normally" do
+      Dir.mktmpdir do |dir|
+        support = described_class.new
+        paths = log_paths(dir)
+        output_files = support.open_child_output(paths)
+        payload = "x" * 1_000_000
+        output_files[:stdout][:writer].write(payload)
+        support.close_child_output(output_files)
+
+        expect(File.read(paths[:stdout_path])).to eq(payload)
       end
     end
 

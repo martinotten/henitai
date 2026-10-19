@@ -1,29 +1,38 @@
 # frozen_string_literal: true
 
 module Henitai
-  # Narrows candidate test files using the per-test coverage report.
+  # Selects the test files to run for a mutant, coverage first.
   #
-  # The intersection check itself lives in {PerTestCoverage}; this class only
-  # adds the selection policy: when no candidate provably covers the mutant
-  # (or the map / location is unavailable), it falls back to all candidates —
-  # over-selection costs time, never correctness.
+  # The per-test coverage map is the primary source: every integration test
+  # file that provably reaches the mutant's lines is selected, whether or not
+  # its name matches the subject. Name matching ({fallback}) is only consulted
+  # when the map cannot decide — no map, no location, no covering test in the
+  # map, or no covering test left in the integration. Over-selection costs
+  # time; a missed covering test would produce a false survivor.
+  #
+  # `test_files` and `fallback` are lambdas so that expensive name matching
+  # and file discovery run only when they are needed.
   class PerTestCoverageSelector
     def initialize(coverage_report_reader: CoverageReportReader.new)
       @coverage_report_reader = coverage_report_reader
     end
 
-    def filter(tests, mutant, reports_dir:)
-      candidates = Array(tests)
-      return candidates if candidates.empty?
+    def select(mutant, reports_dir:, test_files:, fallback:)
+      covering = per_test_coverage(reports_dir).tests_covering(mutant)
+      return fallback.call if covering.empty?
 
-      coverage = per_test_coverage(reports_dir)
-      covered_tests = candidates.select do |test|
-        coverage.covers?(test, mutant)
-      end
-      covered_tests.empty? ? candidates : covered_tests
+      covered = covered_integration_tests(test_files.call, covering)
+      covered.empty? ? fallback.call : covered
     end
 
     private
+
+    def covered_integration_tests(integration_tests, covering)
+      covering_paths = covering.map { |test| File.expand_path(test) }
+      Array(integration_tests).select do |test|
+        covering_paths.include?(File.expand_path(test))
+      end
+    end
 
     def per_test_coverage(reports_dir)
       @per_test_coverage ||= {}
