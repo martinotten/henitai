@@ -88,6 +88,7 @@ mutation:
   max_log_bytes: 5000000
   max_timeout: 30.0
   control_runs: true   # re-run detected subjects with the unmutated method
+  fork_server: false   # opt-in: boot the RSpec/Minitest environment once, fork each mutant run from it (any jobs; falls back to per-mutant boot with a warning)
   sampling:
     ratio: 0.05
     strategy: stratified

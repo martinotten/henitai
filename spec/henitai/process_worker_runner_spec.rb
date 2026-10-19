@@ -259,6 +259,19 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       Henitai::Integration::SchedulerDiagnostics.reset!
     end
 
+    it "makes the event loop wake on the sockets its runtime asks to watch" do
+      wakeup = instance_double(Henitai::ProcessWakeup, close: nil)
+      provider = nil
+      allow(wakeup).to receive(:watch) { |&block| provider = block }
+      runtime, = build_fake_runtime(clock_times: [0.0], wait2_results: {})
+      runtime.define_singleton_method(:wakeup_ios) { [:socket] }
+      config = Struct.new(:timeout, :max_flaky_retries).new(10.0, 0)
+
+      described_class.new(worker_count: 1, runtime:, wakeup:).run([], nil, config, nil)
+
+      expect(provider.call).to eq([:socket])
+    end
+
     it "returns empty array immediately when given zero mutants" do
       runner = described_class.new(worker_count: 2)
       integration = instance_double(Henitai::Integration::Rspec)

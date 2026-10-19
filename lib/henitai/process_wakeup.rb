@@ -13,10 +13,15 @@ module Henitai
       self
     end
 
+    # Also wake on these sockets; +provider+ is asked for them on every wait,
+    # so a connection that was lost can drop out of the set.
+    def watch(&provider)
+      @watched = provider
+      self
+    end
+
     def wait(timeout)
-      # rubocop:disable Lint/IncompatibleIoSelectWithFiberScheduler
-      IO.select([reader], nil, nil, timeout)
-      # rubocop:enable Lint/IncompatibleIoSelectWithFiberScheduler
+      IO.select([reader, *@watched&.call], nil, nil, timeout)
     rescue Errno::EINTR
       nil
     end

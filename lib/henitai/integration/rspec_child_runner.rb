@@ -10,6 +10,19 @@ module Henitai
 
       def run_rspec_runner(test_files, &after_load)
         log = child_debug_log
+        runner = @preloaded_runner || prepare_rspec_runner(test_files)
+        return 1 unless ready_to_run?(after_load)
+
+        run_rspec_specs(runner, example_groups_to_run(test_files))
+      rescue SystemExit => e
+        log.write("[henitai-debug-child] runner_run_system_exit status=#{e.status.inspect}")
+        raise
+      ensure
+        child_debug_log.write("[henitai-debug-child] runner_run_ensure")
+      end
+
+      def prepare_rspec_runner(test_files)
+        log = child_debug_log
         log.write("[henitai-debug-child] build_rspec_runner_start")
         runner = build_rspec_runner
         log.write("[henitai-debug-child] build_rspec_runner_return")
@@ -17,14 +30,22 @@ module Henitai
         configure_rspec_runner(runner)
         log.write("[henitai-debug-child] configure_rspec_runner_return")
         load_rspec_spec_files(test_files)
-        return 1 unless ready_to_run?(after_load)
+        runner
+      end
 
-        run_rspec_specs(runner)
-      rescue SystemExit => e
-        log.write("[henitai-debug-child] runner_run_system_exit status=#{e.status.inspect}")
-        raise
-      ensure
-        child_debug_log.write("[henitai-debug-child] runner_run_ensure")
+      # A fork-server process loaded the union of the run's spec files; each
+      # mutant process runs only the groups defined in its own files.
+      def example_groups_to_run(test_files)
+        groups = ::RSpec.world.ordered_example_groups
+        return groups unless @preloaded_runner
+
+        wanted = test_files.map { |file| File.expand_path(file) }
+        groups.select { |group| wanted.include?(example_group_file(group)) }
+      end
+
+      def example_group_file(group)
+        metadata = group.metadata
+        metadata[:absolute_file_path] || File.expand_path(metadata[:file_path])
       end
 
       # The after-load hook (mutant activation) runs only when every spec file
@@ -65,9 +86,9 @@ module Henitai
         child_debug_log.write("[henitai-debug-child] load_spec_files_return")
       end
 
-      def run_rspec_specs(runner)
+      def run_rspec_specs(runner, example_groups)
         child_debug_log.write("[henitai-debug-child] run_specs_start")
-        result = runner.send(:run_specs, ::RSpec.world.ordered_example_groups)
+        result = runner.send(:run_specs, example_groups)
         child_debug_log.write("[henitai-debug-child] run_specs_return result=#{result.inspect}")
         result
       end

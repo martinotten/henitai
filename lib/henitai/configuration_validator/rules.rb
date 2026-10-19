@@ -104,7 +104,7 @@ module Henitai
       end
 
       def validate_mutation_flags(value)
-        %i[control_runs flaky_detection].each do |key|
+        %i[control_runs flaky_detection fork_server].each do |key|
           Scalars.validate_boolean(value[key], "mutation.#{key}") unless value[key].nil?
         end
       end

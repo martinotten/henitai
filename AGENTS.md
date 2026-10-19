@@ -156,6 +156,9 @@ coverage and is excluded from `includes` in `.henitai.yml`.
   `def obj.name` for a non-constant `obj` are no subjects. `define_method`
   remains only as the fallback for `define_method` subjects. Process isolation
   is the required default model, not thread-only parallelism.
+- Opt-in `mutation.fork_server` (ADR-15, RSpec and Minitest, any `jobs`)
+  boots the test environment once in a server and forks each mutant process
+  from it; on failure it falls back to per-mutant boot.
 - `ExecutionEngine` runs mutants linearly by default (`config.jobs`, default
   `1`). With more jobs, `ProcessWorkerRunner` drives a single-threaded event
   loop and `SlotScheduler` owns spawning, reaping, timeouts and draining. Every

@@ -14,6 +14,7 @@ require_relative "integration/base"
 require_relative "integration/mutant_run_support"
 require_relative "integration/rspec_child_runner"
 require_relative "integration/rspec_outcomes"
+require_relative "integration/rspec_preload"
 require_relative "integration/rspec_test_selection"
 
 module Henitai
@@ -52,6 +53,7 @@ module Henitai
     class Rspec < Base
       include MutantRunSupport
       include RspecChildRunner
+      include RspecPreload
       include RspecTestSelection
 
       DEFAULT_SUITE_TIMEOUT = 300.0

@@ -90,6 +90,7 @@ module Henitai
     def prepare_run(mutants, integration, config, progress_reporter, options)
       @shutdown_requested = false
       @wakeup = Henitai::ProcessWakeup.new.install if @wakeup.nil?
+      @wakeup.watch { @runtime.wakeup_ios } if @runtime.respond_to?(:wakeup_ios)
       @scheduler = SlotScheduler.new(
         integration: integration,
         config: config,

@@ -128,6 +128,16 @@ module Henitai
     def pause: (Float) -> void
   end
 
+  module Integration::RspecPreload
+    def fork_server_supported?: () -> bool
+    def preload_environment: (Array[String]) -> untyped
+  end
+
+  module Integration::MinitestPreload
+    def fork_server_supported?: () -> bool
+    def preload_environment: (Array[String]) -> untyped
+  end
+
   module Integration::RspecChildRunner
     private
 
@@ -135,7 +145,7 @@ module Henitai
     def build_rspec_runner: () -> untyped
     def configure_rspec_runner: (untyped) -> void
     def load_rspec_spec_files: (Array[String]) -> void
-    def run_rspec_specs: (untyped) -> untyped
+    def run_rspec_specs: (untyped, untyped) -> untyped
   end
 
   module Integration::RspecOutcomes
@@ -199,6 +209,7 @@ module Henitai
     attr_reader max_flaky_retries: Integer
     attr_reader control_runs: bool
     attr_reader flaky_detection: bool
+    attr_reader fork_server: bool
     attr_reader max_log_bytes: Integer
     attr_reader max_timeout: Float
     attr_reader sampling: untyped
@@ -517,6 +528,7 @@ module Henitai
     class Rspec < Base
       include MutantRunSupport
       include RspecChildRunner
+      include RspecPreload
       include RspecTestSelection
 
       DEFAULT_SUITE_TIMEOUT: Float

@@ -211,6 +211,7 @@ mutation:
   max_timeout: 30.0
   max_flaky_retries: 3
   flaky_detection: false
+  fork_server: false
   sampling:
     ratio: 0.05
     strategy: stratified
@@ -502,6 +503,16 @@ end
 ```
 
 Namespace-wide ignore rules belong in `.henitai.yml`, not in source comments.
+
+### 8.5a Fork-Server Execution (opt-in)
+
+With `mutation.fork_server: true` (RSpec and Minitest, any `jobs`), the
+environment and the union of the run's test files are loaded once in a
+long-lived server and every mutant process is forked from it. With `jobs > 1`
+the scheduler runs on `ForkServer::Runtime`, which completes mutants from the
+server's `exited` events instead of `waitpid`. If the server is unavailable
+the run falls back to per-mutant boot with a warning. See
+[ADR-15](adr/ADR-15-fork-server-execution-model.md).
 
 ### 8.6 Parallel Execution and Flaky Test Mitigation
 

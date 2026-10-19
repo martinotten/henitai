@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
+require "henitai/integration/minitest_autorun"
 require "henitai/integration/minitest_outcome_reporter"
+require "henitai/integration/minitest_runnable_filter"
 require "henitai/test_file_outcomes"
 
 module Henitai
@@ -10,12 +12,18 @@ module Henitai
     class MinitestTestRunner
       PLUGIN_NAME = "henitai_outcomes"
 
+      # +preloaded+: the fork server already required the union of the run's
+      # test files, so only the ones requested here are kept to run.
+      def initialize(preloaded: false)
+        @preloaded = preloaded
+      end
+
       # Yields once the test files are required and before Minitest runs; a
       # falsy block result skips the run. Per-file outcomes are recorded into
       # +outcomes+ through a Minitest reporter plugin.
       def call(test_files, outcomes = TestFileOutcomes.new, &after_load)
-        suppress_autorun!
-        test_files.each { |file| require File.expand_path(file) }
+        MinitestAutorun.suppress!
+        load_tests(test_files)
         return 1 if after_load && !after_load.call
 
         install_outcome_plugin(outcomes)
@@ -38,18 +46,10 @@ module Henitai
         end
       end
 
-      def suppress_autorun!
-        require "minitest"
-        singleton_class = ::Minitest.singleton_class
-        suppressor = @autorun_suppressor ||= Module.new.tap do |mod|
-          mod.define_method(:autorun) { nil }
-        end
-        return if singleton_class.ancestors.include?(suppressor)
+      def load_tests(test_files)
+        return MinitestRunnableFilter.new(test_files).apply! if @preloaded
 
-        singleton_class.prepend(suppressor)
-        nil
-      rescue LoadError, NameError
-        nil
+        test_files.each { |file| require File.expand_path(file) }
       end
     end
   end

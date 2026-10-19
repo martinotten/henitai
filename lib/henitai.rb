@@ -84,6 +84,7 @@ module Henitai
   autoload :TimeoutCalibrator, "henitai/timeout_calibrator"
   autoload :TimeoutCeiling, "henitai/timeout_ceiling"
   autoload :ExecutionEngine, "henitai/execution_engine"
+  autoload :ForkServer, "henitai/fork_server"
   autoload :ProcessWorkerRunner, "henitai/process_worker_runner"
   autoload :SlotScheduler, "henitai/slot_scheduler"
   autoload :ProcessWakeup, "henitai/process_wakeup"

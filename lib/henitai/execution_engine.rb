@@ -2,11 +2,13 @@
 
 require_relative "process_worker_runner"
 require_relative "execution_engine/env_scope"
+require_relative "execution_engine/fork_server_scope"
 
 module Henitai
   # Runs pending mutants through the selected integration.
   class ExecutionEngine
     include EnvScope
+    include ForkServerScope
 
     def run(mutants, integration, config, progress_reporter: nil)
       with_reports_dir(config) do
@@ -27,16 +29,21 @@ module Henitai
       mutex = Mutex.new
       @flaky_tests = flaky_tests_for(config)
       @retrier = FlakyMutantRetrier.new(flaky_tests: @flaky_tests, max_retries: max_flaky_retries(config))
-      if parallel_execution?(config, pending_mutants)
-        run_parallel(pending_mutants, integration, config, progress_reporter)
-      else
-        run_linear(pending_mutants, integration, config, progress_reporter, mutex)
-        @flaky_retry_count = @retrier.retried_count
-      end
-
+      run_pending(pending_mutants, integration, config, progress_reporter, mutex)
       warn_flaky_mutants
       verify_controls(pending_mutants, integration, config)
       mutants
+    end
+
+    def run_pending(pending_mutants, integration, config, progress_reporter, mutex)
+      with_fork_server(pending_mutants, integration, config) do
+        if parallel_execution?(config, pending_mutants)
+          run_parallel(pending_mutants, integration, config, progress_reporter)
+        else
+          run_linear(pending_mutants, integration, config, progress_reporter, mutex)
+          @flaky_retry_count = @retrier.retried_count
+        end
+      end
     end
 
     def verify_controls(mutants, integration, config)
@@ -71,10 +78,10 @@ module Henitai
     end
 
     def run_parallel(mutants, integration, config, progress_reporter)
-      runner = ProcessWorkerRunner.new(worker_count: worker_count(config))
+      runner = ProcessWorkerRunner.new(worker_count: worker_count(config), **parallel_runtime_options)
       results = runner.run(
         mutants,
-        integration,
+        @fork_server_runner || integration,
         config,
         progress_reporter,
         test_file_resolver: ->(mutant) { prioritized_tests_for(mutant, integration, config) },
@@ -90,7 +97,7 @@ module Henitai
       return record_no_coverage(mutant, progress_reporter, mutex) if test_files.empty?
 
       scenario_result = @retrier.run(
-        mutant: mutant, integration: integration, test_files: test_files,
+        mutant: mutant, integration: @fork_server_runner || integration, test_files: test_files,
         timeout: resolved_timeout(test_files, config)
       )
       mutant.status = scenario_status(scenario_result)
@@ -182,10 +189,13 @@ module Henitai
     end
 
     def timeout_calibrator(config)
-      @timeout_calibrator ||= TimeoutCalibrator.new(
+      include_boot = calibration_includes_boot?
+      @timeout_calibrators ||= {}
+      @timeout_calibrators[include_boot] ||= TimeoutCalibrator.new(
         timing_source: timing_source(config),
         multiplier: config.timeout_multiplier,
-        boot_seconds: -> { boot_seconds(config) }
+        boot_seconds: -> { boot_seconds(config) },
+        include_boot: include_boot
       )
     end
 

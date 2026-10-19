@@ -60,6 +60,20 @@ module Henitai
         false
       end
 
+      # True when the integration can boot once in a fork server (ADR-15) and
+      # run mutants from the booted state.
+      def fork_server_supported?
+        false
+      end
+
+      # Loads the test environment and the given test files without running
+      # anything; only called inside the fork server process.
+      #
+      # @param test_files [Array<String>]
+      def preload_environment(test_files)
+        raise NotImplementedError
+      end
+
       def wait_with_timeout(pid, timeout)
         wakeup = Henitai.const_get(:ProcessWakeup).new.install
         return Process.last_status if wait_nonblocking(pid)

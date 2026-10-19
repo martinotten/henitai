@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Fork server for Minitest and parallel runs.** `mutation.fork_server`
+  (opt-in, ADR-15) now supports Minitest and `jobs > 1`: the environment is
+  booted once and each mutant process is forked from the server. Falls back to
+  per-mutant boot with a warning if the server is unavailable.
+
 ### Changed
 
 - **Flaky-test handling.** Survivors are no longer retried: a retry could only

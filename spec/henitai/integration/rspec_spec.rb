@@ -1858,4 +1858,11 @@ RSpec.describe Henitai::Integration::Rspec do
       expect([handle.pid, handle.log_paths[:stdout_path]]).to eq([42, "/tmp/out.log"])
     end
   end
+
+  describe "#fork_server_supported?" do
+    it "is supported for RSpec and not for the base integration" do
+      expect([described_class.new.fork_server_supported?, Henitai::Integration::Base.new.fork_server_supported?])
+        .to eq([true, false])
+    end
+  end
 end
