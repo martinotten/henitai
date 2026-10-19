@@ -6,9 +6,17 @@ require "henitai/minitest_result_file"
 
 # A test class defined in this file whose test method comes from another one.
 module HenitaiMinitestResultFileSpec
-  class BaseTest < Minitest::Test; end
+  class BaseTest < Minitest::Test
+    def test_inherited; end
+  end
 
-  class SubTest < BaseTest; end
+  module SharedTests
+    def test_shared; end
+  end
+
+  class SubTest < BaseTest
+    include SharedTests
+  end
 
   # Defined here and reopened elsewhere: the test method lives in another file.
   class ReopenedTest < Minitest::Test; end
@@ -26,7 +34,14 @@ RSpec.describe Henitai::MinitestResultFile do
   end
 
   it "uses the test class's file for a method inherited from a shared base class" do
-    shared = result(klass: "HenitaiMinitestResultFileSpec::SubTest", name: "test_runnable_methods",
+    shared = result(klass: "HenitaiMinitestResultFileSpec::SubTest", name: "test_inherited",
+                    source_location: ["/app/test/shared.rb", 4])
+
+    expect(described_class.for(shared)).to eq(__FILE__)
+  end
+
+  it "uses the test class's file for a method from an included shared module" do
+    shared = result(klass: "HenitaiMinitestResultFileSpec::SubTest", name: "test_shared",
                     source_location: ["/app/test/shared.rb", 4])
 
     expect(described_class.for(shared)).to eq(__FILE__)
@@ -69,8 +84,8 @@ RSpec.describe Henitai::MinitestResultFile do
   end
 
   it "records a failing result under the test class's file" do
-    failing = result(klass: "HenitaiMinitestResultFileSpec::SubTest", source_location: ["/app/test/shared.rb", 4],
-                     passed: false)
+    failing = result(klass: "HenitaiMinitestResultFileSpec::SubTest", name: "test_inherited",
+                     source_location: ["/app/test/shared.rb", 4], passed: false)
 
     described_class.record(outcomes, failing)
 
