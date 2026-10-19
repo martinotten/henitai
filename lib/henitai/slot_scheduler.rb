@@ -156,12 +156,14 @@ module Henitai
       resolver ? resolver.call(mutant, test_files) : config.timeout
     end
 
-    # Every path that reaps a child ends here, so this is the single place
-    # that tears down the child's process group.
+    # Every path that reaps a mutant child ends here, so this is the single
+    # place that tears down the child's process group. A reaped pid that owns
+    # no slot (wait2(-1) can reap any helper child) is never signalled.
     def complete_slot(pid, wait_result)
-      tear_down_process_group(pid)
       slot_id = slot_table.release_pid(pid)
       return unless slot_id
+
+      tear_down_process_group(pid)
 
       slot = slot_table.fetch(slot_id)
       return unless slot

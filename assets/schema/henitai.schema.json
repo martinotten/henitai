@@ -73,7 +73,7 @@
         "fork_server": {
           "type": "boolean",
           "default": false,
-          "description": "Opt-in. Boot the test environment once in a long-lived fork server and fork each mutant run from it instead of re-booting per mutant. Supported for RSpec with jobs: 1; other setups fall back to per-mutant boot."
+          "description": "Opt-in. Boot the test environment once in a long-lived fork server and fork each mutant run from it instead of re-booting per mutant. Supported for RSpec and Minitest with any jobs value; unsupported integrations and a server that fails to boot fall back to per-mutant boot with a warning."
         },
         "control_runs": {
           "type": "boolean",

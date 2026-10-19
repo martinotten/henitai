@@ -21,10 +21,6 @@ RSpec.describe Henitai::ExecutionEngine::ForkServerScope, :aggregate_failures do
         end
       end
 
-      def includes_boot?
-        calibration_includes_boot?
-      end
-
       def warn(message)
         @warnings << message
       end
@@ -33,8 +29,8 @@ RSpec.describe Henitai::ExecutionEngine::ForkServerScope, :aggregate_failures do
         ["a_spec.rb"]
       end
 
-      def resolved_timeout(test_files, _config, include_boot: calibration_includes_boot?)
-        [test_files, include_boot]
+      def resolved_timeout(test_files, _config)
+        test_files
       end
     end
   end
@@ -60,7 +56,7 @@ RSpec.describe Henitai::ExecutionEngine::ForkServerScope, :aggregate_failures do
     host.run(mutants, integration, config)
 
     expect(Henitai::ForkServer).to have_received(:start) do |fallback_timeout:, **|
-      expect(fallback_timeout.call(["a_spec.rb"])).to eq([["a_spec.rb"], true])
+      expect(fallback_timeout.call(["a_spec.rb"])).to eq(["a_spec.rb"])
     end
   end
 
@@ -87,12 +83,6 @@ RSpec.describe Henitai::ExecutionEngine::ForkServerScope, :aggregate_failures do
     host.run(mutants, integration, config)
 
     expect(host.inside).to be_nil
-  end
-
-  it "excludes boot from the timeout calibration only while the server is active" do
-    host.run(mutants, integration, config)
-
-    expect(host.includes_boot?).to be(true)
   end
 
   it "hands the scheduler the server's runtime while the server is active" do

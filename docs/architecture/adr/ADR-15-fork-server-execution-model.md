@@ -53,10 +53,9 @@ ADR-14 guarantees hold.
   mutants take that path too. The mutant processes the dead server left behind
   are killed so a rerun cannot race them.
 - Every path that boots the suite in the parent (fallback, lost-server rerun,
-  control runs) uses a boot-inclusive timeout (`resolved_timeout(include_boot:
-  true)`), handed over through `fallback_timeout:` and `ChildHandle#timeout`;
-  the boot-excluded timeout is only right for processes forked from the
-  booted server.
+  control runs) uses a boot-inclusive timeout, handed over through
+  `fallback_timeout:` and `ChildHandle#timeout`; so does every served mutant
+  (see the `TimeoutCalibrator` note below).
 - Grandchildren are not our children: `waitpid` raises ECHILD, and one that
   has not yet run `setpgid` has no process group. `ForkServer::GroupKiller`
   therefore signals the group and falls back to the pid itself, and
@@ -69,14 +68,14 @@ ADR-14 guarantees hold.
 - If the server cannot boot (`boot_failed`, or it dies), the run falls back to
   per-mutant boot with a one-time warning. A mutant the server cannot spawn is
   run on the old path.
-- `TimeoutCalibrator` is built with `include_boot: false` while the server is
-  active, because mutant processes no longer pay for boot.
+- `TimeoutCalibrator` keeps `include_boot: true` while the server is active:
+  the measured suite boot includes `before(:suite)` hooks, which every served
+  mutant still runs, and the server only preloads files.
 
 Deviations from the first design sketch: requests and events carry a `type`
 key, `run` carries a `request_id` and the server answers with `spawn_failed`
 for an unknown mutant id; control runs (which use a mutant not known to the
-server) keep the per-mutant boot path, so the calibrator is memoized per
-`include_boot` value; the grandchild is forked by the server's own launcher
+server) keep the per-mutant boot path; the grandchild is forked by the server's own launcher
 rather than by `RspecProcessRunner`, so the socket can be closed in it and its
 orphan watchdog can watch the server pid.
 

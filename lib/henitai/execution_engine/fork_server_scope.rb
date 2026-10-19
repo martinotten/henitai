@@ -28,7 +28,7 @@ module Henitai
         return if test_files.empty?
 
         ForkServer.start(integration:, mutants:, test_files:, log_path: fork_server_log_path(config),
-                         fallback_timeout: ->(files) { resolved_timeout(files, config, include_boot: true) })
+                         fallback_timeout: ->(files) { resolved_timeout(files, config) })
       end
 
       def fork_server_requested?(config)
@@ -47,10 +47,6 @@ module Henitai
       # The scheduler learns of served processes' exits through the server.
       def parallel_runtime_options
         @fork_server_runner&.active? ? { runtime: @fork_server_runner.runtime } : {}
-      end
-
-      def calibration_includes_boot?
-        !@fork_server_runner&.active?
       end
 
       def fork_server_log_path(config)

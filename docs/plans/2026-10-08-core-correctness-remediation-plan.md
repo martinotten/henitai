@@ -318,7 +318,7 @@ Phase C (WS4) is implemented on branch `martinotten-fix-phase-ab-review-findings
 
 | Item | Status | Notes |
 |---|---|---|
-| WS4.1 Fork server (EXE-13) | done, opt-in | `mutation.fork_server: true`; RSpec with `jobs: 1`; ADR-15. Lifecycle hardening: group termination with grace, pid fallback, abandoned mutants are killed, inherited descriptors are registered |
+| WS4.1 Fork server (EXE-13) | done, opt-in | `mutation.fork_server: true`; RSpec and Minitest, any `jobs` (initially RSpec with `jobs: 1`); ADR-15. Lifecycle hardening: group termination with grace, pid fallback, abandoned mutants are killed, inherited descriptors are registered |
 | WS4.2 Timeout calibration (EXE-03) | done | measured suite boot feeds the calibration; `max_timeout` never caps below the baseline |
 | WS4.3 Output capture (EXE-05) | done | bounded log drain threads with a capped sink, stopped cooperatively |
 | WS4.4 Process-group hygiene (EXE-09, EXE-10) | done | mutant process groups are torn down; shutdown signals go through the wakeup pipe |

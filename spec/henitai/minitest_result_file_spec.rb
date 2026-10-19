@@ -9,22 +9,41 @@ module HenitaiMinitestResultFileSpec
   class BaseTest < Minitest::Test; end
 
   class SubTest < BaseTest; end
+
+  # Defined here and reopened elsewhere: the test method lives in another file.
+  class ReopenedTest < Minitest::Test; end
+  ReopenedTest.class_eval("def test_added; end", "/app/test/b_test.rb", 1) # rubocop:disable Style/EvalWithLocation
 end
 
 RSpec.describe Henitai::MinitestResultFile do
   let(:outcomes) { Henitai::TestFileOutcomes.new }
 
-  def result(klass:, source_location:, passed: true)
+  def result(klass:, source_location:, name: "test_it", passed: true)
     instance_double(
       Minitest::Result,
-      klass: klass, source_location: source_location, passed?: passed, skipped?: false
+      klass: klass, name: name, source_location: source_location, passed?: passed, skipped?: false
     )
   end
 
-  it "prefers the file that defines the test class over the test method's file" do
-    shared = result(klass: "HenitaiMinitestResultFileSpec::SubTest", source_location: ["/app/test/shared.rb", 4])
+  it "uses the test class's file for a method inherited from a shared base class" do
+    shared = result(klass: "HenitaiMinitestResultFileSpec::SubTest", name: "test_runnable_methods",
+                    source_location: ["/app/test/shared.rb", 4])
 
     expect(described_class.for(shared)).to eq(__FILE__)
+  end
+
+  it "uses the method's file for a test defined directly on a reopened class" do
+    added = result(klass: "HenitaiMinitestResultFileSpec::ReopenedTest", name: "test_added",
+                   source_location: ["/app/test/b_test.rb", 1])
+
+    expect(described_class.for(added)).to eq("/app/test/b_test.rb")
+  end
+
+  it "uses the class's file when the method name no longer resolves on the class" do
+    gone = result(klass: "HenitaiMinitestResultFileSpec::SubTest", name: "test_missing",
+                  source_location: ["/app/test/shared.rb", 4])
+
+    expect(described_class.for(gone)).to eq(__FILE__)
   end
 
   it "falls back to the test method's file for classes that cannot be resolved" do

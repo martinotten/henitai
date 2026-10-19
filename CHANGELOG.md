@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Review follow-ups.** The slot scheduler no longer signals the process
+  group of a reaped pid that owns no mutant slot. Minitest results for tests
+  added by reopening a class in another file are attributed to the file that
+  defines the method, so coverage-first selection no longer misses them. With
+  the fork server active, calibrated timeouts keep the measured suite boot
+  (served mutants still run `before(:suite)` hooks). The `fork_server` schema
+  description and the remediation plan now state the real scope (RSpec and
+  Minitest, any `jobs`).
+
 - **`--incremental` no longer reuses stale survived verdicts for def-line
   mutants.** Their test selection is widened with name-matched tests that the
   survivor fingerprint does not cover, so survived verdicts for mutants on a

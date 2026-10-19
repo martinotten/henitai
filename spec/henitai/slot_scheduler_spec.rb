@@ -406,6 +406,19 @@ RSpec.describe Henitai::SlotScheduler do
       expect(runtime).not_to have_received(:kill).with(:SIGKILL, anything)
     end
 
+    it "does not signal the process group of a reaped pid that owns no slot", :aggregate_failures do
+      runtime = build_group_runtime(members_remain: true)
+      allow(runtime).to receive(:wait2).and_return([4242, instance_double(Process::Status)], nil)
+      host = build_host(1, runtime: runtime)
+      scheduler = described_class.new(
+        integration: nil, config: nil, progress_reporter: nil, options: {}, host: host
+      )
+
+      scheduler.reap_all_completed_children
+
+      expect(runtime).not_to have_received(:kill)
+    end
+
     it "sends SIGKILL to the process group when members survive SIGTERM", :aggregate_failures do
       runtime = build_group_runtime(members_remain: true)
       scheduler = build_completed_slot_scheduler(runtime)

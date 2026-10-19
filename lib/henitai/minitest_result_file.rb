@@ -5,9 +5,11 @@ module Henitai
   #
   # `Result#source_location` is where the test method is defined. For tests
   # inherited from a base class or an included module that is a shared file,
-  # not the file of the test class that ran. The file that defines the
-  # result's class is used instead; the method location is the fallback for
-  # classes that cannot be resolved (anonymous or removed).
+  # not the file of the test class that ran, so the file that defines the
+  # result's class is used for those. A method defined directly on the class
+  # keeps its own file: the class may have been reopened in another test file.
+  # The method location is also the fallback for classes that cannot be
+  # resolved (anonymous or removed).
   module MinitestResultFile
     module_function
 
@@ -25,7 +27,16 @@ module Henitai
 
     # @return [String, nil] the test file, or nil when none can be found
     def for(result)
+      return usable(method_file(result)) || usable(class_file(result)) if defined_on_class?(result)
+
       usable(class_file(result)) || usable(method_file(result))
+    end
+
+    def defined_on_class?(result)
+      klass = Object.const_get(result.klass.to_s)
+      klass.instance_method(result.name).owner == klass
+    rescue NameError
+      false
     end
 
     def class_file(result)

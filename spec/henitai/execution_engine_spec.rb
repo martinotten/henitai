@@ -156,6 +156,32 @@ RSpec.describe Henitai::ExecutionEngine do
       end
     end
 
+    it "keeps suite boot in the calibrated timeout while the fork server is active" do
+      fork_runner = instance_double(Henitai::ForkServer::MutantRunner, stop: nil, active?: true, runtime: nil)
+      worker_runner = instance_double(Henitai::ProcessWorkerRunner, flaky_retry_count: 0)
+      integration = instance_double(Henitai::Integration::Rspec, fork_server_supported?: true)
+      allow(Henitai::ForkServer).to receive(:start).and_return(fork_runner)
+      allow(Henitai::ProcessWorkerRunner).to receive(:new).and_return(worker_runner)
+      timeouts = []
+      allow(worker_runner).to receive(:run) do |*_args, **opts|
+        timeouts << opts[:timeout_resolver].call(nil, ["spec/foo_spec.rb"])
+        []
+      end
+
+      Dir.mktmpdir do |dir|
+        config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :fork_server, :timeout_multiplier) do
+          def timeout_configured? = false
+        end.new(12.5, dir, 2, 3, true, 3.0)
+        write_timing_report(dir, "spec/foo_spec.rb" => 2.0)
+        write_boot_report(dir, 1.0)
+        engine = described_class.new
+        allow(engine).to receive(:prioritized_tests_for).and_return(["spec/foo_spec.rb"])
+        engine.run(2.times.map { |i| build_mutant(:pending, "Foo#bar#{i}") }, integration, config)
+      end
+
+      expect(timeouts).to eq([9.0])
+    end
+
     it "never caps the timeout below the measured baseline" do
       Dir.mktmpdir do |dir|
         config = build_calibrating_config(dir, timeout_configured: false)
