@@ -48,6 +48,12 @@ module Henitai
       @previous_snapshot = snapshot
     end
 
+    # Advances past a test whose result cannot be attributed to a file, so its
+    # coverage is not credited to the next test.
+    def skip_test
+      @previous_snapshot = current_snapshot || @previous_snapshot
+    end
+
     def write_report
       return if @coverage_by_test.empty?
 

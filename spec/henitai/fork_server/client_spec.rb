@@ -16,6 +16,15 @@ RSpec.describe Henitai::ForkServer::Client, :aggregate_failures do
     server.write(protocol.encode(message))
   end
 
+  # Spawns mutants the server reports as +pids+, making them outstanding.
+  # Request ids follow the client's sequence, starting at 1 for a fresh client.
+  def spawn_outstanding(*pids)
+    pids.each_with_index do |pid, index|
+      tell("type" => "spawned", "request_id" => index + 1, "pid" => pid)
+    end
+    pids.each { client.spawn_mutant(mutant_id: "m", test_files: [], log_paths: {}) }
+  end
+
   it "waits until the server is ready" do
     tell("type" => "ready")
 
@@ -57,6 +66,7 @@ RSpec.describe Henitai::ForkServer::Client, :aggregate_failures do
   end
 
   it "returns the status relayed for a pid, and nil while it still runs" do
+    spawn_outstanding(5)
     expect(client.wait_exit(5, 0.05)).to be_nil
 
     tell("type" => "exited", "pid" => 5, "exitstatus" => nil, "termsig" => 9)
@@ -65,14 +75,48 @@ RSpec.describe Henitai::ForkServer::Client, :aggregate_failures do
   end
 
   it "keeps the exit of another pid for its own wait" do
+    spawn_outstanding(5, 6)
     tell("type" => "exited", "pid" => 6, "exitstatus" => 0, "termsig" => nil)
     tell("type" => "exited", "pid" => 5, "exitstatus" => 1, "termsig" => nil)
 
     expect([client.wait_exit(5, 1).exitstatus, client.wait_exit(6, 1).exitstatus]).to eq([1, 0])
   end
 
+  it "drops the exit of a pid that is not outstanding" do
+    tell("type" => "exited", "pid" => 5, "exitstatus" => 0, "termsig" => nil)
+
+    expect([client.wait_exit(5, 0.05), client.poll_any_exit]).to eq([nil, nil])
+  end
+
+  describe "forgetting a pid" do
+    it "drops its outstanding registration so a server loss does not complete it" do
+      spawn_outstanding(99)
+      client.forget(99)
+      server.close
+
+      expect([client.poll_any_exit, client.lost?]).to eq([nil, true])
+    end
+
+    it "drops an exit that already arrived for it" do
+      spawn_outstanding(5)
+      tell("type" => "exited", "pid" => 5, "exitstatus" => 0, "termsig" => nil)
+      client.forget(5)
+
+      expect([client.poll_exit(5), client.poll_any_exit]).to eq([nil, nil])
+    end
+
+    it "drops an exit that arrives after it" do
+      spawn_outstanding(5)
+      client.forget(5)
+      tell("type" => "exited", "pid" => 5, "exitstatus" => 0, "termsig" => nil)
+
+      expect(client.poll_exit(5)).to be_nil
+    end
+  end
+
   describe "polling for the parallel scheduler" do
     it "returns a relayed exit without blocking and nil while the process runs" do
+      spawn_outstanding(5)
       expect(client.poll_exit(5)).to be_nil
 
       tell("type" => "exited", "pid" => 5, "exitstatus" => 0, "termsig" => nil)
@@ -81,6 +125,7 @@ RSpec.describe Henitai::ForkServer::Client, :aggregate_failures do
     end
 
     it "hands out relayed exits of any pid one at a time" do
+      spawn_outstanding(5)
       tell("type" => "exited", "pid" => 5, "exitstatus" => 1, "termsig" => nil)
 
       pid, status = client.poll_any_exit

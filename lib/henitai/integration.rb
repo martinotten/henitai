@@ -13,7 +13,7 @@ require_relative "integration/loaded_features"
 require_relative "integration/base"
 require_relative "integration/mutant_run_support"
 require_relative "integration/rspec_child_runner"
-require_relative "integration/rspec_outcomes"
+require_relative "rspec_outcomes"
 require_relative "integration/rspec_preload"
 require_relative "integration/rspec_test_selection"
 

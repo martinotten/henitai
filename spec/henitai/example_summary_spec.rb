@@ -32,6 +32,25 @@ RSpec.describe Henitai::ExampleSummary do
     expect(described_class.none_ran?(output)).to be(false)
   end
 
+  it "detects a Minitest run that executed no tests" do
+    output = "Finished in 0.001s\n0 runs, 0 assertions, 0 failures, 0 errors, 0 skips\n"
+
+    expect(described_class.none_ran?(output)).to be(true)
+  end
+
+  it "does not count a Minitest run with tests" do
+    expect(described_class.none_ran?("3 runs, 4 assertions, 0 failures, 0 errors, 0 skips\n")).to be(false)
+  end
+
+  it "judges a Minitest run by its last summary line" do
+    output = [
+      "0 runs, 0 assertions, 0 failures, 0 errors, 0 skips",
+      "2 runs, 2 assertions, 0 failures, 0 errors, 0 skips"
+    ].join("\n")
+
+    expect(described_class.none_ran?(output)).to be(false)
+  end
+
   it "treats empty output as a run with no summary" do
     expect(described_class.none_ran?(nil)).to be(false)
   end

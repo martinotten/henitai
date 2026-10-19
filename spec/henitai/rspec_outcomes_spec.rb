@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-RSpec.describe Henitai::Integration::RspecOutcomes do
+RSpec.describe Henitai::RspecOutcomes do
   let(:outcomes) { Henitai::TestFileOutcomes.new }
   let(:example_result) { Struct.new(:metadata, :execution_result) }
   let(:status_result) { Struct.new(:status) }

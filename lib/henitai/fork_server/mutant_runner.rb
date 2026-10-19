@@ -105,6 +105,7 @@ module Henitai
 
         @integration.cleanup_process_group(pid)
         @client.wait_exit(pid, EXIT_GRACE_SECONDS)
+        @client.forget(pid)
         :timeout
       end
 

@@ -148,7 +148,7 @@ module Henitai
     def run_rspec_specs: (untyped, untyped) -> untyped
   end
 
-  module Integration::RspecOutcomes
+  module RspecOutcomes
     EVENTS: Array[Symbol]
     HOOK_ERROR: String
 
@@ -157,7 +157,7 @@ module Henitai
     def self.group_file: (untyped) -> String
   end
 
-  class Integration::RspecOutcomes::Listener
+  class RspecOutcomes::Listener
     def initialize: (TestFileOutcomes) -> void
     def example_finished: (untyped) -> void
     def example_group_started: (untyped) -> void

@@ -2,7 +2,7 @@
 
 require "spec_helper"
 require "minitest"
-require "henitai/integration/minitest_result_file"
+require "henitai/minitest_result_file"
 
 # A test class defined in this file whose test method comes from another one.
 module HenitaiMinitestResultFileSpec
@@ -11,7 +11,7 @@ module HenitaiMinitestResultFileSpec
   class SubTest < BaseTest; end
 end
 
-RSpec.describe Henitai::Integration::MinitestResultFile do
+RSpec.describe Henitai::MinitestResultFile do
   let(:outcomes) { Henitai::TestFileOutcomes.new }
 
   def result(klass:, source_location:, passed: true)
@@ -41,6 +41,12 @@ RSpec.describe Henitai::Integration::MinitestResultFile do
 
   it "returns nil when neither the class nor the method has a usable file" do
     expect(described_class.for(result(klass: "Missing::Test", source_location: ["unknown", 0]))).to be_nil
+  end
+
+  it "names the file that defines a class, and nothing for an unknown name" do
+    expect([described_class.class_file_of("HenitaiMinitestResultFileSpec::SubTest"),
+            described_class.class_file_of("Missing::Test"),
+            described_class.class_file_of("#<Class:0x0001>")]).to eq([__FILE__, nil, nil])
   end
 
   it "records a failing result under the test class's file" do

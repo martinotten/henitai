@@ -37,11 +37,12 @@ RSpec.describe Henitai::ForkServer::MutantRunner, :aggregate_failures do
   end
 
   it "kills the process group and reports a timeout when no exit arrives" do
-    allow(client).to receive_messages(spawn_mutant: 77, wait_exit: nil)
+    allow(client).to receive_messages(spawn_mutant: 77, wait_exit: nil, forget: nil)
 
     run
 
     expect(integration).to have_received(:cleanup_process_group).with(77).once
+    expect(client).to have_received(:forget).with(77)
     expect(integration).to have_received(:build_result).with(:timeout, anything)
   end
 

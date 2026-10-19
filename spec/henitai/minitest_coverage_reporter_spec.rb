@@ -17,13 +17,15 @@ RSpec.describe Henitai::MinitestCoverageReporter do
   end
 
   def build_result(absolute_path, time: 0.25)
-    Struct.new(:source_location, :time) do
-      def klass = "UnresolvableTest"
+    build_named_result("UnresolvableTest", [absolute_path, 5], time:)
+  end
 
+  def build_named_result(klass, source_location, time: 0.25)
+    Struct.new(:klass, :source_location, :time) do
       def passed? = true
 
       def skipped? = false
-    end.new([absolute_path, 5], time)
+    end.new(klass, source_location, time)
   end
 
   def coverage_snapshot(source_lines:)
@@ -83,6 +85,64 @@ RSpec.describe Henitai::MinitestCoverageReporter do
         reporter.report
 
         expect(File.exist?(File.join("coverage", "henitai_per_test.json"))).to be(false)
+      end
+    end
+  end
+
+  it "records no coverage and does not crash for a result without a source location" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        reporter = described_class.new
+
+        allow(Coverage).to receive(:peek_result).and_return(
+          coverage_snapshot(source_lines: [nil, 1])
+        )
+
+        reporter.record(build_named_result("UnresolvableTest", nil))
+        reporter.report
+
+        expect(File.exist?(File.join("coverage", "henitai_per_test.json"))).to be(false)
+      end
+    end
+  end
+
+  it "keys coverage by the file that defines the result's class, not the method's file" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        reporter = described_class.new
+        class_file = Object.const_source_location("Henitai::MinitestCoverageReporter").first
+        shared_file = File.join(Dir.pwd, "test", "shared_examples.rb")
+
+        allow(Coverage).to receive(:peek_result).and_return(
+          coverage_snapshot(source_lines: [nil, 1])
+        )
+
+        reporter.record(build_named_result("Henitai::MinitestCoverageReporter", [shared_file, 3]))
+        reporter.report
+
+        report = JSON.parse(File.read(File.join("coverage", "henitai_per_test.json")))
+        expect(report.keys).to eq([class_file])
+      end
+    end
+  end
+
+  it "does not credit a skipped result's coverage to the next test" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        reporter = described_class.new
+        snapshots = [
+          coverage_snapshot(source_lines: [nil, 1, 0]),
+          coverage_snapshot(source_lines: [nil, 1, 2])
+        ]
+
+        allow(Coverage).to receive(:peek_result).and_return(*snapshots)
+
+        reporter.record(build_named_result("UnresolvableTest", nil))
+        reporter.record(build_result(File.join(Dir.pwd, "test", "sample_test.rb")))
+        reporter.report
+
+        report = JSON.parse(File.read(File.join("coverage", "henitai_per_test.json")))
+        expect(report.fetch("test/sample_test.rb").fetch("coverage")).to eq(File.expand_path("lib/sample.rb") => [3])
       end
     end
   end

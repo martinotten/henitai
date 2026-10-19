@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-RSpec.describe Henitai::Integration::RspecOutcomes::Listener do
+RSpec.describe Henitai::RspecOutcomes::Listener do
   subject(:listener) { described_class.new(outcomes) }
 
   let(:outcomes) { Henitai::TestFileOutcomes.new }

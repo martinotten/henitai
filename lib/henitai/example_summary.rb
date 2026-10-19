@@ -9,7 +9,7 @@ module Henitai
   # runs before the run's own.
   module ExampleSummary
     NO_EXAMPLES_FOUND = /^No examples found\.$/
-    SUMMARY = /^(\d+) examples?, \d+ failures?/
+    SUMMARY = /^(\d+) (?:examples?, \d+ failures?|runs?, \d+ assertions?)/
 
     module_function
 

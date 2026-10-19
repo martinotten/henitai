@@ -5,6 +5,16 @@ require "minitest"
 require "spec_helper"
 require "tmpdir"
 
+# A named test class defined in this file; its test methods come from
+# SharedExamples, which is defined elsewhere (see the shared-module example).
+module HenitaiMinitestRunnableFilterSpec
+  module SharedExamples; end
+
+  class IncludingTest
+    def self.runnable_methods = ["test_shared"]
+  end
+end
+
 RSpec.describe Henitai::Integration::MinitestRunnableFilter, :aggregate_failures do
   def suite_defined_in(path, method_name = "test_it")
     Class.new do
@@ -83,5 +93,20 @@ RSpec.describe Henitai::Integration::MinitestRunnableFilter, :aggregate_failures
     expect([seen.first.class, Minitest.seed]).to eq([Integer, nil])
   ensure
     Minitest.seed = original
+  end
+
+  it "keeps a test class whose inherited test methods are defined in another file" do
+    shared_file = "/app/test/shared_examples.rb"
+    shared_line = 1
+    # The method must report another file as its location, like a shared module.
+    HenitaiMinitestRunnableFilterSpec::SharedExamples.class_eval("def test_shared; end", shared_file, shared_line) # rubocop:disable Style/EvalWithLocation
+    HenitaiMinitestRunnableFilterSpec::IncludingTest.include(HenitaiMinitestRunnableFilterSpec::SharedExamples)
+    suite = HenitaiMinitestRunnableFilterSpec::IncludingTest
+
+    with_registry(suite) do |registry|
+      described_class.new([__FILE__]).apply!
+
+      expect(registry).to eq([suite])
+    end
   end
 end

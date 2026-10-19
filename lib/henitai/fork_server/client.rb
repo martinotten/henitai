@@ -91,6 +91,15 @@ module Henitai
         [pid, status]
       end
 
+      # Stops tracking a pid whose result is no longer wanted, such as a child
+      # the caller gave up on after a timeout. Its exit, if one already
+      # arrived or arrives later, is dropped rather than left for a recycled pid.
+      def forget(pid)
+        drain_available
+        @outstanding.delete(pid)
+        @exits.delete(pid)
+      end
+
       def shutdown
         send_message("type" => "shutdown")
       rescue ServerLost
@@ -150,8 +159,10 @@ module Henitai
       end
 
       def record_exit(message)
-        @outstanding.delete(message["pid"])
-        @exits[message["pid"]] = Status.from_event(message)
+        pid = message["pid"]
+        return unless @outstanding.delete(pid)
+
+        @exits[pid] = Status.from_event(message)
       end
 
       def send_message(message)

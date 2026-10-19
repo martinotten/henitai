@@ -2,7 +2,7 @@
 
 require "minitest"
 require "henitai/test_file_outcomes"
-require "henitai/integration/minitest_result_file"
+require "henitai/minitest_result_file"
 
 module Henitai
   module Integration

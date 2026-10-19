@@ -3,7 +3,7 @@
 require "minitest"
 require "henitai/per_test_coverage_collector"
 require "henitai/test_file_outcomes"
-require "henitai/integration/minitest_result_file"
+require "henitai/minitest_result_file"
 
 module Henitai
   # Minitest reporter that collects per-test line coverage deltas.
@@ -26,9 +26,8 @@ module Henitai
 
     def record(result)
       super
-      file = relative_to_pwd(result.source_location.first)
-      @collector.record_test(file, duration: result.time)
-      Integration::MinitestResultFile.record(@outcomes, result)
+      record_coverage(result)
+      MinitestResultFile.record(@outcomes, result)
     end
 
     def report
@@ -38,6 +37,15 @@ module Henitai
     end
 
     private
+
+    # A result without a resolvable file is skipped, so its coverage delta is
+    # not attributed to the next recorded test.
+    def record_coverage(result)
+      file = MinitestResultFile.for(result)
+      return @collector.skip_test unless file
+
+      @collector.record_test(relative_to_pwd(file), duration: result.time)
+    end
 
     def relative_to_pwd(path)
       prefix = "#{Dir.pwd}#{File::SEPARATOR}"

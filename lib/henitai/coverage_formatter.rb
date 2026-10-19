@@ -2,7 +2,7 @@
 
 require "henitai/per_test_coverage_collector"
 require "henitai/test_file_outcomes"
-require "henitai/integration/rspec_outcomes"
+require "henitai/rspec_outcomes"
 
 module Henitai
   # Collects per-test coverage data for static filtering heuristics.
@@ -13,7 +13,7 @@ module Henitai
     def initialize(_output, boot_clock: SuiteBootClock.from_env(ENV))
       @collector = PerTestCoverageCollector.new(boot_clock:)
       @outcomes = TestFileOutcomes.new
-      @outcome_listener = Integration::RspecOutcomes::Listener.new(@outcomes)
+      @outcome_listener = RspecOutcomes::Listener.new(@outcomes)
     end
 
     def example_started(_notification)
