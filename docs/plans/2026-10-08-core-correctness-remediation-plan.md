@@ -312,6 +312,42 @@ Notes on the measurements:
   - A spec failed when run alone, for lack of `require "tmpdir"`.
   - The zero-example check matched texts quoted in failure output.
 
+## Phase C Status
+
+Phase C (WS4) is implemented on branch `martinotten-fix-phase-ab-review-findings`.
+
+| Item | Status | Notes |
+|---|---|---|
+| WS4.1 Fork server (EXE-13) | done, opt-in | `mutation.fork_server: true`; RSpec with `jobs: 1`; ADR-15. Lifecycle hardening: group termination with grace, pid fallback, abandoned mutants are killed, inherited descriptors are registered |
+| WS4.2 Timeout calibration (EXE-03) | done | measured suite boot feeds the calibration; `max_timeout` never caps below the baseline |
+| WS4.3 Output capture (EXE-05) | done | bounded log drain threads with a capped sink, stopped cooperatively |
+| WS4.4 Process-group hygiene (EXE-09, EXE-10) | done | mutant process groups are torn down; shutdown signals go through the wakeup pipe |
+| WS4.5 Per-test selection (EXE-11, EXE-12) | done | coverage first, name matching as fallback; a mutant on a `def` line adds the name-matched tests (ACT-08) |
+| WS4.6 Flakiness policy (EXE-07) | done | baseline flaky detection; failures outside examples are attributed |
+| Incremental def-line verdicts | done | found in review: survived def-line mutants are no longer reused |
+
+Measurements:
+
+| Run | Killed | Survived | Timeout | NoCoverage | MS / MSI | Wall time |
+|---|---|---|---|---|---|---|
+| Dogfood Phase B | 966 | 90 | 12 | 57 | 91.64 % / 85.11 % | 26.7 min |
+| Dogfood Phase C, default | 1184 | 75 | 29 | 80 | 94.23 % / 85.80 % | 26.5 min |
+| Dogfood Phase C, fork server | — | — | — | — | — | pending |
+
+Notes on the measurements:
+
+- **No control run failed** in the Phase C dogfood run. A spec file slower
+  than the 10 s mutation timeout makes control runs fail; the fork-server
+  client specs crossed it once and now use a configurable shutdown grace.
+- **The fork-server measurement is pending.** A first attempt used a custom
+  `reports_dir`, which leaks into this repository's own specs through
+  `HENITAI_REPORTS_DIR`; the baseline suite failed. Re-measure with the
+  default `reports_dir` and only `fork_server: true`.
+- **Known equivalent survivors** kept on purpose: the `deactivate` guard in
+  `fork_server/mutant_runner.rb` (defensive idempotence), the integer
+  `slot_id` check in `slot_scheduler.rb`, and the refill after
+  `check_timeouts` in `process_worker_runner.rb` (ordering only).
+
 ## Sequencing
 
 | Phase | Content | Depends on |
