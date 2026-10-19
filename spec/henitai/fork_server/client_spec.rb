@@ -38,13 +38,15 @@ RSpec.describe Henitai::ForkServer::Client, :aggregate_failures do
   end
 
   it "raises BootFailed when the server stays silent" do
-    expect { client.wait_until_ready(0.05) }.to raise_error(described_class::BootFailed, /did not become ready/)
+    expect { client.wait_until_ready(0.05) }
+      .to raise_error(described_class::BootFailed, /did not become ready within 0\.05s/)
   end
 
   it "raises ServerLost when the server closes the connection" do
     server.close
 
-    expect { client.wait_until_ready(1) }.to raise_error(described_class::ServerLost)
+    expect { client.wait_until_ready(1) }
+      .to raise_error(described_class::ServerLost, "the fork server closed the connection")
   end
 
   it "sends a run request and returns the pid from the matching spawned event" do
@@ -185,7 +187,7 @@ RSpec.describe Henitai::ForkServer::Client, :aggregate_failures do
   end
 
   describe "#abandon" do
-    let(:client) { described_class.new(socket: sockets.first, pid: 4242) }
+    let(:client) { described_class.new(socket: sockets.first, pid: 4242, shutdown_grace: 0.0) }
 
     it "closes the connection, kills and reaps the server and marks it lost" do
       allow(Process).to receive(:kill)
@@ -196,6 +198,16 @@ RSpec.describe Henitai::ForkServer::Client, :aggregate_failures do
       expect(Process).to have_received(:kill).with(:SIGKILL, 4242)
       expect(Process).to have_received(:wait).with(4242)
       expect([sockets.first.closed?, client.lost?]).to eq([true, true])
+    end
+
+    it "does not kill a server that exits within the grace period" do
+      client = described_class.new(socket: sockets.first, pid: 4242, shutdown_grace: 5.0)
+      allow(Process).to receive(:kill)
+      allow(Process).to receive(:wait).with(4242, Process::WNOHANG).and_return(nil, 4242)
+
+      client.abandon
+
+      expect(Process).not_to have_received(:kill).with(:SIGKILL, 4242)
     end
 
     it "tolerates a server that is already gone, and a later shutdown" do

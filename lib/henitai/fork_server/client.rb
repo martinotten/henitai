@@ -19,9 +19,11 @@ module Henitai
 
       # @param socket [IO] the parent end of the connection
       # @param pid [Integer, nil] the server process, reaped on #shutdown
-      def initialize(socket:, pid:)
+      # @param shutdown_grace [Float] seconds the server may take to exit before it is killed
+      def initialize(socket:, pid:, shutdown_grace: SHUTDOWN_GRACE)
         @socket = socket
         @pid = pid
+        @shutdown_grace = shutdown_grace
         @reader = Protocol::Reader.new(socket)
         @next_request_id = 0
         @boot = nil
@@ -201,7 +203,7 @@ module Henitai
       end
 
       def reap_server
-        return if @pid.nil? || exited_within?(SHUTDOWN_GRACE)
+        return if @pid.nil? || exited_within?(@shutdown_grace)
 
         Process.kill(:SIGKILL, @pid)
         Process.wait(@pid)

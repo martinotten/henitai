@@ -104,6 +104,7 @@ module Henitai
 
     def event_loop
       saved_traps = install_signal_traps
+      @scheduler.fill_idle_slots
       loop do
         break if @scheduler.done?
 
@@ -115,7 +116,6 @@ module Henitai
     end
 
     def process_cycle
-      @scheduler.fill_idle_slots unless @shutdown_requested
       @scheduler.reap_all_completed_children
       @scheduler.check_timeouts
       @scheduler.fill_idle_slots unless @shutdown_requested

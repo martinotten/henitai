@@ -39,6 +39,15 @@ RSpec.describe Henitai::ForkServer::Runtime, :aggregate_failures do
     expect(base).to have_received(:wait2).once
   end
 
+  it "keeps a local pid registered until the base runtime reports its exit" do
+    runtime.local(8)
+    allow(client).to receive(:poll_any_exit).and_return(nil)
+    allow(base).to receive(:wait2).with(8, Process::WNOHANG).and_return(nil, [8, :real])
+
+    expect(runtime.wait2(-1, Process::WNOHANG)).to be_nil
+    expect(runtime.wait2(-1, Process::WNOHANG)).to eq([8, :real])
+  end
+
   it "waits on a pid it does not know through the base runtime" do
     allow(base).to receive(:wait2).with(9, 0).and_return([9, :real])
 
@@ -105,11 +114,11 @@ RSpec.describe Henitai::ForkServer::Runtime, :aggregate_failures do
   end
 
   it "delegates clock, signals, pausing and traps to the base runtime" do
-    allow(base).to receive_messages(clock_gettime: 1.5, kill: 1, pause: nil, trap: "DEFAULT")
+    allow(base).to receive_messages(clock_gettime: 1.5, kill: 1, pause: :paused, trap: "DEFAULT")
 
     expect(runtime.clock_gettime(Process::CLOCK_MONOTONIC)).to eq(1.5)
     expect(runtime.kill(:SIGKILL, -5)).to eq(1)
-    expect(runtime.pause(0.1)).to be_nil
+    expect(runtime.pause(0.1)).to eq(:paused)
     expect(runtime.trap("INT", "IGNORE")).to eq("DEFAULT")
     expect(base).to have_received(:kill).with(:SIGKILL, -5)
   end

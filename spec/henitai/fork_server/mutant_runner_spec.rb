@@ -63,6 +63,14 @@ RSpec.describe Henitai::ForkServer::MutantRunner, :aggregate_failures do
     expect([runner.active?, warnings.size]).to eq([false, 1])
   end
 
+  it "runs a mutant on the per-mutant path once the runner is stopped" do
+    allow(client).to receive(:spawn_mutant).and_return(77)
+    runner.stop
+
+    expect(run).to eq(:fallback_result)
+    expect(client).not_to have_received(:spawn_mutant)
+  end
+
   it "abandons the server when it is lost, so it cannot fork a mutant that runs locally" do
     allow(client).to receive(:spawn_mutant).and_raise(Henitai::ForkServer::Client::ServerLost, "gone")
 
@@ -148,6 +156,23 @@ RSpec.describe Henitai::ForkServer::MutantRunner, :aggregate_failures do
       expect(client).to have_received(:spawn_mutant)
         .with(hash_including(env: { "HENITAI_WORKER_SLOT" => "2" }))
       expect(report_store).to have_received(:clear).with("r.json")
+    end
+
+    it "forks locally without asking the server once the runner is stopped" do
+      allow(client).to receive(:spawn_mutant).and_return(77)
+      runner.stop
+
+      expect(spawn.pid).to eq(5)
+      expect(client).not_to have_received(:spawn_mutant)
+    end
+
+    it "exports no worker slot to the server when the scheduler set none" do
+      allow(client).to receive(:spawn_mutant).and_return(77)
+      ENV.delete("HENITAI_WORKER_SLOT")
+
+      spawn
+
+      expect(client).to have_received(:spawn_mutant).with(hash_including(env: {}))
     end
 
     it "forks locally when the server cannot fork the mutant" do

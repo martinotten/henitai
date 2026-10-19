@@ -454,6 +454,23 @@ RSpec.describe Henitai::ExecutionEngine do
     expect(progress.calls).to eq([:killed])
   end
 
+  it "reports progress for a mutant without coverage" do
+    pending = build_mutant(:pending, "Foo#bar")
+    integration = build_integration
+    progress = Struct.new(:calls) do
+      def progress(mutant, **_)
+        calls << mutant.status
+      end
+    end.new([])
+    config = build_config
+    config.define_singleton_method(:test_excludes) { ["spec/foo_spec.rb"] }
+    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
+
+    described_class.new.run([pending], integration, config, progress_reporter: progress)
+
+    expect(progress.calls).to eq([:no_coverage])
+  end
+
   it "prioritizes tests that have already killed other mutants" do
     pending = build_mutant(:pending, "Foo#bar")
     integration = build_integration
@@ -696,6 +713,27 @@ RSpec.describe Henitai::ExecutionEngine do
     expect(Henitai::ProcessWorkerRunner).to have_received(:new).with(
       hash_including(flaky_tests: satisfy { |registry| registry.flaky?("spec/foo_spec.rb") })
     )
+  end
+
+  it "runs parallel workers through the fork server while it is active" do
+    fork_runner = instance_double(Henitai::ForkServer::MutantRunner, stop: nil, active?: true, runtime: nil)
+    worker_runner = instance_double(Henitai::ProcessWorkerRunner, flaky_retry_count: 0)
+    integration = instance_double(Henitai::Integration::Rspec, fork_server_supported?: true)
+    config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :fork_server).new(
+      12.5, "coverage", 2, 3, true
+    )
+    mutants = 2.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
+
+    allow(Henitai::ForkServer).to receive(:start).and_return(fork_runner)
+    allow(worker_runner).to receive(:run).and_return([])
+    allow(Henitai::ProcessWorkerRunner).to receive(:new).and_return(worker_runner)
+
+    engine = described_class.new
+    allow(engine).to receive(:prioritized_tests_for).and_return(["spec/foo_spec.rb"])
+    engine.run(mutants, integration, config)
+
+    expect(worker_runner).to have_received(:run)
+      .with(mutants, fork_runner, config, nil, test_file_resolver: anything, timeout_resolver: anything)
   end
 
   it "filters candidate tests by per-test coverage before executing a mutant" do

@@ -290,6 +290,23 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       expect(wakeup_state[:wait_calls]).to eq([0])
     end
 
+    it "waits for the scheduler's next timeout when the runtime holds no event in user space" do
+      runtime, = build_fake_runtime(
+        clock_times: Array.new(20, 0.0),
+        wait2_results: { -1 => [nil, [10, build_wait_status(1)]] }
+      )
+      runtime.define_singleton_method(:pending_events?) { false }
+      wakeup, wakeup_state = build_fake_wakeup
+      integration = instance_double(Henitai::Integration::Rspec)
+      stub_fake_spawn(integration, 10)
+      stub_result_builder(integration)
+      config = Struct.new(:timeout, :max_flaky_retries).new(10.0, 0)
+
+      described_class.new(worker_count: 1, runtime:, wakeup:).run([build_mutant("a")], integration, config, nil)
+
+      expect(wakeup_state[:wait_calls].first).to be_positive
+    end
+
     it "returns empty array immediately when given zero mutants" do
       runner = described_class.new(worker_count: 2)
       integration = instance_double(Henitai::Integration::Rspec)
@@ -381,6 +398,26 @@ RSpec.describe Henitai::ProcessWorkerRunner do
         expect(runtime_state[:kill_calls]).to eq([[:SIGTERM, -12], [:SIGKILL, -12], [:SIGTERM, -12]])
         expect(runtime_state[:wait_calls]).to eq([12])
       end
+    end
+
+    it "does not pause while polling a process group that is already gone" do
+      mutant = build_mutant("slow")
+      runtime, = build_fake_runtime(
+        clock_times: [0.0, 0.2, 0.2],
+        wait2_results: { -1 => [nil, nil], 15 => [nil, nil, nil] },
+        wait_results: { 15 => build_wait_status(0) }
+      )
+      pauses = []
+      runtime.define_singleton_method(:pause) { |seconds| pauses << seconds }
+      wakeup, = build_fake_wakeup
+      integration = instance_double(Henitai::Integration::Rspec)
+      stub_fake_spawn(integration, 15)
+      stub_result_builder(integration)
+      config = Struct.new(:timeout, :max_flaky_retries).new(0.1, 0)
+
+      described_class.new(worker_count: 1, runtime: runtime, wakeup: wakeup).run([mutant], integration, config, nil)
+
+      expect(pauses).to be_empty
     end
 
     it "cleans up slots after timeout and leaves no active slots" do # rubocop:disable RSpec/MultipleExpectations

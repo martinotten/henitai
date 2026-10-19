@@ -121,11 +121,7 @@ module Henitai
     end
 
     def report_progress(mutant, scenario_result, progress_reporter, mutex)
-      if mutex
-        mutex.synchronize { progress_reporter&.progress(mutant, scenario_result:) }
-      else
-        progress_reporter&.progress(mutant, scenario_result:)
-      end
+      mutex.synchronize { progress_reporter&.progress(mutant, scenario_result:) }
     end
 
     def prioritized_tests_for(mutant, integration, config)
