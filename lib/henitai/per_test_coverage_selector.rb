@@ -8,7 +8,9 @@ module Henitai
   # its name matches the subject. Name matching ({fallback}) is only consulted
   # when the map cannot decide — no map, no location, no covering test in the
   # map, or no covering test left in the integration. Over-selection costs
-  # time; a missed covering test would produce a false survivor.
+  # time; a missed covering test would produce a false survivor. Mutants on a
+  # method's def line additionally take the name-matched tests, because that
+  # line's coverage is only a load-time record.
   #
   # `test_files` and `fallback` are lambdas so that expensive name matching
   # and file discovery run only when they are needed.
@@ -22,10 +24,22 @@ module Henitai
       return fallback.call if covering.empty?
 
       covered = covered_integration_tests(test_files.call, covering)
-      covered.empty? ? fallback.call : covered
+      return fallback.call if covered.empty?
+
+      signature_line?(mutant) ? covered | fallback.call : covered
     end
 
     private
+
+    # Line coverage records the def line (and so its parameter defaults) once,
+    # at load time, for whichever test loaded the file first. Callers of the
+    # method are invisible there, so name matching must widen the selection.
+    def signature_line?(mutant)
+      subject = mutant.respond_to?(:subject) ? mutant.subject : nil
+      return false unless subject.respond_to?(:source_range)
+
+      subject.source_range&.begin == mutant.location[:start_line]
+    end
 
     def covered_integration_tests(integration_tests, covering)
       covering_paths = covering.map { |test| File.expand_path(test) }

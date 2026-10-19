@@ -50,6 +50,23 @@ RSpec.describe Henitai::PerTestCoverageSelector do
     end
   end
 
+  it "adds name-matched tests for a mutant on the def line (load-time coverage)", :aggregate_failures do
+    Dir.mktmpdir do |dir|
+      write_report(dir, "spec/cart_spec.rb" => { source => [2] })
+      subject = Struct.new(:source_range).new(2..4)
+      mutant = Struct.new(:location, :subject).new({ file: source, start_line: 2, end_line: 2 }, subject)
+
+      result, = select_for(
+        mutant,
+        dir,
+        tests: ["spec/pricing_spec.rb", "spec/cart_spec.rb"],
+        fallback: ["spec/pricing_spec.rb"]
+      )
+
+      expect(result).to contain_exactly("spec/cart_spec.rb", "spec/pricing_spec.rb")
+    end
+  end
+
   it "drops a name-matched test whose coverage misses the mutant when another test covers it" do
     Dir.mktmpdir do |dir|
       write_report(
