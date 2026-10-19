@@ -13,14 +13,9 @@ module Henitai
       MAX_LOG_BYTES_ENV = "HENITAI_MAX_LOG_BYTES"
       DEFAULT_MAX_LOG_BYTES = 5_000_000
       DRAIN_CHUNK_BYTES = 65_536
-      # How long closing waits for the drain thread to reach EOF. Only a
-      # grandchild still holding the pipe makes this wait run out.
-      DRAIN_JOIN_TIMEOUT = 1.0
+      # Bound on the reads of the final drain, so a grandchild that keeps
+      # writing cannot hold the close up.
       DRAIN_AVAILABLE_READS = 16
-
-      def initialize(drain_join_timeout: DRAIN_JOIN_TIMEOUT)
-        @drain_join_timeout = drain_join_timeout
-      end
 
       def capture_child_output(log_paths)
         output_files = open_child_output(log_paths)
@@ -79,33 +74,35 @@ module Henitai
         file.sync = true
         reader, writer = IO.pipe
         sink = CappedLogSink.new(file, cap)
-        thread = Thread.new { drain_capped(reader, sink) }
-        { file:, reader:, writer:, thread:, sink: }
+        stop_reader, stop_writer = IO.pipe
+        thread = Thread.new { drain_capped(reader, stop_reader, sink) }
+        { file:, reader:, writer:, stop_reader:, stop_writer:, thread: }
       end
 
-      def drain_capped(reader, sink)
-        loop { sink.write(reader.readpartial(DRAIN_CHUNK_BYTES)) }
+      # Drains until EOF or until +stop_reader+ becomes readable. Never killed:
+      # the stop signal ends it cooperatively between sink writes.
+      def drain_capped(reader, stop_reader, sink)
+        loop do
+          ready, = IO.select([reader, stop_reader])
+          break drain_available(reader, sink) if ready.include?(stop_reader)
+
+          sink.write(reader.readpartial(DRAIN_CHUNK_BYTES))
+        end
       rescue IOError
         # EOFError (a subclass) on writer close, or a closed pipe: draining done.
         nil
       end
 
-      # Closing the writer lets the drain thread reach EOF. If a grandchild
-      # still holds a copy of the writer, EOF never comes; stop the thread
-      # after the bound and take what is already buffered in the pipe.
+      # Closing the writer lets the drain thread reach EOF. A grandchild may
+      # still hold a copy of the writer, so EOF is not awaited: the stop pipe
+      # makes the thread take what is readable right now and exit.
       def finish_capped_stream(stream)
         return unless stream
 
         stream[:writer].close
-        stop_capped_drain(stream) unless stream[:thread].join(@drain_join_timeout)
-        stream[:reader].close
-        stream[:file].close
-      end
-
-      def stop_capped_drain(stream)
-        stream[:thread].kill
+        stream[:stop_writer].close
         stream[:thread].join
-        drain_available(stream[:reader], stream[:sink])
+        %i[reader stop_reader file].each { |key| stream[key].close }
       end
 
       def drain_available(reader, sink)

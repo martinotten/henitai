@@ -273,9 +273,9 @@ RSpec.describe Henitai::Integration::ScenarioLogSupport do
         Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
       end
 
-      it "returns within the drain bound instead of waiting for EOF" do
+      it "returns promptly instead of waiting for EOF" do
         Dir.mktmpdir do |dir|
-          support = described_class.new(drain_join_timeout: 0.05)
+          support = described_class.new
           output_files = support.open_child_output(log_paths(dir))
           grandchild_writer = output_files[:stdout][:writer].dup
 
@@ -283,7 +283,7 @@ RSpec.describe Henitai::Integration::ScenarioLogSupport do
             elapsed_seconds { support.close_child_output(output_files) }
           end
 
-          expect(elapsed).to be < 2.0
+          expect(elapsed).to be < 0.5
         ensure
           grandchild_writer&.close
         end
@@ -291,7 +291,7 @@ RSpec.describe Henitai::Integration::ScenarioLogSupport do
 
       it "keeps the output written before the stream closed" do
         Dir.mktmpdir do |dir|
-          support = described_class.new(drain_join_timeout: 0.05)
+          support = described_class.new
           paths = log_paths(dir)
           output_files = support.open_child_output(paths)
           output_files[:stdout][:writer].write("written before close")
@@ -305,10 +305,10 @@ RSpec.describe Henitai::Integration::ScenarioLogSupport do
         end
       end
 
-      it "applies the cap and truncation marker to output drained after the bound" do
+      it "applies the cap and truncation marker to output drained after the stop" do
         with_env(described_class::MAX_LOG_BYTES_ENV, "100") do
           Dir.mktmpdir do |dir|
-            support = described_class.new(drain_join_timeout: 0.05)
+            support = described_class.new
             paths = log_paths(dir)
             output_files = support.open_child_output(paths)
             output_files[:stdout][:writer].write("a" * 5_000)

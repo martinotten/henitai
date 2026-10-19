@@ -520,7 +520,6 @@ module Henitai
     end
 
     class ScenarioLogSupport
-      def initialize: (?drain_join_timeout: Float) -> void
       def capture_child_output: (Hash[Symbol, String]) { () -> untyped } -> untyped
       def with_coverage_dir: (String) { () -> untyped } -> untyped
       def read_log_file: (String) -> String

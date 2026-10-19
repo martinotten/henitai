@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Output capture no longer delays or races on lingering grandchildren.**
+  Closing a mutant child's captured stdout/stderr no longer waits up to 1 s
+  per stream for EOF and no longer kills the drain thread mid-write (which
+  could exceed the cap or write the truncation marker twice). The drain
+  thread is stopped cooperatively through a stop pipe and takes what is
+  already readable.
+
 ### Added
 
 - **Fork server for Minitest and parallel runs.** `mutation.fork_server`

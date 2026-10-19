@@ -4,8 +4,8 @@ module Henitai
   module Integration
     # Writes captured child output to a log file up to a byte cap, then
     # discards the overflow and leaves a single truncation marker behind.
-    # Keeps the accounting outside the drain thread so it survives a forced
-    # stop of that thread.
+    # Not interrupt-safe: the drain thread must be stopped cooperatively,
+    # never killed mid-write.
     class CappedLogSink
       def initialize(file, cap)
         @file = file
