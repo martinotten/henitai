@@ -82,10 +82,13 @@ test_excludes:
 mutation:
   operators: light   # light | full
   timeout: 10.0
+  timeout_multiplier: 3.0
   max_flaky_retries: 3
+  flaky_detection: false   # run the baseline twice to find flaky test files
   max_log_bytes: 5000000
   max_timeout: 30.0
   control_runs: true   # re-run detected subjects with the unmutated method
+  fork_server: false   # opt-in: boot the RSpec/Minitest environment once, fork each mutant run from it (any jobs; falls back to per-mutant boot with a warning)
   sampling:
     ratio: 0.05
     strategy: stratified
@@ -119,7 +122,12 @@ baseline suite has a fixed timeout. Lines covered only by excluded tests count
 as uncovered and are not mutated. Excluding every test file aborts with
 `Henitai::ConfigurationError`.
 `mutation.max_log_bytes` is a positive per-stream byte cap for captured child
-output. `mutation.max_timeout` caps auto-calibrated timeouts; an explicit
+output. Without an explicit `mutation.timeout`, each mutant's timeout is
+calibrated as `mutation.timeout_multiplier` (default `3.0`) × (the summed
+durations of the selected test files + the measured suite boot time), with a
+2 s floor. `mutation.max_timeout` (default `30.0`) caps the calibrated value,
+but never below the measured baseline plus 2 s; when the baseline alone exceeds
+`max_timeout`, Henitai warns once and uses baseline + 2 s. An explicit
 `mutation.timeout` still takes precedence. When JSON or HTML reporting is
 enabled, `reports.checkpoint*` controls periodic canonical-report checkpoints.
 Each checkpoint updates `mutation-report.json`; when the HTML reporter is
@@ -131,8 +139,18 @@ suite once to bootstrap a usable coverage baseline. If coverage is still
 unavailable for the current sources, `henitai run` aborts with
 `Henitai::CoverageError`.
 
-Surviving mutants are retried up to `mutation.max_flaky_retries` times before
-they are classified as survivors. The default retry budget is 3.
+Survivors are never retried: flakiness can only turn a survivor into a kill, so
+a retry could only inflate the score. A killed mutant is retried, up to
+`mutation.max_flaky_retries` times (default 3), only when every test file that
+failed for it is a known flaky test; if any retry survives, the mutant is
+reported as `Survived`.
+
+Known flaky tests come from the opt-in `mutation.flaky_detection: true`. The
+baseline suite then runs twice (existing coverage is not reused), and test files
+whose pass/fail outcome differs between the runs are written to
+`reports/henitai_flaky_tests.json`. Without `flaky_detection` there is no flaky
+set and nothing is retried. At the end of the run Henitai reports the flaky
+tests and how many kills were re-checked.
 
 A mutant only counts as detected when a test failed because of the mutation.
 Before a mutant runs, Henitai checks that its activated code differs from the
@@ -151,6 +169,11 @@ verdicts are reclassified as `CompileError`.
 Per-test coverage reporting is currently wired through the RSpec child runner.
 Minitest integration reuses the same selection and execution flow, but does not
 yet enable the per-test coverage formatter.
+
+Test selection is coverage first: the per-test coverage map is the primary source
+of candidate tests for a mutant, and name matching is only the fallback for when
+the map cannot decide (no map, no location, or no covering test left in the
+integration).
 
 Henitai currently defaults to linear mutant execution. Set `jobs` in
 `.henitai.yml` or pass `--jobs N` to opt into parallel mutant execution.

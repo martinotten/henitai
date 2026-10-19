@@ -8,6 +8,9 @@ module Henitai
     # scheduler remains the single caller of the process table. Mixed into
     # {SlotScheduler}; relies on its +runtime+ reader.
     module ProcessControl
+      GROUP_POLL_INTERVAL = 0.02
+      GROUP_POLL_COUNT = 10
+
       private
 
       def monotonic_time
@@ -31,6 +34,36 @@ module Henitai
         rescue Errno::ESRCH
           nil
         end
+      end
+
+      # Terminates whatever a finished child left behind in its process group
+      # (daemons, grandchildren). Waits at most PROCESS_DRAIN_WINDOW for them to
+      # exit on SIGTERM before escalating to SIGKILL.
+      def tear_down_process_group(pid)
+        signal_process_group(pid, :SIGTERM)
+        return unless group_members_remain?(pid)
+
+        signal_process_group(pid, :SIGKILL)
+      end
+
+      def group_members_remain?(pid)
+        GROUP_POLL_COUNT.times do
+          return false unless process_group_alive?(pid)
+
+          runtime.pause(GROUP_POLL_INTERVAL)
+        end
+        process_group_alive?(pid)
+      end
+
+      # Signal 0 probes existence only. ESRCH means the group is empty; EPERM
+      # means members exist but belong to someone else.
+      def process_group_alive?(pid)
+        runtime.kill(0, -pid)
+        true
+      rescue Errno::ESRCH
+        false
+      rescue Errno::EPERM
+        true
       end
 
       def reap_pid(pid)

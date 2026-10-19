@@ -192,6 +192,62 @@ RSpec.describe Henitai::CoverageBootstrapper do
     expect(integration).to have_received(:run_suite).with(["spec/sample_spec.rb"])
   end
 
+  def build_timeout_config(reports_dir, timeout_configured:)
+    Struct.new(:reports_dir, :timeout_configured_flag) do
+      def timeout_configured?
+        timeout_configured_flag
+      end
+    end.new(reports_dir, timeout_configured)
+  end
+
+  def stub_ready_coverage(bootstrapper)
+    allow(bootstrapper).to receive_messages(
+      coverage_fresh?: true,
+      coverage_available?: true,
+      per_test_coverage_ready?: true
+    )
+  end
+
+  def run_bootstrap_with_boot_file(dir, timeout_configured:, boot_file:)
+    reports_dir = File.join(dir, "reports")
+    FileUtils.mkdir_p(reports_dir)
+    File.write(File.join(reports_dir, "henitai_suite_boot.json"), "{}") if boot_file
+    integration = build_integration(test_files: ["spec/sample_spec.rb"], run_suite_result: :survived)
+    bootstrapper = build_bootstrapper(static_filter: instance_double(Henitai::StaticFilter))
+    stub_ready_coverage(bootstrapper)
+
+    bootstrapper.ensure!(
+      source_files: [File.expand_path("lib/sample.rb")],
+      config: build_timeout_config(reports_dir, timeout_configured:),
+      integration:
+    )
+    integration
+  end
+
+  it "reruns the baseline when calibration is enabled and the boot file is missing" do
+    Dir.mktmpdir do |dir|
+      integration = run_bootstrap_with_boot_file(dir, timeout_configured: false, boot_file: false)
+
+      expect(integration).to have_received(:run_suite)
+    end
+  end
+
+  it "keeps the existing coverage when calibration is enabled and the boot file exists" do
+    Dir.mktmpdir do |dir|
+      integration = run_bootstrap_with_boot_file(dir, timeout_configured: false, boot_file: true)
+
+      expect(integration).not_to have_received(:run_suite)
+    end
+  end
+
+  it "does not require the boot file when the timeout is configured explicitly" do
+    Dir.mktmpdir do |dir|
+      integration = run_bootstrap_with_boot_file(dir, timeout_configured: true, boot_file: false)
+
+      expect(integration).not_to have_received(:run_suite)
+    end
+  end
+
   it "runs the suite when the per-test coverage report is missing" do
     static_filter = instance_double(Henitai::StaticFilter)
     integration = build_integration(
@@ -267,6 +323,35 @@ RSpec.describe Henitai::CoverageBootstrapper do
       )
 
       expect(ENV.fetch("HENITAI_COVERAGE_DIR", nil)).to eq("preexisting")
+    end
+  end
+
+  it "runs the flaky baseline and writes the flaky test registry when flaky_detection is enabled" do
+    Dir.mktmpdir do |dir|
+      static_filter = instance_double(Henitai::StaticFilter)
+      integration = instance_double(Henitai::Integration::Rspec, test_files: [], per_test_coverage_supported?: true)
+      spec_file = File.expand_path("spec/sample_spec.rb")
+      config = Struct.new(:reports_dir, :flaky_detection).new(dir, true)
+      run_count = 0
+
+      allow(static_filter).to receive(:coverage_lines_for).and_return({ File.expand_path("lib/sample.rb") => [2] })
+      allow(integration).to receive(:run_suite) do
+        run_count += 1
+        Henitai::TestFileOutcomes.new.tap do |outcomes|
+          outcomes.record(spec_file, failed: run_count.even?)
+          outcomes.write(Henitai::TestFileOutcomes.report_path(dir))
+        end
+        Henitai::ScenarioExecutionResult.new(status: :survived, stdout: "", stderr: "", log_path: nil)
+      end
+
+      build_bootstrapper(static_filter:).ensure!(
+        source_files: [File.expand_path("lib/sample.rb")],
+        config:,
+        integration:
+      )
+
+      registry_path = File.join(dir, Henitai::FlakyTestRegistry::FILE_NAME)
+      expect(JSON.parse(File.read(registry_path))).to eq("flaky_tests" => [spec_file])
     end
   end
 

@@ -458,6 +458,50 @@ RSpec.describe Henitai::Configuration do
     end.to raise_error(Henitai::ConfigurationError, /mutation\.control_runs/)
   end
 
+  it "disables the fork server by default" do
+    expect(load_configuration("").fork_server).to be(false)
+  end
+
+  it "loads an enabled fork-server setting" do
+    config = load_configuration(<<~YAML)
+      mutation:
+        fork_server: true
+    YAML
+
+    expect(config.fork_server).to be(true)
+  end
+
+  it "aborts on a non-boolean fork-server setting" do
+    expect do
+      load_configuration(<<~YAML)
+        mutation:
+          fork_server: maybe
+      YAML
+    end.to raise_error(Henitai::ConfigurationError, /mutation\.fork_server/)
+  end
+
+  it "disables flaky detection by default" do
+    expect(load_configuration("").flaky_detection).to be(false)
+  end
+
+  it "loads an enabled flaky-detection setting" do
+    config = load_configuration(<<~YAML)
+      mutation:
+        flaky_detection: true
+    YAML
+
+    expect(config.flaky_detection).to be(true)
+  end
+
+  it "aborts on a non-boolean flaky-detection setting" do
+    expect do
+      load_configuration(<<~YAML)
+        mutation:
+          flaky_detection: sometimes
+      YAML
+    end.to raise_error(Henitai::ConfigurationError, /mutation\.flaky_detection/)
+  end
+
   it "aborts on invalid sampling settings" do
     expect do
       load_configuration(<<~YAML)

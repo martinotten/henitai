@@ -5,6 +5,7 @@ require "fileutils"
 # tail, by which point Base is already defined, so the require is skipped.
 require_relative "../integration" unless defined?(Henitai::Integration::Base)
 require_relative "minitest_load_path"
+require_relative "minitest_preload"
 require_relative "minitest_suite_command"
 require_relative "minitest_test_runner"
 require_relative "rails_environment_preloader"
@@ -18,6 +19,7 @@ module Henitai
     # but implements its own Minitest-specific test invocation and suite command.
     # Per-test coverage collection is not yet wired into this path.
     class Minitest < Base
+      include MinitestPreload
       include MutantRunSupport
       include RspecTestSelection
 
@@ -60,8 +62,8 @@ module Henitai
 
       private
 
-      def run_tests(test_files, &)
-        MinitestTestRunner.new.call(test_files, &)
+      def run_tests(test_files, outcomes, &)
+        MinitestTestRunner.new(preloaded: @minitest_preloaded == true).call(test_files, outcomes, &)
       end
 
       def subprocess_env
@@ -81,7 +83,7 @@ module Henitai
         File.open(log_paths[:stdout_path], "w") do |stdout_file|
           File.open(log_paths[:stderr_path], "w") do |stderr_file|
             Process.spawn(
-              subprocess_env,
+              suite_process_env,
               *suite_command(test_files),
               out: stdout_file,
               err: stderr_file,
@@ -101,8 +103,8 @@ module Henitai
       end
 
       def spec_files
-        (Dir.glob("test/**/*_test.rb") + Dir.glob("test/**/*_spec.rb"))
-          .reject { |f| f.start_with?("test/system/") }
+        @spec_files ||= (Dir.glob("test/**/*_test.rb") + Dir.glob("test/**/*_spec.rb"))
+                        .reject { |f| f.start_with?("test/system/") }
       end
     end
   end

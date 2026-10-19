@@ -29,6 +29,25 @@ RSpec.describe Henitai::MutantVerdict do
     expect(verdict(exited(1), tests_finished(1))).to eq([:killed, nil])
   end
 
+  it "exposes the failed test files a killed run reported" do
+    report = tests_finished(1).merge("failed_tests" => ["/app/spec/a_spec.rb"])
+
+    expect(described_class.new(wait_result: exited(1), report:, stdout: "", stderr: "").killing_tests)
+      .to eq(["/app/spec/a_spec.rb"])
+  end
+
+  it "treats a report without failed_tests as having no killing tests" do
+    expect(described_class.new(wait_result: exited(1), report: tests_finished(1), stdout: "", stderr: "").killing_tests)
+      .to eq([])
+  end
+
+  it "reports no killing tests when the child saw a failure it could not attribute to a file" do
+    report = tests_finished(1).merge("failed_tests" => ["/app/spec/a_spec.rb"], "unattributed_failures" => true)
+
+    expect(described_class.new(wait_result: exited(1), report:, stdout: "", stderr: "").killing_tests)
+      .to eq([])
+  end
+
   it "takes the test verdict from the report rather than the process exit status" do
     expect(verdict(exited(1), tests_finished(0))).to eq([:survived, nil])
   end

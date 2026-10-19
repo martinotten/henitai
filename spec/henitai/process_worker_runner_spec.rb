@@ -36,7 +36,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
     wakeup.define_singleton_method(:wait) do |timeout|
       state[:wait_calls] << timeout
       on_wait&.call(timeout)
-      [[], nil, nil]
+      nil # IO.select timed out
     end
     wakeup.define_singleton_method(:drain) { nil }
     wakeup.define_singleton_method(:signal) { state[:signal_count] += 1 }
@@ -83,7 +83,12 @@ RSpec.describe Henitai::ProcessWorkerRunner do
 
   def define_fake_kill(runtime, state)
     record_kill = ->(signal, pid) { self.record_kill(state, signal, pid) }
-    runtime.define_singleton_method(:kill) { |signal, pid| record_kill.call(signal, pid) }
+    runtime.define_singleton_method(:kill) do |signal, pid|
+      next raise(Errno::ESRCH) if signal == 0
+
+      record_kill.call(signal, pid)
+    end
+    runtime.define_singleton_method(:pause) { |_seconds| nil }
   end
 
   def define_fake_wait(runtime, state)
@@ -151,22 +156,26 @@ RSpec.describe Henitai::ProcessWorkerRunner do
     end
   end
 
-  def build_fake_runner(worker_count:, wait2_results:)
+  def build_fake_runner(worker_count:, wait2_results:, flaky_tests: nil)
     runtime, = build_fake_runtime(
       clock_times: Array.new(20, 0.0),
       wait2_results: { -1 => wait2_results }
     )
     wakeup, = build_fake_wakeup
-    described_class.new(worker_count:, runtime:, wakeup:)
+    described_class.new(worker_count:, runtime:, wakeup:, flaky_tests:)
   end
 
-  def stub_result_builder(integration)
+  def stub_result_builder(integration, killing_tests: [])
     allow(integration).to receive(:build_result) do |wait_result, log_paths|
-      Henitai::ScenarioExecutionResult.build(
+      base = Henitai::ScenarioExecutionResult.build(
         wait_result: wait_result,
         stdout: "",
         stderr: "",
         log_path: log_paths[:log_path]
+      )
+      Henitai::ScenarioExecutionResult.new(
+        status: base.status, stdout: "", stderr: "", log_path: log_paths[:log_path],
+        exit_status: base.exit_status, killing_tests:
       )
     end
   end
@@ -248,6 +257,54 @@ RSpec.describe Henitai::ProcessWorkerRunner do
     ensure
       ENV.delete("HENITAI_DEBUG_SCHEDULER")
       Henitai::Integration::SchedulerDiagnostics.reset!
+    end
+
+    it "makes the event loop wake on the sockets its runtime asks to watch" do
+      wakeup = instance_double(Henitai::ProcessWakeup, close: nil)
+      provider = nil
+      allow(wakeup).to receive(:watch) { |&block| provider = block }
+      runtime, = build_fake_runtime(clock_times: [0.0], wait2_results: {})
+      runtime.define_singleton_method(:wakeup_ios) { [:socket] }
+      config = Struct.new(:timeout, :max_flaky_retries).new(10.0, 0)
+
+      described_class.new(worker_count: 1, runtime:, wakeup:).run([], nil, config, nil)
+
+      expect(provider.call).to eq([:socket])
+    end
+
+    it "does not wait for an event the runtime already holds in user space" do
+      pending = [true, false]
+      runtime, = build_fake_runtime(
+        clock_times: Array.new(20, 0.0),
+        wait2_results: { -1 => [nil, [10, build_wait_status(1)]] }
+      )
+      runtime.define_singleton_method(:pending_events?) { pending.shift }
+      wakeup, wakeup_state = build_fake_wakeup
+      integration = instance_double(Henitai::Integration::Rspec)
+      stub_fake_spawn(integration, 10)
+      stub_result_builder(integration)
+      config = Struct.new(:timeout, :max_flaky_retries).new(10.0, 0)
+
+      described_class.new(worker_count: 1, runtime:, wakeup:).run([build_mutant("a")], integration, config, nil)
+
+      expect(wakeup_state[:wait_calls]).to eq([0])
+    end
+
+    it "waits for the scheduler's next timeout when the runtime holds no event in user space" do
+      runtime, = build_fake_runtime(
+        clock_times: Array.new(20, 0.0),
+        wait2_results: { -1 => [nil, [10, build_wait_status(1)]] }
+      )
+      runtime.define_singleton_method(:pending_events?) { false }
+      wakeup, wakeup_state = build_fake_wakeup
+      integration = instance_double(Henitai::Integration::Rspec)
+      stub_fake_spawn(integration, 10)
+      stub_result_builder(integration)
+      config = Struct.new(:timeout, :max_flaky_retries).new(10.0, 0)
+
+      described_class.new(worker_count: 1, runtime:, wakeup:).run([build_mutant("a")], integration, config, nil)
+
+      expect(wakeup_state[:wait_calls].first).to be_positive
     end
 
     it "returns empty array immediately when given zero mutants" do
@@ -338,9 +395,29 @@ RSpec.describe Henitai::ProcessWorkerRunner do
 
       aggregate_failures do
         expect(results.map(&:status)).to eq([:timeout])
-        expect(runtime_state[:kill_calls]).to eq([[:SIGTERM, -12], [:SIGKILL, -12]])
+        expect(runtime_state[:kill_calls]).to eq([[:SIGTERM, -12], [:SIGKILL, -12], [:SIGTERM, -12]])
         expect(runtime_state[:wait_calls]).to eq([12])
       end
+    end
+
+    it "does not pause while polling a process group that is already gone" do
+      mutant = build_mutant("slow")
+      runtime, = build_fake_runtime(
+        clock_times: [0.0, 0.2, 0.2],
+        wait2_results: { -1 => [nil, nil], 15 => [nil, nil, nil] },
+        wait_results: { 15 => build_wait_status(0) }
+      )
+      pauses = []
+      runtime.define_singleton_method(:pause) { |seconds| pauses << seconds }
+      wakeup, = build_fake_wakeup
+      integration = instance_double(Henitai::Integration::Rspec)
+      stub_fake_spawn(integration, 15)
+      stub_result_builder(integration)
+      config = Struct.new(:timeout, :max_flaky_retries).new(0.1, 0)
+
+      described_class.new(worker_count: 1, runtime: runtime, wakeup: wakeup).run([mutant], integration, config, nil)
+
+      expect(pauses).to be_empty
     end
 
     it "cleans up slots after timeout and leaves no active slots" do # rubocop:disable RSpec/MultipleExpectations
@@ -393,8 +470,34 @@ RSpec.describe Henitai::ProcessWorkerRunner do
 
       expect { runner.run([mutant], integration, config, nil) }.to raise_error(Interrupt)
       expect(mutant.status).to eq(:pending)
-      expect(runtime_state[:kill_calls]).to eq([[:SIGTERM, -21], [:SIGKILL, -21]])
+      expect(runtime_state[:kill_calls]).to eq([[:SIGTERM, -21], [:SIGKILL, -21], [:SIGTERM, -21]])
       expect(runtime_state[:wait_calls]).to eq([21])
+    end
+
+    it "wakes the event loop when a signal trap fires while it waits" do # rubocop:disable RSpec/MultipleExpectations
+      mutant = build_mutant("slow")
+      runtime, runtime_state = build_fake_runtime(
+        clock_times: [0.0, 0.0],
+        wait2_results: { -1 => [nil, nil], 21 => [nil, nil] },
+        wait_results: { 21 => build_wait_status(0) }
+      )
+      fired = false
+      wakeup, wakeup_state = build_fake_wakeup(
+        on_wait: lambda { |*|
+          next if fired
+
+          fired = true
+          runtime_state[:traps].fetch("INT").call
+        }
+      )
+      integration = instance_double(Henitai::Integration::Rspec)
+      stub_fake_spawn(integration, 21)
+      stub_result_builder(integration)
+      config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 0)
+      runner = described_class.new(worker_count: 1, runtime:, wakeup:)
+
+      expect { runner.run([mutant], integration, config, nil) }.to raise_error(Interrupt)
+      expect(wakeup_state[:signal_count]).to eq(1)
     end
 
     it "does not refill a slot after shutdown is requested", :aggregate_failures do
@@ -445,7 +548,7 @@ RSpec.describe Henitai::ProcessWorkerRunner do
   end
 
   describe "retry correctness" do
-    it "retries within the same slot when retries remain and returns the final outcome" do # rubocop:disable RSpec/MultipleExpectations
+    it "retries a kill whose killing tests are all flaky and returns the final outcome" do # rubocop:disable RSpec/MultipleExpectations
       mutant = build_mutant("flaky")
       call_count = 0
 
@@ -455,12 +558,13 @@ RSpec.describe Henitai::ProcessWorkerRunner do
         call_count += 1
         build_fake_handle(call_count == 1 ? 10 : 11)
       end
-      stub_result_builder(integration)
+      stub_result_builder(integration, killing_tests: ["flaky_spec.rb"])
 
       config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 1)
       runner = build_fake_runner(
         worker_count: 1,
-        wait2_results: [[10, build_wait_status(0)], [11, build_wait_status(1)]]
+        wait2_results: [[10, build_wait_status(1)], [11, build_wait_status(1)]],
+        flaky_tests: Henitai::FlakyTestRegistry.new(["flaky_spec.rb"])
       )
 
       results = runner.run([mutant], integration, config, nil)
@@ -484,15 +588,16 @@ RSpec.describe Henitai::ProcessWorkerRunner do
         pid = mutant.id == "flaky" ? 9 + call_counts[mutant.id] : 12
         build_fake_handle(pid)
       end
-      stub_result_builder(integration)
+      stub_result_builder(integration, killing_tests: ["flaky_spec.rb"])
 
       config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 1)
       runner = build_fake_runner(
         worker_count: 1,
         wait2_results: [
-          [10, build_wait_status(0)], [11, build_wait_status(1)], nil,
-          [12, build_wait_status(1)]
-        ]
+          [10, build_wait_status(1)], [11, build_wait_status(1)], nil,
+          [12, build_wait_status(0)]
+        ],
+        flaky_tests: Henitai::FlakyTestRegistry.new(["flaky_spec.rb"])
       )
 
       runner.run([flaky, stable], integration, config, nil)
@@ -500,11 +605,11 @@ RSpec.describe Henitai::ProcessWorkerRunner do
       expect(runner.flaky_retry_count).to eq(1)
     end
 
-    it "reports zero retries when no mutant survives its first run" do
+    it "reports zero retries when a killed mutant has no flaky killers" do
       stable = build_mutant("stable")
       integration = instance_double(Henitai::Integration::Rspec)
       stub_fake_spawn_sequence(integration, [10])
-      stub_result_builder(integration)
+      stub_result_builder(integration, killing_tests: ["stable_spec.rb"])
       config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 3)
       runner = build_fake_runner(
         worker_count: 1,
@@ -528,12 +633,13 @@ RSpec.describe Henitai::ProcessWorkerRunner do
 
         build_fake_handle(10)
       end
-      stub_result_builder(integration)
+      stub_result_builder(integration, killing_tests: ["flaky_spec.rb"])
 
       config = Struct.new(:timeout, :max_flaky_retries).new(5.0, 1)
       runner = build_fake_runner(
         worker_count: 1,
-        wait2_results: [[10, build_wait_status(0)]]
+        wait2_results: [[10, build_wait_status(1)]],
+        flaky_tests: Henitai::FlakyTestRegistry.new(["flaky_spec.rb"])
       )
 
       results = runner.run([mutant], integration, config, nil)

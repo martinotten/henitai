@@ -32,6 +32,33 @@ RSpec.describe Henitai::ProcessWakeup do
     end
   end
 
+  describe "#watch" do
+    it "also wakes when a watched socket becomes readable" do
+      with_wakeup do |wakeup|
+        watched, writer = IO.pipe
+        wakeup.watch { [watched] }
+        writer.write(".")
+
+        expect(wakeup.wait(0).first).to eq([watched])
+      ensure
+        [watched, writer].each(&:close)
+      end
+    end
+
+    it "asks for the watched sockets on every wait" do
+      with_wakeup do |wakeup|
+        watched, writer = IO.pipe
+        sets = [[watched], []]
+        wakeup.watch { sets.shift }
+        writer.write(".")
+
+        expect([wakeup.wait(0)&.first, wakeup.wait(0)]).to eq([[watched], nil])
+      ensure
+        [watched, writer].each(&:close)
+      end
+    end
+  end
+
   describe "#drain" do
     it "consumes pending bytes so the pipe is no longer readable" do
       with_wakeup do |wakeup|

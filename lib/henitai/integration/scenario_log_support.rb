@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require_relative "capped_log_sink"
 
 module Henitai
   module Integration
@@ -12,6 +13,9 @@ module Henitai
       MAX_LOG_BYTES_ENV = "HENITAI_MAX_LOG_BYTES"
       DEFAULT_MAX_LOG_BYTES = 5_000_000
       DRAIN_CHUNK_BYTES = 65_536
+      # Bound on the reads of the final drain, so a grandchild that keeps
+      # writing cannot hold the close up.
+      DRAIN_AVAILABLE_READS = 16
 
       def capture_child_output(log_paths)
         output_files = open_child_output(log_paths)
@@ -69,37 +73,46 @@ module Henitai
         file = File.new(path, "wb")
         file.sync = true
         reader, writer = IO.pipe
-        thread = Thread.new { drain_capped(reader, file, cap) }
-        { file:, reader:, writer:, thread: }
+        sink = CappedLogSink.new(file, cap)
+        stop_reader, stop_writer = IO.pipe
+        thread = Thread.new { drain_capped(reader, stop_reader, sink) }
+        { file:, reader:, writer:, stop_reader:, stop_writer:, thread: }
       end
 
-      def drain_capped(reader, file, cap)
-        written = 0
-        truncated = false
+      # Drains until EOF or until +stop_reader+ becomes readable. Never killed:
+      # the stop signal ends it cooperatively between sink writes.
+      # Uses Kernel#select rather than IO.select: the drain runs beside the
+      # tests under mutation, and specs that stub or count IO.select must not
+      # see the harness's own waits.
+      def drain_capped(reader, stop_reader, sink)
         loop do
-          chunk = reader.readpartial(DRAIN_CHUNK_BYTES)
-          next unless written < cap
+          ready, = select([reader, stop_reader])
+          break drain_available(reader, sink) if ready.include?(stop_reader)
 
-          slice = chunk.byteslice(0, cap - written)
-          file.write(slice)
-          written += slice.bytesize
-          next unless written >= cap && !truncated
-
-          file.write("\n[henitai] output truncated at #{cap} bytes\n")
-          truncated = true
+          sink.write(reader.readpartial(DRAIN_CHUNK_BYTES))
         end
       rescue IOError
         # EOFError (a subclass) on writer close, or a closed pipe: draining done.
         nil
       end
 
+      # Closing the writer lets the drain thread reach EOF. A grandchild may
+      # still hold a copy of the writer, so EOF is not awaited: the stop pipe
+      # makes the thread take what is readable right now and exit.
       def finish_capped_stream(stream)
         return unless stream
 
         stream[:writer].close
+        stream[:stop_writer].close
         stream[:thread].join
-        stream[:reader].close
-        stream[:file].close
+        %i[reader stop_reader file].each { |key| stream[key].close }
+      end
+
+      def drain_available(reader, sink)
+        DRAIN_AVAILABLE_READS.times { sink.write(reader.read_nonblock(DRAIN_CHUNK_BYTES)) }
+      rescue IO::WaitReadable, IOError
+        # Nothing more buffered right now, or the pipe is closed.
+        nil
       end
 
       def redirect_child_output(output_files)

@@ -5,9 +5,9 @@ require "spec_helper"
 require "tmpdir"
 
 RSpec.describe Henitai::IncrementalFilter do
-  def build_mutant(stable_id:, source_file:, source_range: 2..2, status: :pending)
+  def build_mutant(stable_id:, source_file:, source_range: 1..3, status: :pending, start_line: 2)
     subject = Struct.new(:source_file, :source_range).new(source_file, source_range)
-    location = { file: source_file, start_line: 2, end_line: 2 }
+    location = { file: source_file, start_line: start_line, end_line: start_line }
     Struct.new(:subject, :stable_id, :status, :from_cache, :location) do
       def pending? = status == :pending
     end.new(subject, stable_id, status, false, location)
@@ -189,6 +189,41 @@ RSpec.describe Henitai::IncrementalFilter do
         build_filter(store, build_coverage([test])).apply([mutant])
 
         expect([mutant.status, mutant.from_cache]).to eq([:survived, true])
+      end
+    end
+
+    it "never reuses a survived verdict for a mutant on the def line" do
+      Dir.mktmpdir do |dir|
+        source, test = write_workspace(dir)
+        mutant = build_mutant(stable_id: "abc", source_file: source, source_range: 2..2)
+        store = build_store("abc" => survived_verdict_for(mutant, [test]))
+
+        build_filter(store, build_coverage([test])).apply([mutant])
+
+        expect([mutant.status, mutant.from_cache]).to eq([:pending, false])
+      end
+    end
+
+    it "still reuses a killed verdict for a mutant on the def line" do
+      Dir.mktmpdir do |dir|
+        source, test = write_workspace(dir)
+        mutant = build_mutant(stable_id: "abc", source_file: source, source_range: 2..2)
+        store = build_store("abc" => verdict_for(mutant, test))
+
+        described_class.new(history_store: store).apply([mutant])
+
+        expect(mutant.status).to eq(:killed)
+      end
+    end
+
+    it "treats a subject without a source range as not on the def line" do
+      Dir.mktmpdir do |dir|
+        source, test = write_workspace(dir)
+        mutant = build_mutant(stable_id: "abc", source_file: source)
+        store = build_store("abc" => survived_verdict_for(mutant, [test]))
+        mutant.subject.source_range = nil
+
+        expect { build_filter(store, build_coverage([test])).apply([mutant]) }.not_to raise_error
       end
     end
 

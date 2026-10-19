@@ -79,6 +79,24 @@ RSpec.describe Henitai::Integration::MinitestTestRunner do
       end
     end
 
+    context "when the fork server already loaded the test files" do
+      subject(:runner) { described_class.new(preloaded: true) }
+
+      it "filters to the requested files instead of requiring them", :aggregate_failures do
+        with_temp_workspace do |dir|
+          test_file = write_test_file(dir, "test/preloaded_test.rb")
+          filter = instance_double(Henitai::Integration::MinitestRunnableFilter, apply!: nil)
+          allow(Henitai::Integration::MinitestRunnableFilter).to receive(:new).with([test_file]).and_return(filter)
+          stub_minitest_run(true)
+
+          runner.call([test_file])
+
+          expect(filter).to have_received(:apply!)
+          expect($LOADED_FEATURES).not_to include(File.expand_path(test_file))
+        end
+      end
+    end
+
     it "suppresses Minitest autorun so it is safe to call repeatedly" do
       stub_minitest_run(true)
 

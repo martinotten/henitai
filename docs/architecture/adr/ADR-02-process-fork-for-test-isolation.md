@@ -19,5 +19,7 @@ Run each mutant in its own forked child process.
 
 ## Related Documents
 
+- [ADR-15: Fork-server execution model](ADR-15-fork-server-execution-model.md) (opt-in: mutant processes fork from a server that booted once)
+
 - [Architecture overview](../architecture.md)
 - [Implementation plan](../../plans/implementation_plan.md)

@@ -52,7 +52,10 @@ module Henitai
     end
 
     # Captures the PID and log paths for a spawned mutant child process.
-    ChildHandle = Struct.new(:pid, :log_paths)
+    # +timeout+ is set only when the spawner knows better than the scheduler's
+    # resolver how long this child may run (a fallback child that boots the
+    # suite itself while the fork server is active).
+    ChildHandle = Struct.new(:pid, :log_paths, :timeout)
 
     # Runs RSpec child and suite processes on behalf of the integration.
     class RspecProcessRunner

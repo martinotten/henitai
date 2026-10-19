@@ -7,7 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Review follow-ups.** The slot scheduler no longer signals the process
+  group of a reaped pid that owns no mutant slot. Minitest results for tests
+  added by reopening a class in another file are attributed to the file that
+  defines the method, so coverage-first selection no longer misses them. With
+  the fork server active, calibrated timeouts keep the measured suite boot
+  (served mutants still run `before(:suite)` hooks). The `fork_server` schema
+  description and the remediation plan now state the real scope (RSpec and
+  Minitest, any `jobs`).
+
+- **`--incremental` no longer reuses stale survived verdicts for def-line
+  mutants.** Their test selection is widened with name-matched tests that the
+  survivor fingerprint does not cover, so survived verdicts for mutants on a
+  method's def line always re-execute (killed reuse is unaffected: a kill by
+  an unchanged covering test remains valid).
+
+- **Output capture no longer delays or races on lingering grandchildren.**
+  Closing a mutant child's captured stdout/stderr no longer waits up to 1 s
+  per stream for EOF and no longer kills the drain thread mid-write (which
+  could exceed the cap or write the truncation marker twice). The drain
+  thread is stopped cooperatively through a stop pipe and takes what is
+  already readable.
+
+- **Fork-server lifecycle.** A server lost or stalled mid-run no longer turns
+  its in-flight mutants into `runtime_error`: they are rerun through the
+  per-mutant-boot fallback. Fallback runs use boot-inclusive timeouts. Mutant
+  processes forked by the server are cleaned up on timeout, loss and teardown
+  even before they lead a process group, and the connection and wake-pipe fds
+  are no longer inherited by mutant processes. The parallel event loop no
+  longer stalls on an exit event already buffered in the client, and the
+  SIGTERM drain window always runs its full length.
+
+### Added
+
+- **Fork server for Minitest and parallel runs.** `mutation.fork_server`
+  (opt-in, ADR-15) now supports Minitest and `jobs > 1`: the environment is
+  booted once and each mutant process is forked from the server. Falls back to
+  per-mutant boot with a warning if the server is unavailable.
+
 ### Changed
+
+- **Flaky-test handling.** Survivors are no longer retried: a retry could only
+  turn a survivor into a kill and inflate the score. Kills are re-checked, up
+  to `max_flaky_retries`, only when every failing test file is known to be
+  flaky, as found by the new opt-in `mutation.flaky_detection` (baseline suite
+  runs twice; flaky files go to `henitai_flaky_tests.json`, removed by
+  `henitai clean`). Without it nothing is retried, so runtime on survivor-heavy
+  suites drops. The ">5% of mutants needed a retry" warning is replaced by a
+  report of flaky tests and re-checked kills. Child reports now carry
+  `failed_tests`. Failures outside an example (an `after(:context)` hook error,
+  a suite-level hook, a Minitest result without a file) are attributed to their
+  spec file when RSpec names it; otherwise the run is flagged
+  `unattributed_failures`, which makes a kill genuine (never retried) and makes
+  the flaky baseline reject the run. Baseline runs that fail on a file the two
+  runs cannot call flaky (for example one seen in a single run) now abort
+  instead of being accepted. Minitest outcomes are keyed to the file defining
+  the test class, not to a shared module that supplies the test method.
 
 - **Scores will drop, by design.** A mutant now counts as detected only when a
   test failed because of its mutation (ADR-14). Harness failures that used to

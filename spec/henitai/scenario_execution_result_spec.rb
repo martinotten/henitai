@@ -208,6 +208,20 @@ RSpec.describe Henitai::ScenarioExecutionResult do
     expect([result.status, result.status_reason]).to eq([:compile_error, "activation failed: NameError: Shop::Base"])
   end
 
+  it "carries the failed test files of a killed mutant run" do
+    result = described_class.build_for_mutant(
+      wait_result: Struct.new(:exitstatus, :signaled?).new(1, false),
+      report: { "outcome" => "tests_finished", "exit_code" => 1, "failed_tests" => ["/app/spec/a_spec.rb"] },
+      stdout: "1 example, 1 failure", stderr: "", log_path: "/tmp/henitai-test.log"
+    )
+
+    expect([result.status, result.killing_tests]).to eq([:killed, ["/app/spec/a_spec.rb"]])
+  end
+
+  it "defaults killing_tests to an empty list" do
+    expect(described_class.new(status: :survived, stdout: "", stderr: "", log_path: nil).killing_tests).to eq([])
+  end
+
   it "copies the reason behind a status onto the mutant" do
     mutant = Struct.new(:status, :status_reason).new(:pending, nil)
     result = described_class.new(status: :runtime_error, status_reason: "child terminated by signal SIGKILL",

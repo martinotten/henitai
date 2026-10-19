@@ -65,6 +65,16 @@
           "type": "number",
           "exclusiveMinimum": 0
         },
+        "flaky_detection": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run the baseline suite twice and mark test files whose outcome differs between runs as flaky. Only killed mutants whose killing tests are all flaky are re-checked, up to max_flaky_retries times."
+        },
+        "fork_server": {
+          "type": "boolean",
+          "default": false,
+          "description": "Opt-in. Boot the test environment once in a long-lived fork server and fork each mutant run from it instead of re-booting per mutant. Supported for RSpec and Minitest with any jobs value; unsupported integrations and a server that fails to boot fall back to per-mutant boot with a warning."
+        },
         "control_runs": {
           "type": "boolean",
           "default": true,

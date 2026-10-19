@@ -3,7 +3,7 @@
 module Henitai
   # Captures the result of one baseline or mutant test run.
   class ScenarioExecutionResult
-    attr_reader :status, :status_reason, :stdout, :stderr, :exit_status, :log_path
+    attr_reader :status, :status_reason, :stdout, :stderr, :exit_status, :log_path, :killing_tests
 
     def self.build(wait_result:, stdout:, stderr:, log_path:)
       new(
@@ -25,12 +25,14 @@ module Henitai
 
     # Classifies a mutant run from the child's report (see MutantVerdict).
     def self.build_for_mutant(wait_result:, report:, stdout:, stderr:, log_path:)
-      status, status_reason = MutantVerdict.new(wait_result:, report:, stdout:, stderr:).to_a
-      new(status:, status_reason:, stdout:, stderr:, log_path:, exit_status: exit_status_for(wait_result))
+      verdict = MutantVerdict.new(wait_result:, report:, stdout:, stderr:)
+      status, status_reason = verdict.to_a
+      new(status:, status_reason:, stdout:, stderr:, log_path:, exit_status: exit_status_for(wait_result),
+          killing_tests: verdict.killing_tests)
     end
 
     # rubocop:disable Metrics/ParameterLists -- one keyword per captured field
-    def initialize(status:, stdout:, stderr:, log_path:, exit_status: nil, status_reason: nil)
+    def initialize(status:, stdout:, stderr:, log_path:, exit_status: nil, status_reason: nil, killing_tests: [])
       # rubocop:enable Metrics/ParameterLists
       @status = status
       @status_reason = status_reason
@@ -38,6 +40,7 @@ module Henitai
       @stderr = stderr.to_s
       @log_path = log_path
       @exit_status = exit_status
+      @killing_tests = killing_tests
     end
 
     # Frees the captured child output once it has been consumed (e.g. by the

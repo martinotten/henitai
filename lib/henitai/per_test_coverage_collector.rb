@@ -4,6 +4,7 @@ require "coverage"
 require "fileutils"
 require "json"
 require_relative "per_test_coverage_delta"
+require_relative "suite_boot_clock"
 
 module Henitai
   # Accumulates per-test line coverage deltas across test examples.
@@ -15,8 +16,11 @@ module Henitai
   class PerTestCoverageCollector
     REPORT_DIR_ENV = "HENITAI_REPORTS_DIR"
     REPORT_FILE_NAME = "henitai_per_test.json"
+    BOOT_FILE_NAME = "henitai_suite_boot.json"
 
-    def initialize
+    # @param boot_clock [SuiteBootClock] measures suite boot time
+    def initialize(boot_clock: SuiteBootClock.from_env(ENV))
+      @boot_clock = boot_clock
       @coverage_by_test = Hash.new do |hash, test_file|
         hash[test_file] = Hash.new { |nested, source_file| nested[source_file] = [] }
       end
@@ -24,6 +28,11 @@ module Henitai
       @previous_snapshot = {}
       @delta = PerTestCoverageDelta.new
       @warned_missing_coverage = false
+    end
+
+    # Called when the first test of the suite starts; ends the boot phase.
+    def test_started
+      @boot_clock.mark_first_test_started
     end
 
     def record_test(test_file, duration: nil)
@@ -39,17 +48,32 @@ module Henitai
       @previous_snapshot = snapshot
     end
 
+    # Advances past a test whose result cannot be attributed to a file, so its
+    # coverage is not credited to the next test.
+    def skip_test
+      @previous_snapshot = current_snapshot || @previous_snapshot
+    end
+
     def write_report
       return if @coverage_by_test.empty?
 
-      FileUtils.mkdir_p(File.dirname(report_path))
+      FileUtils.mkdir_p(reports_dir)
       File.write(report_path, JSON.pretty_generate(serializable_report))
+      write_boot_report if @boot_clock.measured?
     end
 
     private
 
+    def write_boot_report
+      File.write(boot_path, JSON.pretty_generate("boot_seconds" => @boot_clock.boot_seconds))
+    end
+
     def report_path
       File.join(reports_dir, REPORT_FILE_NAME)
+    end
+
+    def boot_path
+      File.join(reports_dir, BOOT_FILE_NAME)
     end
 
     def reports_dir

@@ -110,10 +110,16 @@ module Henitai
       # superclasses and constants the rest of the application defines.
       def run_tests_in_child(mutant, test_files, report)
         activated = nil
-        exit_code = run_tests(test_files) { activated = activate_in_child(mutant, test_files, report) }
+        outcomes = TestFileOutcomes.new
+        exit_code = run_tests(test_files, outcomes) { activated = activate_in_child(mutant, test_files, report) }
         return finish_without_tests(activated, report) unless activated
 
-        report.call("outcome" => "tests_finished", "exit_code" => exit_code)
+        report.call(
+          "outcome" => "tests_finished",
+          "exit_code" => exit_code,
+          "failed_tests" => outcomes.failed_files,
+          "unattributed_failures" => outcomes.unattributed_failures?
+        )
         exit_code
       rescue SystemExit => e
         report.call("outcome" => "system_exit", "status" => e.status)

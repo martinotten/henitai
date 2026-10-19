@@ -541,13 +541,34 @@ RSpec.describe Henitai::Integration::Rspec do
       integration.run_suite(["spec/foo_spec.rb"])
 
       expect(Process).to have_received(:spawn).with(
-        { "PARALLEL_WORKERS" => "1" },
+        hash_including("PARALLEL_WORKERS" => "1"),
         *integration.suite_command(["spec/foo_spec.rb"]),
         out: kind_of(File),
         err: kind_of(File),
         pgroup: true
       )
     end
+  end
+
+  it "stamps the baseline suite spawn time for boot measurement" do
+    integration = described_class.new
+    spawn_env = nil
+    before = Time.now.to_f
+
+    with_temp_workspace do
+      allow(Process).to receive(:spawn) do |env, *, **|
+        spawn_env = env
+        4321
+      end
+      allow(integration).to receive(:wait_with_timeout).and_return(
+        Struct.new(:success?, :exitstatus).new(true, 0)
+      )
+
+      integration.run_suite(["spec/foo_spec.rb"])
+    end
+
+    stamp = spawn_env.fetch(Henitai::SuiteBootClock::STARTED_AT_ENV).to_f
+    expect(stamp).to be_between(before, Time.now.to_f)
   end
 
   it "resolves the rspec and minitest integrations" do
@@ -1084,7 +1105,7 @@ RSpec.describe Henitai::Integration::Rspec do
     record = { signals: [] }
     select_calls = 0
 
-    allow(Process).to receive(:wait).with(4322, Process::WNOHANG).and_return(nil, 4322)
+    allow(Process).to receive(:wait).with(4322, Process::WNOHANG).and_return(nil, nil, 4322)
     allow(Process).to receive(:kill) do |signal, pid|
       record[:signals] << [signal, pid]
     end
@@ -1096,6 +1117,39 @@ RSpec.describe Henitai::Integration::Rspec do
     integration.cleanup_process_group(4322)
 
     expect([record[:signals], select_calls]).to eq([[[:SIGTERM, -4322]], 1])
+  end
+
+  it "does not wait the grace period when the leader already exited and the group empties", :aggregate_failures do
+    integration = described_class.new
+    signals = []
+
+    allow(Process).to receive(:wait).with(4322, Process::WNOHANG).and_raise(Errno::ECHILD)
+    allow(Process).to receive(:kill) do |signal, pid|
+      raise Errno::ESRCH if signal == 0
+
+      signals << [signal, pid]
+    end
+    allow(integration).to receive(:sleep)
+    stub_process_wakeup
+
+    integration.cleanup_process_group(4322)
+
+    expect(signals).to eq([[:SIGTERM, -4322]])
+    expect(integration).not_to have_received(:sleep)
+  end
+
+  it "SIGKILLs the group when members remain after the leader exited" do
+    integration = described_class.new
+    signals = []
+
+    allow(Process).to receive(:wait).with(4322, Process::WNOHANG).and_raise(Errno::ECHILD)
+    allow(Process).to receive(:kill) { |signal, pid| signals << [signal, pid] }
+    allow(integration).to receive(:sleep)
+    stub_process_wakeup
+
+    integration.cleanup_process_group(4322)
+
+    expect(signals.last).to eq([:SIGKILL, -4322])
   end
 
   it "activates the mutant after loading the child tests and before running them" do
@@ -1377,7 +1431,7 @@ RSpec.describe Henitai::Integration::Rspec do
         [
           :survived,
           {
-            waits: 3,
+            waits: 4,
             selects: 1,
             child_status: 0
           }
@@ -1802,6 +1856,13 @@ RSpec.describe Henitai::Integration::Rspec do
       )
 
       expect([handle.pid, handle.log_paths[:stdout_path]]).to eq([42, "/tmp/out.log"])
+    end
+  end
+
+  describe "#fork_server_supported?" do
+    it "is supported for RSpec and not for the base integration" do
+      expect([described_class.new.fork_server_supported?, Henitai::Integration::Base.new.fork_server_supported?])
+        .to eq([true, false])
     end
   end
 end

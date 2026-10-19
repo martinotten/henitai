@@ -27,6 +27,10 @@ module Henitai
         Process.wait(pid)
       end
 
+      def pause(seconds)
+        Kernel.sleep(seconds)
+      end
+
       def trap(signal, handler = nil, &block)
         Kernel.trap(signal, handler || block)
       end
@@ -35,10 +39,11 @@ module Henitai
     # Loop primitives the {SlotScheduler} reads back from its host.
     attr_reader :worker_count, :runtime, :wakeup
 
-    def initialize(worker_count:, runtime: Runtime.new, wakeup: nil)
+    def initialize(worker_count:, runtime: Runtime.new, wakeup: nil, flaky_tests: nil)
       @worker_count = worker_count
       @runtime = runtime
       @wakeup = wakeup
+      @flaky_tests = flaky_tests
       @shutdown_requested = false
     end
 
@@ -85,18 +90,21 @@ module Henitai
     def prepare_run(mutants, integration, config, progress_reporter, options)
       @shutdown_requested = false
       @wakeup = Henitai::ProcessWakeup.new.install if @wakeup.nil?
+      @wakeup.watch { @runtime.wakeup_ios } if @runtime.respond_to?(:wakeup_ios)
       @scheduler = SlotScheduler.new(
         integration: integration,
         config: config,
         progress_reporter: progress_reporter,
         options: options,
-        host: self
+        host: self,
+        flaky_tests: @flaky_tests
       )
       @scheduler.enqueue(mutants)
     end
 
     def event_loop
       saved_traps = install_signal_traps
+      @scheduler.fill_idle_slots
       loop do
         break if @scheduler.done?
 
@@ -108,7 +116,6 @@ module Henitai
     end
 
     def process_cycle
-      @scheduler.fill_idle_slots unless @shutdown_requested
       @scheduler.reap_all_completed_children
       @scheduler.check_timeouts
       @scheduler.fill_idle_slots unless @shutdown_requested
@@ -129,14 +136,21 @@ module Henitai
     end
 
     def wait_for_next_event
-      @wakeup&.wait(@scheduler.next_event_timeout)
+      @wakeup&.wait(next_wait_timeout)
       @wakeup&.drain
+    end
+
+    # An event the runtime already read off its socket cannot wake the select.
+    def next_wait_timeout
+      return 0 if @runtime.respond_to?(:pending_events?) && @runtime.pending_events?
+
+      @scheduler.next_event_timeout
     end
 
     def install_signal_traps
       saved = {}
       %w[INT TERM HUP].each do |sig|
-        saved[sig] = @runtime.trap(sig) { @shutdown_requested = true }
+        saved[sig] = @runtime.trap(sig) { request_shutdown }
       end
       saved
     end

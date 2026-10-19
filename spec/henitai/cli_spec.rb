@@ -198,6 +198,11 @@ RSpec.describe Henitai::CLI do
     ).to_stdout
   end
 
+  it "cleans the suite boot report alongside the per-test coverage artifact" do
+    expect(Henitai::CLI::REPORT_CLEANUP_PATHS)
+      .to include([Henitai::PerTestCoverageCollector::BOOT_FILE_NAME])
+  end
+
   it "cleans the dependency manifest sidecar alongside the coverage artifacts" do
     expect(Henitai::CLI::REPORT_CLEANUP_PATHS)
       .to include([Henitai::CoverageBootstrapper::DEPENDENCY_MANIFEST_FILE])
@@ -216,7 +221,7 @@ RSpec.describe Henitai::CLI do
       aggregate_failures do
         expect do
           described_class.new(["clean", "--config", config_path]).run
-        end.to output(/Removed 6 generated report artifacts/).to_stdout
+        end.to output(/Removed 9 generated report artifacts/).to_stdout
         expect(cleanup_paths.all? { |path| !File.exist?(path) }).to be(true)
         expect(File).to exist(sentinel_path)
       end

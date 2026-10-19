@@ -12,12 +12,14 @@ RSpec.describe "RSpec coverage formatter registration" do
     expect(registered).to include(Henitai::CoverageFormatter)
   end
 
-  it "subscribes the formatter to the example_finished and dump_summary events" do
+  it "subscribes the formatter to the example, group, message and summary events" do
     notifications = RSpec::Core::Formatters::Loader
                     .formatters
                     .fetch(Henitai::CoverageFormatter)
 
-    expect(notifications).to contain_exactly(:example_finished, :dump_summary)
+    expect(notifications).to contain_exactly(
+      :example_started, :example_finished, :example_group_started, :example_group_finished, :message, :dump_summary
+    )
   end
 end
 # rubocop:enable RSpec/DescribeClass

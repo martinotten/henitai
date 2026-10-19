@@ -128,6 +128,16 @@ module Henitai
     def pause: (Float) -> void
   end
 
+  module Integration::RspecPreload
+    def fork_server_supported?: () -> bool
+    def preload_environment: (Array[String]) -> untyped
+  end
+
+  module Integration::MinitestPreload
+    def fork_server_supported?: () -> bool
+    def preload_environment: (Array[String]) -> untyped
+  end
+
   module Integration::RspecChildRunner
     private
 
@@ -135,7 +145,25 @@ module Henitai
     def build_rspec_runner: () -> untyped
     def configure_rspec_runner: (untyped) -> void
     def load_rspec_spec_files: (Array[String]) -> void
-    def run_rspec_specs: (untyped) -> untyped
+    def run_rspec_specs: (untyped, untyped) -> untyped
+  end
+
+  module RspecOutcomes
+    EVENTS: Array[Symbol]
+    HOOK_ERROR: String
+
+    def self.record: (TestFileOutcomes, untyped) -> void
+    def self.register: (TestFileOutcomes, untyped) -> void
+    def self.group_file: (untyped) -> String
+  end
+
+  class RspecOutcomes::Listener
+    def initialize: (TestFileOutcomes) -> void
+    def example_finished: (untyped) -> void
+    def example_group_started: (untyped) -> void
+    def example_group_finished: (untyped) -> void
+    def message: (untyped) -> void
+    def dump_summary: (untyped) -> void
   end
 
   module Integration::RspecTestSelection
@@ -188,6 +216,8 @@ module Henitai
     attr_reader max_mutants_per_line: Integer
     attr_reader max_flaky_retries: Integer
     attr_reader control_runs: bool
+    attr_reader flaky_detection: bool
+    attr_reader fork_server: bool
     attr_reader max_log_bytes: Integer
     attr_reader max_timeout: Float
     attr_reader sampling: untyped
@@ -229,11 +259,12 @@ module Henitai
     attr_reader exit_status: Integer?
     attr_reader log_path: String
     attr_reader status_reason: String?
+    attr_reader killing_tests: Array[String]
 
     def self.build: (wait_result: untyped, stdout: String?, stderr: String?, log_path: String) -> ScenarioExecutionResult
     def self.build_for_mutant: (wait_result: untyped, report: untyped, stdout: String?, stderr: String?, log_path: String) -> ScenarioExecutionResult
     def self.copy_reason: (untyped, untyped) -> String?
-    def initialize: (status: Symbol, stdout: String?, stderr: String?, log_path: String, ?exit_status: Integer?, ?status_reason: String?) -> void
+    def initialize: (status: Symbol, stdout: String?, stderr: String?, log_path: String, ?exit_status: Integer?, ?status_reason: String?, ?killing_tests: Array[String]) -> void
     def release_output!: () -> self
     def survived?: () -> bool
     def killed?: () -> bool
@@ -372,13 +403,43 @@ module Henitai
   class TimeoutCalibrator
     FLOOR_SECONDS: Float
 
-    def initialize: (timing_source: untyped, multiplier: untyped) -> void
+    def initialize: (timing_source: untyped, multiplier: untyped, ?boot_seconds: ^() -> Float, ?include_boot: bool) -> void
     def timeout_for: (untyped) -> Float?
 
     private
 
+    def boot_component: () -> Float
     def durations: () -> Hash[String, untyped]
     def normalize: (untyped) -> String
+  end
+
+  class TimeoutCeiling
+    def initialize: (ceiling: Float?, warner: untyped) -> void
+    def cap: (Float, Float) -> Float
+
+    private
+
+    def warn_baseline_exceeds_ceiling: (Float) -> void
+  end
+
+  class SuiteBootClock
+    STARTED_AT_ENV: String
+
+    def self.from_env: (Hash[String, String], ?clock: ^() -> Float) -> SuiteBootClock
+    def self.parse_timestamp: (untyped) -> Float?
+    def initialize: (started_at: Float?, ?clock: ^() -> Float) -> void
+    def mark_first_test_started: () -> void
+    def boot_seconds: () -> Float
+    def measured?: () -> bool
+  end
+
+  class ProcessWakeup
+    def initialize: (?signal_name: String) -> void
+    def install: () -> self
+    def watch: () { () -> Array[untyped] } -> void
+    def wait: (Float?) -> void
+    def drain: () -> void
+    def close: () -> void
   end
 
   class TestPrioritizer
@@ -453,6 +514,11 @@ module Henitai
       def run_child_activation_and_tests: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
     end
 
+    class CappedLogSink
+      def initialize: (untyped, Integer) -> void
+      def write: (String) -> void
+    end
+
     class ScenarioLogSupport
       def capture_child_output: (Hash[Symbol, String]) { () -> untyped } -> untyped
       def with_coverage_dir: (String) { () -> untyped } -> untyped
@@ -486,8 +552,9 @@ module Henitai
     class ChildHandle
       attr_accessor pid: Integer?
       attr_accessor log_paths: Hash[Symbol, String]
+      attr_accessor timeout: Float?
 
-      def initialize: (pid: Integer?, log_paths: Hash[Symbol, String]) -> void
+      def initialize: (pid: Integer?, log_paths: Hash[Symbol, String], ?timeout: Float?) -> void
     end
 
     class RspecProcessRunner
@@ -499,6 +566,7 @@ module Henitai
     class Rspec < Base
       include MutantRunSupport
       include RspecChildRunner
+      include RspecPreload
       include RspecTestSelection
 
       DEFAULT_SUITE_TIMEOUT: Float
@@ -512,7 +580,8 @@ module Henitai
 
       private
 
-      def run_tests: (Array[String]) ?{ () -> untyped } -> Integer
+      def outcome_recording_hook: (TestFileOutcomes, (^() -> untyped)?) -> (^() -> untyped)
+      def run_tests: (Array[String], TestFileOutcomes) ?{ () -> untyped } -> Integer
     end
 
     module CoverageRuntimeSuppressors
@@ -543,7 +612,7 @@ module Henitai
 
       private
 
-      def run_tests: (Array[String]) ?{ () -> untyped } -> Integer
+      def run_tests: (Array[String], TestFileOutcomes) ?{ () -> untyped } -> Integer
       def preload_environment: () -> void
       def setup_load_path: () -> void
       def suppress_minitest_autorun!: () -> nil
@@ -628,6 +697,7 @@ module Henitai
     def coverage_lines_by_file: (?String) -> Hash[String, Array[Integer]]
     def test_lines_by_file: (?String) -> Hash[String, Hash[String, Array[Integer]]]
     def durations_by_test: (?String) -> Hash[String, Float]
+    def boot_seconds: (?String) -> Float
   end
 
   class ProcessWorkerRunner
@@ -762,9 +832,13 @@ module Henitai
     def map: () -> Hash[String, Hash[String, Array[Integer]]]
   end
 
+  module SignatureLine
+    def self.on?: (untyped) -> bool
+  end
+
   class PerTestCoverageSelector
     def initialize: (?coverage_report_reader: CoverageReportReader) -> void
-    def filter: (Array[String], Mutant, reports_dir: String) -> Array[String]
+    def select: (Mutant, reports_dir: String, test_files: ^() -> Array[String], fallback: ^() -> Array[String]) -> Array[String]
 
     private
 
@@ -788,7 +862,6 @@ module Henitai
     def test_prioritizer: (untyped) -> TestPrioritizer
     def timing_source: (untyped) -> untyped
     def test_history: (untyped) -> Hash[untyped, untyped]
-    def run_with_flaky_retry: (Mutant, untyped, untyped, Array[String], ?untyped) -> ScenarioExecutionResult
     def warn_flaky_mutants: (Integer) -> void
     def with_reports_dir: (untyped) { () -> untyped } -> untyped
   end
@@ -1247,6 +1320,8 @@ module Henitai
     def coverage_fresh?: (Array[String], Configuration, Integration::Base, Array[String]?) -> bool
     def coverage_report_path: (Configuration) -> String
     def bootstrap_coverage: (Integration::Base, Configuration, ?Array[String]?) -> void
+    def flaky_detection?: (Configuration) -> bool
+    def run_flaky_baseline: (Integration::Base, Configuration, Array[String]) -> void
     def resolve_test_files: (Integration::Base, Array[String]?, Configuration) -> Array[String]
     def configured_test_excludes: (Configuration) -> Array[String]?
     def source_file_paths: (Array[String]) -> Array[String]
@@ -1273,5 +1348,60 @@ module RSpec
     class Runner
       def self.run: (Array[String]) -> Integer
     end
+
+  end
+end
+
+module Henitai
+  class TestFileOutcomes
+    REPORT_FILE_NAME: String
+
+    def self.report_path: (String) -> String
+    def self.default_report_path: () -> String
+    def self.load: (String) -> TestFileOutcomes
+    def initialize: () -> void
+    def record: (String, failed: bool) -> void
+    def record_unattributed_failure: () -> void
+    def unattributed_failures?: () -> bool
+    def failed_files: () -> Array[String]
+    def outcomes: () -> Hash[String, String]
+    def write: (String) -> void
+  end
+
+  class FlakyTestRegistry
+    FILE_NAME: String
+
+    def self.from_outcomes: (Hash[String, String], Hash[String, String]) -> FlakyTestRegistry
+    def self.load: (String) -> FlakyTestRegistry
+    def self.for_config: (untyped) -> FlakyTestRegistry
+    def self.for_reports_dir: (String?) -> FlakyTestRegistry
+    def initialize: (Array[String]) -> void
+    def all: () -> Array[String]
+    def flaky?: (String) -> bool
+    def empty?: () -> bool
+    def write: (String) -> void
+  end
+
+  class FlakyDetectionBaseline
+    def initialize: (reports_dir: String) -> void
+    def run: (integration: untyped, test_files: Array[String]) -> FlakyTestRegistry
+  end
+
+  module BootstrapErrorMessage
+    GENERIC: String
+
+    def self.build: (untyped) -> String
+  end
+
+  class FlakyRetryDecision
+    def initialize: (flaky_tests: FlakyTestRegistry, max_retries: Integer) -> void
+    def retry?: (status: Symbol, killing_tests: Array[String], attempts: Integer) -> bool
+  end
+
+  class FlakyMutantRetrier
+    attr_reader retried_count: Integer
+
+    def initialize: (flaky_tests: FlakyTestRegistry, max_retries: Integer) -> void
+    def run: (mutant: Mutant, integration: untyped, test_files: Array[String], timeout: Float) -> untyped
   end
 end

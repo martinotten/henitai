@@ -278,6 +278,16 @@ RSpec.describe Henitai::ConfigurationValidator do
       )
     end
 
+    it "accepts a boolean flaky_detection value" do
+      expect { described_class.validate!({ mutation: { flaky_detection: true } }) }.not_to raise_error
+    end
+
+    it "rejects a non-boolean flaky_detection value with the full path" do
+      expect do
+        described_class.validate!({ mutation: { flaky_detection: "yes" } })
+      end.to raise_error(Henitai::ConfigurationError, /mutation\.flaky_detection/)
+    end
+
     # Muster C: validate_sampling(value[:sampling]) → 0
     it "validates sampling when present (delegated call not skipped)" do
       expect do

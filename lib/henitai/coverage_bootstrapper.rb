@@ -45,7 +45,9 @@ module Henitai
       # but irrelevant report (e.g. from a different working directory) must
       # still trigger a re-bootstrap rather than silently proceeding with no
       # usable coverage.
-      unless coverage_ready?(source_files, config, integration, resolved_test_files)
+      if flaky_detection?(config)
+        run_flaky_baseline(integration, config, resolved_test_files)
+      elsif !coverage_ready?(source_files, config, integration, resolved_test_files)
         bootstrap_coverage(integration, config, resolved_test_files)
       end
 
@@ -69,7 +71,25 @@ module Henitai
     def coverage_ready?(source_files, config, integration, test_files)
       coverage_fresh?(source_files, config, test_files) &&
         coverage_available?(source_files, config) &&
-        per_test_coverage_ready?(source_files, config, integration, test_files)
+        per_test_coverage_ready?(source_files, config, integration, test_files) &&
+        boot_seconds_ready?(config, integration)
+    end
+
+    # Timeout calibration reads the boot time the per-test collector writes
+    # next to the coverage artifacts, so a missing boot file means the
+    # baseline must run again to measure it.
+    def boot_seconds_ready?(config, integration)
+      return true unless calibration_enabled?(config) && per_test_coverage_supported?(integration)
+
+      File.exist?(boot_seconds_report_path(config))
+    end
+
+    def calibration_enabled?(config)
+      config.respond_to?(:timeout_configured?) && !config.timeout_configured?
+    end
+
+    def boot_seconds_report_path(config)
+      File.join(reports_dir(config), PerTestCoverageCollector::BOOT_FILE_NAME)
     end
 
     def covered_source_files(source_files, coverage_lines)
@@ -135,19 +155,25 @@ module Henitai
             return
           end
 
-          raise CoverageError, build_bootstrap_error(result)
+          raise CoverageError, BootstrapErrorMessage.build(result)
         end
       end
     end
 
-    def build_bootstrap_error(result)
-      return "Configured test suite failed while generating coverage" unless result.respond_to?(:log_path)
+    # Flaky detection needs two complete baseline runs, so the existing
+    # coverage is never reused in this mode.
+    def flaky_detection?(config)
+      config.respond_to?(:flaky_detection) && config.flaky_detection
+    end
 
-      tail = result.tail(12).strip
-      message = +"Configured test suite failed while generating coverage"
-      message << " (see #{result.log_path})"
-      message << "\n#{tail}" unless tail.empty?
-      message
+    def run_flaky_baseline(integration, config, test_files)
+      with_reports_dir(config) do
+        with_coverage_dir(config) do
+          FlakyDetectionBaseline.new(reports_dir: reports_dir(config))
+                                .run(integration:, test_files:)
+          record_dependency_manifest(config)
+        end
+      end
     end
 
     def with_coverage_dir(config)

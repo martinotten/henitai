@@ -207,7 +207,11 @@ Representative configuration contract:
 mutation:
   operators: light
   timeout: 10
+  timeout_multiplier: 3.0
+  max_timeout: 30.0
   max_flaky_retries: 3
+  flaky_detection: false
+  fork_server: false
   sampling:
     ratio: 0.05
     strategy: stratified
@@ -225,6 +229,8 @@ reports_dir: reports
 dashboard:
   base_url: https://dashboard.stryker-mutator.io
 ```
+
+Timeout calibration: without an explicit `mutation.timeout`, the per-mutant timeout is `timeout_multiplier` × (sum of the selected test-file durations from `henitai_per_test.json` + the suite boot time from `henitai_suite_boot.json`), floored at 2 s. `max_timeout` caps the calibrated value but never below baseline + 2 s; when the baseline alone exceeds it, a single warning is emitted. Boot time is included so slow `spec_helper` or `before(:suite)` work is not misreported as mutant timeouts.
 
 Representative report contract:
 
@@ -278,7 +284,7 @@ The implementation maps onto the following module layout:
 3. If the current coverage artifacts do not cover the configured source files,
    Henitai runs the configured test suite once to bootstrap a usable baseline.
 4. If coverage is still missing or unusable after the bootstrap run, Henitai aborts with `Henitai::CoverageError`.
-5. Coverage data and test inventory are used to prioritize tests.
+5. Coverage data and test inventory are used to prioritize tests. Test selection is coverage first: the per-test coverage map (`henitai_per_test.json`) is the primary candidate source, and every integration test file that provably covers the mutant's lines is selected, whether or not its name matches the subject. Name matching is only the fallback when the map cannot decide (no map, no location, no covering test, or no covering test left in the integration).
 6. The execution engine runs the filtered mutant set.
 7. The analysis stage classifies killed, survived, ignored, timeout, and equivalent outcomes.
 8. The reporter emits JSON, HTML, and optional review feedback.
@@ -498,6 +504,21 @@ end
 
 Namespace-wide ignore rules belong in `.henitai.yml`, not in source comments.
 
+### 8.5a Fork-Server Execution (opt-in)
+
+With `mutation.fork_server: true` (RSpec and Minitest, any `jobs`), the
+environment and the union of the run's test files are loaded once in a
+long-lived server and every mutant process is forked from it. With `jobs > 1`
+the scheduler runs on `ForkServer::Runtime`, which completes mutants from the
+server's `exited` events instead of `waitpid`. If the server is unavailable
+the run falls back to per-mutant boot with a warning. A server lost mid-run
+does not turn its in-flight mutants into `runtime_error`: they complete as
+lost and are rerun on the fallback path, whose timeouts include suite boot.
+Mutant processes forked by the server (not children of the parent, possibly
+without a process group yet) are stopped by signalling the group, falling
+back to the pid, and probing liveness with `kill(0)`. See
+[ADR-15](adr/ADR-15-fork-server-execution-model.md).
+
 ### 8.6 Parallel Execution and Flaky Test Mitigation
 
 The execution engine runs mutants linearly by default; `config.jobs` above `1`
@@ -546,8 +567,11 @@ runs it exists for.
 Test instability is handled conservatively:
 
 - process isolation is the default execution model
-- survived mutants are retried up to `config.max_flaky_retries` times (default: 3) before being classified as survived
-- if more than 5% of executed mutants required at least one retry, a warning is emitted at the end of the run
+- survivors are never retried; flakiness can only fake a kill, not a survivor
+- with `mutation.flaky_detection` enabled the baseline suite runs twice; test files whose outcome differs are persisted to `henitai_flaky_tests.json`
+- a killed mutant is retried up to `config.max_flaky_retries` times (default: 3) only when all of its killing test files (`failed_tests` in the child report) are flaky; any surviving retry makes it `Survived`. Without a flaky set nothing is retried. Both execution paths share this rule (`FlakyRetryDecision`)
+- failures outside an example are attributed to a spec file where the framework names it (RSpec `after(:context)` hook errors; `before(:context)` errors already fail the group's examples). Anything else (spec load errors, suite-level hooks, a Minitest result without a usable file) is recorded as `unattributed_failures`: the kill is then genuine and never retried, and the flaky baseline aborts because the failure cannot be explained by a flaky file. A file seen in only one baseline run is never called flaky. Minitest outcomes are keyed to the file that defines the test class, falling back to the test method's file
+- the end of the run reports the flaky tests and the number of re-checked kills
 - unknown or flaky outcomes must be surfaced, not hidden
 
 ### 8.7 Latent Mutant Tracking
@@ -594,7 +618,7 @@ The bootstrap sequence is:
 
 1. Inspect the configured coverage artifacts for lines that overlap the current source files.
 2. If usable coverage already exists, proceed with the normal mutation pipeline.
-3. If coverage is missing or stale, run the configured test suite once to bootstrap fresh coverage. The suite is the integration's test files minus the `test_excludes` globs, the same set used for per-mutant selection: a test that never runs against a mutant contributes nothing but baseline runtime. The excluded files are equally absent from the staleness watch list. Staleness covers source files, test files, and the dependency file set (helpers, support, fixtures, lockfile, tool config): edits are detected by mtime, deletions by comparing the recorded dependency manifest against disk.
+3. If coverage is missing or stale, run the configured test suite once to bootstrap fresh coverage. The suite is the integration's test files minus the `test_excludes` globs, the same set used for per-mutant selection: a test that never runs against a mutant contributes nothing but baseline runtime. The excluded files are equally absent from the staleness watch list. Staleness covers source files, test files, and the dependency file set (helpers, support, fixtures, lockfile, tool config): edits are detected by mtime, deletions by comparing the recorded dependency manifest against disk. When timeout calibration is enabled and per-test coverage is supported, a missing `henitai_suite_boot.json` also triggers the baseline run, because calibration needs the boot time. The boot file is only written after a boot time was actually measured, so an existing file is never overwritten with `0.0`.
 4. Re-check the coverage artifacts.
 5. If coverage is still missing or unusable, raise `Henitai::CoverageError`.
 
@@ -749,7 +773,7 @@ CI and developer-feedback features:
 - per-test coverage analysis via `CoverageFormatter` and `henitai_per_test.json`
 - sampling and test prioritization via `TestPrioritizer` with path normalization and historical kill counts
 - parallel execution via an event-loop process scheduler with configurable `jobs`
-- flaky-test mitigation with configurable `max_flaky_retries` and 5% retry-rate warning
+- flaky-test mitigation: opt-in `flaky_detection` baseline, kill re-checks bounded by `max_flaky_retries`
 - latent-mutant tracking via `MutantHistoryStore` (SQLite) and `mutation-history.json` trend export
 - conservative equivalence detection via `EquivalenceDetector` (arithmetic neutral-element heuristics)
 - HTML reporter implemented (was stub)

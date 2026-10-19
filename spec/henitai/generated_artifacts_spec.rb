@@ -32,6 +32,12 @@ RSpec.describe Henitai::GeneratedArtifacts do
       end
     end
 
+    it "recognizes a henitai reports directory holding only the suite boot report" do
+      Dir.mktmpdir do |base|
+        expect(described_class.generated_dir?(dir_with("reports", %w[henitai_suite_boot.json], base))).to be(true)
+      end
+    end
+
     it "keeps a reports directory holding only fixture input" do
       Dir.mktmpdir do |base|
         expect(described_class.generated_dir?(dir_with("reports", %w[template.yml], base))).to be(false)

@@ -2,11 +2,13 @@
 
 require_relative "process_worker_runner"
 require_relative "execution_engine/env_scope"
+require_relative "execution_engine/fork_server_scope"
 
 module Henitai
   # Runs pending mutants through the selected integration.
   class ExecutionEngine
     include EnvScope
+    include ForkServerScope
 
     def run(mutants, integration, config, progress_reporter: nil)
       with_reports_dir(config) do
@@ -23,18 +25,25 @@ module Henitai
     private
 
     def execute(mutants, integration, config, progress_reporter)
-      @flaky_retry_count = 0
       pending_mutants = Array(mutants).select(&:pending?)
       mutex = Mutex.new
-      if parallel_execution?(config, pending_mutants)
-        run_parallel(pending_mutants, integration, config, progress_reporter)
-      else
-        run_linear(pending_mutants, integration, config, progress_reporter, mutex)
-      end
-
-      warn_flaky_mutants(pending_mutants.size)
+      @flaky_tests = flaky_tests_for(config)
+      @retrier = FlakyMutantRetrier.new(flaky_tests: @flaky_tests, max_retries: max_flaky_retries(config))
+      run_pending(pending_mutants, integration, config, progress_reporter, mutex)
+      warn_flaky_mutants
       verify_controls(pending_mutants, integration, config)
       mutants
+    end
+
+    def run_pending(pending_mutants, integration, config, progress_reporter, mutex)
+      with_fork_server(pending_mutants, integration, config) do
+        if parallel_execution?(config, pending_mutants)
+          run_parallel(pending_mutants, integration, config, progress_reporter)
+        else
+          run_linear(pending_mutants, integration, config, progress_reporter, mutex)
+          @flaky_retry_count = @retrier.retried_count
+        end
+      end
     end
 
     def verify_controls(mutants, integration, config)
@@ -69,10 +78,14 @@ module Henitai
     end
 
     def run_parallel(mutants, integration, config, progress_reporter)
-      runner = ProcessWorkerRunner.new(worker_count: worker_count(config))
+      runner = ProcessWorkerRunner.new(
+        worker_count: worker_count(config),
+        flaky_tests: @flaky_tests,
+        **parallel_runtime_options
+      )
       results = runner.run(
         mutants,
-        integration,
+        @fork_server_runner || integration,
         config,
         progress_reporter,
         test_file_resolver: ->(mutant) { prioritized_tests_for(mutant, integration, config) },
@@ -87,7 +100,10 @@ module Henitai
       record_test_files(mutant, test_files)
       return record_no_coverage(mutant, progress_reporter, mutex) if test_files.empty?
 
-      scenario_result = run_with_flaky_retry(mutant, integration, config, test_files, mutex)
+      scenario_result = @retrier.run(
+        mutant: mutant, integration: @fork_server_runner || integration, test_files: test_files,
+        timeout: resolved_timeout(test_files, config)
+      )
       mutant.status = scenario_status(scenario_result)
       ScenarioExecutionResult.copy_reason(scenario_result, mutant)
 
@@ -105,19 +121,15 @@ module Henitai
     end
 
     def report_progress(mutant, scenario_result, progress_reporter, mutex)
-      if mutex
-        mutex.synchronize { progress_reporter&.progress(mutant, scenario_result:) }
-      else
-        progress_reporter&.progress(mutant, scenario_result:)
-      end
+      mutex.synchronize { progress_reporter&.progress(mutant, scenario_result:) }
     end
 
     def prioritized_tests_for(mutant, integration, config)
-      tests = reject_excluded_tests(integration.select_tests(mutant.subject), config)
-      tests = per_test_coverage_selector.filter(
-        tests,
+      tests = per_test_coverage_selector.select(
         mutant,
-        reports_dir: config.reports_dir
+        reports_dir: config.reports_dir,
+        test_files: -> { reject_excluded_tests(integration.test_files, config) },
+        fallback: -> { reject_excluded_tests(integration.select_tests(mutant.subject), config) }
       )
       test_prioritizer(config).sort(tests, mutant, test_history(config))
     end
@@ -146,11 +158,21 @@ module Henitai
     def resolved_timeout(test_files, config)
       return config.timeout unless calibration_enabled?(config)
 
-      calibrated = timeout_calibrator(config).timeout_for(test_files)
-      return [calibrated, max_timeout(config)].min if calibrated
+      calibrator = timeout_calibrator(config)
+      calibrated = calibrator.timeout_for(test_files)
+      unless calibrated
+        warn_timeout_fallback_once
+        return Configuration::DEFAULT_TIMEOUT
+      end
 
-      warn_timeout_fallback_once
-      Configuration::DEFAULT_TIMEOUT
+      timeout_ceiling(config).cap(calibrated, calibrator.baseline_for(test_files))
+    end
+
+    def timeout_ceiling(config)
+      @timeout_ceiling ||= TimeoutCeiling.new(
+        ceiling: max_timeout(config),
+        warner: ->(message) { warn(message) }
+      )
     end
 
     # Ceiling on the auto-calibrated timeout so a runaway mutant is killed in
@@ -166,11 +188,19 @@ module Henitai
       config.respond_to?(:timeout_configured?) && !config.timeout_configured?
     end
 
+    # Boot stays in the timeout even with a fork server: served mutants still
+    # run the suite's before(:suite) hooks, which the boot measurement includes.
     def timeout_calibrator(config)
       @timeout_calibrator ||= TimeoutCalibrator.new(
         timing_source: timing_source(config),
-        multiplier: config.timeout_multiplier
+        multiplier: config.timeout_multiplier,
+        boot_seconds: -> { boot_seconds(config) }
       )
+    end
+
+    def boot_seconds(config)
+      path = File.join(config.reports_dir, PerTestCoverageCollector::BOOT_FILE_NAME)
+      CoverageReportReader.new.boot_seconds(path)
     end
 
     def warn_timeout_fallback_once
@@ -191,34 +221,9 @@ module Henitai
       config.history || {}
     end
 
-    # Retry logic is kept in one place to preserve the status transition flow.
-    # The retry budget is configurable because repeated survivors can multiply
-    # runtime on real CI workloads.
-    # rubocop:disable Metrics/MethodLength
-    def run_with_flaky_retry(mutant, integration, config, test_files, mutex)
-      timeout = resolved_timeout(test_files, config)
-      scenario_result = integration.run_mutant(
-        mutant:,
-        test_files:,
-        timeout: timeout
-      )
-      return scenario_result unless scenario_status(scenario_result) == :survived
-
-      retries = 0
-      max_flaky_retries(config).times do
-        retries += 1
-        scenario_result = integration.run_mutant(
-          mutant:,
-          test_files:,
-          timeout: timeout
-        )
-        break unless scenario_status(scenario_result) == :survived
-      end
-
-      mutex.synchronize { @flaky_retry_count += 1 } if retries.positive?
-      scenario_result
+    def flaky_tests_for(config)
+      FlakyTestRegistry.for_config(config)
     end
-    # rubocop:enable Metrics/MethodLength
 
     def scenario_status(result)
       return result if result.is_a?(Symbol)
@@ -226,17 +231,14 @@ module Henitai
       result.status
     end
 
-    def warn_flaky_mutants(total_mutants)
-      return if total_mutants.zero?
-
-      flaky_ratio = @flaky_retry_count.to_f / total_mutants
-      return unless flaky_ratio > 0.05
+    def warn_flaky_mutants
+      return if @flaky_retry_count.to_i.zero?
 
       warn format(
-        "Flaky-test mitigation: %<flaky>d/%<total>d mutants required retries (%<ratio>.2f%%)",
-        flaky: @flaky_retry_count,
-        total: total_mutants,
-        ratio: flaky_ratio * 100.0
+        "Flaky-test mitigation: %<count>d killed mutant(s) were re-checked because their killing tests " \
+        "are flaky (%<files>s)",
+        count: @flaky_retry_count,
+        files: @flaky_tests.all.join(", ")
       )
     end
 

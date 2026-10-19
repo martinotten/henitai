@@ -156,10 +156,18 @@ coverage and is excluded from `includes` in `.henitai.yml`.
   `def obj.name` for a non-constant `obj` are no subjects. `define_method`
   remains only as the fallback for `define_method` subjects. Process isolation
   is the required default model, not thread-only parallelism.
+- Opt-in `mutation.fork_server` (ADR-15, RSpec and Minitest, any `jobs`)
+  boots the test environment once in a server and forks each mutant process
+  from it; on failure it falls back to per-mutant boot.
 - `ExecutionEngine` runs mutants linearly by default (`config.jobs`, default
   `1`). With more jobs, `ProcessWorkerRunner` drives a single-threaded event
   loop and `SlotScheduler` owns spawning, reaping, timeouts and draining. Every
   mutant runs in its own forked child; forked processes provide the isolation.
+- Test selection is coverage first. The per-test coverage map
+  (`henitai_per_test.json`) is the primary source of candidate tests: every
+  integration test file that provably covers the mutant's lines is selected,
+  whether or not its name matches the subject. Name matching
+  (`select_tests`) is only the fallback when per-test data cannot decide.
 - A detected verdict must be caused by the mutation (ADR-14). `FidelityCheck`
   rejects a mutant whose activation source is not exactly the reported
   mutation before it runs; the child reports its outcome through
@@ -167,9 +175,12 @@ coverage and is excluded from `includes` in `.henitai.yml`.
   signals and `SystemExit` never count as kills; `ControlRun` re-runs
   detected subjects with the unmutated method and reclassifies their
   detections if that fails. `rake oracle` measures false kills and survivors.
-- Survived mutants are retried up to `config.max_flaky_retries` (default `3`)
-  before being classified as survived. A warning is emitted if more than `5%`
-  of mutants needed a retry.
+- Survivors are never retried. With opt-in `mutation.flaky_detection` the
+  baseline suite runs twice and test files whose outcome differs are written to
+  `henitai_flaky_tests.json`; a `Killed` mutant is retried up to
+  `config.max_flaky_retries` (default `3`) only when every test file in the
+  child report's `failed_tests` is flaky, and any surviving retry makes it
+  `Survived`. No flaky set means no retries (linear and parallel paths alike).
 - Coverage is a required gate before subject resolution. If existing coverage
   does not cover configured sources, the configured test suite runs once to
   bootstrap it. If coverage remains unusable, `Henitai::CoverageError` aborts
@@ -234,8 +245,14 @@ deliberate even though `||=` is a valid `UpdateOperator`/
   drift and supports latent-mutant tracking separately from the pass/fail model.
 - Reports default to `reports/` and can be overridden with `reports_dir`:
   `mutation-report.json` (canonical Stryker schema), `mutation-report.html`,
-  `mutation-history.json` (trend export), and `henitai_per_test.json` (per-test
-  coverage propagated to forked children through `HENITAI_REPORTS_DIR`).
+  `mutation-history.json` (trend export), `henitai_per_test.json` (per-test
+  coverage propagated to forked children through `HENITAI_REPORTS_DIR`), and
+  `henitai_suite_boot.json` (`{"boot_seconds": x}`, the measured suite boot
+  time that feeds timeout calibration), and `henitai_flaky_tests.json` (flaky
+  test files, only with `flaky_detection`).
+- Timeout calibration: calibrated timeout = `timeout_multiplier` × (sum of the
+  selected test-file durations + measured boot), floored at 2 s. `max_timeout`
+  caps it but never below baseline + 2 s, with a one-time warning.
 - Live terminal progress is separate from captured child stdout/stderr. Child
   logs are written to `reports/mutation-logs/` and shown only on failure or
   with `--all-logs`/`--verbose`.

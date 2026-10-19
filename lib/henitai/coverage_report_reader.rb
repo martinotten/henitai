@@ -7,6 +7,7 @@ module Henitai
   class CoverageReportReader
     DEFAULT_COVERAGE_REPORT_PATH = "coverage/.resultset.json"
     DEFAULT_PER_TEST_COVERAGE_REPORT_PATH = "coverage/henitai_per_test.json"
+    DEFAULT_SUITE_BOOT_REPORT_PATH = "coverage/henitai_suite_boot.json"
 
     def coverage_lines_by_file(path = DEFAULT_COVERAGE_REPORT_PATH)
       return {} unless File.exist?(path)
@@ -35,6 +36,26 @@ module Henitai
 
         [test_file, entry.fetch("duration").to_f]
       end.to_h
+    end
+
+    # Suite boot seconds (loading helpers, spec files and before(:suite)).
+    # Missing or malformed reports yield 0.0, the value for "unknown".
+    def boot_seconds(path = DEFAULT_SUITE_BOOT_REPORT_PATH)
+      return 0.0 unless File.exist?(path)
+
+      parsed = JSON.parse(File.read(path))
+      parsed.is_a?(Hash) ? usable_boot_seconds(parsed["boot_seconds"]) : 0.0
+    rescue JSON::ParserError, ArgumentError, TypeError
+      0.0
+    end
+
+    # Only a finite, non-negative number is a usable measurement; anything
+    # else is treated as unknown.
+    def usable_boot_seconds(value)
+      return 0.0 unless value.is_a?(Numeric)
+
+      seconds = Float(value)
+      seconds.finite? && seconds >= 0 ? seconds : 0.0
     end
 
     private

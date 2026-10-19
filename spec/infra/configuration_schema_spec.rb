@@ -48,6 +48,12 @@ RSpec.describe "Configuration schema" do
     expect(mutation.fetch("control_runs")).to include("type" => "boolean", "default" => true)
   end
 
+  it "documents the opt-in fork-server switch" do
+    mutation = properties.fetch("mutation").fetch("properties")
+
+    expect(mutation.fetch("fork_server")).to include("type" => "boolean", "default" => false)
+  end
+
   it "documents sampling as a complete configuration block" do
     sampling = properties.fetch("mutation").fetch("properties").fetch("sampling")
 
