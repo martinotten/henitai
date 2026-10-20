@@ -30,7 +30,7 @@ module Henitai
       with_database do |db|
         ensure_schema(db)
         db.transaction do
-          insert_run(db, result, version, recorded_at) unless partial_rerun?(result)
+          insert_run(db, result, version, recorded_at) if full_run?(result)
           Array(result.mutants).each do |mutant|
             upsert_mutant(db, mutant, version, recorded_at)
           end
@@ -83,6 +83,11 @@ module Henitai
         subject_source_hash: row["subject_source_hash"],
         covered_tests_fingerprint: row["covered_tests_fingerprint"]
       }
+    end
+
+    def full_run?(result)
+      authoritative = !result.respond_to?(:authoritative?) || result.authoritative?
+      authoritative && !partial_rerun?(result)
     end
 
     def partial_rerun?(result)

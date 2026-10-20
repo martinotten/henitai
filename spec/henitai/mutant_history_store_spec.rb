@@ -57,6 +57,7 @@ RSpec.describe Henitai::MutantHistoryStore do
   def build_result(mutants, summary)
     Struct.new(:mutants, :scoring_summary) do
       def partial_rerun? = false
+      def authoritative? = true
     end.new(mutants, summary)
   end
 
@@ -304,6 +305,43 @@ RSpec.describe Henitai::MutantHistoryStore do
         db.close
 
         expect([count, ids]).to eq([2, %w[stub-a stub-b]])
+      end
+    end
+  end
+
+  describe "scoped (non-authoritative) result" do
+    def scoped_result(mutants)
+      result = build_result(
+        mutants,
+        { mutation_score: 80.0, mutation_score_indicator: 40.0, equivalence_uncertainty: nil }
+      )
+      allow(result).to receive(:authoritative?).and_return(false)
+      result
+    end
+
+    it "does not insert a runs row for a non-authoritative run" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "mutation-history.sqlite3")
+        described_class.new(path:).record(scoped_result([build_mutant(status: :killed)]), version: "0.1.0")
+
+        db = SQLite3::Database.new(path)
+        count = db.get_first_value("SELECT COUNT(*) FROM runs")
+        db.close
+
+        expect(count).to eq(0)
+      end
+    end
+
+    it "still upserts mutant rows for a non-authoritative run" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "mutation-history.sqlite3")
+        described_class.new(path:).record(scoped_result([build_mutant(status: :killed)]), version: "0.1.0")
+
+        db = SQLite3::Database.new(path)
+        count = db.get_first_value("SELECT COUNT(*) FROM mutants")
+        db.close
+
+        expect(count).to eq(1)
       end
     end
   end
