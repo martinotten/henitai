@@ -1173,6 +1173,27 @@ RSpec.describe Henitai::Runner do
     end
   end
 
+  it "hands survivor selection no reuse filter when forced" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+      Dir.chdir(dir) do
+        config = build_config(reporters: [])
+        strategy = instance_double(Henitai::SurvivorRerunStrategy,
+                                   try_recipe_run: nil, apply_selection: [], survivor_stats: nil, active?: true)
+        allow(Henitai::SurvivorRerunStrategy).to receive(:new).and_return(strategy)
+        runner = described_class.new(config:, survivors_from: "reports/mutation-report.json", mode: { force: true })
+        stub_empty_pipeline(runner)
+        allow(runner).to receive(:mutant_generator).and_return(instance_double(Henitai::MutantGenerator, generate: []))
+        allow(Henitai::Reporter).to receive(:run_all)
+        runner.run
+
+        expect(strategy).to have_received(:apply_selection).with([], reuse_filter: nil)
+      end
+    end
+  end
+
   it "neither samples nor records sampling on a survivor rerun" do
     Dir.mktmpdir do |dir|
       FileUtils.mkdir_p(File.join(dir, "lib"))

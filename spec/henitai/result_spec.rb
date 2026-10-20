@@ -710,6 +710,15 @@ RSpec.describe Henitai::Result do
 
       expect(schema[:sampling]).to eq(sampling)
     end
+
+    it "exposes the applied sampling through its reader" do
+      sampling = { strategy: "stratified", ratio: 0.05, seed: 7 }
+      result = described_class.new(
+        mutants: [], started_at: Time.at(0), finished_at: Time.at(1), sampling:
+      )
+
+      expect(result.sampling).to eq(sampling)
+    end
   end
 
   describe "session identity" do

@@ -433,6 +433,27 @@ RSpec.describe Henitai::MutantGenerator do
     end
   end
 
+  # A survivor rerun generates unsampled and matches prior survivors by stable
+  # id, so whenever operators produce the same program, a sampled run must keep
+  # the representative that unsampled generation keeps.
+  it "keeps the unsampled representative of a duplicate program under every seed" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", "class Sample\n  def f\n    consume(true)\n    true\n  end\nend\n")
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      operators = [Henitai::Operators::BooleanLiteral.new, Henitai::Operators::ReturnValue.new]
+      ids = ->(mutants) { mutants.map { |mutant| Henitai::MutantIdentity.stable_id(mutant) } }
+      unsampled = ids.call(described_class.new.generate([subject], operators, sample: false))
+
+      foreign = (0..20).flat_map do |seed|
+        sampling = "mutation:\n  sampling:\n    ratio: 0.4\n    strategy: stratified\n    seed: #{seed}\n"
+        config = write_configuration(dir, sampling)
+        ids.call(described_class.new.generate([subject], operators, config:)) - unsampled
+      end
+
+      expect(foreign).to eq([])
+    end
+  end
+
   it "passes the configured sampling seed to the strategy" do
     Dir.mktmpdir do |dir|
       path = write_source(dir, "lib/sample.rb", "class Sample\n  def announce\n    1 + 2\n  end\nend\n")
@@ -476,7 +497,7 @@ RSpec.describe Henitai::MutantGenerator do
     end
   end
 
-  it "computes activation sources only for the sampled mutants", :aggregate_failures do
+  it "deduplicates programs across every mutant before sampling", :aggregate_failures do
     Dir.mktmpdir do |dir|
       path = write_source(dir, "lib/sample.rb", <<~RUBY)
         class Sample
@@ -502,7 +523,7 @@ RSpec.describe Henitai::MutantGenerator do
       sampled = described_class.new.generate([subject], operators, config:)
 
       expect(sampled.size).to be < unsampled
-      expect(Henitai::Mutant::Activator).to have_received(:activation_source_for).exactly(sampled.size).times
+      expect(Henitai::Mutant::Activator).to have_received(:activation_source_for).exactly(unsampled).times
     end
   end
 

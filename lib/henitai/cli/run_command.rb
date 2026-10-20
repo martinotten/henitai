@@ -43,7 +43,8 @@ module Henitai
           survivors_from: resolved_survivors_from,
           mode: {
             dry_run: options.fetch(:dry_run, false),
-            incremental: options.fetch(:incremental, false) && !options.fetch(:force, false)
+            incremental: options.fetch(:incremental, false) && !options.fetch(:force, false),
+            force: options.fetch(:force, false)
           }
         )
         runner.run

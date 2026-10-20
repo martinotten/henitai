@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The recipe fast path now refreshes coverage (Gate 0) so new or edited tests
   are selected, recipe stubs also run their name-matched tests, and survivor
   reruns never sample (sampling had dropped prior survivors before matching).
+  `--force` now also bypasses this reuse. Duplicate programs are collapsed
+  before sampling, so a sampled run keeps the same representative as an
+  unsampled survivor rerun and its survivors are found again.
 - A survived verdict whose covering-test fingerprint cannot be recomputed keeps
   stored fingerprints only from a survived row of the same subject source,
   never from a killed row or an edited method.
@@ -57,7 +60,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the source line where the mutant's node starts, in `StaticFilter`; matching
   mutants are reported as `Ignored` with an `ignore_reason` instead of being
   dropped at generation time. An enclosing construct whose body matches is no
-  longer suppressed.
+  longer suppressed. The line is decoded honouring a magic encoding comment,
+  so a non-UTF-8 source file no longer aborts filtering.
 - **Review follow-ups.** The slot scheduler no longer signals the process
   group of a reaped pid that owns no mutant slot. Minitest results for tests
   added by reopening a class in another file are attributed to the file that

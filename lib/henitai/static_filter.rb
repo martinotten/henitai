@@ -144,8 +144,8 @@ module Henitai
     end
 
     def read_source_lines(path)
-      File.readlines(path, encoding: "UTF-8")
-    rescue SystemCallError, IOError
+      SourceParser.read_file(path).lines
+    rescue SystemCallError, IOError, EncodingError
       nil
     end
 

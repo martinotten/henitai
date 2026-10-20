@@ -33,7 +33,8 @@ module Henitai
     attr_reader :config, :result
 
     # @param mode [Hash] execution-mode flags: +dry_run:+ stops before Gate 4,
-    #   +incremental:+ reuses still-valid Killed verdicts from history.
+    #   +incremental:+ reuses still-valid Killed verdicts from history,
+    #   +force:+ disables the verdict reuse that survivor reruns apply.
     # +deps+ is assigned in the body, not defaulted in the signature: the
     # default needs @config, and `config:` itself defaults to a load.
     #
@@ -49,6 +50,7 @@ module Henitai
       @survivors_from = survivors_from
       @dry_run        = mode.fetch(:dry_run, false)
       @incremental    = mode.fetch(:incremental, false)
+      @force          = mode.fetch(:force, false)
     end
 
     # Entry point — runs the full pipeline and returns a Result.
@@ -127,7 +129,7 @@ module Henitai
       filtered = filter_mutants(mutants)
       return apply_incremental_filter(filtered) unless survivor_rerun?
 
-      survivor_strategy.apply_selection(filtered, reuse_filter: reuse_filter)
+      survivor_strategy.apply_selection(filtered, reuse_filter: @force ? nil : reuse_filter)
     end
 
     # Verdict reuse (opt-in `--incremental`; always for `--survivors-from`

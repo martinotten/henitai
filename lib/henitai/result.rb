@@ -35,7 +35,7 @@ module Henitai
     }.freeze
 
     attr_reader :mutants, :started_at, :finished_at, :thresholds, :survivor_stats,
-                :session_id, :git_sha, :since, :coverage_criteria, :complete_files
+                :session_id, :git_sha, :since, :coverage_criteria, :complete_files, :sampling
 
     # @param source_provider [#call] maps a file path to its source string.
     #   Injected so the domain object performs no disk IO; the caller (which

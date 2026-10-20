@@ -125,7 +125,7 @@ RSpec.describe Henitai::CLI do
                 --all-logs, --verbose        Print all captured child logs
                 --survivors-from PATH        Re-run only survivors from a prior report (partial rerun; threshold checks are skipped; dirty worktrees are included)
                 --incremental                Reuse still-valid Killed verdicts from the history store instead of re-executing them
-                --force                      Bypass verdict reuse and execute every mutant (only meaningful with --incremental)
+                --force                      Bypass verdict reuse (--incremental, --survivors-from) and execute every mutant
                 --dry-run                    List the post-filter mutant set without executing mutants (always exits 0)
                 --fail-on-survivors          Exit 1 for partial reruns when any survivors remain (otherwise exits 0)
                 --strict-exit-codes          Expanded exit codes: 0 threshold met, 1 threshold miss, 2 framework error, 3 timeouts present, 4 runtime/compile errors present
@@ -1445,14 +1445,14 @@ RSpec.describe Henitai::CLI do
   end
 
   describe "--incremental" do
-    def captured_incremental_for(argv_flags)
+    def captured_incremental_for(argv_flags, key: :incremental)
       Dir.mktmpdir do |dir|
         config_path = write_configuration(dir)
         result = instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: false)
         captured = nil
 
         allow(Henitai::Runner).to receive(:new) do |**kwargs|
-          captured = kwargs.dig(:mode, :incremental)
+          captured = kwargs.dig(:mode, key)
           build_runner(result:)
         end
 
@@ -1474,6 +1474,14 @@ RSpec.describe Henitai::CLI do
 
     it "is bypassed by --force" do
       expect(captured_incremental_for(["--incremental", "--force"])).to be(false)
+    end
+
+    it "passes --force to the runner so survivor reruns bypass reuse too" do
+      expect(captured_incremental_for(["--force"], key: :force)).to be(true)
+    end
+
+    it "does not force the runner without --force" do
+      expect(captured_incremental_for([], key: :force)).to be(false)
     end
   end
 

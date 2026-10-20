@@ -39,6 +39,15 @@ module Henitai
       @cache.clear
     end
 
+    # Reads +path+ as UTF-8 source, honouring a magic encoding comment the
+    # same way parsing does. Raises EncodingError when the bytes are invalid
+    # in the declared (or default UTF-8) encoding.
+    def self.read_file(path)
+      buffer = Parser::Source::Buffer.new(path)
+      buffer.source = File.read(path, encoding: Encoding::UTF_8)
+      buffer.source
+    end
+
     # +line+ is the number of the source's first line, as for Kernel#eval.
     def parse(source, path: DEFAULT_PATH, line: 1)
       Prism::Translation::ParserCurrent.new(Builder.new).parse(source_buffer(source, path, line))

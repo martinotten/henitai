@@ -255,7 +255,8 @@ results.
 Generated mutants temporarily include `legacyStableId` so scoped runs replace
 canonical entries written before site-offset IDs were introduced instead of
 duplicating them.
-Timeouts and errors always re-execute. `--force` bypasses reuse.
+Timeouts and errors always re-execute. `--force` bypasses reuse, including
+the reuse applied to `--survivors-from` reruns.
 `henitai run --dry-run` lists the post-filter mutant set without executing
 mutants and always exits `0`. Gate 0 may still run the configured test suite to
 refresh baseline coverage.

@@ -59,7 +59,11 @@ module OracleReuse
     def run_henitai(*)
       Bundler.with_unbundled_env do
         _out, err, status = Open3.capture3("bundle", "exec", "henitai", "run", "--config", CONFIG, *, chdir: dir)
-        raise "henitai failed in #{dir} (#{status.exitstatus})\n#{err}" unless File.exist?(path(REPORT))
+        # 0 and 1 are normal outcomes (threshold met or not); anything else means this invocation
+        # did not finish, and the report on disk may be the previous step's.
+        unless [0, 1].include?(status.exitstatus) && File.exist?(path(REPORT))
+          raise "henitai failed in #{dir} (#{status.exitstatus.inspect})\n#{err}"
+        end
       end
       verdicts
     end

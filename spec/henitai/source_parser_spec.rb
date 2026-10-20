@@ -122,6 +122,26 @@ RSpec.describe Henitai::SourceParser do
     RUBY
   end
 
+  describe ".read_file" do
+    it "decodes a file in its declared encoding into UTF-8" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "latin.rb")
+        File.binwrite(path, "# encoding: iso-8859-1\nx = \"caf\xE9\"\n".b)
+
+        expect(described_class.read_file(path)).to eq("# encoding: iso-8859-1\nx = \"caf\u00e9\"\n")
+      end
+    end
+
+    it "raises EncodingError for bytes invalid in the default UTF-8 encoding" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "broken.rb")
+        File.binwrite(path, "x = \"caf\xE9\"\n".b)
+
+        expect { described_class.read_file(path) }.to raise_error(EncodingError)
+      end
+    end
+  end
+
   describe ".parse_file caching" do
     around do |example|
       described_class.clear_cache!

@@ -100,6 +100,31 @@ RSpec.describe Henitai::StaticFilter do
     end
   end
 
+  it "matches ignore patterns against a source file in a declared non-UTF-8 encoding" do
+    Dir.mktmpdir do |dir|
+      File.binwrite(File.join(dir, "sample.rb"), "# encoding: iso-8859-1\nfoo.bar(\"caf\xE9\")\n".b)
+      mutant = build_mutant("foo.bar")
+      mutant.location.merge!(start_line: 2, end_line: 2)
+      filter = described_class.new
+      allow(filter).to receive(:coverage_lines_by_file).and_return("sample.rb" => [2])
+
+      apply_mutants(dir, [mutant], config(ignore_patterns: ["caf\u00e9"]), filter:)
+
+      expect(mutant.status).to eq(:ignored)
+    end
+  end
+
+  it "leaves a mutant unignored when its source file cannot be decoded" do
+    Dir.mktmpdir do |dir|
+      File.binwrite(File.join(dir, "sample.rb"), "foo.bar(\"caf\xE9\")\n".b)
+      mutant = build_mutant("foo.bar")
+
+      apply_mutants(dir, [mutant], config(ignore_patterns: ["foo"]), filter: filter_with_coverage)
+
+      expect(mutant.status).not_to eq(:ignored)
+    end
+  end
+
   it "marks a mutant that fails the fidelity check as a compile error with the reason" do
     mutant = build_mutant("foo.bar")
     fidelity_check = instance_double(Henitai::FidelityCheck, violation: "activated code differs")

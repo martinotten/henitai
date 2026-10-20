@@ -79,7 +79,7 @@ module Henitai
       def add_force_option(opts, options)
         opts.on(
           "--force",
-          "Bypass verdict reuse and execute every mutant (only meaningful with --incremental)"
+          "Bypass verdict reuse (--incremental, --survivors-from) and execute every mutant"
         ) do
           options[:force] = true
         end

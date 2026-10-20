@@ -22,12 +22,12 @@ module Henitai
         )
       end
 
-      # Sample before deduplicating programs: distinct_programs computes activation sources for every
-      # mutant it receives, so running it last avoids that work for discarded mutants. Sampling is
-      # stratified by operator within each subject, using a seeded per-mutant order, and returns kept
-      # mutants in input order, so deduplication still keeps first occurrences deterministically.
-      unique = distinct_identities(mutants)
-      distinct_programs(sample ? sample_mutants(unique, config:, sampling_strategy:) : unique)
+      # Deduplicate programs before sampling: unsampled generation (survivor reruns) must keep the same
+      # representative of a duplicate program as a sampled run, or a reported survivor's stable id would
+      # not be found again. Sampling is stratified by operator within each subject, using a seeded
+      # per-mutant order, and returns kept mutants in input order.
+      unique = distinct_programs(distinct_identities(mutants))
+      sample ? sample_mutants(unique, config:, sampling_strategy:) : unique
     end
 
     private
