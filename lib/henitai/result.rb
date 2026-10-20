@@ -35,7 +35,7 @@ module Henitai
     }.freeze
 
     attr_reader :mutants, :started_at, :finished_at, :thresholds, :survivor_stats,
-                :session_id, :git_sha, :since, :coverage_criteria
+                :session_id, :git_sha, :since, :coverage_criteria, :complete_files
 
     # @param source_provider [#call] maps a file path to its source string.
     #   Injected so the domain object performs no disk IO; the caller (which
@@ -47,12 +47,16 @@ module Henitai
     #   canonical report; non-authoritative (subject-scoped, --since,
     #   --survivors-from) runs are merged into it instead — see
     #   CanonicalReportMerger.
+    # @param complete_files [Array<String>, nil] source files this run mutated
+    #   completely (every subject). The merger replaces a prior report's entry
+    #   for such a file wholesale instead of merging by stableId, so stale
+    #   mutants of changed or deleted code do not linger.
     # rubocop:disable Metrics/ParameterLists
     def initialize(mutants:, started_at:, finished_at:, thresholds: nil,
                    partial_rerun: false, survivor_stats: nil,
                    session_id: SecureRandom.uuid, git_sha: nil,
                    source_provider: ->(_file) { "" }, authoritative: true,
-                   since: nil, coverage_criteria: nil)
+                   since: nil, coverage_criteria: nil, complete_files: nil)
       @mutants         = mutants
       @started_at      = started_at
       @finished_at     = finished_at
@@ -64,6 +68,7 @@ module Henitai
       @source_provider = source_provider
       @authoritative   = authoritative
       @since           = since
+      @complete_files = Array(complete_files)
       @coverage_criteria = DEFAULT_COVERAGE_CRITERIA.merge(coverage_criteria || {})
     end
     # rubocop:enable Metrics/ParameterLists
@@ -152,6 +157,7 @@ module Henitai
       schema = base_schema
       sha = @git_sha
       schema[:gitSha] = sha if sha
+      schema[:completeFiles] = complete_files if complete_files.any? && !authoritative?
       return schema unless partial_rerun?
 
       schema[:partialRerun] = true
@@ -207,8 +213,14 @@ module Henitai
           language: "ruby",
           source: @source_provider.call(file_mutants.first.location[:file]),
           mutants: file_mutants.map { |m| mutant_to_schema(m) }
-        }
+        }.merge(file_provenance)
       end
+    end
+
+    # Vendor fields: which run produced this file entry. Kept per file so a
+    # merged report can tell which session snapshot holds its mutants.
+    def file_provenance
+      { sessionId: @session_id, gitSha: @git_sha }.compact
     end
 
     def mutant_to_schema(mutant)

@@ -88,4 +88,29 @@ RSpec.describe Henitai::Result do
       expect(schemer.valid?(sample_result(path).to_stryker_schema)).to be(true)
     end
   end
+
+  it "records per-file provenance and the complete files of a non-authoritative run", :aggregate_failures do
+    schemer = JSONSchemer.schema(JSON.parse(File.read(result_schema_path)))
+
+    Dir.mktmpdir do |dir|
+      path = write_sample_file(dir)
+      mutant = sample_mutant(path)
+      mutant.status = :killed
+      result = described_class.new(mutants: [mutant], started_at: Time.at(0), finished_at: Time.at(1),
+                                   session_id: "S1", git_sha: "abc", authoritative: false,
+                                   complete_files: [path, "gone.rb"])
+      schema = result.to_stryker_schema
+
+      expect(schema[:files][path]).to include(sessionId: "S1", gitSha: "abc")
+      expect(schema[:completeFiles]).to eq([path, "gone.rb"])
+      expect(schemer.valid?(JSON.parse(JSON.generate(schema)))).to be(true)
+    end
+  end
+
+  it "omits completeFiles for an authoritative run" do
+    result = described_class.new(mutants: [], started_at: Time.at(0), finished_at: Time.at(1),
+                                 complete_files: ["a.rb"])
+
+    expect(result.to_stryker_schema).not_to have_key(:completeFiles)
+  end
 end

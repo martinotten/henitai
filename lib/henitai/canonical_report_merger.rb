@@ -11,6 +11,11 @@ module Henitai
   # falls back to the current run's schema by itself -- structurally never
   # worse than the unconditional overwrite this replaces.
   #
+  # Files the current run lists under `completeFiles` (it mutated every subject
+  # of them) are the exception: their prior entry is replaced wholesale, or
+  # removed when the run produced no mutants for them, so stale mutants of
+  # changed or deleted code cannot linger next to the new ones.
+  #
   # Merges at mutant granularity, keyed by `stableId`, not file granularity:
   # a `--survivors-from` rerun's schema only contains the re-verified
   # survivors for a file, so replacing that file's whole entry would drop
@@ -37,10 +42,12 @@ module Henitai
     end
 
     def self.merge_files(current, prior, prune_missing:)
-      merged_files = overlay_current_mutants(deep_dup(prior["files"]), current)
+      prior_files = deep_dup(prior["files"])
+      Array(current["completeFiles"]).each { |file| prior_files.delete(file) }
+      merged_files = overlay_current_mutants(prior_files, current)
       merged_files.reject! { |_, file| file["mutants"].empty? }
       prune_missing_source_files(merged_files) if prune_missing
-      current.merge("files" => merged_files)
+      current.except("completeFiles").merge("files" => merged_files)
     end
     private_class_method :merge_files
 
@@ -68,11 +75,23 @@ module Henitai
     def self.append_current_mutants(merged_files, current)
       current.fetch("files", {}).each do |file, entry|
         target = merged_files[file] ||= { "mutants" => [] }
+        merge_provenance(target, entry)
         target["source"] = entry["source"]
         target["language"] = entry["language"]
         target["mutants"] += entry["mutants"]
       end
     end
+
+    # A file merged from several sessions has no single snapshot holding all
+    # its mutants, so its provenance is dropped unless both sides agree.
+    def self.merge_provenance(target, entry)
+      provenance = entry.slice("sessionId", "gitSha")
+      fresh = target["mutants"].empty? && !target.key?("sessionId")
+      agree = fresh || target["sessionId"] == entry["sessionId"]
+      %w[sessionId gitSha].each { |key| target.delete(key) }
+      target.merge!(provenance) if agree
+    end
+    private_class_method :merge_provenance
     private_class_method :append_current_mutants
 
     def self.mutant_ids(schema)
