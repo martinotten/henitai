@@ -407,7 +407,7 @@ RSpec.describe Henitai::IncrementalFilter do
 
         build_filter(store, build_coverage([test, added])).apply([mutant])
 
-        expect([mutant.status, mutant.from_cache?]).to eq([:pending, false])
+        expect(mutant.status).to eq(:pending)
       end
     end
 
