@@ -74,8 +74,6 @@ module Henitai
       return if patterns.empty?
 
       line = source_line_for(mutant)
-      return unless line
-
       patterns.find { |pattern| pattern.match?(line) }
     end
 

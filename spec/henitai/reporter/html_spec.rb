@@ -123,4 +123,28 @@ RSpec.describe Henitai::Reporter::Html do
       end
     end
   end
+
+  it "drops prior entries whose source file is gone for a non-authoritative run" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        reports_dir = File.join(dir, "reports")
+        File.write("new.rb", "1 - 0\n")
+        FileUtils.mkdir_p(reports_dir)
+        File.write(
+          File.join(reports_dir, "mutation-report.json"),
+          JSON.generate(schemaVersion: "1.0", thresholds: { high: 80, low: 60 },
+                        files: { "gone.rb" => { language: "ruby", source: "", mutants: [{ stableId: "gone" }] } })
+        )
+        schema = { schemaVersion: "1.0", thresholds: { high: 80, low: 60 },
+                   files: { "new.rb" => { language: "ruby", source: "", mutants: [{ stableId: "new" }] } } }
+
+        described_class.new(config: build_config(reports_dir:)).report(
+          build_result(schema:, authoritative: false)
+        )
+
+        html = File.read(File.join(reports_dir, "mutation-report.html"))
+        expect(extract_report_json(html)[:files].keys).to contain_exactly(:"new.rb")
+      end
+    end
+  end
 end
