@@ -69,19 +69,22 @@ module Henitai
 
     attr_reader :coverage_report_reader, :skip_directives, :fidelity_check
 
-    def ignored?(mutant, config)
-      source = source_for(mutant)
-      return false unless source
+    def ignore_pattern_for(mutant, config)
+      patterns = compiled_ignore_patterns(config)
+      return if patterns.empty?
 
-      compiled_ignore_patterns(config).any? do |pattern|
-        pattern.match?(source)
-      end
+      line = source_line_for(mutant)
+      return unless line
+
+      patterns.find { |pattern| pattern.match?(line) }
     end
 
     def ignored_mutant?(mutant, config)
-      return false unless ignored?(mutant, config)
+      pattern = ignore_pattern_for(mutant, config)
+      return false unless pattern
 
       mutant.status = :ignored
+      mutant.ignore_reason = "ignore_patterns: #{pattern.source}" if mutant.respond_to?(:ignore_reason=)
       true
     end
 
@@ -125,11 +128,27 @@ module Henitai
       covered.any? { |line| (mutant.location[:start_line]..mutant.location[:end_line]).cover?(line) }
     end
 
-    def source_for(mutant)
-      original_node = mutant.original_node
-      location = original_node&.location
-      expression = location&.expression
-      expression&.source
+    # Ignore patterns are line-scoped: they match the source line on which the
+    # mutant's original node starts, like a trailing `# henitai:disable`.
+    def source_line_for(mutant)
+      line_number = mutant.location[:start_line]
+      return unless line_number.is_a?(Integer) && line_number.positive?
+
+      lines = source_lines_for(mutant.location[:file])
+      lines&.fetch(line_number - 1, nil)
+    end
+
+    def source_lines_for(path)
+      @source_lines ||= {}
+      return @source_lines[path] if @source_lines.key?(path)
+
+      @source_lines[path] = read_source_lines(path)
+    end
+
+    def read_source_lines(path)
+      File.readlines(path, encoding: "UTF-8")
+    rescue SystemCallError, IOError
+      nil
     end
 
     def compiled_ignore_patterns(config)

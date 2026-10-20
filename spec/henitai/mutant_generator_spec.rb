@@ -419,6 +419,49 @@ RSpec.describe Henitai::MutantGenerator do
     end
   end
 
+  it "passes the configured sampling seed to the strategy" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", "class Sample\n  def announce\n    1 + 2\n  end\nend\n")
+      config = write_configuration(dir, <<~YAML)
+        mutation:
+          sampling:
+            ratio: 0.5
+            strategy: stratified
+            seed: 7
+      YAML
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      strategy = Henitai::SamplingStrategy.new
+      allow(Henitai::SamplingStrategy).to receive(:new).and_return(strategy)
+      allow(strategy).to receive(:sample).and_call_original
+
+      described_class.new.generate([subject], [Henitai::Operators::ArithmeticOperator.new], config:)
+
+      expect(strategy).to have_received(:sample).with(anything, ratio: 0.5, strategy: "stratified", seed: 7)
+    end
+  end
+
+  it "uses the default sampling seed when none is configured" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", "class Sample\n  def announce\n    1 + 2\n  end\nend\n")
+      config = write_configuration(dir, <<~YAML)
+        mutation:
+          sampling:
+            ratio: 0.5
+            strategy: stratified
+      YAML
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      strategy = Henitai::SamplingStrategy.new
+      allow(Henitai::SamplingStrategy).to receive(:new).and_return(strategy)
+      allow(strategy).to receive(:sample).and_call_original
+
+      described_class.new.generate([subject], [Henitai::Operators::ArithmeticOperator.new], config:)
+
+      expect(strategy).to have_received(:sample).with(
+        anything, ratio: 0.5, strategy: "stratified", seed: Henitai::SamplingStrategy::DEFAULT_SEED
+      )
+    end
+  end
+
   it "computes activation sources only for the sampled mutants", :aggregate_failures do
     Dir.mktmpdir do |dir|
       path = write_source(dir, "lib/sample.rb", <<~RUBY)

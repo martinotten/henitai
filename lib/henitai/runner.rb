@@ -11,10 +11,11 @@ module Henitai
   #
   #   Gate 2 — Mutant generation
   #     Apply operators to each Subject's AST. Filter arid (non-productive)
-  #     nodes via ignore_patterns. Produces the initial mutant list.
+  #     nodes from the built-in catalog. Produces the initial mutant list.
   #
   #   Gate 3 — Static filtering
-  #     Remove ignored mutants (pattern matches), compile-time errors.
+  #     Mark mutants whose original start line matches an ignore_patterns
+  #     entry as :ignored, and remove compile-time errors.
   #     Apply per-test coverage data: mark :no_coverage for uncovered mutants.
   #
   #   Gate 4 — Mutant execution
@@ -186,7 +187,8 @@ module Henitai
         source_provider: source_provider,
         authoritative: full_run?,
         since: @since,
-        complete_files: complete_files
+        complete_files: complete_files,
+        sampling: result_sampling
       )
     end
 
@@ -196,6 +198,19 @@ module Henitai
       return [] if Array(@subjects).any? || survivor_rerun?
 
       source_files
+    end
+
+    # Records the sampling that actually shaped the mutant set, with the
+    # default seed filled in so the report is reproducible on its own.
+    def result_sampling
+      sampling = optional_config(:sampling)
+      return nil unless sampling && sampling[:ratio]
+
+      {
+        strategy: (sampling[:strategy] || "stratified").to_s,
+        ratio: sampling[:ratio],
+        seed: sampling[:seed] || SamplingStrategy::DEFAULT_SEED
+      }
     end
 
     def safe_head_sha

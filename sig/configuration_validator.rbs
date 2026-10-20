@@ -46,6 +46,7 @@ module Henitai
       def self?.validate_max_flaky_retries: (untyped) -> void
       def self?.validate_sampling_ratio: (untyped) -> void
       def self?.validate_sampling_strategy: (untyped) -> void
+      def self?.validate_sampling_seed: (untyped) -> void
       def self?.validate_sampling_completeness: (Hash[Symbol, untyped]) -> void
       def self?.describe_array_type: (untyped) -> String
     end

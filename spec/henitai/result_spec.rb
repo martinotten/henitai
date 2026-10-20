@@ -692,6 +692,26 @@ RSpec.describe Henitai::Result do
     end
   end
 
+  describe "sampling" do
+    it "omits the sampling field when no sampling was applied" do
+      schema = result([build_mutant(status: :pending)]).to_stryker_schema
+
+      expect(schema).not_to have_key(:sampling)
+    end
+
+    it "records the strategy, ratio and seed when sampling was applied" do
+      sampling = { strategy: "stratified", ratio: 0.05, seed: 7 }
+      schema = described_class.new(
+        mutants: [build_mutant(status: :pending)],
+        started_at: Time.at(0),
+        finished_at: Time.at(1),
+        sampling:
+      ).to_stryker_schema
+
+      expect(schema[:sampling]).to eq(sampling)
+    end
+  end
+
   describe "session identity" do
     it "has a session_id that is a UUID" do
       expect(result([]).session_id).to match(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/)
