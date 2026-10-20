@@ -1197,6 +1197,7 @@ module Henitai
     def per_test_coverage: () -> PerTestCoverage
     def source_selection_coverage: () -> PerTestCoverage
     def reuse_context: () -> ReuseContext
+    def reuse_filter: () -> IncrementalFilter
     def history_store: () -> untyped
     def progress_reporter: (full_run: bool) -> untyped
     def source_provider: () -> ^(String) -> String
@@ -1257,7 +1258,6 @@ module Henitai
     def per_test_coverage: () -> PerTestCoverage
     def reuse_filter: () -> IncrementalFilter
     def source_selection_coverage: () -> PerTestCoverage
-    def reuse_context: () -> ReuseContext
     def history_store_path: () -> String
     def source_files: () -> Array[String]
     def source_file_selection: () -> SourceFileSelection

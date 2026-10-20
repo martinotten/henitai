@@ -58,6 +58,12 @@ module Henitai
       @reuse_context ||= ReuseContext.new(config: @config)
     end
 
+    def reuse_filter
+      IncrementalFilter.new(
+        history_store: history_store, per_test_coverage: per_test_coverage, reuse_context: reuse_context
+      )
+    end
+
     # Fans progress out to the terminal reporter (when enabled) and the
     # checkpoint writer (when enabled and a file report is configured), so a
     # long run persists partial results incrementally.

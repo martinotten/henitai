@@ -65,6 +65,18 @@ RSpec.describe Henitai::IncrementalFilter do
     end
   end
 
+  it "never reuses a mutant whose subject has no source range (recipe stub), even with a nil recorded hash" do
+    Dir.mktmpdir do |dir|
+      source, test = write_workspace(dir)
+      stub = build_mutant(stable_id: "abc", source_file: source, source_range: nil)
+      store = build_store("abc" => verdict_for(stub, test))
+
+      build_filter(store).apply([stub])
+
+      expect([stub.status, stub.from_cache]).to eq([:pending, false])
+    end
+  end
+
   it "re-runs a killed verdict when the reuse context changed" do
     Dir.mktmpdir do |dir|
       source, test = write_workspace(dir)

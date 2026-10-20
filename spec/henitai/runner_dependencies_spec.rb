@@ -64,6 +64,16 @@ RSpec.describe Henitai::RunnerDependencies do
       end
     end
 
+    it "builds one ReuseContext shared by the history store and the reuse filter" do
+      deps = build_deps
+      allow(Henitai::ReuseContext).to receive(:new).and_call_original
+
+      deps.history_store
+      deps.reuse_filter
+
+      expect(Henitai::ReuseContext).to have_received(:new).once
+    end
+
     it "returns the same history store twice" do
       deps = build_deps
       store = deps.history_store

@@ -103,7 +103,8 @@ module Henitai
     def context_sha = reuse_context&.fingerprint
 
     def subject_source_unchanged?(mutant, verdict)
-      VerdictFingerprint.subject_source_hash(mutant) == verdict.fetch(:subject_source_hash)
+      current = VerdictFingerprint.subject_source_hash(mutant)
+      !current.nil? && current == verdict.fetch(:subject_source_hash)
     end
   end
 end

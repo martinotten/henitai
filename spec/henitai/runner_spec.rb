@@ -531,12 +531,12 @@ RSpec.describe Henitai::Runner do
 
           expect(
             [
-              captured[:history_store],
+              captured[:history_store].class,
               captured[:per_test_coverage].class,
               captured[:reuse_context].class,
               apply_calls
             ]
-          ).to eq([history_store, Henitai::PerTestCoverage, Henitai::ReuseContext, 1])
+          ).to eq([Henitai::MutantHistoryStore, Henitai::PerTestCoverage, Henitai::ReuseContext, 1])
         end
       end
     end
