@@ -632,6 +632,7 @@ module Henitai
 
   class GitDiffAnalyzer
     def changed_files: (from: String, to: String, ?dir: String) -> Array[String]
+    def changed_files_since: (String, ?dir: String) -> Array[String]
     def working_tree_changed_files: (?dir: String) -> Array[String]
     def head_sha: (?dir: String) -> String?
   end

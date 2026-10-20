@@ -85,6 +85,26 @@ RSpec.describe Henitai::GitDiffAnalyzer do
     end
   end
 
+  it "excludes commits that landed on the base branch after the fork point" do
+    Dir.mktmpdir do |dir|
+      init_repo(dir)
+      write_file(dir, "lib/shared.rb", "class Shared; end\n")
+      commit_all(dir, "Fork point")
+      base = git!(dir, "rev-parse", "--abbrev-ref", "HEAD").strip
+
+      git!(dir, "checkout", "-q", "-b", "feature")
+      write_file(dir, "lib/feature.rb", "class Feature; end\n")
+      commit_all(dir, "Feature work")
+
+      git!(dir, "checkout", "-q", base)
+      write_file(dir, "lib/base_only.rb", "class BaseOnly; end\n")
+      commit_all(dir, "Base moved on")
+      git!(dir, "checkout", "-q", "feature")
+
+      expect(described_class.new.changed_files_since(base, dir:)).to eq(["lib/feature.rb"])
+    end
+  end
+
   def init_repo(dir)
     git!(dir, "init")
     configure_git_identity(dir)
