@@ -156,8 +156,10 @@ RSpec.describe Henitai::Runner do
     )
   end
 
-  def build_mutant_status(status = :pending)
-    Struct.new(:status).new(status)
+  def build_mutant_status(status = :pending, from_cache: false)
+    Struct.new(:status, :from_cache) do
+      def from_cache? = from_cache
+    end.new(status, from_cache)
   end
 
   def build_history_store(calls = nil)
@@ -529,12 +531,12 @@ RSpec.describe Henitai::Runner do
 
           expect(
             [
-              captured[:history_store],
+              captured[:history_store].class,
               captured[:per_test_coverage].class,
-              captured[:dependency_fingerprint].is_a?(String),
+              captured[:reuse_context].class,
               apply_calls
             ]
-          ).to eq([history_store, Henitai::PerTestCoverage, true, 1])
+          ).to eq([Henitai::MutantHistoryStore, Henitai::PerTestCoverage, Henitai::ReuseContext, 1])
         end
       end
     end
@@ -1244,7 +1246,7 @@ RSpec.describe Henitai::Runner do
           path.end_with?("spec/sample_spec.rb") ? [File.expand_path("lib/sample.rb")] : []
         end
         collaborators = stub_pipeline(runner, history_store: build_history_store)
-        allow(runner).to receive(:per_test_coverage).and_return(per_test_coverage)
+        allow(runner).to receive(:source_selection_coverage).and_return(per_test_coverage)
 
         runner.run
 
@@ -1316,61 +1318,73 @@ RSpec.describe Henitai::Runner do
     end
   end
 
-  it "finalizes rerun survivors and records drift stats" do
+  it "finalizes rerun survivors, counting reused verdicts as skipped, and records drift stats" do
     Dir.mktmpdir do |dir|
       report_path = File.join(dir, "mutation-report.json")
       File.write(report_path, "{}")
 
-      diff_analyzer = instance_double(
-        Henitai::GitDiffAnalyzer,
-        working_tree_changed_files: [],
-        changed_files: []
-      )
       strategy = Henitai::SurvivorRerunStrategy.new(
         survivors_from: report_path,
         config: build_config(reporters: []),
-        git_diff_analyzer: diff_analyzer
+        git_diff_analyzer: instance_double(Henitai::GitDiffAnalyzer)
       )
-      loaded = build_loaded_survivors(["stable-id"], coverage_map: { "lib/sample.rb" => [1] })
       selector = instance_double(
         Henitai::SurvivorSelector,
         drift_warning?: true,
         unmatched_ids: ["missing-id"]
       )
-      selected = [build_mutant_status]
-      stable = build_mutant_status
-      pending = build_mutant_status
-      filter = instance_double(Henitai::SurvivorTestFilter, apply: { stable: [stable], pending: [pending] })
-      loader = instance_double(Henitai::SurvivorLoader, load: loaded)
+      reused = build_mutant_status(:survived, from_cache: true)
+      rerun = build_mutant_status
+      loader = instance_double(Henitai::SurvivorLoader, load: build_loaded_survivors(["stable-id"]))
+      reuse_filter = instance_double(Henitai::IncrementalFilter)
 
       allow(Henitai::SurvivorLoader).to receive(:new).and_return(loader)
       allow(Henitai::SurvivorSelector).to receive(:new).and_return(selector)
-      allow(strategy).to receive(:test_filter).and_return(filter)
-      allow(selector).to receive(:select).and_return(selected)
-
+      allow(selector).to receive(:select).and_return([reused, rerun])
+      allow(reuse_filter).to receive(:apply)
       warned = false
       allow(strategy).to receive(:warn) { warned = true }
 
-      result = strategy.apply_selection([build_mutant_status])
-      stats = strategy.survivor_stats
+      result = strategy.apply_selection([build_mutant_status], reuse_filter:)
 
       expect(
         result: result,
-        stable_status: stable.status,
+        statuses: [reused.status, rerun.status],
         warned: warned,
-        stats: stats
+        stats: strategy.survivor_stats
       ).to eq(
-        result: [stable, pending],
-        stable_status: :survived,
+        result: [reused, rerun],
+        statuses: %i[survived pending],
         warned: true,
         stats: {
-          matched: 1,
+          matched: 2,
           unmatched_count: 1,
           unmatched_ids: ["missing-id"],
           skipped_count: 1,
           drift_warning: true
         }
       )
+      expect(reuse_filter).to have_received(:apply).with([reused, rerun])
+    end
+  end
+
+  it "reruns every selected survivor when no reuse filter is supplied" do
+    Dir.mktmpdir do |dir|
+      report_path = File.join(dir, "mutation-report.json")
+      File.write(report_path, "{}")
+      strategy = Henitai::SurvivorRerunStrategy.new(
+        survivors_from: report_path, config: build_config(reporters: []),
+        git_diff_analyzer: instance_double(Henitai::GitDiffAnalyzer)
+      )
+      selector = instance_double(Henitai::SurvivorSelector, drift_warning?: false, unmatched_ids: [])
+      loader = instance_double(Henitai::SurvivorLoader, load: build_loaded_survivors(["id"]))
+      allow(Henitai::SurvivorLoader).to receive(:new).and_return(loader)
+      allow(Henitai::SurvivorSelector).to receive(:new).and_return(selector)
+      allow(selector).to receive(:select) { |mutants| mutants }
+
+      strategy.apply_selection([build_mutant_status])
+
+      expect(strategy.survivor_stats).to include(matched: 1, skipped_count: 0)
     end
   end
 
@@ -1408,8 +1422,6 @@ RSpec.describe Henitai::Runner do
       loaded = build_loaded_survivors(["deadbeef"], coverage_map: { "lib/sample.rb" => [1] }, git_sha: nil)
       selector = instance_double(Henitai::SurvivorSelector, drift_warning?: false, unmatched_ids: [])
       loader = instance_double(Henitai::SurvivorLoader, load: loaded)
-      stable = build_mutant_status
-      filter = instance_double(Henitai::SurvivorTestFilter, apply: { stable: [stable], pending: [] })
       strategy = Henitai::SurvivorRerunStrategy.new(
         survivors_from: report_path,
         config: build_config(reporters: []),
@@ -1424,14 +1436,10 @@ RSpec.describe Henitai::Runner do
         selected_stubs = stubs
         stubs
       end
-      allow(strategy).to receive_messages(
-        dirty_worktree_changed_files: [],
-        test_filter: filter
-      )
+      allow(strategy).to receive_messages(dirty_worktree_changed_files: [])
 
       {
         strategy: strategy,
-        stable: stable,
         selected_stubs: lambda {
           selected_stubs
         }
@@ -1441,7 +1449,6 @@ RSpec.describe Henitai::Runner do
     after { FileUtils.rm_rf(tmpdir) }
 
     def strategy = setup.fetch(:strategy)
-    def stable = setup.fetch(:stable)
     def selected_stubs = setup.fetch(:selected_stubs).call
 
     context "when recipe includes methodType" do
@@ -1457,7 +1464,7 @@ RSpec.describe Henitai::Runner do
           covered_by: stub.covered_by,
           location: stub.location
         ).to eq(
-          result: [stable],
+          result: selected_stubs,
           method_type: :class,
           covered_by: ["spec/sample_spec.rb"],
           location: {
@@ -1465,6 +1472,13 @@ RSpec.describe Henitai::Runner do
           }
         )
       end
+    end
+
+    it "never treats recipe stubs as reused verdicts" do
+      strategy.try_recipe_run
+
+      expect([selected_stubs.map(&:from_cache?), strategy.survivor_stats.fetch(:skipped_count)])
+        .to eq([[false], 0])
     end
 
     context "when recipe omits methodType" do
@@ -1960,8 +1974,10 @@ RSpec.describe Henitai::Runner do
       allow(static_filter).to receive(:apply).and_return(filtered)
 
       strategy = instance_double(Henitai::SurvivorRerunStrategy)
-      allow(strategy).to receive(:apply_selection).with(filtered).and_return(selected)
+      reuse_filter = instance_double(Henitai::IncrementalFilter)
+      allow(strategy).to receive(:apply_selection).with(filtered, reuse_filter:).and_return(selected)
       allow(runner).to receive_messages(
+        reuse_filter:,
         static_filter:,
         survivor_strategy: strategy,
         generate_mutants: mutants,
@@ -1969,7 +1985,7 @@ RSpec.describe Henitai::Runner do
       )
 
       expect(runner.send(:mutants_for, [subject], ["lib/sample.rb"])).to eq(selected)
-      expect(strategy).to have_received(:apply_selection).with(filtered)
+      expect(strategy).to have_received(:apply_selection).with(filtered, reuse_filter:)
     end
   end
 

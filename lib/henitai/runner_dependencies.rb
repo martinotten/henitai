@@ -12,6 +12,10 @@ module Henitai
   # {#per_test_coverage} and {#history_store}: the incremental filter proves
   # survivor reuse against the same live coverage map the history store records
   # its intersection set from. Two instances would be two snapshots.
+  #
+  # {#source_selection_coverage} is deliberately a *different* instance: Gate 1
+  # reads the map as it was before this run's coverage bootstrap rewrote it, and
+  # a shared instance would memoize that stale snapshot for the reuse decisions.
   class RunnerDependencies
     def initialize(config:)
       @config = config
@@ -36,10 +40,27 @@ module Henitai
       @per_test_coverage ||= PerTestCoverage.new(reports_dir: @config.reports_dir)
     end
 
+    def source_selection_coverage
+      @source_selection_coverage ||= PerTestCoverage.new(reports_dir: @config.reports_dir)
+    end
+
     def history_store
       @history_store ||= MutantHistoryStore.new(
         path: File.join(@config.reports_dir, Henitai::HISTORY_STORE_FILENAME),
-        per_test_coverage: per_test_coverage
+        per_test_coverage: per_test_coverage,
+        reuse_context: reuse_context
+      )
+    end
+
+    # Shared by the incremental filter and the history store: verdicts are
+    # recorded under exactly the context they are later checked against.
+    def reuse_context
+      @reuse_context ||= ReuseContext.new(config: @config)
+    end
+
+    def reuse_filter
+      IncrementalFilter.new(
+        history_store: history_store, per_test_coverage: per_test_coverage, reuse_context: reuse_context
       )
     end
 

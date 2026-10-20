@@ -119,24 +119,25 @@ module Henitai
       bootstrap_thread = bootstrap_mutants(source_files)
       mutants = generate_mutants(subjects)
       bootstrap_thread.value
-      filtered = apply_incremental_filter(filter_mutants(mutants))
-      return filtered unless survivor_rerun?
+      filtered = filter_mutants(mutants)
+      return apply_incremental_filter(filtered) unless survivor_rerun?
 
-      survivor_strategy.apply_selection(filtered)
+      survivor_strategy.apply_selection(filtered, reuse_filter: reuse_filter)
     end
 
-    # Opt-in verdict reuse (`--incremental`): still-valid Killed and Survived
-    # verdicts from the history store are marked with their stored status +
-    # from_cache before execution. The filter is only ever constructed when
-    # the flag is set; it runs after the coverage bootstrap join in
-    # mutants_for, so the live per-test map it reads is never mid-write.
+    # Verdict reuse (opt-in `--incremental`; always for `--survivors-from`
+    # reruns, where it runs on the selected survivors): still-valid Killed and
+    # Survived verdicts from the history store are marked with their stored
+    # status + from_cache before execution. It runs after the coverage
+    # bootstrap join in mutants_for, so the live per-test map it reads is never
+    # mid-write.
     def apply_incremental_filter(mutants)
       return mutants unless @incremental
 
-      IncrementalFilter.new(history_store:, per_test_coverage:,
-                            dependency_fingerprint: VerdictFingerprint.dependency_fingerprint)
-                       .apply(mutants)
+      reuse_filter.apply(mutants)
     end
+
+    def reuse_filter = deps.reuse_filter
 
     def bootstrap_mutants(source_files) = Thread.new { bootstrap_coverage(source_files) }
 
@@ -212,6 +213,7 @@ module Henitai
     def operators = deps.operators
     def history_store = deps.history_store
     def per_test_coverage = deps.per_test_coverage
+    def source_selection_coverage = deps.source_selection_coverage
     def source_provider = deps.source_provider
 
     def progress_reporter = deps.progress_reporter(full_run: full_run?)
@@ -223,7 +225,7 @@ module Henitai
     def source_file_selection
       @source_file_selection ||= SourceFileSelection.new(
         config: config, since: @since,
-        git_diff_analyzer: git_diff_analyzer, per_test_coverage: per_test_coverage
+        git_diff_analyzer: git_diff_analyzer, per_test_coverage: source_selection_coverage
       )
     end
 

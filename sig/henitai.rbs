@@ -649,7 +649,7 @@ module Henitai
   class MutantHistoryStore
     attr_reader path: String
 
-    def initialize: (path: String, ?per_test_coverage: PerTestCoverage?) -> void
+    def initialize: (path: String, ?per_test_coverage: PerTestCoverage?, ?reuse_context: ReuseContext?) -> void
     def record: (untyped, version: String, ?recorded_at: Time) -> void
     def verdict_for: (String) -> Hash[Symbol, untyped]?
     def killed_verdict_for: (String) -> Hash[Symbol, untyped]?
@@ -742,14 +742,15 @@ module Henitai
   end
 
   class IncrementalFilter
-    def initialize: (history_store: untyped, ?per_test_coverage: PerTestCoverage?, ?dependency_fingerprint: String?) -> void
+    def initialize: (history_store: untyped, ?per_test_coverage: PerTestCoverage?, ?reuse_context: ReuseContext?) -> void
     def apply: (Array[Mutant]) -> Array[Mutant]
 
     private
 
     def history_store: () -> untyped
     def per_test_coverage: () -> PerTestCoverage?
-    def dependency_fingerprint: () -> String?
+    def reuse_context: () -> ReuseContext?
+    def context_sha: () -> String?
     def ambiguous_stable_ids: (Array[Mutant]) -> Set[String]
     def reusable_status: (Mutant) -> Symbol?
     def killed_reusable?: (Mutant, Hash[Symbol, untyped]) -> bool
@@ -757,15 +758,25 @@ module Henitai
     def subject_source_unchanged?: (Mutant, Hash[Symbol, untyped]) -> bool
   end
 
+  class ReuseContext
+    def initialize: (config: untyped, ?version: String, ?root: String) -> void
+    def fingerprint: () -> String?
+
+    private
+
+    def compute: () -> String?
+    def components: (String) -> Hash[String, untyped]
+  end
+
   module VerdictFingerprint
     DEPENDENCY_GLOBS: Array[String]
 
     def self?.subject_source_hash: (untyped) -> String?
-    def self?.tests_fingerprint: (untyped) -> String?
-    def self?.tests_fingerprint_current?: (String?) -> bool
+    def self?.tests_fingerprint: (untyped, context_sha: String?) -> String?
+    def self?.tests_fingerprint_current?: (String?, context_sha: String?) -> bool
     def self?.dependency_fingerprint: (?String) -> String?
-    def self?.survivor_tests_fingerprint: (untyped, dependency_sha: String?) -> String?
-    def self?.survivor_fingerprint_current?: (String?, live_paths: Array[String], dependency_sha: String?) -> bool
+    def self?.survivor_tests_fingerprint: (untyped, context_sha: String?) -> String?
+    def self?.survivor_fingerprint_current?: (String?, live_paths: Array[String], context_sha: String?) -> bool
     def self?.survivor_fingerprint_matches?: (untyped, Array[String], String?) -> bool
     def self?.combined_content_sha: (untyped) -> String?
   end
@@ -1159,17 +1170,6 @@ module Henitai
     def load: () -> Report
   end
 
-  class SurvivorTestFilter
-    def initialize: (
-      coverage_map: Hash[String, Array[String]],
-      git_sha: String?,
-      ?dirty_source_files: bool,
-      ?worktree_changed_files: Array[String],
-      ?diff_analyzer: GitDiffAnalyzer
-    ) -> void
-    def apply: (Array[Mutant]) -> Hash[Symbol, Array[Mutant]]
-  end
-
   class SurvivorSelector
     DRIFT_THRESHOLD: Float
 
@@ -1198,6 +1198,9 @@ module Henitai
     def integration: () -> untyped
     def operators: () -> Array[Operator]
     def per_test_coverage: () -> PerTestCoverage
+    def source_selection_coverage: () -> PerTestCoverage
+    def reuse_context: () -> ReuseContext
+    def reuse_filter: () -> IncrementalFilter
     def history_store: () -> untyped
     def progress_reporter: (full_run: bool) -> untyped
     def source_provider: () -> ^(String) -> String
@@ -1256,6 +1259,8 @@ module Henitai
     def progress_reporter: () -> untyped?
     def history_store: () -> untyped
     def per_test_coverage: () -> PerTestCoverage
+    def reuse_filter: () -> IncrementalFilter
+    def source_selection_coverage: () -> PerTestCoverage
     def history_store_path: () -> String
     def source_files: () -> Array[String]
     def source_file_selection: () -> SourceFileSelection
@@ -1289,27 +1294,26 @@ module Henitai
     def initialize: (survivors_from: String?, config: Configuration, git_diff_analyzer: untyped) -> void
     def active?: () -> bool
     def try_recipe_run: () -> Array[Mutant]?
-    def apply_selection: (Array[Mutant]) -> Array[Mutant]
+    def apply_selection: (Array[Mutant], ?reuse_filter: IncrementalFilter?) -> Array[Mutant]
 
     private
 
     def load_survivor_report: () -> SurvivorLoader::Report
-    def run_from_recipes: (SurvivorLoader::Report, Array[String]?) -> Array[Mutant]?
-    def recipe_fast_path_safe?: (SurvivorLoader::Report, Array[String]?) -> bool
+    def run_from_recipes: (SurvivorLoader::Report) -> Array[Mutant]?
+    def recipe_fast_path_safe?: (SurvivorLoader::Report) -> bool
     def recipe_selector_and_stubs: (Array[String], Hash[String, Hash[String, untyped]]) -> [SurvivorSelector, Array[Mutant]]
     def load_activation_recipes: (Array[String]) -> Hash[String, Hash[String, untyped]]?
     def build_stub_mutant: (String, Hash[String, untyped]) -> Mutant
     def stub_subject_from_recipe: (Hash[String, untyped]) -> Subject
     def recipe_location: (Hash[String, untyped]?) -> Hash[Symbol, untyped]
-    def finalize_survivor_split: (SurvivorSelector, Array[Mutant], Hash[Symbol, Array[Mutant]]) -> Array[Mutant]
+    def finalize_selection: (SurvivorSelector, Array[Mutant]) -> Array[Mutant]
     def dirty_worktree_changed_files: () -> Array[String]?
     def dirty_source_files?: (Array[String]?, ?git_sha: String?) -> bool
     def committed_changed_files: (String?) -> Array[String]
     def in_include_root?: (String, Array[String]) -> bool
     def normalize_path: (String) -> String
     def warn_survivor_drift: (SurvivorSelector) -> void
-    def build_survivor_stats: (SurvivorSelector, Array[Mutant], Hash[Symbol, Array[Mutant]]) -> Hash[Symbol, untyped]
-    def test_filter: (SurvivorLoader::Report, ?dirty_source_files: bool) -> SurvivorTestFilter
+    def build_survivor_stats: (SurvivorSelector, Array[Mutant]) -> Hash[Symbol, untyped]
   end
 
   class CoverageBootstrapper

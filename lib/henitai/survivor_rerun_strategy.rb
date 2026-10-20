@@ -12,8 +12,15 @@ module Henitai
   #     fast path, bypassing source parsing and mutant generation), or
   #   * filters a freshly generated mutant list down to the prior survivors.
   #
-  # In both cases it records {#survivor_stats} (matched/unmatched counts and the
-  # drift warning) for the Runner to attach to its Result.
+  # Survivors are never trusted on the strength of the prior report alone: a
+  # selected survivor is skipped only when the {IncrementalFilter} content
+  # fingerprint rules prove its stored verdict still valid (new or edited
+  # tests, helpers and configuration all force a re-run). Recipe stubs have no
+  # source range to fingerprint, so they always re-run.
+  #
+  # In both cases it records {#survivor_stats} (matched/unmatched counts, the
+  # reused-verdict count and the drift warning) for the Runner to attach to
+  # its Result.
   class SurvivorRerunStrategy
     attr_reader :survivor_stats
 
@@ -32,26 +39,19 @@ module Henitai
     # bypassing source parsing and mutant generation entirely.
     # Returns the mutant array on success, or nil if recipes are unavailable.
     def try_recipe_run
-      dirty_worktree_files = dirty_worktree_changed_files
       loaded = load_survivor_report
-      return nil unless recipe_fast_path_safe?(loaded, dirty_worktree_files)
+      return nil unless recipe_fast_path_safe?(loaded)
 
-      run_from_recipes(loaded, dirty_worktree_files)
+      run_from_recipes(loaded)
     end
 
-    def apply_selection(mutants)
-      dirty_worktree_files = dirty_worktree_changed_files
-      loaded   = load_survivor_report
-      selector = SurvivorSelector.new(survivor_ids: loaded.survivor_ids)
+    # @param reuse_filter [IncrementalFilter, nil] marks survivors whose
+    #   stored verdict is provably still valid as cache hits.
+    def apply_selection(mutants, reuse_filter: nil)
+      selector = SurvivorSelector.new(survivor_ids: load_survivor_report.survivor_ids)
       selected = selector.select(mutants)
-      finalize_survivor_split(
-        selector,
-        selected,
-        test_filter(
-          loaded,
-          dirty_source_files: dirty_source_files?(dirty_worktree_files, git_sha: loaded.git_sha)
-        ).apply(selected)
-      )
+      reuse_filter&.apply(selected)
+      finalize_selection(selector, selected)
     end
 
     private
@@ -60,20 +60,16 @@ module Henitai
       SurvivorLoader.new(@survivors_from, include_paths: Array(@config.includes)).load
     end
 
-    def run_from_recipes(loaded, dirty_worktree_files)
+    def run_from_recipes(loaded)
       recipes = load_activation_recipes(loaded.survivor_ids)
       return nil if recipes.nil?
 
       selector, stubs = recipe_selector_and_stubs(loaded.survivor_ids, recipes)
-      split = test_filter(
-        loaded,
-        dirty_source_files: dirty_source_files?(dirty_worktree_files, git_sha: loaded.git_sha)
-      ).apply(stubs)
-      finalize_survivor_split(selector, stubs, split)
+      finalize_selection(selector, stubs)
     end
 
-    def recipe_fast_path_safe?(loaded, dirty_worktree_files)
-      !dirty_source_files?(dirty_worktree_files, git_sha: loaded.git_sha)
+    def recipe_fast_path_safe?(loaded)
+      !dirty_source_files?(dirty_worktree_changed_files, git_sha: loaded.git_sha)
     end
 
     # Builds stub Mutants from recipes and a SurvivorSelector primed with the
@@ -151,21 +147,10 @@ module Henitai
       }.compact
     end
 
-    def finalize_survivor_split(selector, selected, split)
-      split[:stable].each { |m| m.status = :survived }
+    def finalize_selection(selector, selected)
       warn_survivor_drift(selector) if selector.drift_warning?
-      @survivor_stats = build_survivor_stats(selector, selected, split)
-      split[:stable] + split[:pending]
-    end
-
-    def test_filter(loaded, dirty_source_files:)
-      SurvivorTestFilter.new(
-        coverage_map: loaded.coverage_map,
-        git_sha: loaded.git_sha,
-        dirty_source_files:,
-        worktree_changed_files: Array(dirty_worktree_changed_files),
-        diff_analyzer: @git_diff_analyzer
-      )
+      @survivor_stats = build_survivor_stats(selector, selected)
+      selected
     end
 
     def dirty_worktree_changed_files
@@ -189,12 +174,12 @@ module Henitai
            "could not be matched; the source may have drifted - consider a full run"
     end
 
-    def build_survivor_stats(selector, selected, split)
+    def build_survivor_stats(selector, selected)
       {
         matched: selected.size,
         unmatched_count: selector.unmatched_ids.size,
         unmatched_ids: selector.unmatched_ids,
-        skipped_count: split[:stable].size,
+        skipped_count: selected.count(&:from_cache?),
         drift_warning: selector.drift_warning?
       }
     end

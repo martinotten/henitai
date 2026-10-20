@@ -29,7 +29,7 @@ module Henitai
       def killed_cache_bindings(mutant)
         [
           VerdictFingerprint.subject_source_hash(mutant),
-          VerdictFingerprint.tests_fingerprint(covered_tests_for(mutant))
+          VerdictFingerprint.tests_fingerprint(covered_tests_for(mutant), context_sha: reuse_context&.fingerprint)
         ]
       end
 
@@ -56,14 +56,8 @@ module Henitai
 
         VerdictFingerprint.survivor_tests_fingerprint(
           per_test_coverage.tests_covering(mutant),
-          dependency_sha: recording_dependency_sha
+          context_sha: reuse_context&.fingerprint
         )
-      end
-
-      # One dependency sha per record call set, computed lazily so runs
-      # without survivors never touch the dependency files.
-      def recording_dependency_sha
-        @recording_dependency_sha ||= VerdictFingerprint.dependency_fingerprint
       end
 
       def existing_cache_bindings(existing_row)

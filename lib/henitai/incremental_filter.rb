@@ -9,23 +9,26 @@ module Henitai
   #
   # Reuse rules (conservative — any doubt resolves to re-execution):
   #
+  #   * Both verdicts: the stored {ReuseContext} fingerprint (test
+  #     dependencies, verdict-relevant configuration, henitai version) must
+  #     equal the current one. Rows recorded without a context are never
+  #     reused.
   #   * Killed: the stored verdict must carry both fingerprints, and both the
   #     subject's source and every recorded covering test file must be
   #     byte-identical to what was recorded. Killed is monotone, so no live
   #     coverage is needed.
   #   * Survived: additionally the LIVE covering set (the full-map
   #     intersection computed via {PerTestCoverage}) must equal the recorded
-  #     set in membership, and the run-level dependency fingerprint must be
-  #     unchanged — a new or edited test reaching the mutant always forces a
-  #     re-run (ADR-11). Without a live per-test map or dependency
-  #     fingerprint, survivors always re-execute.
+  #     set in membership — a new or edited test reaching the mutant always
+  #     forces a re-run (ADR-11). Without a live per-test map or a context,
+  #     survivors always re-execute.
   #
   # Timeouts, errors, unknown ids and legacy rows always re-execute.
   class IncrementalFilter
-    def initialize(history_store:, per_test_coverage: nil, dependency_fingerprint: nil)
+    def initialize(history_store:, per_test_coverage: nil, reuse_context: nil)
       @history_store = history_store
       @per_test_coverage = per_test_coverage
-      @dependency_fingerprint = dependency_fingerprint
+      @reuse_context = reuse_context
     end
 
     # @return [Array<Mutant>] the same collection; cache hits get the stored
@@ -49,7 +52,7 @@ module Henitai
 
     private
 
-    attr_reader :history_store, :per_test_coverage, :dependency_fingerprint
+    attr_reader :history_store, :per_test_coverage, :reuse_context
 
     # MutantIdentity deliberately omits source coordinates (line-drift
     # tolerance), so distinct mutants inside one subject can share a stable
@@ -76,7 +79,9 @@ module Henitai
 
     def killed_reusable?(mutant, verdict)
       subject_source_unchanged?(mutant, verdict) &&
-        VerdictFingerprint.tests_fingerprint_current?(verdict.fetch(:covered_tests_fingerprint))
+        VerdictFingerprint.tests_fingerprint_current?(
+          verdict.fetch(:covered_tests_fingerprint), context_sha: context_sha
+        )
     end
 
     # The filter checks per-test map availability itself instead of trusting
@@ -91,12 +96,15 @@ module Henitai
       VerdictFingerprint.survivor_fingerprint_current?(
         verdict.fetch(:covered_tests_fingerprint),
         live_paths: per_test_coverage.tests_covering(mutant),
-        dependency_sha: dependency_fingerprint
+        context_sha: context_sha
       )
     end
 
+    def context_sha = reuse_context&.fingerprint
+
     def subject_source_unchanged?(mutant, verdict)
-      VerdictFingerprint.subject_source_hash(mutant) == verdict.fetch(:subject_source_hash)
+      current = VerdictFingerprint.subject_source_hash(mutant)
+      !current.nil? && current == verdict.fetch(:subject_source_hash)
     end
   end
 end
