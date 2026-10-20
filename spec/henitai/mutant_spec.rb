@@ -4,7 +4,7 @@ require "parser/current"
 require "spec_helper"
 
 RSpec.describe Henitai::Mutant do
-  def build_mutant(precomputed_stable_id: nil, precomputed_activation: nil)
+  def build_mutant(precomputed_stable_id: nil, precomputed_activation: nil, precomputed_replacement: nil)
     described_class.new(
       subject: Henitai::Subject.new(namespace: "Sample", method_name: "alpha"),
       operator: "ArithmeticOperator",
@@ -15,7 +15,8 @@ RSpec.describe Henitai::Mutant do
       description: "replaced 1 with 2",
       location: {},
       precomputed_stable_id:,
-      precomputed_activation:
+      precomputed_activation:,
+      precomputed_replacement:
     )
   end
 
@@ -26,6 +27,21 @@ RSpec.describe Henitai::Mutant do
 
       expect([mutant.mutated_source, mutant.mutated_source]).to eq(%w[2 2])
       expect(Unparser).to have_received(:unparse).once
+    end
+  end
+
+  describe "#mutated_source with a precomputed replacement" do
+    it "returns the precomputed replacement instead of unparsing a missing node" do
+      mutant = described_class.new(
+        subject: Henitai::Subject.new(namespace: "Sample", method_name: "alpha"),
+        operator: "ArithmeticOperator",
+        nodes: { original: nil, mutated: nil },
+        description: "replaced 1 with 2",
+        location: {},
+        precomputed_replacement: "2"
+      )
+
+      expect(mutant.mutated_source).to eq("2")
     end
   end
 

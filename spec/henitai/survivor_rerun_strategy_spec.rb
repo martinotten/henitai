@@ -90,6 +90,24 @@ RSpec.describe Henitai::SurvivorRerunStrategy do
       end
     end
 
+    it "reports the replacement stored in the recipe" do
+      Dir.mktmpdir do |dir|
+        report_path = write_survivor_report(dir)
+        write_recipes(dir, recipe("replacement" => "x - 1"))
+
+        expect(strategy_for(report_path).try_recipe_run.first.mutated_source).to eq("x - 1")
+      end
+    end
+
+    it "falls back to unparsing for a legacy recipe without a replacement" do
+      Dir.mktmpdir do |dir|
+        report_path = write_survivor_report(dir)
+        write_recipes(dir, recipe)
+
+        expect(strategy_for(report_path).try_recipe_run.first.mutated_source).to eq("")
+      end
+    end
+
     it "does not replay a recipe without an activation" do
       Dir.mktmpdir do |dir|
         report_path = write_survivor_report(dir)

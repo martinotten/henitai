@@ -323,8 +323,9 @@ module Henitai
     attr_accessor from_cache: bool
     attr_reader precomputed_stable_id: String?
     attr_reader precomputed_activation: untyped
+    attr_reader precomputed_replacement: String?
 
-    def initialize: (subject: Subject, operator: String, nodes: Hash[Symbol, untyped], description: String, location: Hash[Symbol, untyped], ?precomputed_stable_id: String?, ?precomputed_activation: untyped) -> void
+    def initialize: (subject: Subject, operator: String, nodes: Hash[Symbol, untyped], description: String, location: Hash[Symbol, untyped], ?precomputed_stable_id: String?, ?precomputed_activation: untyped, ?precomputed_replacement: String?) -> void
     def stable_id: () -> String
     def mutated_source: () -> String
     def from_cache?: () -> bool

@@ -123,7 +123,8 @@ module Henitai
         description: recipe.fetch("description"),
         location: recipe_location(recipe["location"]),
         precomputed_stable_id: stable_id,
-        precomputed_activation: Mutant::Activation.from_h(recipe.fetch("activation"))
+        precomputed_activation: Mutant::Activation.from_h(recipe.fetch("activation")),
+        precomputed_replacement: recipe["replacement"]
       )
       mutant.covered_by = recipe["coveredBy"]
       mutant

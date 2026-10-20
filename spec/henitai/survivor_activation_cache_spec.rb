@@ -16,10 +16,11 @@ RSpec.describe Henitai::SurvivorActivationCache do
     )
   end
 
-  def build_survived_mutant(stable_id:, activation_source:)
+  def build_survived_mutant(stable_id:, activation_source:, replacement: "replaced")
     mutant = instance_double(
       Henitai::Mutant,
       stable_id:,
+      mutated_source: replacement,
       subject: build_stub_subject,
       operator: "ArithmeticOperator",
       description: "+ to -",
@@ -66,6 +67,12 @@ RSpec.describe Henitai::SurvivorActivationCache do
 
     it "returns an empty hash for an empty mutant list" do
       expect(described_class.compute([])).to eq({})
+    end
+
+    it "stores the mutated replacement so recipe stubs can report it" do
+      mutant = build_survived_mutant(stable_id: "rep-test", activation_source: "1", replacement: "x - 1")
+
+      expect(described_class.compute([mutant])["rep-test"]["replacement"]).to eq("x - 1")
     end
 
     it "serializes the location with camelCase keys" do

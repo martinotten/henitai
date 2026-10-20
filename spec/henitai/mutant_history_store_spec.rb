@@ -279,6 +279,35 @@ RSpec.describe Henitai::MutantHistoryStore do
     end
   end
 
+  describe "recipe stubs with precomputed stable ids" do
+    def build_stub(stable_id)
+      Henitai::Mutant.new(
+        subject: build_subject,
+        operator: "ArithmeticOperator",
+        nodes: { original: nil, mutated: nil },
+        description: "replaced + with -",
+        location: build_location,
+        precomputed_stable_id: stable_id,
+        precomputed_activation: nil
+      ).tap { |mutant| mutant.status = :survived }
+    end
+
+    it "keeps distinct stubs with different precomputed ids in separate rows" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "mutation-history.sqlite3")
+        store = described_class.new(path:)
+        store.record(build_result([build_stub("stub-a"), build_stub("stub-b")], {}), version: "0.1.0")
+
+        db = SQLite3::Database.new(path)
+        count = db.get_first_value("SELECT COUNT(*) FROM mutants")
+        ids = db.execute("SELECT mutant_id FROM mutants ORDER BY mutant_id").flatten
+        db.close
+
+        expect([count, ids]).to eq([2, %w[stub-a stub-b]])
+      end
+    end
+  end
+
   describe "verdict cache" do
     def build_cacheable_mutant(dir, status:, covered_by: :default)
       source = File.join(dir, "sample.rb")

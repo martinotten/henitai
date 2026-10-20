@@ -133,8 +133,10 @@ module Henitai
       end
     end
 
+    # Recipe stubs carry a precomputed id that cannot be recomputed from
+    # their (absent) AST nodes.
     def stable_mutant_id(mutant)
-      MutantIdentity.stable_id(mutant)
+      mutant.respond_to?(:stable_id) ? mutant.stable_id : MutantIdentity.stable_id(mutant)
     end
 
     def mutation_history_entry(mutant, version, recorded_at)

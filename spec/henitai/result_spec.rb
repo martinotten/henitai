@@ -572,6 +572,23 @@ RSpec.describe Henitai::Result do
     expect(schema[:files][file][:mutants].first[:replacement]).to eq("dstr")
   end
 
+  it "reports the precomputed replacement of a recipe stub" do
+    stub = Henitai::Mutant.new(
+      subject: Henitai::Subject.new(namespace: "Sample", method_name: "answer"),
+      operator: "ArithmeticOperator",
+      nodes: { original: nil, mutated: nil },
+      description: "replaced + with -",
+      location: { file: "lib/sample.rb", start_line: 2, end_line: 2, start_col: 0, end_col: 5 },
+      precomputed_stable_id: "stub-a",
+      precomputed_activation: nil,
+      precomputed_replacement: "1 - 2"
+    )
+    stub.status = :survived
+    schema = result([stub]).to_stryker_schema
+
+    expect(schema[:files]["lib/sample.rb"][:mutants].first[:replacement]).to eq("1 - 2")
+  end
+
   describe "partial rerun" do
     def partial_result(survivor_stats: nil)
       described_class.new(
