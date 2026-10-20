@@ -47,8 +47,15 @@ module Henitai
     def history_store
       @history_store ||= MutantHistoryStore.new(
         path: File.join(@config.reports_dir, Henitai::HISTORY_STORE_FILENAME),
-        per_test_coverage: per_test_coverage
+        per_test_coverage: per_test_coverage,
+        reuse_context: reuse_context
       )
+    end
+
+    # Shared by the incremental filter and the history store: verdicts are
+    # recorded under exactly the context they are later checked against.
+    def reuse_context
+      @reuse_context ||= ReuseContext.new(config: @config)
     end
 
     # Fans progress out to the terminal reporter (when enabled) and the

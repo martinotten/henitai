@@ -10,9 +10,12 @@ module Henitai
   # Content fingerprints that decide whether a stored verdict is still
   # trustworthy: the subject's source (method body) and the covering test
   # files must both be byte-identical to what was recorded. Survived verdicts
-  # additionally record the full-map covering-set membership plus a run-level
-  # dependency fingerprint (ADR-11). Any read failure yields nil / a mismatch
-  # — conservative, never reuse on doubt.
+  # additionally record the full-map covering-set membership (ADR-11). Both
+  # verdict kinds carry the run's {ReuseContext} fingerprint (test
+  # dependencies, verdict-relevant configuration, henitai version) and are
+  # reusable only under an identical one. Any read failure yields nil / a
+  # mismatch — conservative, never reuse on doubt; rows recorded without a
+  # context are never reusable.
   module VerdictFingerprint
     # Files that influence test behavior but never appear in any covering
     # set: helpers, support code, fixtures/factories, lockfile and tool
@@ -49,24 +52,29 @@ module Henitai
       nil
     end
 
-    # JSON fingerprint of the covering test files: their sorted paths plus a
-    # combined content hash. nil when no tests are known or any is unreadable.
-    def tests_fingerprint(test_files)
+    # JSON fingerprint of the covering test files: their sorted paths, a
+    # combined content hash and the reuse context. nil when no tests are known,
+    # any is unreadable, or there is no context to bind the verdict to.
+    def tests_fingerprint(test_files, context_sha:)
+      return nil if context_sha.nil?
+
       paths = Array(test_files).map(&:to_s).sort
       return nil if paths.empty?
 
       sha = combined_content_sha(paths)
       return nil unless sha
 
-      JSON.generate("paths" => paths, "sha" => sha)
+      JSON.generate("paths" => paths, "sha" => sha, "context" => context_sha)
     end
 
-    # True when every recorded test file still exists with identical content.
-    def tests_fingerprint_current?(fingerprint_json)
-      return false if fingerprint_json.nil?
+    # True when every recorded test file still exists with identical content
+    # and the recorded reuse context equals the current one.
+    def tests_fingerprint_current?(fingerprint_json, context_sha:)
+      return false if fingerprint_json.nil? || context_sha.nil?
 
       fingerprint = JSON.parse(fingerprint_json)
-      combined_content_sha(fingerprint.fetch("paths")) == fingerprint.fetch("sha")
+      fingerprint.fetch("context") == context_sha &&
+        combined_content_sha(fingerprint.fetch("paths")) == fingerprint.fetch("sha")
     rescue StandardError
       false
     end
@@ -101,38 +109,29 @@ module Henitai
     def dependency_fingerprint(root = Dir.pwd) = combined_content_sha(dependency_files(root))
 
     # Fingerprint recorded for a Survived verdict: the sorted full-map
-    # intersection set (paths + combined content sha) plus the run-level
-    # dependency sha. nil when any input is unavailable — the verdict is
-    # then never reusable.
-    def survivor_tests_fingerprint(test_files, dependency_sha:)
-      return nil if dependency_sha.nil?
-
-      paths = Array(test_files).map(&:to_s).sort
-      return nil if paths.empty?
-
-      sha = combined_content_sha(paths)
-      return nil unless sha
-
-      JSON.generate("paths" => paths, "sha" => sha, "dependencies" => dependency_sha)
+    # intersection set (paths + combined content sha) plus the reuse context.
+    # nil when any input is unavailable — the verdict is then never reusable.
+    def survivor_tests_fingerprint(test_files, context_sha:)
+      tests_fingerprint(test_files, context_sha:)
     end
 
     # True when the recorded covering set still equals the live one in
-    # membership AND content, and the dependency fingerprint is unchanged.
+    # membership AND content, and the reuse context is unchanged.
     # Any parse/read failure or missing field resolves to stale.
-    def survivor_fingerprint_current?(fingerprint_json, live_paths:, dependency_sha:)
-      return false if fingerprint_json.nil? || dependency_sha.nil?
+    def survivor_fingerprint_current?(fingerprint_json, live_paths:, context_sha:)
+      return false if fingerprint_json.nil? || context_sha.nil?
 
-      survivor_fingerprint_matches?(JSON.parse(fingerprint_json), live_paths, dependency_sha)
+      survivor_fingerprint_matches?(JSON.parse(fingerprint_json), live_paths, context_sha)
     rescue StandardError
       false
     end
 
-    def survivor_fingerprint_matches?(fingerprint, live_paths, dependency_sha)
+    def survivor_fingerprint_matches?(fingerprint, live_paths, context_sha)
       recorded_paths = fingerprint.fetch("paths")
       return false if recorded_paths.empty?
 
       recorded_paths == Array(live_paths).map(&:to_s).sort &&
-        fingerprint.fetch("dependencies") == dependency_sha &&
+        fingerprint.fetch("context") == context_sha &&
         combined_content_sha(recorded_paths) == fingerprint.fetch("sha")
     end
 

@@ -531,10 +531,10 @@ RSpec.describe Henitai::Runner do
             [
               captured[:history_store],
               captured[:per_test_coverage].class,
-              captured[:dependency_fingerprint].is_a?(String),
+              captured[:reuse_context].class,
               apply_calls
             ]
-          ).to eq([history_store, Henitai::PerTestCoverage, true, 1])
+          ).to eq([history_store, Henitai::PerTestCoverage, Henitai::ReuseContext, 1])
         end
       end
     end

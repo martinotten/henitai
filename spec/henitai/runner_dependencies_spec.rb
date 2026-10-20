@@ -28,7 +28,8 @@ RSpec.describe Henitai::RunnerDependencies do
       static_filter: Henitai::StaticFilter,
       execution_engine: Henitai::ExecutionEngine,
       coverage_bootstrapper: Henitai::CoverageBootstrapper,
-      per_test_coverage: Henitai::PerTestCoverage
+      per_test_coverage: Henitai::PerTestCoverage,
+      reuse_context: Henitai::ReuseContext
     }.each do |name, klass|
       it "builds a #{klass} for ##{name} and returns the same instance twice", :aggregate_failures do
         deps = build_deps

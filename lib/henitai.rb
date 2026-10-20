@@ -48,6 +48,7 @@ module Henitai
   autoload :EquivalenceDetector, "henitai/equivalence_detector"
   autoload :StaticFilter, "henitai/static_filter"
   autoload :IncrementalFilter, "henitai/incremental_filter"
+  autoload :ReuseContext, "henitai/reuse_context"
   autoload :VerdictFingerprint, "henitai/verdict_fingerprint"
   autoload :StillbornFilter, "henitai/stillborn_filter"
   autoload :FidelityCheck, "henitai/fidelity_check"

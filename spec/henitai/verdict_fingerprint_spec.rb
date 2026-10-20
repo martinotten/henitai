@@ -72,8 +72,8 @@ RSpec.describe Henitai::VerdictFingerprint do
         }.fetch(path)
       end
 
-      fingerprint_one = described_class.tests_fingerprint(%w[ab d])
-      fingerprint_two = described_class.tests_fingerprint(%w[a d])
+      fingerprint_one = described_class.tests_fingerprint(%w[ab d], context_sha: "ctx")
+      fingerprint_two = described_class.tests_fingerprint(%w[a d], context_sha: "ctx")
 
       expect(fingerprint_one).not_to eq(fingerprint_two)
     end
@@ -83,9 +83,9 @@ RSpec.describe Henitai::VerdictFingerprint do
         path = File.join(dir, "a_spec.rb")
         File.write(path, "it works\n")
 
-        fingerprint = described_class.tests_fingerprint([path])
+        fingerprint = described_class.tests_fingerprint([path], context_sha: "ctx")
 
-        expect(described_class.tests_fingerprint_current?(fingerprint)).to be(true)
+        expect(described_class.tests_fingerprint_current?(fingerprint, context_sha: "ctx")).to be(true)
       end
     end
 
@@ -93,11 +93,11 @@ RSpec.describe Henitai::VerdictFingerprint do
       Dir.mktmpdir do |dir|
         path = File.join(dir, "a_spec.rb")
         File.write(path, "it works\n")
-        fingerprint = described_class.tests_fingerprint([path])
+        fingerprint = described_class.tests_fingerprint([path], context_sha: "ctx")
 
         File.write(path, "it works differently\n")
 
-        expect(described_class.tests_fingerprint_current?(fingerprint)).to be(false)
+        expect(described_class.tests_fingerprint_current?(fingerprint, context_sha: "ctx")).to be(false)
       end
     end
 
@@ -105,21 +105,21 @@ RSpec.describe Henitai::VerdictFingerprint do
       Dir.mktmpdir do |dir|
         path = File.join(dir, "a_spec.rb")
         File.write(path, "it works\n")
-        fingerprint = described_class.tests_fingerprint([path])
+        fingerprint = described_class.tests_fingerprint([path], context_sha: "ctx")
 
         File.delete(path)
 
-        expect(described_class.tests_fingerprint_current?(fingerprint)).to be(false)
+        expect(described_class.tests_fingerprint_current?(fingerprint, context_sha: "ctx")).to be(false)
       end
     end
 
     it "returns nil for an empty test list without calling File.read" do
       allow(File).to receive(:read) { raise "unexpected File.read call" }
-      expect(described_class.tests_fingerprint([])).to be_nil
+      expect(described_class.tests_fingerprint([], context_sha: "ctx")).to be_nil
     end
 
     it "returns nil when a test file is unreadable" do
-      expect(described_class.tests_fingerprint(["/no/such/spec.rb"])).to be_nil
+      expect(described_class.tests_fingerprint(["/no/such/spec.rb"], context_sha: "ctx")).to be_nil
     end
 
     it "returns false for a valid fingerprint when files are modified" do
@@ -127,10 +127,10 @@ RSpec.describe Henitai::VerdictFingerprint do
         path = File.join(dir, "a_spec.rb")
         File.write(path, "it works\n")
 
-        fingerprint = described_class.tests_fingerprint([path])
+        fingerprint = described_class.tests_fingerprint([path], context_sha: "ctx")
         File.write(path, "modified\n")
 
-        expect(described_class.tests_fingerprint_current?(fingerprint)).to be(false)
+        expect(described_class.tests_fingerprint_current?(fingerprint, context_sha: "ctx")).to be(false)
       end
     end
 
@@ -143,7 +143,7 @@ RSpec.describe Henitai::VerdictFingerprint do
 
         # Two separate files produce a different hash than a single file
         # whose path+content concatenation would otherwise collide.
-        fingerprint_two = described_class.tests_fingerprint([path1, path2])
+        fingerprint_two = described_class.tests_fingerprint([path1, path2], context_sha: "ctx")
 
         # A crafted single-path fingerprint that would collide if ":" were
         # absent from the digest input.
@@ -152,13 +152,45 @@ RSpec.describe Henitai::VerdictFingerprint do
         File.write(fake_single_path, fake_content)
 
         # The two-file fingerprint must differ from any single-file variant.
-        expect(described_class.tests_fingerprint([fake_single_path]))
+        expect(described_class.tests_fingerprint([fake_single_path], context_sha: "ctx"))
           .not_to eq(fingerprint_two)
       end
     end
 
+    it "is no longer current under a different or missing context" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "a_spec.rb")
+        File.write(path, "it works\n")
+        fingerprint = described_class.tests_fingerprint([path], context_sha: "ctx")
+
+        expect(
+          [described_class.tests_fingerprint_current?(fingerprint, context_sha: "other"),
+           described_class.tests_fingerprint_current?(fingerprint, context_sha: nil)]
+        ).to eq([false, false])
+      end
+    end
+
+    it "is never current for a legacy fingerprint recorded without a context" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "a_spec.rb")
+        File.write(path, "it works\n")
+        legacy = JSON.generate("paths" => [path], "sha" => described_class.combined_content_sha([path]))
+
+        expect(described_class.tests_fingerprint_current?(legacy, context_sha: "ctx")).to be(false)
+      end
+    end
+
+    it "records nothing without a context" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "a_spec.rb")
+        File.write(path, "it works\n")
+
+        expect(described_class.tests_fingerprint([path], context_sha: nil)).to be_nil
+      end
+    end
+
     it "returns false for malformed fingerprint JSON" do
-      expect(described_class.tests_fingerprint_current?("not-json")).to be(false)
+      expect(described_class.tests_fingerprint_current?("not-json", context_sha: "ctx")).to be(false)
     end
   end
 
@@ -296,45 +328,45 @@ RSpec.describe Henitai::VerdictFingerprint do
   end
 
   describe ".survivor_tests_fingerprint" do
-    it "records the sorted covering paths, their content sha and the dependency sha" do
+    it "records the sorted covering paths, their content sha and the context sha" do
       Dir.mktmpdir do |dir|
         path = File.join(dir, "a_spec.rb")
         File.write(path, "it works\n")
 
-        fingerprint = described_class.survivor_tests_fingerprint([path], dependency_sha: "deps")
+        fingerprint = described_class.survivor_tests_fingerprint([path], context_sha: "ctx")
         parsed = JSON.parse(fingerprint)
 
-        expect([parsed["paths"], parsed["dependencies"], parsed["sha"].nil?])
-          .to eq([[path], "deps", false])
+        expect([parsed["paths"], parsed["context"], parsed["sha"].nil?])
+          .to eq([[path], "ctx", false])
       end
     end
 
     it "returns nil for an empty covering set" do
-      expect(described_class.survivor_tests_fingerprint([], dependency_sha: "deps")).to be_nil
+      expect(described_class.survivor_tests_fingerprint([], context_sha: "ctx")).to be_nil
     end
 
-    it "returns nil without a dependency sha" do
+    it "returns nil without a context sha" do
       Dir.mktmpdir do |dir|
         path = File.join(dir, "a_spec.rb")
         File.write(path, "it works\n")
 
-        expect(described_class.survivor_tests_fingerprint([path], dependency_sha: nil)).to be_nil
+        expect(described_class.survivor_tests_fingerprint([path], context_sha: nil)).to be_nil
       end
     end
 
     it "returns nil when a covering test file is unreadable" do
       expect(
-        described_class.survivor_tests_fingerprint(["/no/such_spec.rb"], dependency_sha: "deps")
+        described_class.survivor_tests_fingerprint(["/no/such_spec.rb"], context_sha: "ctx")
       ).to be_nil
     end
   end
 
   describe ".survivor_fingerprint_current?" do
-    def recorded_fingerprint(paths, dependency_sha: "deps")
-      Henitai::VerdictFingerprint.survivor_tests_fingerprint(paths, dependency_sha:)
+    def recorded_fingerprint(paths, context_sha: "ctx")
+      Henitai::VerdictFingerprint.survivor_tests_fingerprint(paths, context_sha:)
     end
 
-    it "is current when membership, contents and dependencies are unchanged" do
+    it "is current when membership, contents and context are unchanged" do
       Dir.mktmpdir do |dir|
         path = File.join(dir, "a_spec.rb")
         File.write(path, "it works\n")
@@ -342,7 +374,7 @@ RSpec.describe Henitai::VerdictFingerprint do
 
         expect(
           described_class.survivor_fingerprint_current?(
-            fingerprint, live_paths: [path], dependency_sha: "deps"
+            fingerprint, live_paths: [path], context_sha: "ctx"
           )
         ).to be(true)
       end
@@ -358,7 +390,7 @@ RSpec.describe Henitai::VerdictFingerprint do
 
         expect(
           described_class.survivor_fingerprint_current?(
-            fingerprint, live_paths: [path, extra], dependency_sha: "deps"
+            fingerprint, live_paths: [path, extra], context_sha: "ctx"
           )
         ).to be(false)
       end
@@ -374,7 +406,7 @@ RSpec.describe Henitai::VerdictFingerprint do
 
         expect(
           described_class.survivor_fingerprint_current?(
-            fingerprint, live_paths: [path], dependency_sha: "deps"
+            fingerprint, live_paths: [path], context_sha: "ctx"
           )
         ).to be(false)
       end
@@ -389,13 +421,13 @@ RSpec.describe Henitai::VerdictFingerprint do
 
         expect(
           described_class.survivor_fingerprint_current?(
-            fingerprint, live_paths: [path], dependency_sha: "deps"
+            fingerprint, live_paths: [path], context_sha: "ctx"
           )
         ).to be(false)
       end
     end
 
-    it "is stale when the dependency fingerprint changed" do
+    it "is stale when the context changed" do
       Dir.mktmpdir do |dir|
         path = File.join(dir, "a_spec.rb")
         File.write(path, "it works\n")
@@ -403,13 +435,13 @@ RSpec.describe Henitai::VerdictFingerprint do
 
         expect(
           described_class.survivor_fingerprint_current?(
-            fingerprint, live_paths: [path], dependency_sha: "other-deps"
+            fingerprint, live_paths: [path], context_sha: "other-ctx"
           )
         ).to be(false)
       end
     end
 
-    it "treats a nil fingerprint or nil dependency sha as stale" do
+    it "treats a nil fingerprint or nil context sha as stale" do
       Dir.mktmpdir do |dir|
         path = File.join(dir, "a_spec.rb")
         File.write(path, "it works\n")
@@ -418,25 +450,25 @@ RSpec.describe Henitai::VerdictFingerprint do
         expect(
           [
             described_class.survivor_fingerprint_current?(
-              nil, live_paths: [path], dependency_sha: "deps"
+              nil, live_paths: [path], context_sha: "ctx"
             ),
             described_class.survivor_fingerprint_current?(
-              fingerprint, live_paths: [path], dependency_sha: nil
+              fingerprint, live_paths: [path], context_sha: nil
             )
           ]
         ).to eq([false, false])
       end
     end
 
-    it "treats a killed-style fingerprint without dependency data as stale" do
+    it "treats a legacy fingerprint without a context as stale" do
       Dir.mktmpdir do |dir|
         path = File.join(dir, "a_spec.rb")
         File.write(path, "it works\n")
-        fingerprint = described_class.tests_fingerprint([path])
+        fingerprint = JSON.generate("paths" => [path], "sha" => described_class.combined_content_sha([path]))
 
         expect(
           described_class.survivor_fingerprint_current?(
-            fingerprint, live_paths: [path], dependency_sha: "deps"
+            fingerprint, live_paths: [path], context_sha: "ctx"
           )
         ).to be(false)
       end

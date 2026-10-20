@@ -133,9 +133,7 @@ module Henitai
     def apply_incremental_filter(mutants)
       return mutants unless @incremental
 
-      IncrementalFilter.new(history_store:, per_test_coverage:,
-                            dependency_fingerprint: VerdictFingerprint.dependency_fingerprint)
-                       .apply(mutants)
+      IncrementalFilter.new(history_store:, per_test_coverage:, reuse_context:).apply(mutants)
     end
 
     def bootstrap_mutants(source_files) = Thread.new { bootstrap_coverage(source_files) }
@@ -212,6 +210,7 @@ module Henitai
     def operators = deps.operators
     def history_store = deps.history_store
     def per_test_coverage = deps.per_test_coverage
+    def reuse_context = deps.reuse_context
     def source_selection_coverage = deps.source_selection_coverage
     def source_provider = deps.source_provider
 

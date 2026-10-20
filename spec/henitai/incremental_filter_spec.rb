@@ -25,6 +25,16 @@ RSpec.describe Henitai::IncrementalFilter do
     coverage
   end
 
+  def recorded_context_sha = "ctx-sha"
+
+  def build_filter(store, coverage = nil, context_sha: recorded_context_sha)
+    described_class.new(
+      history_store: store,
+      per_test_coverage: coverage,
+      reuse_context: Struct.new(:fingerprint).new(context_sha)
+    )
+  end
+
   def write_workspace(dir)
     source = File.join(dir, "sample.rb")
     File.write(source, "class Sample\n  def value = 1\nend\n")
@@ -37,7 +47,9 @@ RSpec.describe Henitai::IncrementalFilter do
     {
       status: :killed,
       subject_source_hash: Henitai::VerdictFingerprint.subject_source_hash(mutant),
-      covered_tests_fingerprint: Henitai::VerdictFingerprint.tests_fingerprint([test])
+      covered_tests_fingerprint: Henitai::VerdictFingerprint.tests_fingerprint(
+        [test], context_sha: recorded_context_sha
+      )
     }
   end
 
@@ -47,9 +59,49 @@ RSpec.describe Henitai::IncrementalFilter do
       mutant = build_mutant(stable_id: "abc", source_file: source)
       store = build_store("abc" => verdict_for(mutant, test))
 
-      described_class.new(history_store: store).apply([mutant])
+      build_filter(store).apply([mutant])
 
       expect([mutant.status, mutant.from_cache]).to eq([:killed, true])
+    end
+  end
+
+  it "re-runs a killed verdict when the reuse context changed" do
+    Dir.mktmpdir do |dir|
+      source, test = write_workspace(dir)
+      mutant = build_mutant(stable_id: "abc", source_file: source)
+      store = build_store("abc" => verdict_for(mutant, test))
+
+      build_filter(store, context_sha: "other-sha").apply([mutant])
+
+      expect([mutant.status, mutant.from_cache]).to eq([:pending, false])
+    end
+  end
+
+  it "re-runs a killed verdict when no reuse context is available" do
+    Dir.mktmpdir do |dir|
+      source, test = write_workspace(dir)
+      mutant = build_mutant(stable_id: "abc", source_file: source)
+      store = build_store("abc" => verdict_for(mutant, test))
+
+      build_filter(store, context_sha: nil).apply([mutant])
+
+      expect(mutant.status).to eq(:pending)
+    end
+  end
+
+  it "re-runs a killed verdict recorded without a context (legacy row)" do
+    Dir.mktmpdir do |dir|
+      source, test = write_workspace(dir)
+      mutant = build_mutant(stable_id: "abc", source_file: source)
+      legacy = verdict_for(mutant, test).merge(
+        covered_tests_fingerprint: JSON.generate(
+          "paths" => [test], "sha" => Henitai::VerdictFingerprint.combined_content_sha([test])
+        )
+      )
+
+      build_filter(build_store("abc" => legacy)).apply([mutant])
+
+      expect(mutant.status).to eq(:pending)
     end
   end
 
@@ -61,7 +113,7 @@ RSpec.describe Henitai::IncrementalFilter do
       File.write(source, "class Sample\n  def value = 2\nend\n")
       store = build_store("abc" => verdict)
 
-      described_class.new(history_store: store).apply([mutant])
+      build_filter(store).apply([mutant])
 
       expect([mutant.status, mutant.from_cache]).to eq([:pending, false])
     end
@@ -75,7 +127,7 @@ RSpec.describe Henitai::IncrementalFilter do
       File.write(test, "it works differently\n")
       store = build_store("abc" => verdict)
 
-      described_class.new(history_store: store).apply([mutant])
+      build_filter(store).apply([mutant])
 
       expect(mutant.status).to eq(:pending)
     end
@@ -89,7 +141,7 @@ RSpec.describe Henitai::IncrementalFilter do
       File.delete(test)
       store = build_store("abc" => verdict)
 
-      described_class.new(history_store: store).apply([mutant])
+      build_filter(store).apply([mutant])
 
       expect(mutant.status).to eq(:pending)
     end
@@ -101,7 +153,7 @@ RSpec.describe Henitai::IncrementalFilter do
       mutant = build_mutant(stable_id: "unknown", source_file: source)
       store = build_store({})
 
-      described_class.new(history_store: store).apply([mutant])
+      build_filter(store).apply([mutant])
 
       expect(mutant.status).to eq(:pending)
     end
@@ -114,7 +166,7 @@ RSpec.describe Henitai::IncrementalFilter do
       second = build_mutant(stable_id: "dup", source_file: source)
       store = build_store("dup" => verdict_for(first, test))
 
-      described_class.new(history_store: store).apply([first, second])
+      build_filter(store).apply([first, second])
 
       expect([first.status, second.status]).to eq(%i[pending pending])
     end
@@ -141,7 +193,7 @@ RSpec.describe Henitai::IncrementalFilter do
       store = build_store(first.stable_id => verdict_for(first, test),
                           second.stable_id => verdict_for(second, test))
 
-      described_class.new(history_store: store).apply([first, second])
+      build_filter(store).apply([first, second])
 
       expect([first.status, second.status]).to eq(%i[killed killed])
     end
@@ -153,34 +205,24 @@ RSpec.describe Henitai::IncrementalFilter do
       mutant = build_mutant(stable_id: "abc", source_file: source, status: :ignored)
       store = instance_double(Henitai::MutantHistoryStore)
 
-      described_class.new(history_store: store).apply([mutant])
+      build_filter(store).apply([mutant])
 
       expect(mutant.status).to eq(:ignored)
     end
   end
 
   describe "survived verdict reuse" do
-    def recorded_dependency_sha = "deps-sha"
-
-    def survived_verdict_for(mutant, tests, dependency_sha: recorded_dependency_sha)
+    def survived_verdict_for(mutant, tests, context_sha: recorded_context_sha)
       {
         status: :survived,
         subject_source_hash: Henitai::VerdictFingerprint.subject_source_hash(mutant),
         covered_tests_fingerprint: Henitai::VerdictFingerprint.survivor_tests_fingerprint(
-          tests, dependency_sha:
+          tests, context_sha:
         )
       }
     end
 
-    def build_filter(store, coverage, dependency_fingerprint: recorded_dependency_sha)
-      described_class.new(
-        history_store: store,
-        per_test_coverage: coverage,
-        dependency_fingerprint:
-      )
-    end
-
-    it "reuses a survived verdict when source, covering set and dependencies are unchanged" do
+    it "reuses a survived verdict when source, covering set and context are unchanged" do
       Dir.mktmpdir do |dir|
         source, test = write_workspace(dir)
         mutant = build_mutant(stable_id: "abc", source_file: source)
@@ -210,7 +252,7 @@ RSpec.describe Henitai::IncrementalFilter do
         mutant = build_mutant(stable_id: "abc", source_file: source, source_range: 2..2)
         store = build_store("abc" => verdict_for(mutant, test))
 
-        described_class.new(history_store: store).apply([mutant])
+        build_filter(store).apply([mutant])
 
         expect(mutant.status).to eq(:killed)
       end
@@ -281,25 +323,25 @@ RSpec.describe Henitai::IncrementalFilter do
       end
     end
 
-    it "re-runs when the dependency fingerprint changed" do
+    it "re-runs when the reuse context changed" do
       Dir.mktmpdir do |dir|
         source, test = write_workspace(dir)
         mutant = build_mutant(stable_id: "abc", source_file: source)
         store = build_store("abc" => survived_verdict_for(mutant, [test]))
 
-        build_filter(store, build_coverage([test]), dependency_fingerprint: "other-sha").apply([mutant])
+        build_filter(store, build_coverage([test]), context_sha: "other-sha").apply([mutant])
 
         expect(mutant.status).to eq(:pending)
       end
     end
 
-    it "re-runs when the current dependency fingerprint is unavailable" do
+    it "re-runs when the current reuse context is unavailable" do
       Dir.mktmpdir do |dir|
         source, test = write_workspace(dir)
         mutant = build_mutant(stable_id: "abc", source_file: source)
         store = build_store("abc" => survived_verdict_for(mutant, [test]))
 
-        build_filter(store, build_coverage([test]), dependency_fingerprint: nil).apply([mutant])
+        build_filter(store, build_coverage([test]), context_sha: nil).apply([mutant])
 
         expect(mutant.status).to eq(:pending)
       end
@@ -323,7 +365,7 @@ RSpec.describe Henitai::IncrementalFilter do
         mutant = build_mutant(stable_id: "abc", source_file: source)
         store = build_store("abc" => survived_verdict_for(mutant, [test]))
 
-        described_class.new(history_store: store).apply([mutant])
+        build_filter(store).apply([mutant])
 
         expect(mutant.status).to eq(:pending)
       end
