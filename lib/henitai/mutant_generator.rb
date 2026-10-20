@@ -6,7 +6,7 @@ require_relative "source_parser"
 module Henitai
   # Traverses a subject's AST and asks operators to build mutants.
   class MutantGenerator
-    def generate(subjects, operators, config: nil)
+    def generate(subjects, operators, config: nil, sample: true)
       normalized_operators = normalize_operators(operators)
       arid_node_filter = AridNodeFilter.new
       syntax_validator = SyntaxValidator.new
@@ -22,11 +22,12 @@ module Henitai
         )
       end
 
-      # Sample before deduplicating programs: distinct_programs computes activation sources for every
-      # mutant it receives, so running it last avoids that work for discarded mutants. Sampling keeps
-      # the first N per subject in order and deduplication keeps first occurrences, so the result is
-      # still a deterministic, duplicate-free prefix.
-      distinct_programs(sample_mutants(distinct_identities(mutants), config:, sampling_strategy:))
+      # Deduplicate programs before sampling: unsampled generation (survivor reruns) must keep the same
+      # representative of a duplicate program as a sampled run, or a reported survivor's stable id would
+      # not be found again. Sampling is stratified by operator within each subject, using a seeded
+      # per-mutant order, and returns kept mutants in input order.
+      unique = distinct_programs(distinct_identities(mutants))
+      sample ? sample_mutants(unique, config:, sampling_strategy:) : unique
     end
 
     private
@@ -110,7 +111,7 @@ module Henitai
       end
 
       def apply_operators(node)
-        return if @arid_node_filter.suppressed?(node, @config)
+        return if @arid_node_filter.suppressed?(node)
 
         @operators_by_node_type[node.type].each do |operator|
           operator.mutate(node, subject: @subject).each do |mutant|
@@ -182,7 +183,8 @@ module Henitai
       sampling_strategy.sample(
         mutants,
         ratio: sampling[:ratio],
-        strategy: sampling[:strategy] || :stratified
+        strategy: sampling[:strategy] || :stratified,
+        seed: sampling[:seed] || SamplingStrategy::DEFAULT_SEED
       )
     end
 

@@ -70,9 +70,9 @@ RSpec.describe Henitai::CLI do
     runner
   end
 
-  def write_survivors_from_fixture(report_dir:, session_id:)
+  def write_survivors_from_fixture(report_dir:, session_id:, files: {})
     report_path = File.join(report_dir, "mutation-report.json")
-    canonical_report = JSON.generate("schemaVersion" => "1.0", "sessionId" => session_id, "files" => {})
+    canonical_report = JSON.generate("schemaVersion" => "1.0", "sessionId" => session_id, "files" => files)
 
     File.write(report_path, canonical_report)
 
@@ -125,7 +125,7 @@ RSpec.describe Henitai::CLI do
                 --all-logs, --verbose        Print all captured child logs
                 --survivors-from PATH        Re-run only survivors from a prior report (partial rerun; threshold checks are skipped; dirty worktrees are included)
                 --incremental                Reuse still-valid Killed verdicts from the history store instead of re-executing them
-                --force                      Bypass verdict reuse and execute every mutant (only meaningful with --incremental)
+                --force                      Bypass verdict reuse (--incremental, --survivors-from) and execute every mutant
                 --dry-run                    List the post-filter mutant set without executing mutants (always exits 0)
                 --fail-on-survivors          Exit 1 for partial reruns when any survivors remain (otherwise exits 0)
                 --strict-exit-codes          Expanded exit codes: 0 threshold met, 1 threshold miss, 2 framework error, 3 timeouts present, 4 runtime/compile errors present
@@ -502,6 +502,75 @@ RSpec.describe Henitai::CLI do
       cli.run
 
       expect(captured_survivors_from).to eq(snapshot_path)
+    end
+  end
+
+  def survivors_from_passed_to_runner(dir, report_path)
+    captured = :not_set
+    runner = build_runner(result: instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: true))
+    allow(Henitai::Runner).to receive(:new) do |**kwargs|
+      captured = kwargs[:survivors_from]
+      runner
+    end
+    cli = described_class.new(["run", "--config", write_configuration(dir), "--survivors-from", report_path])
+    cli.define_singleton_method(:exit) { |_status = nil| nil }
+    cli.run
+    captured
+  end
+
+  it "redirects to the session snapshot when every file entry came from the report's session" do
+    Dir.mktmpdir do |dir|
+      files = { "a.rb" => { "sessionId" => "S1", "mutants" => [] } }
+      report_path, snapshot_path = write_survivors_from_fixture(
+        report_dir: File.join(dir, "reports").tap { |d| FileUtils.mkdir_p(d) }, session_id: "S1", files:
+      )
+
+      expect(survivors_from_passed_to_runner(dir, report_path)).to eq(snapshot_path)
+    end
+  end
+
+  it "uses the canonical report itself when its files stem from different sessions" do
+    Dir.mktmpdir do |dir|
+      files = { "a.rb" => { "sessionId" => "S1", "mutants" => [] }, "b.rb" => { "sessionId" => "S2", "mutants" => [] } }
+      report_path, = write_survivors_from_fixture(
+        report_dir: File.join(dir, "reports").tap { |d| FileUtils.mkdir_p(d) }, session_id: "S2", files:
+      )
+
+      expect(survivors_from_passed_to_runner(dir, report_path)).to eq(report_path)
+    end
+  end
+
+  it "uses the canonical report itself when file entries carry no provenance" do
+    Dir.mktmpdir do |dir|
+      files = { "a.rb" => { "mutants" => [] } }
+      report_path, = write_survivors_from_fixture(
+        report_dir: File.join(dir, "reports").tap { |d| FileUtils.mkdir_p(d) }, session_id: "S1", files:
+      )
+
+      expect(survivors_from_passed_to_runner(dir, report_path)).to eq(report_path)
+    end
+  end
+
+  it "reruns survivors of every file after a full run followed by a --since run", :aggregate_failures do
+    Dir.mktmpdir do |dir|
+      FileUtils.touch(%w[f.rb g.rb].map { |name| File.join(dir, name) })
+      reports = File.join(dir, "reports")
+      FileUtils.mkdir_p(reports)
+      report_path, = write_survivors_from_fixture(report_dir: reports, session_id: "S2")
+      entry = lambda do |session, id|
+        { "language" => "ruby", "source" => "", "sessionId" => session,
+          "mutants" => [{ "id" => id, "stableId" => id, "status" => "Survived" }] }
+      end
+      first = { "sessionId" => "S1", "files" => { "f.rb" => entry.call("S1", "A"), "g.rb" => entry.call("S1", "G") } }
+      second = { "sessionId" => "S2", "files" => { "f.rb" => entry.call("S2", "C") }, "completeFiles" => ["f.rb"] }
+      merged = Dir.chdir(dir) do
+        Henitai::CanonicalReportWriter.write(first, path: report_path, authoritative: true)
+        Henitai::CanonicalReportWriter.write(second, path: report_path, authoritative: false)
+        JSON.parse(File.read(report_path))
+      end
+
+      expect([merged["files"]["g.rb"]["sessionId"], merged["files"]["f.rb"]["sessionId"]]).to eq(%w[S1 S2])
+      expect(survivors_from_passed_to_runner(dir, report_path)).to eq(report_path)
     end
   end
 
@@ -1376,14 +1445,14 @@ RSpec.describe Henitai::CLI do
   end
 
   describe "--incremental" do
-    def captured_incremental_for(argv_flags)
+    def captured_incremental_for(argv_flags, key: :incremental)
       Dir.mktmpdir do |dir|
         config_path = write_configuration(dir)
         result = instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: false)
         captured = nil
 
         allow(Henitai::Runner).to receive(:new) do |**kwargs|
-          captured = kwargs.dig(:mode, :incremental)
+          captured = kwargs.dig(:mode, key)
           build_runner(result:)
         end
 
@@ -1405,6 +1474,14 @@ RSpec.describe Henitai::CLI do
 
     it "is bypassed by --force" do
       expect(captured_incremental_for(["--incremental", "--force"])).to be(false)
+    end
+
+    it "passes --force to the runner so survivor reruns bypass reuse too" do
+      expect(captured_incremental_for(["--force"], key: :force)).to be(true)
+    end
+
+    it "does not force the runner without --force" do
+      expect(captured_incremental_for([], key: :force)).to be(false)
     end
   end
 

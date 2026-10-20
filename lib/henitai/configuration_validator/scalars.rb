@@ -150,6 +150,15 @@ module Henitai
         )
       end
 
+      def validate_sampling_seed(value)
+        return if value.nil?
+        return if value.is_a?(Integer) && value >= 0
+
+        Rules.configuration_error(
+          "Invalid configuration value for mutation.sampling.seed: expected Integer >= 0, got #{value.inspect}"
+        )
+      end
+
       def validate_sampling_completeness(value)
         return if value.key?(:ratio) && value.key?(:strategy)
 

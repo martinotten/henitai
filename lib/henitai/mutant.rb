@@ -45,7 +45,7 @@ module Henitai
 
     attr_reader :id, :subject, :operator, :original_node, :mutated_node,
                 :mutation_type, :description, :location,
-                :precomputed_stable_id, :precomputed_activation
+                :precomputed_stable_id, :precomputed_activation, :precomputed_replacement
     attr_accessor :status, :killing_test, :duration, :covered_by, :tests_completed,
                   :ignore_reason, :status_reason, :from_cache
     # Set by MutantGenerator only for mutants whose identity would otherwise
@@ -59,7 +59,8 @@ module Henitai
     # @param location [Hash] { file:, start_line:, end_line:, start_col:, end_col: }
     # rubocop:disable Metrics/ParameterLists
     def initialize(subject:, operator:, nodes:, description:, location:,
-                   precomputed_stable_id: nil, precomputed_activation: nil)
+                   precomputed_stable_id: nil, precomputed_activation: nil,
+                   precomputed_replacement: nil)
       @id            = SecureRandom.uuid
       @subject       = subject
       @operator      = operator
@@ -69,6 +70,7 @@ module Henitai
       @location      = location
       @precomputed_stable_id = precomputed_stable_id
       @precomputed_activation = precomputed_activation
+      @precomputed_replacement = precomputed_replacement
       reset_outcome
     end
     # rubocop:enable Metrics/ParameterLists
@@ -79,7 +81,9 @@ module Henitai
 
     # Unparsing is expensive and the value is needed by both the JSON and
     # the terminal reporter — compute once per mutant.
-    def mutated_source = @mutated_source ||= safe_unparse(mutated_node)
+    def mutated_source
+      @mutated_source ||= @precomputed_replacement || safe_unparse(mutated_node)
+    end
 
     def killed?      = @status == :killed
     def from_cache?  = @from_cache == true

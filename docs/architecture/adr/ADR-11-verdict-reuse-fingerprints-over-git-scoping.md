@@ -106,6 +106,31 @@ Concretely:
   and, later, blob-OID fast-path equality checks on clean trees — both
   optimizations, neither a source of truth for reuse.
 
+## Amendment (Phase D, 2026-10)
+
+Review finding REU-04 showed that the Killed rule above was too weak: a Killed
+verdict stayed reusable after an edited spec helper, a configuration change or
+a henitai upgrade, because only the covering test files were fingerprinted. The
+oracle property check `rake oracle:reuse` reproduced 121 stale verdicts after a
+helper edit.
+
+- **The reuse context applies to Killed as well.** `ReuseContext` fingerprints
+  the dependency files (`DEPENDENCY_GLOBS`), the henitai version, the
+  integration, the operator set, `test_excludes` and `coverage_criteria`. It is
+  stored with every Killed and Survived verdict and must be equal for reuse.
+  Rows recorded without it are never reused. The Survived live-covering-set rule
+  is unchanged.
+- **Survivor reruns are folded into `IncrementalFilter`.** `--survivors-from`
+  applies the same fingerprint rules to the selected survivors, always, not only
+  with `--incremental`. Reused survivors are `fromCache`. Recipe stubs have no
+  source range and are never reused. `DirtySourceDetector` only gates the
+  activation-recipe fast path.
+- **`SurvivorTestFilter` is removed.** Its git-based "stable survivor" skip was
+  the second, weaker mechanism this ADR argued against; it ignored new tests and
+  edited helpers.
+- Gate 1 owns its own per-test coverage instance, so reuse reads the
+  post-bootstrap per-test map.
+
 ## Related Documents
 
 - [Architecture overview](../architecture.md)

@@ -7,11 +7,15 @@ module Henitai
   module SignatureLine
     module_function
 
+    # A subject without a source range (a recipe stub) has an unknown def
+    # line, so it is treated as one: that only widens test selection and
+    # blocks verdict reuse.
     def on?(mutant)
       subject = mutant.respond_to?(:subject) ? mutant.subject : nil
       return false unless subject.respond_to?(:source_range)
 
-      subject.source_range&.begin == mutant.location[:start_line]
+      range = subject.source_range
+      range.nil? || range.begin == mutant.location[:start_line]
     end
   end
 end

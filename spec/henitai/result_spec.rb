@@ -500,6 +500,29 @@ RSpec.describe Henitai::Result do
     end
   end
 
+  describe "pending mutants" do
+    let(:mutants) do
+      [build_mutant(status: :killed), build_mutant(status: :survived), build_mutant(status: :pending)]
+    end
+
+    it "excludes pending mutants from the mutation score denominator" do
+      expect(result(mutants).mutation_score).to eq(50.0)
+    end
+
+    it "excludes pending mutants from the mutation score indicator denominator" do
+      expect(result(mutants).mutation_score_indicator).to eq(50.0)
+    end
+
+    it "returns nil scores when every mutant is pending" do
+      pending_only = [build_mutant(status: :pending)]
+
+      expect(result(pending_only).scoring_summary).to include(
+        mutation_score: nil,
+        mutation_score_indicator: nil
+      )
+    end
+  end
+
   # A mutant from before mutated_source, status_reason and from_cache? existed.
   def legacy_mutant(mutant)
     hidden = %i[mutated_source status_reason from_cache?]
@@ -570,6 +593,23 @@ RSpec.describe Henitai::Result do
     file = schema[:files].keys.first
 
     expect(schema[:files][file][:mutants].first[:replacement]).to eq("dstr")
+  end
+
+  it "reports the precomputed replacement of a recipe stub" do
+    stub = Henitai::Mutant.new(
+      subject: Henitai::Subject.new(namespace: "Sample", method_name: "answer"),
+      operator: "ArithmeticOperator",
+      nodes: { original: nil, mutated: nil },
+      description: "replaced + with -",
+      location: { file: "lib/sample.rb", start_line: 2, end_line: 2, start_col: 0, end_col: 5 },
+      precomputed_stable_id: "stub-a",
+      precomputed_activation: nil,
+      precomputed_replacement: "1 - 2"
+    )
+    stub.status = :survived
+    schema = result([stub]).to_stryker_schema
+
+    expect(schema[:files]["lib/sample.rb"][:mutants].first[:replacement]).to eq("1 - 2")
   end
 
   describe "partial rerun" do
@@ -649,6 +689,35 @@ RSpec.describe Henitai::Result do
       )
 
       expect(scoped_result.since).to eq("origin/main")
+    end
+  end
+
+  describe "sampling" do
+    it "omits the sampling field when no sampling was applied" do
+      schema = result([build_mutant(status: :pending)]).to_stryker_schema
+
+      expect(schema).not_to have_key(:sampling)
+    end
+
+    it "records the strategy, ratio and seed when sampling was applied" do
+      sampling = { strategy: "stratified", ratio: 0.05, seed: 7 }
+      schema = described_class.new(
+        mutants: [build_mutant(status: :pending)],
+        started_at: Time.at(0),
+        finished_at: Time.at(1),
+        sampling:
+      ).to_stryker_schema
+
+      expect(schema[:sampling]).to eq(sampling)
+    end
+
+    it "exposes the applied sampling through its reader" do
+      sampling = { strategy: "stratified", ratio: 0.05, seed: 7 }
+      result = described_class.new(
+        mutants: [], started_at: Time.at(0), finished_at: Time.at(1), sampling:
+      )
+
+      expect(result.sampling).to eq(sampling)
     end
   end
 

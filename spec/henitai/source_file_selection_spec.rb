@@ -104,7 +104,7 @@ RSpec.describe Henitai::SourceFileSelection do
     it "keeps only files that changed since the ref" do
       analyzer = instance_double(
         Henitai::GitDiffAnalyzer,
-        changed_files: ["lib/changed.rb"], working_tree_changed_files: []
+        changed_files_since: ["lib/changed.rb"], working_tree_changed_files: []
       )
       per_test = instance_double(Henitai::PerTestCoverage, source_files_covered_by: [])
       selection = build_selection(since: "main", analyzer: analyzer, per_test_coverage: per_test)
@@ -117,7 +117,7 @@ RSpec.describe Henitai::SourceFileSelection do
     it "counts working-tree changes, not only committed ones" do
       analyzer = instance_double(
         Henitai::GitDiffAnalyzer,
-        changed_files: [], working_tree_changed_files: ["lib/dirty.rb"]
+        changed_files_since: [], working_tree_changed_files: ["lib/dirty.rb"]
       )
       per_test = instance_double(Henitai::PerTestCoverage, source_files_covered_by: [])
       selection = build_selection(since: "main", analyzer: analyzer, per_test_coverage: per_test)
@@ -130,7 +130,7 @@ RSpec.describe Henitai::SourceFileSelection do
     it "pulls in source files covered by a changed test file" do
       analyzer = instance_double(
         Henitai::GitDiffAnalyzer,
-        changed_files: ["spec/foo_spec.rb"], working_tree_changed_files: []
+        changed_files_since: ["spec/foo_spec.rb"], working_tree_changed_files: []
       )
       per_test = instance_double(Henitai::PerTestCoverage)
       allow(per_test).to receive(:source_files_covered_by).and_return([])
@@ -143,7 +143,7 @@ RSpec.describe Henitai::SourceFileSelection do
 
     it "returns nothing when nothing changed" do
       analyzer = instance_double(
-        Henitai::GitDiffAnalyzer, changed_files: [], working_tree_changed_files: []
+        Henitai::GitDiffAnalyzer, changed_files_since: [], working_tree_changed_files: []
       )
       per_test = instance_double(Henitai::PerTestCoverage, source_files_covered_by: [])
       selection = build_selection(since: "main", analyzer: analyzer, per_test_coverage: per_test)
@@ -161,7 +161,7 @@ RSpec.describe Henitai::SourceFileSelection do
       in_project(["lib/foo.rb", "lib/exclude_me.rb"]) do
         analyzer = instance_double(
           Henitai::GitDiffAnalyzer,
-          changed_files: ["lib/exclude_me.rb"], working_tree_changed_files: []
+          changed_files_since: ["lib/exclude_me.rb"], working_tree_changed_files: []
         )
         per_test = instance_double(Henitai::PerTestCoverage, source_files_covered_by: [])
         selection = build_selection(

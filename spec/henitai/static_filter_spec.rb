@@ -50,6 +50,10 @@ RSpec.describe Henitai::StaticFilter do
     end
   end
 
+  def write_sample(dir, content)
+    File.write(File.join(dir, "sample.rb"), content)
+  end
+
   def arithmetic_mutants(path, range: 1..4)
     subject = sample_subject(path, range:)
 
@@ -85,12 +89,40 @@ RSpec.describe Henitai::StaticFilter do
     )
   end
 
-  it "marks mutants whose source matches an ignore pattern as ignored" do
-    mutant = build_mutant("foo.bar")
+  it "marks mutants on a line matching an ignore pattern as ignored" do
+    Dir.mktmpdir do |dir|
+      write_sample(dir, "foo.bar\n")
+      mutant = build_mutant("foo.bar")
 
-    filter_with_coverage.apply([mutant], config(ignore_patterns: ["foo\\.bar"]))
+      apply_mutants(dir, [mutant], config(ignore_patterns: ["foo\\.bar"]), filter: filter_with_coverage)
 
-    expect(mutant.status).to eq(:ignored)
+      expect(mutant.status).to eq(:ignored)
+    end
+  end
+
+  it "matches ignore patterns against a source file in a declared non-UTF-8 encoding" do
+    Dir.mktmpdir do |dir|
+      File.binwrite(File.join(dir, "sample.rb"), "# encoding: iso-8859-1\nfoo.bar(\"caf\xE9\")\n".b)
+      mutant = build_mutant("foo.bar")
+      mutant.location.merge!(start_line: 2, end_line: 2)
+      filter = described_class.new
+      allow(filter).to receive(:coverage_lines_by_file).and_return("sample.rb" => [2])
+
+      apply_mutants(dir, [mutant], config(ignore_patterns: ["caf\u00e9"]), filter:)
+
+      expect(mutant.status).to eq(:ignored)
+    end
+  end
+
+  it "leaves a mutant unignored when its source file cannot be decoded" do
+    Dir.mktmpdir do |dir|
+      File.binwrite(File.join(dir, "sample.rb"), "foo.bar(\"caf\xE9\")\n".b)
+      mutant = build_mutant("foo.bar")
+
+      apply_mutants(dir, [mutant], config(ignore_patterns: ["foo"]), filter: filter_with_coverage)
+
+      expect(mutant.status).not_to eq(:ignored)
+    end
   end
 
   it "marks a mutant that fails the fidelity check as a compile error with the reason" do
@@ -112,12 +144,20 @@ RSpec.describe Henitai::StaticFilter do
   end
 
   it "keeps an ignored mutant ignored without checking its fidelity" do
-    mutant = build_mutant("foo.bar")
-    fidelity_check = instance_double(Henitai::FidelityCheck, violation: "activated code differs")
+    Dir.mktmpdir do |dir|
+      write_sample(dir, "foo.bar\n")
+      mutant = build_mutant("foo.bar")
+      fidelity_check = instance_double(Henitai::FidelityCheck, violation: "activated code differs")
 
-    filter_with_coverage(fidelity_check:).apply([mutant], config(ignore_patterns: ["foo\\.bar"]))
+      apply_mutants(
+        dir,
+        [mutant],
+        config(ignore_patterns: ["foo\\.bar"]),
+        filter: filter_with_coverage(fidelity_check:)
+      )
 
-    expect(mutant.status).to eq(:ignored)
+      expect(mutant.status).to eq(:ignored)
+    end
   end
 
   it "marks mutants on a line with a trailing skip directive as ignored" do
@@ -220,11 +260,11 @@ RSpec.describe Henitai::StaticFilter do
     expect(mutant.status).not_to eq(:ignored)
   end
 
-  it "marks arithmetic neutral mutants as equivalent" do
+  it "marks arithmetic neutral mutants with an integer literal receiver as equivalent" do
     with_sample_file(<<~RUBY) do |dir, path|
       class Sample
-        def value(input)
-          input + 0
+        def value
+          1 + 0
         end
       end
     RUBY
@@ -641,6 +681,7 @@ RSpec.describe Henitai::StaticFilter do
         }
       )
 
+      write_sample(dir, "one\ntwo\nfoo.bar\n")
       set_mutant_location(mutant, file: File.join(dir, "sample.rb"), start_line: 3, end_line: 3)
       apply_mutants(dir, [mutant], config(ignore_patterns: ["foo\\.bar"]))
 
@@ -695,6 +736,144 @@ RSpec.describe Henitai::StaticFilter do
       apply_mutants(dir, [mutant], config(ignore_patterns: ["foo"]), filter: filter_with_coverage)
 
       expect(mutant.status).to eq(:pending)
+    end
+  end
+
+  describe "ignore_patterns scope" do
+    def generate_mutants(path, operators)
+      Henitai::MutantGenerator.new.generate([sample_subject(path, range: 2..6)], operators)
+    end
+
+    def operator_mutants(mutants, operator_name)
+      mutants.select { |mutant| mutant.operator.to_s.end_with?(operator_name) }
+    end
+
+    it "keeps the enclosing if pending and ignores only the mutants on the matching line" do
+      with_sample_file(<<~RUBY) do |dir, path|
+        class Sample
+          def value(amount)
+            if amount > 10
+              audit_log(amount + 1)
+            end
+          end
+        end
+      RUBY
+        mutants = generate_mutants(path, [Henitai::Operators::EqualityOperator.new,
+                                          Henitai::Operators::ArithmeticOperator.new])
+        apply_mutants(dir, mutants, config(ignore_patterns: ["audit_log"]))
+
+        condition = operator_mutants(mutants, "EqualityOperator").select { |m| m.location[:start_line] == 3 }
+        statuses = condition.map(&:status)
+        expect(statuses).to satisfy("non-empty and all pending") { |s| !s.empty? && s.uniq == [:pending] }
+      end
+    end
+
+    it "marks only the mutants on the matching line as ignored" do
+      with_sample_file(<<~RUBY) do |dir, path|
+        class Sample
+          def value(amount)
+            if amount > 10
+              audit_log(amount + 1)
+            end
+          end
+        end
+      RUBY
+        mutants = generate_mutants(path, [Henitai::Operators::ArithmeticOperator.new])
+        apply_mutants(dir, mutants, config(ignore_patterns: ["audit_log"]))
+
+        call = mutants.select { |m| m.location[:start_line] == 4 }
+        expect(call.map(&:status)).to satisfy("non-empty and all ignored") { |s| !s.empty? && s.uniq == [:ignored] }
+      end
+    end
+
+    it "records the matched pattern as the ignore reason" do
+      Dir.mktmpdir do |dir|
+        write_sample(dir, "audit_log(1)\n")
+        mutant = build_mutant("foo.bar")
+        set_mutant_location(mutant, file: File.join(dir, "sample.rb"), start_line: 1, end_line: 1)
+
+        apply_mutants(dir, [mutant], config(ignore_patterns: ["audit_log"]))
+
+        expect(mutant.ignore_reason).to eq("ignore_patterns: audit_log")
+      end
+    end
+
+    it "keeps a mutant pending when its source file cannot be read" do
+      Dir.mktmpdir do |dir|
+        mutant = build_mutant("foo.bar")
+        set_mutant_location(mutant, file: File.join(dir, "missing.rb"), start_line: 1, end_line: 1)
+
+        apply_mutants(dir, [mutant], config(ignore_patterns: ["foo"]), filter: filter_with_coverage)
+
+        expect(mutant.status).to eq(:pending)
+      end
+    end
+
+    it "reuses the source lines it already read for the same file" do
+      Dir.mktmpdir do |dir|
+        write_sample(dir, "audit_log(1)\n")
+        filter = described_class.new
+        mutant = build_mutant("foo.bar")
+        set_mutant_location(mutant, file: File.join(dir, "sample.rb"), start_line: 1, end_line: 1)
+        apply_mutants(dir, [mutant], config(ignore_patterns: ["audit_log"]), filter:)
+
+        write_sample(dir, "other(1)\n")
+        mutant.status = :pending
+        apply_mutants(dir, [mutant], config(ignore_patterns: ["audit_log"]), filter:)
+
+        expect(mutant.status).to eq(:ignored)
+      end
+    end
+
+    it "keeps a directive-ignored mutant ignored even when its activation is unfaithful" do
+      with_sample_file(<<~RUBY) do |dir, path|
+        class Sample
+          def value(input)
+            input + 1 # henitai:disable
+          end
+        end
+      RUBY
+        mutants = arithmetic_mutants(path)
+        fidelity = instance_double(Henitai::FidelityCheck, violation: "activation mismatch")
+
+        apply_mutants(dir, mutants, filter: described_class.new(fidelity_check: fidelity))
+
+        expect(mutants.map(&:status).uniq).to eq([:ignored])
+      end
+    end
+
+    it "does not overwrite the status of a mutant that is no longer pending" do
+      mutant = Henitai::Mutant.new(
+        subject: Henitai::Subject.new(namespace: "Example", method_name: "example"),
+        operator: "ArithmeticOperator",
+        nodes: { original: Henitai::SourceParser.parse("1 + 0"), mutated: Henitai::SourceParser.parse("1 - 0") },
+        description: "example mutation",
+        location: { file: "sample.rb", start_line: 1, end_line: 1, start_col: 0, end_col: 1 }
+      )
+      mutant.status = :runtime_error
+      fidelity = instance_double(Henitai::FidelityCheck, violation: nil)
+
+      Dir.mktmpdir do |dir|
+        apply_mutants(dir, [mutant], filter: described_class.new(fidelity_check: fidelity))
+      end
+
+      expect(mutant.status).to eq(:runtime_error)
+    end
+
+    it "reads source files as UTF-8 regardless of the default external encoding" do
+      original_encoding = Encoding.default_external
+      Dir.mktmpdir do |dir|
+        write_sample(dir, "café(1)\n")
+        mutant = build_mutant("foo.bar")
+        set_mutant_location(mutant, file: File.join(dir, "sample.rb"), start_line: 1, end_line: 1)
+
+        Encoding.default_external = Encoding::US_ASCII
+        apply_mutants(dir, [mutant], config(ignore_patterns: ["café"]))
+
+        expect(mutant.status).to eq(:ignored)
+      ensure
+        Encoding.default_external = original_encoding
+      end
     end
   end
 end

@@ -35,7 +35,7 @@ module Henitai
     }.freeze
 
     attr_reader :mutants, :started_at, :finished_at, :thresholds, :survivor_stats,
-                :session_id, :git_sha, :since, :coverage_criteria
+                :session_id, :git_sha, :since, :coverage_criteria, :complete_files, :sampling
 
     # @param source_provider [#call] maps a file path to its source string.
     #   Injected so the domain object performs no disk IO; the caller (which
@@ -47,12 +47,16 @@ module Henitai
     #   canonical report; non-authoritative (subject-scoped, --since,
     #   --survivors-from) runs are merged into it instead — see
     #   CanonicalReportMerger.
+    # @param complete_files [Array<String>, nil] source files this run mutated
+    #   completely (every subject). The merger replaces a prior report's entry
+    #   for such a file wholesale instead of merging by stableId, so stale
+    #   mutants of changed or deleted code do not linger.
     # rubocop:disable Metrics/ParameterLists
     def initialize(mutants:, started_at:, finished_at:, thresholds: nil,
                    partial_rerun: false, survivor_stats: nil,
                    session_id: SecureRandom.uuid, git_sha: nil,
                    source_provider: ->(_file) { "" }, authoritative: true,
-                   since: nil, coverage_criteria: nil)
+                   since: nil, coverage_criteria: nil, complete_files: nil, sampling: nil)
       @mutants         = mutants
       @started_at      = started_at
       @finished_at     = finished_at
@@ -64,7 +68,9 @@ module Henitai
       @source_provider = source_provider
       @authoritative   = authoritative
       @since           = since
+      @complete_files = Array(complete_files)
       @coverage_criteria = DEFAULT_COVERAGE_CRITERIA.merge(coverage_criteria || {})
+      @sampling = sampling
     end
     # rubocop:enable Metrics/ParameterLists
 
@@ -88,11 +94,12 @@ module Henitai
 
     # Mutation Score (MS) — Architektur-Formel aus Abschnitt 6.1:
     #
-    #   MS = detected / (total − ignored − no_coverage − compile_error − equivalent)
+    #   MS = detected / (total − ignored − no_coverage − compile_error − equivalent − pending)
     #
     # Confirmed equivalent mutants werden aus BEIDEN Seiten der Gleichung entfernt:
     # Sie sind weder im Zähler (nicht detektierbar) noch im Nenner (nicht testbar).
-    # Das ist der entscheidende Unterschied zum MSI.
+    # Das ist der entscheidende Unterschied zum MSI. Pending mutants (left over from
+    # an interrupted run, without a verdict) are excluded from both sides as well.
     #
     # @return [Float, nil] 0.0–100.0, nil wenn kein valider Mutant vorhanden
     def mutation_score
@@ -101,8 +108,9 @@ module Henitai
 
     # Mutation Score Indicator (MSI) — naive Berechnung ohne Äquivalenz-Bereinigung:
     #
-    #   MSI = killed / all_mutants
+    #   MSI = killed / (total − pending)
     #
+    # Only mutants with a verdict count; pending mutants have none.
     # MSI ist immer ≤ MS. Der Unterschied kommuniziert die Äquivalenz-Unsicherheit.
     # Beide Werte MÜSSEN im Report zusammen ausgewiesen werden (Anti-Pattern: nur MS).
     #
@@ -150,6 +158,8 @@ module Henitai
       schema = base_schema
       sha = @git_sha
       schema[:gitSha] = sha if sha
+      schema[:completeFiles] = complete_files if complete_files.any? && !authoritative?
+      schema[:sampling] = @sampling if @sampling
       return schema unless partial_rerun?
 
       schema[:partialRerun] = true
@@ -170,7 +180,7 @@ module Henitai
     end
 
     def mutation_score_for(list)
-      excluded = %i[ignored no_coverage compile_error equivalent]
+      excluded = %i[ignored no_coverage compile_error equivalent pending]
       valid = list.reject { |m| excluded.include?(m.status) }
       return nil if valid.empty?
 
@@ -178,9 +188,10 @@ module Henitai
     end
 
     def mutation_score_indicator_for(list)
-      return nil if list.empty?
+      decided = list.reject { |m| m.status == :pending }
+      return nil if decided.empty?
 
-      ((list.count(&:killed?).to_f / list.count) * 100.0).round(2).to_f
+      ((decided.count(&:killed?).to_f / decided.count) * 100.0).round(2).to_f
     end
 
     def base_schema
@@ -204,8 +215,14 @@ module Henitai
           language: "ruby",
           source: @source_provider.call(file_mutants.first.location[:file]),
           mutants: file_mutants.map { |m| mutant_to_schema(m) }
-        }
+        }.merge(file_provenance)
       end
+    end
+
+    # Vendor fields: which run produced this file entry. Kept per file so a
+    # merged report can tell which session snapshot holds its mutants.
+    def file_provenance
+      { sessionId: @session_id, gitSha: @git_sha }.compact
     end
 
     def mutant_to_schema(mutant)

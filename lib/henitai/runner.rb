@@ -11,10 +11,11 @@ module Henitai
   #
   #   Gate 2 — Mutant generation
   #     Apply operators to each Subject's AST. Filter arid (non-productive)
-  #     nodes via ignore_patterns. Produces the initial mutant list.
+  #     nodes from the built-in catalog. Produces the initial mutant list.
   #
   #   Gate 3 — Static filtering
-  #     Remove ignored mutants (pattern matches), compile-time errors.
+  #     Mark mutants whose original start line matches an ignore_patterns
+  #     entry as :ignored, and remove compile-time errors.
   #     Apply per-test coverage data: mark :no_coverage for uncovered mutants.
   #
   #   Gate 4 — Mutant execution
@@ -32,7 +33,8 @@ module Henitai
     attr_reader :config, :result
 
     # @param mode [Hash] execution-mode flags: +dry_run:+ stops before Gate 4,
-    #   +incremental:+ reuses still-valid Killed verdicts from history.
+    #   +incremental:+ reuses still-valid Killed verdicts from history,
+    #   +force:+ disables the verdict reuse that survivor reruns apply.
     # +deps+ is assigned in the body, not defaulted in the signature: the
     # default needs @config, and `config:` itself defaults to a load.
     #
@@ -48,6 +50,7 @@ module Henitai
       @survivors_from = survivors_from
       @dry_run        = mode.fetch(:dry_run, false)
       @incremental    = mode.fetch(:incremental, false)
+      @force          = mode.fetch(:force, false)
     end
 
     # Entry point — runs the full pipeline and returns a Result.
@@ -79,6 +82,9 @@ module Henitai
     # static/skip/arid/stillborn filtering — everything short of execution.
     def pipeline_mutants
       if survivor_rerun? && (fast_mutants = survivor_strategy.try_recipe_run)
+        # Gate 0 still runs: test selection reads the per-test map, which must
+        # include new or edited tests.
+        bootstrap_coverage(fast_mutants.filter_map { |mutant| mutant.subject.source_file }.uniq)
         return fast_mutants
       end
 
@@ -107,8 +113,9 @@ module Henitai
       )
     end
 
+    # A survivor rerun must see every prior survivor, so it never samples.
     def generate_mutants(subjects)
-      mutant_generator.generate(subjects, operators, config:)
+      mutant_generator.generate(subjects, operators, config:, sample: !survivor_rerun?)
     end
 
     def filter_mutants(mutants)
@@ -119,24 +126,25 @@ module Henitai
       bootstrap_thread = bootstrap_mutants(source_files)
       mutants = generate_mutants(subjects)
       bootstrap_thread.value
-      filtered = apply_incremental_filter(filter_mutants(mutants))
-      return filtered unless survivor_rerun?
+      filtered = filter_mutants(mutants)
+      return apply_incremental_filter(filtered) unless survivor_rerun?
 
-      survivor_strategy.apply_selection(filtered)
+      survivor_strategy.apply_selection(filtered, reuse_filter: @force ? nil : reuse_filter)
     end
 
-    # Opt-in verdict reuse (`--incremental`): still-valid Killed and Survived
-    # verdicts from the history store are marked with their stored status +
-    # from_cache before execution. The filter is only ever constructed when
-    # the flag is set; it runs after the coverage bootstrap join in
-    # mutants_for, so the live per-test map it reads is never mid-write.
+    # Verdict reuse (opt-in `--incremental`; always for `--survivors-from`
+    # reruns, where it runs on the selected survivors): still-valid Killed and
+    # Survived verdicts from the history store are marked with their stored
+    # status + from_cache before execution. It runs after the coverage
+    # bootstrap join in mutants_for, so the live per-test map it reads is never
+    # mid-write.
     def apply_incremental_filter(mutants)
       return mutants unless @incremental
 
-      IncrementalFilter.new(history_store:, per_test_coverage:,
-                            dependency_fingerprint: VerdictFingerprint.dependency_fingerprint)
-                       .apply(mutants)
+      reuse_filter.apply(mutants)
     end
+
+    def reuse_filter = deps.reuse_filter
 
     def bootstrap_mutants(source_files) = Thread.new { bootstrap_coverage(source_files) }
 
@@ -184,8 +192,31 @@ module Henitai
         git_sha: safe_head_sha,
         source_provider: source_provider,
         authoritative: full_run?,
-        since: @since
+        since: @since,
+        complete_files: complete_files,
+        sampling: result_sampling
       )
+    end
+
+    # Files whose every subject this run mutated: no subject patterns and no
+    # survivor rerun (a --since run still selects whole changed files).
+    def complete_files
+      return [] if Array(@subjects).any? || survivor_rerun?
+
+      source_files
+    end
+
+    # Records the sampling that actually shaped the mutant set, with the
+    # default seed filled in so the report is reproducible on its own.
+    def result_sampling
+      sampling = optional_config(:sampling)
+      return nil if survivor_rerun? || !(sampling && sampling[:ratio])
+
+      {
+        strategy: (sampling[:strategy] || "stratified").to_s,
+        ratio: sampling[:ratio],
+        seed: sampling[:seed] || SamplingStrategy::DEFAULT_SEED
+      }
     end
 
     def safe_head_sha
@@ -212,6 +243,7 @@ module Henitai
     def operators = deps.operators
     def history_store = deps.history_store
     def per_test_coverage = deps.per_test_coverage
+    def source_selection_coverage = deps.source_selection_coverage
     def source_provider = deps.source_provider
 
     def progress_reporter = deps.progress_reporter(full_run: full_run?)
@@ -223,7 +255,7 @@ module Henitai
     def source_file_selection
       @source_file_selection ||= SourceFileSelection.new(
         config: config, since: @since,
-        git_diff_analyzer: git_diff_analyzer, per_test_coverage: per_test_coverage
+        git_diff_analyzer: git_diff_analyzer, per_test_coverage: source_selection_coverage
       )
     end
 

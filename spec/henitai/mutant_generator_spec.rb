@@ -419,7 +419,85 @@ RSpec.describe Henitai::MutantGenerator do
     end
   end
 
-  it "computes activation sources only for the sampled mutants", :aggregate_failures do
+  it "skips sampling when asked not to sample" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", "class Sample\n  def announce\n    1 + 2\n  end\nend\n")
+      config = write_configuration(dir, "mutation:\n  sampling:\n    ratio: 0.0\n    strategy: stratified\n")
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+
+      mutants = described_class.new.generate(
+        [subject], [Henitai::Operators::ArithmeticOperator.new], config:, sample: false
+      )
+
+      expect(mutants).not_to be_empty
+    end
+  end
+
+  # A survivor rerun generates unsampled and matches prior survivors by stable
+  # id, so whenever operators produce the same program, a sampled run must keep
+  # the representative that unsampled generation keeps.
+  it "keeps the unsampled representative of a duplicate program under every seed" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", "class Sample\n  def f\n    consume(true)\n    true\n  end\nend\n")
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      operators = [Henitai::Operators::BooleanLiteral.new, Henitai::Operators::ReturnValue.new]
+      ids = ->(mutants) { mutants.map { |mutant| Henitai::MutantIdentity.stable_id(mutant) } }
+      unsampled = ids.call(described_class.new.generate([subject], operators, sample: false))
+
+      foreign = (0..20).flat_map do |seed|
+        sampling = "mutation:\n  sampling:\n    ratio: 0.4\n    strategy: stratified\n    seed: #{seed}\n"
+        config = write_configuration(dir, sampling)
+        ids.call(described_class.new.generate([subject], operators, config:)) - unsampled
+      end
+
+      expect(foreign).to eq([])
+    end
+  end
+
+  it "passes the configured sampling seed to the strategy" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", "class Sample\n  def announce\n    1 + 2\n  end\nend\n")
+      config = write_configuration(dir, <<~YAML)
+        mutation:
+          sampling:
+            ratio: 0.5
+            strategy: stratified
+            seed: 7
+      YAML
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      strategy = Henitai::SamplingStrategy.new
+      allow(Henitai::SamplingStrategy).to receive(:new).and_return(strategy)
+      allow(strategy).to receive(:sample).and_call_original
+
+      described_class.new.generate([subject], [Henitai::Operators::ArithmeticOperator.new], config:)
+
+      expect(strategy).to have_received(:sample).with(anything, ratio: 0.5, strategy: "stratified", seed: 7)
+    end
+  end
+
+  it "uses the default sampling seed when none is configured" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", "class Sample\n  def announce\n    1 + 2\n  end\nend\n")
+      config = write_configuration(dir, <<~YAML)
+        mutation:
+          sampling:
+            ratio: 0.5
+            strategy: stratified
+      YAML
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+      strategy = Henitai::SamplingStrategy.new
+      allow(Henitai::SamplingStrategy).to receive(:new).and_return(strategy)
+      allow(strategy).to receive(:sample).and_call_original
+
+      described_class.new.generate([subject], [Henitai::Operators::ArithmeticOperator.new], config:)
+
+      expect(strategy).to have_received(:sample).with(
+        anything, ratio: 0.5, strategy: "stratified", seed: Henitai::SamplingStrategy::DEFAULT_SEED
+      )
+    end
+  end
+
+  it "deduplicates programs across every mutant before sampling", :aggregate_failures do
     Dir.mktmpdir do |dir|
       path = write_source(dir, "lib/sample.rb", <<~RUBY)
         class Sample
@@ -445,7 +523,7 @@ RSpec.describe Henitai::MutantGenerator do
       sampled = described_class.new.generate([subject], operators, config:)
 
       expect(sampled.size).to be < unsampled
-      expect(Henitai::Mutant::Activator).to have_received(:activation_source_for).exactly(sampled.size).times
+      expect(Henitai::Mutant::Activator).to have_received(:activation_source_for).exactly(unsampled).times
     end
   end
 

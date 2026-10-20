@@ -85,4 +85,40 @@ RSpec.describe Henitai::EquivalenceDetector::OperandPredicates do
       expect(predicates.one_operand?(Parser::AST::Node.new(:send, [lvar(:value), :*, 1]))).to be(false)
     end
   end
+
+  describe "#numeric_receiver?" do
+    # Integer arithmetic on a receiver that is an Integer literal always returns
+    # the receiver for the neutral operand, so the identity holds.
+    it "recognizes an integer literal" do
+      expect(predicates.numeric_receiver?(int(7))).to be(true)
+    end
+
+    # A positive float literal is a number, and `x + 0`, `x - 0` return `x`.
+    it "recognizes a positive float literal" do
+      expect(predicates.numeric_receiver?(float(2.5))).to be(true)
+    end
+
+    # `-0.0 + 0` is `0.0` while `-0.0 - 0` is `-0.0`, so the identity breaks.
+    it "rejects negative zero" do
+      expect(predicates.numeric_receiver?(float(-0.0))).to be(false)
+    end
+
+    it "accepts positive zero" do
+      expect(predicates.numeric_receiver?(float(0.0))).to be(true)
+    end
+
+    # A variable may hold a String (`"ab" * 1` is "ab", `"ab" / 1` raises) or
+    # any object with its own operators, so it proves nothing.
+    it "rejects a variable receiver" do
+      expect(predicates.numeric_receiver?(lvar(:value))).to be(false)
+    end
+
+    it "rejects a string literal receiver" do
+      expect(predicates.numeric_receiver?(Parser::AST::Node.new(:str, ["ab"]))).to be(false)
+    end
+
+    it "rejects a non-AST receiver" do
+      expect(predicates.numeric_receiver?(nil)).to be(false)
+    end
+  end
 end

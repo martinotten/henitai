@@ -17,9 +17,12 @@ module Henitai
     # @param per_test_coverage [PerTestCoverage, nil] live per-test coverage
     #   view used to record the full-map intersection set for survived
     #   verdicts; without it survived rows stay NULL (never reusable).
-    def initialize(path:, per_test_coverage: nil)
+    # @param reuse_context [ReuseContext, nil] fingerprint recorded with every
+    #   cached verdict; without it no verdict is cached (never reusable).
+    def initialize(path:, per_test_coverage: nil, reuse_context: nil)
       @path = path
       @per_test_coverage = per_test_coverage
+      @reuse_context = reuse_context
     end
 
     attr_reader :path
@@ -30,7 +33,7 @@ module Henitai
       with_database do |db|
         ensure_schema(db)
         db.transaction do
-          insert_run(db, result, version, recorded_at) unless partial_rerun?(result)
+          insert_run(db, result, version, recorded_at) if full_run?(result)
           Array(result.mutants).each do |mutant|
             upsert_mutant(db, mutant, version, recorded_at)
           end
@@ -72,7 +75,7 @@ module Henitai
 
     private
 
-    attr_reader :per_test_coverage
+    attr_reader :per_test_coverage, :reuse_context
 
     def verdict_from_row(row)
       return nil unless row && VerdictCache::CACHEABLE_STATUSES.include?(row["current_status"])
@@ -83,6 +86,11 @@ module Henitai
         subject_source_hash: row["subject_source_hash"],
         covered_tests_fingerprint: row["covered_tests_fingerprint"]
       }
+    end
+
+    def full_run?(result)
+      authoritative = !result.respond_to?(:authoritative?) || result.authoritative?
+      authoritative && !partial_rerun?(result)
     end
 
     def partial_rerun?(result)
@@ -133,8 +141,10 @@ module Henitai
       end
     end
 
+    # Recipe stubs carry a precomputed id that cannot be recomputed from
+    # their (absent) AST nodes.
     def stable_mutant_id(mutant)
-      MutantIdentity.stable_id(mutant)
+      mutant.respond_to?(:stable_id) ? mutant.stable_id : MutantIdentity.stable_id(mutant)
     end
 
     def mutation_history_entry(mutant, version, recorded_at)

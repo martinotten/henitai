@@ -63,7 +63,7 @@ RSpec.describe "Configuration schema" do
   it "documents the sampling keys" do
     sampling = properties.fetch("mutation").fetch("properties").fetch("sampling")
 
-    expect(sampling.fetch("properties").keys).to eq(%w[ratio strategy])
+    expect(sampling.fetch("properties").keys).to eq(%w[ratio strategy seed])
   end
 
   it "documents the coverage criteria keys" do

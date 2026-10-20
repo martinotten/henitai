@@ -56,14 +56,21 @@ module Henitai
       def build_recipe(mutant, activation)
         {
           "activation" => activation.to_h,
-          "namespace" => mutant.subject.namespace,
-          "methodName" => mutant.subject.method_name,
-          "methodType" => mutant.subject.method_type.to_s,
-          "sourceFile" => mutant.subject.source_file,
+          "replacement" => mutant.mutated_source,
+          **subject_fields(mutant.subject),
           "operator" => mutant.operator,
           "description" => mutant.description,
           "location" => serialize_location(mutant.location),
           "coveredBy" => Array(mutant.covered_by).compact
+        }
+      end
+
+      def subject_fields(subject)
+        {
+          "namespace" => subject.namespace,
+          "methodName" => subject.method_name,
+          "methodType" => subject.method_type.to_s,
+          "sourceFile" => subject.source_file
         }
       end
 

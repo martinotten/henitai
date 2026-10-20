@@ -57,6 +57,7 @@ RSpec.describe Henitai::MutantHistoryStore do
   def build_result(mutants, summary)
     Struct.new(:mutants, :scoring_summary) do
       def partial_rerun? = false
+      def authoritative? = true
     end.new(mutants, summary)
   end
 
@@ -263,6 +264,24 @@ RSpec.describe Henitai::MutantHistoryStore do
       end
     end
 
+    it "does not insert a runs row for an authoritative partial rerun" do
+      Dir.mktmpdir do |dir|
+        store = described_class.new(path: File.join(dir, "mutation-history.sqlite3"))
+        result = build_result(
+          [build_mutant(status: :killed)],
+          { mutation_score: 100.0, mutation_score_indicator: 100.0, equivalence_uncertainty: nil }
+        )
+        allow(result).to receive_messages(authoritative?: true, partial_rerun?: true)
+        store.record(result, version: "0.1.0")
+
+        db = SQLite3::Database.new(File.join(dir, "mutation-history.sqlite3"))
+        count = db.get_first_value("SELECT COUNT(*) FROM runs")
+        db.close
+
+        expect(count).to eq(0)
+      end
+    end
+
     it "still upserts mutant rows for a partial rerun" do
       Dir.mktmpdir do |dir|
         store = described_class.new(path: File.join(dir, "mutation-history.sqlite3"))
@@ -271,6 +290,72 @@ RSpec.describe Henitai::MutantHistoryStore do
 
         db = SQLite3::Database.new(File.join(dir, "mutation-history.sqlite3"))
         db.results_as_hash = true
+        count = db.get_first_value("SELECT COUNT(*) FROM mutants")
+        db.close
+
+        expect(count).to eq(1)
+      end
+    end
+  end
+
+  describe "recipe stubs with precomputed stable ids" do
+    def build_stub(stable_id)
+      Henitai::Mutant.new(
+        subject: build_subject,
+        operator: "ArithmeticOperator",
+        nodes: { original: nil, mutated: nil },
+        description: "replaced + with -",
+        location: build_location,
+        precomputed_stable_id: stable_id,
+        precomputed_activation: nil
+      ).tap { |mutant| mutant.status = :survived }
+    end
+
+    it "keeps distinct stubs with different precomputed ids in separate rows" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "mutation-history.sqlite3")
+        store = described_class.new(path:)
+        store.record(build_result([build_stub("stub-a"), build_stub("stub-b")], {}), version: "0.1.0")
+
+        db = SQLite3::Database.new(path)
+        count = db.get_first_value("SELECT COUNT(*) FROM mutants")
+        ids = db.execute("SELECT mutant_id FROM mutants ORDER BY mutant_id").flatten
+        db.close
+
+        expect([count, ids]).to eq([2, %w[stub-a stub-b]])
+      end
+    end
+  end
+
+  describe "scoped (non-authoritative) result" do
+    def scoped_result(mutants)
+      result = build_result(
+        mutants,
+        { mutation_score: 80.0, mutation_score_indicator: 40.0, equivalence_uncertainty: nil }
+      )
+      allow(result).to receive(:authoritative?).and_return(false)
+      result
+    end
+
+    it "does not insert a runs row for a non-authoritative run" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "mutation-history.sqlite3")
+        described_class.new(path:).record(scoped_result([build_mutant(status: :killed)]), version: "0.1.0")
+
+        db = SQLite3::Database.new(path)
+        count = db.get_first_value("SELECT COUNT(*) FROM runs")
+        db.close
+
+        expect(count).to eq(0)
+      end
+    end
+
+    it "still upserts mutant rows for a non-authoritative run" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "mutation-history.sqlite3")
+        described_class.new(path:).record(scoped_result([build_mutant(status: :killed)]), version: "0.1.0")
+
+        db = SQLite3::Database.new(path)
         count = db.get_first_value("SELECT COUNT(*) FROM mutants")
         db.close
 
@@ -292,8 +377,12 @@ RSpec.describe Henitai::MutantHistoryStore do
       mutant
     end
 
-    def store_at(dir, per_test_coverage: nil)
-      described_class.new(path: File.join(dir, "mutation-history.sqlite3"), per_test_coverage:)
+    def store_at(dir, per_test_coverage: nil, context_sha: "ctx-sha")
+      described_class.new(
+        path: File.join(dir, "mutation-history.sqlite3"),
+        per_test_coverage:,
+        reuse_context: Struct.new(:fingerprint).new(context_sha)
+      )
     end
 
     def summary
@@ -318,13 +407,36 @@ RSpec.describe Henitai::MutantHistoryStore do
           status: verdict[:status],
           subject_hash: verdict[:subject_source_hash],
           fingerprint_current: Henitai::VerdictFingerprint.tests_fingerprint_current?(
-            verdict[:covered_tests_fingerprint]
+            verdict[:covered_tests_fingerprint], context_sha: "ctx-sha"
           )
         ).to eq(
           status: :killed,
           subject_hash: Henitai::VerdictFingerprint.subject_source_hash(mutant),
           fingerprint_current: true
         )
+      end
+    end
+
+    it "records no killed fingerprint without a reuse context" do
+      Dir.mktmpdir do |dir|
+        store = store_at(dir, context_sha: nil)
+        mutant = build_cacheable_mutant(dir, status: :killed)
+
+        store.record(build_result([mutant], summary), version: "0.1.0")
+
+        expect(store.killed_verdict_for(Henitai::MutantIdentity.stable_id(mutant))).to be_nil
+      end
+    end
+
+    it "records no survived fingerprint without a reuse context" do
+      Dir.mktmpdir do |dir|
+        mutant = build_cacheable_mutant(dir, status: :survived)
+        covering_test = File.join(dir, "sample_spec.rb")
+        store = store_at(dir, per_test_coverage: coverage_double([covering_test]), context_sha: nil)
+
+        store.record(build_result([mutant], summary), version: "0.1.0")
+
+        expect(store.verdict_for(Henitai::MutantIdentity.stable_id(mutant))).to be_nil
       end
     end
 
@@ -378,12 +490,12 @@ RSpec.describe Henitai::MutantHistoryStore do
             status: verdict[:status],
             subject_hash: verdict[:subject_source_hash],
             recorded_paths: JSON.parse(verdict[:covered_tests_fingerprint]).fetch("paths"),
-            dependencies_present: !JSON.parse(verdict[:covered_tests_fingerprint])["dependencies"].nil?
+            context: JSON.parse(verdict[:covered_tests_fingerprint])["context"]
           ).to eq(
             status: :survived,
             subject_hash: Henitai::VerdictFingerprint.subject_source_hash(mutant),
             recorded_paths: [covering_test],
-            dependencies_present: true
+            context: "ctx-sha"
           )
         end
       end
@@ -424,6 +536,33 @@ RSpec.describe Henitai::MutantHistoryStore do
           degraded.record(build_result([restored], summary), version: "0.1.1")
 
           expect(degraded.verdict_for(Henitai::MutantIdentity.stable_id(mutant))).to eq(stored)
+        end
+      end
+
+      it "never carries a killed row's fingerprints into a survived verdict" do
+        Dir.mktmpdir do |dir|
+          killed = build_cacheable_mutant(dir, status: :killed)
+          store_at(dir).record(build_result([killed], summary), version: "0.1.0")
+
+          survived = build_cacheable_mutant(dir, status: :survived)
+          degraded = store_at(dir, per_test_coverage: coverage_double([]))
+          degraded.record(build_result([survived], summary), version: "0.1.1")
+
+          expect(degraded.verdict_for(Henitai::MutantIdentity.stable_id(killed))).to be_nil
+        end
+      end
+
+      it "drops stored survived fingerprints once the subject source changed" do
+        Dir.mktmpdir do |dir|
+          mutant = build_cacheable_mutant(dir, status: :survived)
+          store = store_at(dir, per_test_coverage: coverage_double([File.join(dir, "sample_spec.rb")]))
+          store.record(build_result([mutant], summary), version: "0.1.0")
+
+          File.write(File.join(dir, "sample.rb"), "class Sample\n  def value = 2\nend\n")
+          degraded = store_at(dir, per_test_coverage: coverage_double([]))
+          degraded.record(build_result([mutant], summary), version: "0.1.1")
+
+          expect(degraded.verdict_for(Henitai::MutantIdentity.stable_id(mutant))).to be_nil
         end
       end
 
@@ -576,7 +715,7 @@ RSpec.describe Henitai::MutantHistoryStore do
       it "accepts new records after migrating a legacy database" do
         Dir.mktmpdir do |dir|
           path = create_legacy_database(dir)
-          store = described_class.new(path:)
+          store = described_class.new(path:, reuse_context: Struct.new(:fingerprint).new("ctx-sha"))
           mutant = build_cacheable_mutant(dir, status: :killed)
 
           store.record(build_result([mutant], summary), version: "0.1.0")

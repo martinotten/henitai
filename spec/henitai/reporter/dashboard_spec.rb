@@ -2,9 +2,11 @@
 
 # rubocop:disable RSpec/MultipleExpectations
 
+require "fileutils"
 require "json"
 require "net/http"
 require "spec_helper"
+require "tmpdir"
 
 RSpec.describe Henitai::Reporter::Dashboard do
   def schema
@@ -73,6 +75,39 @@ RSpec.describe Henitai::Reporter::Dashboard do
     expect(request["X-Api-Key"]).to eq("secret-token")
     expect(request["Content-Type"]).to eq("application/json")
     expect(request.body).to eq(JSON.generate(schema))
+  end
+
+  it "uploads the merged canonical report for a non-authoritative run" do
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        reports_dir = File.join(dir, "reports")
+        FileUtils.mkdir_p(reports_dir)
+        File.write("old.rb", "1 - 0\n")
+        File.write("new.rb", "1 - 0\n")
+        File.write(
+          File.join(reports_dir, "mutation-report.json"),
+          JSON.generate(
+            schemaVersion: "1.0",
+            thresholds: { high: 80, low: 60 },
+            files: { "old.rb" => { language: "ruby", source: "", mutants: [{ stableId: "old" }] } }
+          )
+        )
+        partial = Struct.new(:to_stryker_schema, :authoritative?).new(
+          { schemaVersion: "1.0", thresholds: { high: 80, low: 60 },
+            files: { "new.rb" => { language: "ruby", source: "", mutants: [{ stableId: "new" }] } } },
+          false
+        )
+        config = Struct.new(:dashboard, :reports_dir).new(
+          { base_url: "https://dashboard.example.test" }, reports_dir
+        )
+        http = instance_double(Net::HTTP)
+        stub_dashboard_http(http)
+
+        request = described_class.new(config:, metadata_provider: fake_metadata).report(partial)
+
+        expect(JSON.parse(request.body)["files"].keys).to contain_exactly("old.rb", "new.rb")
+      end
+    end
   end
 
   it "uses the default metadata provider when none is injected" do

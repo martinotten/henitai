@@ -58,7 +58,7 @@ module Henitai
     # dirty and untracked files): the working tree is what gets tested, so it is
     # always part of "changed since REF".
     def changed_paths_since
-      @git_diff_analyzer.changed_files(from: @since, to: "HEAD") +
+      @git_diff_analyzer.changed_files_since(@since) +
         @git_diff_analyzer.working_tree_changed_files
     end
 

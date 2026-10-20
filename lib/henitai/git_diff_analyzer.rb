@@ -19,11 +19,13 @@ module Henitai
     NAME_ONLY = ["--name-only", "--relative", "-z"].freeze
 
     def changed_files(from:, to:, dir: Dir.pwd)
-      stdout, stderr, status = git_diff(dir, *NAME_ONLY, from, to)
+      diff_paths(dir, from, to)
+    end
 
-      raise GitDiffError, stderr.strip unless status.success?
-
-      paths(stdout)
+    # Changes on HEAD since its merge base with ref. Commits that landed on
+    # ref after the fork point are not part of this diff.
+    def changed_files_since(ref, dir: Dir.pwd)
+      diff_paths(dir, "#{ref}...HEAD")
     end
 
     def working_tree_changed_files(dir: Dir.pwd)
@@ -101,12 +103,16 @@ module Henitai
       Open3.capture3(*command)
     end
 
-    def working_tree_tracked_files(dir)
-      stdout, stderr, status = git_diff(dir, *NAME_ONLY, "HEAD")
+    def diff_paths(dir, *revisions)
+      stdout, stderr, status = git_diff(dir, *NAME_ONLY, *revisions)
 
       raise GitDiffError, stderr.strip unless status.success?
 
       paths(stdout)
+    end
+
+    def working_tree_tracked_files(dir)
+      diff_paths(dir, "HEAD")
     end
 
     def untracked_files(dir)

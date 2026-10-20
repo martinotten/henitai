@@ -43,7 +43,8 @@ module Henitai
           survivors_from: resolved_survivors_from,
           mode: {
             dry_run: options.fetch(:dry_run, false),
-            incremental: options.fetch(:incremental, false) && !options.fetch(:force, false)
+            incremental: options.fetch(:incremental, false) && !options.fetch(:force, false),
+            force: options.fetch(:force, false)
           }
         )
         runner.run
@@ -64,7 +65,7 @@ module Henitai
         # being a snapshot path; this keeps activation-recipes lookup correct.
         return survivors_from if File.basename(parent_dir) == "sessions"
 
-        session_id = session_id_from_report(survivors_from)
+        session_id = single_session_id_from_report(survivors_from)
         return survivors_from if session_id.nil?
 
         snapshot_path = survivors_snapshot_path(report_dir, session_id)
@@ -85,9 +86,16 @@ module Henitai
         File.join(report_dir, "sessions", session_id, "mutation-report.json")
       end
 
-      def session_id_from_report(path)
+      # The report's sessionId only names a snapshot holding every survivor when
+      # each file entry was produced by that very session. A merged canonical
+      # report (or a legacy one without per-file provenance) is used as is.
+      def single_session_id_from_report(path)
         parsed = JSON.parse(File.read(path))
-        parsed["sessionId"]
+        session_id = parsed["sessionId"]
+        files = parsed["files"]
+        return nil unless files.is_a?(Hash) && files.each_value.all? { |f| f["sessionId"] == session_id }
+
+        session_id
       rescue JSON::ParserError, Errno::ENOENT
         nil
       end

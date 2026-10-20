@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require "spec_helper"
 require "tmpdir"
 
@@ -27,7 +28,8 @@ RSpec.describe Henitai::RunnerDependencies do
       static_filter: Henitai::StaticFilter,
       execution_engine: Henitai::ExecutionEngine,
       coverage_bootstrapper: Henitai::CoverageBootstrapper,
-      per_test_coverage: Henitai::PerTestCoverage
+      per_test_coverage: Henitai::PerTestCoverage,
+      reuse_context: Henitai::ReuseContext
     }.each do |name, klass|
       it "builds a #{klass} for ##{name} and returns the same instance twice", :aggregate_failures do
         deps = build_deps
@@ -36,6 +38,40 @@ RSpec.describe Henitai::RunnerDependencies do
         expect(built).to be_a(klass)
         expect(deps.public_send(name)).to be(built)
       end
+    end
+
+    it "gives Gate 1 its own coverage instance, distinct from the shared one", :aggregate_failures do
+      deps = build_deps
+      selection = deps.source_selection_coverage
+
+      expect(selection).to be_a(Henitai::PerTestCoverage)
+      expect(deps.source_selection_coverage).to be(selection)
+      expect(selection).not_to be(deps.per_test_coverage)
+    end
+
+    it "lets reuse decisions see a per-test map rewritten after Gate 1 read it" do
+      Dir.mktmpdir do |dir|
+        file = File.expand_path("lib/sample.rb")
+        report = File.join(dir, "henitai_per_test.json")
+        File.write(report, JSON.generate("spec/a_spec.rb" => { file => [2] }))
+        deps = build_deps(reports_dir: dir)
+        deps.source_selection_coverage.source_files_covered_by("spec/a_spec.rb")
+
+        File.write(report, JSON.generate("spec/a_spec.rb" => { file => [2] }, "spec/b_spec.rb" => { file => [2] }))
+        mutant = Struct.new(:location).new({ file:, start_line: 2, end_line: 2 })
+
+        expect(deps.per_test_coverage.tests_covering(mutant)).to eq(%w[spec/a_spec.rb spec/b_spec.rb])
+      end
+    end
+
+    it "builds one ReuseContext shared by the history store and the reuse filter" do
+      deps = build_deps
+      allow(Henitai::ReuseContext).to receive(:new).and_call_original
+
+      deps.history_store
+      deps.reuse_filter
+
+      expect(Henitai::ReuseContext).to have_received(:new).once
     end
 
     it "returns the same history store twice" do
