@@ -79,6 +79,9 @@ bundle exec rake smoke:integration:all
 bundle exec rake smoke:integration:rspec
 bundle exec rake smoke:integration:minitest
 bundle exec rake smoke:integration:dogfood_rspec
+
+bundle exec rake oracle                               # false kills/survivors on the oracle corpus
+bundle exec rake oracle:reuse                         # --incremental verdicts == fresh run after scripted edits
 ```
 
 Enable the repository git hook, which runs RuboCop, RSpec, and the smoke suite
@@ -131,7 +134,7 @@ stratified sampling.
 | Filtering | `arid_node_filter.rb`, `static_filter.rb`, `mutation_skip_directives.rb`, `stillborn_filter.rb`, `syntax_validator.rb`, `equivalence_detector.rb` |
 | Coverage | `coverage_bootstrapper.rb`, `coverage_report_reader.rb`, `coverage_formatter.rb`, `per_test_coverage_collector.rb`, `per_test_coverage_delta.rb`, `per_test_coverage_selector.rb` |
 | Execution | `execution_engine.rb`, `process_worker_runner.rb`, `slot_scheduler.rb`, `process_wakeup.rb` |
-| Survivor reruns | `survivor_loader.rb`, `survivor_selector.rb`, `survivor_rerun_strategy.rb`, `survivor_activation_cache.rb`, `survivor_test_filter.rb` |
+| Survivor reruns | `survivor_loader.rb`, `survivor_selector.rb`, `survivor_rerun_strategy.rb`, `survivor_activation_cache.rb`, `incremental_filter.rb`, `reuse_context.rb`, `verdict_fingerprint.rb` |
 | Results / history | `result.rb`, `scenario_execution_result.rb`, `mutant_history_store.rb` (SQLite), `mutant_identity.rb` |
 | Reporting | `reporter.rb` (terminal/JSON/HTML/dashboard) |
 | Test-framework integration | `integration.rb`, `integration/*`, `minitest_simplecov.rb`, `minitest_coverage_hook.rb`, `minitest_coverage_reporter.rb`, `rspec_coverage_formatter.rb` |
@@ -175,6 +178,20 @@ coverage and is excluded from `includes` in `.henitai.yml`.
   signals and `SystemExit` never count as kills; `ControlRun` re-runs
   detected subjects with the unmutated method and reclassifies their
   detections if that fails. `rake oracle` measures false kills and survivors.
+- Verdict reuse is sound or absent. `IncrementalFilter` reuses a stored
+  `Killed`/`Survived` verdict only when the subject source, the covering test
+  files (Survived: the full covering set) and the `ReuseContext` fingerprint
+  (test dependency files, henitai version, integration, operators,
+  `test_excludes`, `coverage_criteria`) are unchanged; legacy rows without a
+  context are never reused. `--survivors-from` reruns apply the same filter to
+  the selected survivors, always; recipe stubs (no source range) are never
+  reused, and `DirtySourceDetector` only gates the activation-recipe fast
+  path. `rake oracle:reuse` checks the property end to end.
+- Sampling (`mutation.sampling`) is stratified per subject: `ceil(size*ratio)`
+  mutants (at least one), strata by operator, ordered by SHA256 of
+  `mutation.sampling.seed` (default `0`) and the stable ID, visited
+  round-robin; original order is kept. The report records
+  `sampling: {strategy, ratio, seed}`.
 - Survivors are never retried. With opt-in `mutation.flaky_detection` the
   baseline suite runs twice and test files whose outcome differs are written to
   `henitai_flaky_tests.json`; a `Killed` mutant is retried up to
@@ -192,22 +209,26 @@ Statuses are `Killed`, `Survived`, `NoCoverage`, `Timeout`, `CompileError`,
 `RuntimeError`, `Ignored`, `Equivalent`, and `Pending`.
 
 ```text
-MS  = (killed + timeout + runtime_error) / (total - ignored - no_coverage - compile_error - equivalent)
-MSI = killed / total
+MS  = (killed + timeout + runtime_error) / (total - ignored - no_coverage - compile_error - equivalent - pending)
+MSI = killed / (total - pending)
 ```
 
 The `MS` numerator is configurable via the `coverage_criteria` block
 (`test_result` -> `killed`, `timeout` -> `timeout`, `process_abort` ->
 `runtime_error`); all three default to `true`, which is the formula above.
 Switching one off removes that status from the numerator only — the
-denominator is unaffected, and `MSI` is never affected, being `killed / total`
-by definition. Note that turning a criterion off can move a run across its
+denominator is unaffected, and `MSI` is never affected, being
+`killed / (total - pending)` by definition. `Pending` mutants (no verdict)
+leave both denominators. Note that turning a criterion off can move a run across its
 threshold and so change the CLI exit code.
 
 `Equivalent` is an internal status serialized as `Ignored` in the external
-Stryker schema. `EquivalenceDetector` only flags AST-provable cases such as
-`x + 0` and `x * 1`; this is deliberately conservative to avoid false
-positives. `MS` and `MSI` must always be reported together.
+Stryker schema. `EquivalenceDetector` only flags cases that hold for every
+runtime value: `false || x` and `true && x` (left literal only); `n + 0` /
+`n - 0` and `n * 1` / `n / 1` / `n ** 1` only for Integer or Float literal
+receivers (not `-0.0`); `==` <-> `eql?` only when both operands are string
+literals; `==` <-> `equal?` for Symbol/nil/true/false literals. This is
+deliberately conservative to avoid false positives. `MS` and `MSI` must always be reported together.
 
 ### Operators
 
@@ -230,6 +251,11 @@ trailing comment is line-scoped; a standalone comment directly above a `def`
 is method-scoped. `MutationSkipDirectives` handles this inside `StaticFilter`;
 matches are reported as `Ignored`, not dropped.
 
+`mutation.ignore_patterns` are applied in `StaticFilter` (not at generation
+time): a pattern is matched against the source line where the mutant's node
+starts, and matching mutants are reported as `Ignored` with an
+`ignore_patterns: <pattern>` reason.
+
 Arid-node filtering intentionally skips logger/debug calls, `binding.pry` and
 `byebug`, frozen constants, memoization (`@var ||= ...`), RSpec DSL helpers,
 and `is_a?`/`respond_to?`/`kind_of?`. The `@var ||= ...` exclusion is
@@ -243,6 +269,17 @@ deliberate even though `||=` is a valid `UpdateOperator`/
   `reports/mutation-history.sqlite3`, keyed by a stable SHA256 of expression,
   operator, description, location, and signature. It survives line-number
   drift and supports latent-mutant tracking separately from the pass/fail model.
+  Recipe stubs keep their precomputed `stable_id` and persist the `replacement`
+  source. Every cached Killed/Survived verdict stores the `ReuseContext`
+  fingerprint. Trend `runs` rows are written only for authoritative runs (not
+  `--since`, subject-scoped or survivor reruns).
+- `mutation-report.json` is merged across scoped runs by `stableId`
+  (`CanonicalReportMerger`). A non-authoritative run that mutated every subject
+  of a file lists it in top-level `completeFiles`; the merger replaces that
+  file wholesale (removing it when it has no mutants). File entries carry
+  `sessionId`/`gitSha` provenance. `--survivors-from <report>` redirects to the
+  session snapshot only if every file entry carries the report's `sessionId`.
+  `--since` diffs against the merge base (`REF...HEAD`).
 - Reports default to `reports/` and can be overridden with `reports_dir`:
   `mutation-report.json` (canonical Stryker schema), `mutation-report.html`,
   `mutation-history.json` (trend export), `henitai_per_test.json` (per-test
@@ -258,7 +295,8 @@ deliberate even though `||=` is a valid `UpdateOperator`/
   with `--all-logs`/`--verbose`.
 - The dashboard reporter uploads to Stryker Dashboard when
   `STRYKER_DASHBOARD_API_KEY`, project, and version are configured; otherwise
-  it is silently skipped.
+  it is silently skipped. Non-authoritative runs upload the merged canonical
+  report, not their partial one.
 
 ## Testing This Repository
 

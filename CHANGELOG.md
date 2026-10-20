@@ -9,6 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Verdict reuse is bound to a reuse context.** `--incremental` reused stale
+  `Killed` verdicts after a spec helper, the configuration or the henitai
+  version changed. Every cached `Killed` and `Survived` verdict now stores a
+  `ReuseContext` fingerprint (test dependency files, henitai version,
+  integration, operators, `test_excludes`, `coverage_criteria`) and is reused
+  only under an identical one; rows recorded without it are never reused.
+  `rake oracle:reuse` reproduced 121 mismatches against fresh runs after a
+  helper edit before the fix and none after it.
+- **`--survivors-from` no longer skips survivors on a git heuristic.** The
+  selected survivors go through the same content-fingerprint reuse rules as
+  `--incremental`, always: new or edited tests and helpers invalidate them,
+  reused survivors are reported with `fromCache`, and recipe stubs without a
+  source range are always re-executed. `SurvivorTestFilter` is removed.
+- Gate 1 source selection has its own per-test coverage instance, so reuse and
+  history read the post-bootstrap per-test map.
+- Recipe stubs keep their precomputed stable ID and persist the `replacement`
+  source in the history store.
+- **Trend history only records authoritative runs.** `--since`,
+  subject-scoped and survivor-rerun results no longer add a `runs` row.
+- **Canonical report merge.** A scoped run that mutated every subject of a file
+  replaces that file's prior entry wholesale (and removes it when it has no
+  mutants), so stale mutants of edited or deleted code no longer linger.
+  `--survivors-from <canonical report>` redirects to the session snapshot only
+  when every file entry carries the report's `sessionId`.
+- `--since` diffs against the merge base (`REF...HEAD`) instead of the ref's
+  tip, so commits that landed on the base branch after the fork point are not
+  treated as changes.
+- The dashboard reporter uploads the merged canonical report for scoped runs
+  instead of the partial one.
+- `Pending` mutants are excluded from the MS and MSI denominators; MSI is
+  `killed / (total - pending)`.
+- **Equivalence detection only flags sound cases.** `false || x` and
+  `true && x` (left literal only); `n + 0`, `n * 1` and siblings only for
+  Integer/Float literal receivers (not `-0.0`); `==` <-> `eql?` only when both
+  operands are string literals; `==` <-> `equal?` for singleton literals.
+  Unsound rules (`x || false`, `x && true`, unknown receivers, a single string
+  literal) no longer mark mutants `Equivalent`.
+- **`mutation.ignore_patterns` is line-scoped.** A pattern is matched against
+  the source line where the mutant's node starts, in `StaticFilter`; matching
+  mutants are reported as `Ignored` with an `ignore_reason` instead of being
+  dropped at generation time. An enclosing construct whose body matches is no
+  longer suppressed.
 - **Review follow-ups.** The slot scheduler no longer signals the process
   group of a reaped pid that owns no mutant slot. Minitest results for tests
   added by reopening a class in another file are attributed to the file that
@@ -41,6 +83,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SIGTERM drain window always runs its full length.
 
 ### Added
+
+- `mutation.sampling.seed` (integer >= 0, default `0`) and real stratified
+  sampling: per subject `max(1, ceil(size * ratio))` mutants, strata by
+  operator ordered by `SHA256(seed, stable_id)`, visited round-robin, original
+  order kept. The report records `"sampling": {strategy, ratio, seed}`.
+- Report fields: top-level `completeFiles` (non-authoritative runs) and
+  per-file `sessionId` and `gitSha` provenance.
+- `rake oracle:reuse` (run in CI): on a scratch copy of the oracle corpus, the
+  `--incremental` verdicts must equal a fresh full run after scripted edits to
+  source, tests, a helper and the configuration.
 
 - **Fork server for Minitest and parallel runs.** `mutation.fork_server`
   (opt-in, ADR-15) now supports Minitest and `jobs > 1`: the environment is

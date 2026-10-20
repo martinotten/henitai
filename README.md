@@ -92,6 +92,7 @@ mutation:
   sampling:
     ratio: 0.05
     strategy: stratified
+    seed: 0   # integer >= 0; selects which mutants of each stratum are kept
 reports_dir: reports
 reporters:
   - terminal
@@ -132,6 +133,26 @@ but never below the measured baseline plus 2 s; when the baseline alone exceeds
 enabled, `reports.checkpoint*` controls periodic canonical-report checkpoints.
 Each checkpoint updates `mutation-report.json`; when the HTML reporter is
 configured, it also regenerates `mutation-report.html` from that merged JSON.
+
+`mutation.sampling` keeps `ceil(size * ratio)` mutants per subject (at least
+one). Mutants are stratified by operator: each operator's mutants are ordered
+by a SHA256 of `seed` and the mutant's stable ID, and the strata are visited
+round-robin, so every operator is represented before any contributes a second
+mutant. The kept mutants retain their original order. The same seed selects the
+same mutants across runs and line shifts; change `seed` to draw another sample.
+The applied `{strategy, ratio, seed}` is recorded in the report under
+`sampling`.
+
+Scoped runs (`--since`, subject patterns, survivor reruns) are merged into the
+existing `mutation-report.json` by `stableId`. A run that mutated every
+subject of a file (a non-authoritative run without subject patterns, such as
+`--since`) lists it under the top-level `completeFiles` and replaces that
+file's prior entry wholesale, dropping it when it yields no mutants, so stale
+mutants of edited or deleted code do not linger. Each file entry carries
+`sessionId` and `gitSha` provenance of the run that produced it; a file merged
+from several sessions has none. `--since` diffs against the merge base
+(`REF...HEAD`), so commits that landed on the base branch after you forked do
+not count as your changes.
 
 Before mutation testing starts, Henitai checks whether the current coverage data
 covers the configured source files. If not, Henitai runs the configured test
@@ -203,6 +224,9 @@ A run with no scoreable mutant passes its threshold only when there was
 nothing to score (no changed code, everything ignored). When `CompileError`
 harness errors emptied the score denominator, nothing was tested, and the run
 exits `1`.
+`Pending` mutants (left over from an interrupted run, without a verdict) are
+excluded from both the MS and the MSI denominators; MSI is
+`killed / (total - pending)`.
 
 For pull-request feedback, add the `github` reporter to `reporters:` in
 `.henitai.yml`: it prints one `::warning file=...,line=...` workflow command
@@ -216,10 +240,13 @@ and every covering test file are byte-identical to what was recorded. A
 `Survived` verdict needs more proof, because a *new* test could now kill it:
 it is reused only when, additionally, the live covering set derived from the
 current per-test coverage map matches the recorded set exactly (no test
-added, dropped, or changed) and the dependency fingerprint (spec helpers,
-`spec/support`, fixtures/factories, `Gemfile.lock`, `.henitai.yml`, `.rspec`)
-is unchanged. When per-test coverage is unavailable, survivors simply
-re-execute — reuse never happens on doubt (see ADR-11).
+added, dropped, or changed). Both kinds additionally require the *reuse
+context* to be unchanged: a fingerprint of the test dependency files (spec
+helpers, `spec/support`, fixtures/factories, `Gemfile.lock`, `.henitai.yml`,
+`.rspec`), the henitai version, the integration, the operator set,
+`test_excludes` and `coverage_criteria`. Verdicts recorded without a reuse
+context are never reused. When per-test coverage is unavailable, survivors
+simply re-execute — reuse never happens on doubt (see ADR-11).
 Reused mutants stay visible in the report (`fromCache: true` beside
 `stableId`) and count toward MS/MSI; the terminal prints
 `N of M verdicts reused from history (K killed, S survived)` plus an
@@ -243,9 +270,20 @@ authoritative, and the file may be the only artifact a dry run creates.
 
 `henitai run --survivors-from ...` performs a partial rerun: it reports only
 the selected survivors, skips threshold-based exit checks, and does not update
-the run trend history. Dirty worktree changes are included, so you can edit
+the run trend history. The selected survivors go through the same reuse rules
+as `--incremental`, always, not only with that flag: a survivor is skipped
+(reported with `fromCache: true`) only when its subject source, its covering
+test set and the reuse context are unchanged, so new or edited tests and
+helpers invalidate it. Dirty worktree changes are included, so you can edit
 tests locally without committing first; if source files under `includes` are
-dirty, Henitai reruns the matched survivors conservatively.
+dirty, the activation-recipe fast path is not used and the survivors are
+re-matched against freshly generated mutants. Survivors restored from
+activation recipes have no source range to fingerprint and are always
+re-executed. When `--survivors-from` names a canonical report, Henitai uses the
+matching session snapshot only if every file entry carries that report's
+`sessionId`; a report merged from several runs is used as is.
+Only authoritative runs (no `--since`, no subject patterns, no survivor rerun)
+add a row to the trend history.
 
 ### Skipping mutations inline
 
@@ -352,7 +390,8 @@ dashboard:
 Set `STRYKER_DASHBOARD_API_KEY` in your CI environment to publish reports. When
 the key, project, and version are present, the `dashboard` reporter uploads the
 Stryker-schema report to the dashboard REST API (default
-`https://dashboard.stryker-mutator.io`); otherwise it is skipped silently. The
+`https://dashboard.stryker-mutator.io`); otherwise it is skipped silently.
+Scoped runs upload the merged canonical report rather than their partial one. The
 project defaults to the git remote and the version to the current branch or CI
 ref (`GITHUB_REF_NAME`/`GITHUB_REF`/`GITHUB_SHA`).
 
@@ -368,6 +407,8 @@ bundle install
 bundle exec rspec        # run tests
 bundle exec ruby bin/verify-process-free-specs # verify self-mutation-safe specs
 bundle exec rake smoke:integration:all # run rspec/minitest integration smoke projects
+bundle exec rake oracle # measure false kills/survivors on the oracle corpus
+bundle exec rake oracle:reuse # check --incremental verdicts equal fresh runs
 bundle exec rubocop      # lint
 bundle exec henitai clean # remove stale generated report artifacts
 bundle exec henitai run  # dogfood

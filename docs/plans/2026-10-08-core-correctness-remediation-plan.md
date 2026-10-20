@@ -354,6 +354,47 @@ Notes on the measurements:
   `slot_id` check in `slot_scheduler.rb`, and the refill after
   `check_timeouts` in `process_worker_runner.rb` (ordering only).
 
+## Phase D Status
+
+Phase D (WS5 and WS6) is implemented on branch `martinotten-phase-d-reuse-and-filters`.
+
+| Finding | Status | How it was fixed |
+|---|---|---|
+| REU-01 Two reuse mechanisms | done | `SurvivorTestFilter` is removed. `--survivors-from` reruns apply `IncrementalFilter`'s content-fingerprint rules to the selected survivors, always (not only with `--incremental`). Reused survivors are `fromCache` and the history store keeps their bindings. Recipe stubs have no source range and are never reused. `DirtySourceDetector` only gates the activation-recipe fast path. New or edited tests and helpers invalidate survivors |
+| REU-02 Snapshot timing | done | Gate 1 (`SourceFileSelection`) has its own `PerTestCoverage` instance; reuse and history read the post-bootstrap per-test map |
+| REU-03 Git path normalisation | verified | fixed in Phase A; existing specs cover it |
+| REU-04 Incomplete fingerprint | done | `ReuseContext`: dependency fingerprint (`DEPENDENCY_GLOBS`) + henitai version + integration + operators + `test_excludes` + `coverage_criteria`. Stored with Killed and Survived verdicts and required to be equal for reuse; legacy rows without it are never reused |
+| REU-05 Canonical report merge | done | `Result#complete_files` is emitted as top-level `completeFiles` (non-authoritative runs). `CanonicalReportMerger` replaces complete files wholesale (removing them when they have no mutants) and merges other files by `stableId` |
+| REU-06 Per-file provenance | done | file entries carry `sessionId` and `gitSha`. `--survivors-from <canonical report>` redirects to the session snapshot only when every file entry carries the report's `sessionId` |
+| REU-07 Recipe identity | done | the history store uses `mutant.stable_id` (precomputed for stubs); recipes persist `replacement`; `Mutant` takes `precomputed_replacement` |
+| REU-08 Trend runs | done | `runs` rows are written only for authoritative runs (not `--since`, subject-scoped or survivor reruns) |
+| REU-09 Report before history | verified | fixed in Phase A; existing specs cover it |
+| REU-10 `--since` and scoring | done | `--since` diffs against the merge base (`REF...HEAD`); the dashboard reporter uploads the merged canonical report for non-authoritative runs (helper shared with the HTML reporter); `Pending` mutants are excluded from the MS and MSI denominators (MSI = `killed / (total - pending)`) |
+| FLT-01 Equivalence rules | done | only sound rules remain: `false \|\| x` and `true && x` (left literal only); arithmetic identity only for Integer/Float literal receivers (not `-0.0`); `==` ↔ `eql?` only when both operands are string literals; singleton `==` ↔ `equal?` |
+| FLT-02 Stillborn filter | out of scope | done in Phase B (WS2.6) |
+| FLT-03 `ignore_patterns` | done | matched against the source line where the mutant's node starts, in `StaticFilter`; reported as `Ignored` with `ignore_reason`. Removed from `AridNodeFilter` |
+| FLT-04 Sampling (D5) | done | real stratified sampling: per subject `n = max(1, ceil(size * ratio))`, strata by operator, order within a stratum by `SHA256(seed, stable_id)`, round-robin across operator-sorted strata, original order kept. New `mutation.sampling.seed` (integer >= 0, default 0); the report records `"sampling": {strategy, ratio, seed}` |
+
+Acceptance:
+
+| Criterion | How it is met |
+|---|---|
+| Incremental verdicts equal a fresh full run after scripted edits | `bundle exec rake oracle:reuse` (`rakelib/oracle_reuse.rake`, a CI step). On a scratch copy of the oracle corpus it applies baseline, source edit, new test, helper edit and config change, and compares the `--incremental` verdicts with a fresh run after each step. Result: 0 mismatches at all 5 steps; the base commit `c70fd8f` fails with 121 mismatches after the helper edit (stale Killed reuse). Result on the final tree: `TBD-ORACLE` |
+| Every REU reproduction is a passing spec | each finding above has a spec; REU-03 and REU-09 are covered by the Phase A specs |
+| Equivalence rules each have a documented soundness argument | the argument is stated in `EquivalenceDetector`; unsound forms have specs asserting they stay pending |
+
+Measurements:
+
+| Run | Killed | Survived | NoCoverage | MS / MSI | Wall time |
+|---|---|---|---|---|---|
+| Dogfood Phase C, default | 1184 | 75 | 80 | 94.23 % / 85.80 % | 26.5 min |
+| Dogfood Phase D | TBD-KILLED | TBD-SURVIVED | TBD-NOCOV | TBD-MS / TBD-MSI | TBD-WALL |
+
+Notes:
+
+- `Pending` mutants now leave the MSI denominator, so MSI is not directly comparable with earlier runs when interrupted runs were involved.
+- Stale-verdict reuse after a helper edit was the one reproduced soundness defect; it is closed by the reuse context rather than by a special case.
+
 ## Sequencing
 
 | Phase | Content | Depends on |

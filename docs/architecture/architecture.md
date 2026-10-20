@@ -215,6 +215,7 @@ mutation:
   sampling:
     ratio: 0.05
     strategy: stratified
+    seed: 0
   ignore_patterns:
     - "(send _ :puts _)"
 coverage_criteria:
@@ -274,7 +275,7 @@ The implementation maps onto the following module layout:
 5. Arid nodes, stillborn mutants, and irrelevant subjects are filtered early.
 6. A small mutant subset is executed in isolated worker processes.
 7. The terminal report highlights only the meaningful survivors.
-8. If the developer provides `--survivors-from`, Henitai loads a prior JSON report, filters the current mutants to the survivor subset, and labels the run as partial so threshold checks and trend analytics are not treated as full-run results.
+8. If the developer provides `--survivors-from`, Henitai loads a prior JSON report, filters the current mutants to the survivor subset, and labels the run as partial so threshold checks and trend analytics are not treated as full-run results. The selected survivors then pass through the same content-fingerprint reuse rules as `--incremental` (section 8.11), always: only survivors whose subject source, covering tests and reuse context are unchanged are skipped (`fromCache`); new or edited tests and helpers force a re-run, and activation-recipe stubs without a source range are never reused. When the report is a canonical report, the run follows its `sessionId` to the session snapshot only if every file entry carries that `sessionId`.
 9. If the developer provides `--incremental`, still-valid Killed and Survived verdicts from the history store are reused instead of re-executed (section 8.11); the terminal summary reports the reused split and an executed-only score line.
 
 ### 6.2 Pull Request Run
@@ -356,7 +357,7 @@ The default phase gate sequence is:
 2. arid-node filtering
 3. selective mutation
 4. stillborn filtering
-5. stratified sampling for CI modes
+5. stratified sampling for CI modes (per subject, by operator, seeded; see below)
 
 These gates exist to reduce noise before test execution, not after it.
 
@@ -378,6 +379,15 @@ The original research-backed pipeline can be summarized as:
 | Gate 4 | Stillborn filtering | removes syntactically invalid mutants before execution |
 | Gate 5 | Stratified sampling | reduces runtime for CI while keeping signal representative |
 
+Sampling (`mutation.sampling`, decision D5) is real stratified sampling. Per
+subject, `n = max(1, ceil(size * ratio))` mutants are kept. Strata are formed by
+operator; within a stratum mutants are ordered by `SHA256(seed, stable_id)`, so
+a mutant's rank does not depend on its neighbours or line numbers, and the strata
+are visited round-robin in operator-sorted order. The kept mutants keep their
+original order. `mutation.sampling.seed` (integer >= 0, default `0`) selects the
+sample and the applied `{strategy, ratio, seed}` is recorded in the report under
+`sampling`.
+
 The arid-node catalog is intentionally extensible. The initial Ruby set includes:
 
 - logger and debug calls such as `Rails.logger.*`, `puts`, `p`, `pp`, and `warn`
@@ -386,6 +396,11 @@ The arid-node catalog is intentionally extensible. The initial Ruby set includes
 - memoization patterns such as `@var ||= compute_value`
 - RSpec DSL helpers such as `let`, `subject`, `before`, and `after`
 - invariants such as `is_a?`, `respond_to?`, and `kind_of?`
+
+`mutation.ignore_patterns` is not part of the arid-node pass. It is applied in
+`StaticFilter` after generation, matched against the source line on which the
+mutant's node starts, and matching mutants are reported as `Ignored` with an
+`ignore_reason` (`ignore_patterns: <pattern>`) so they stay visible.
 
 Beyond the arid-node pre-generation pass, a source-level opt-out exists:
 `# henitai:disable` magic comments (line-scoped trailing form, or
@@ -412,12 +427,12 @@ The strategy is:
 - detect some cases heuristically after generation via `EquivalenceDetector`
 - preserve the remaining uncertainty in the report
 
-The implemented heuristics in `EquivalenceDetector` are deliberately conservative: only cases where the AST shape and literal values make equivalence provable are marked. The current set covers:
+The implemented heuristics in `EquivalenceDetector` are deliberately conservative: a rule exists only if equivalence holds for every runtime value of the unknown operands. The current set covers:
 
-- arithmetic neutral-element patterns — `x + 0`, `x - 0`, `x * 1`, `x / 1` — where the mutated form is semantically identical to the original
-- logical identity patterns — `false || x` mutated to `x` (and the symmetric `true && x` case) — where the literal operand makes the other branch unreachable regardless of mutation
-- singleton equality — `==` mutated to `equal?` (or the reverse) when both receiver and right-hand side are statically known singleton literals (`nil`, `true`, `false`, or a `Symbol`), since singleton identity and value comparison coincide for those types
-- string `eql?` — `==` mutated to `eql?` (or the reverse) when at least one operand is a string literal, since `String#==` and `String#eql?` both compare type and value with no possible divergence
+- arithmetic neutral elements — `n + 0` <-> `n - 0` and `n * 1` <-> `n / 1` <-> `n ** 1` — only when the receiver is an Integer or Float literal (not `-0.0`); for an unknown receiver (`"ab" * 1` versus `"ab" / 1`) the operators diverge
+- left-literal logical identity — `false || x` mutated to `x` and `true && x` mutated to `x`; the right-literal forms are unsound (`nil || false`, `5 && true`) and are not flagged
+- singleton equality — `==` mutated to `equal?` (or the reverse) when both receiver and right-hand side are statically known singleton literals (`nil`, `true`, `false`, or a `Symbol`)
+- string `eql?` — `==` mutated to `eql?` (or the reverse) only when both operands are string literals; with an unknown operand a custom `==` or `to_str` can diverge
 
 More aggressive heuristics are intentionally avoided to prevent false positives.
 
@@ -426,13 +441,14 @@ If an optional LLM-based detector is introduced later, it must remain a plugin a
 The scoring model is explicit:
 
 ```text
-MS  = (killed + timeout + runtime_error) / (total - ignored - no_coverage - compile_error - equivalent)
-MSI = killed / total
+MS  = (killed + timeout + runtime_error) / (total - ignored - no_coverage - compile_error - equivalent - pending)
+MSI = killed / (total - pending)
 ```
 
 Key rules:
 
 - `MS` and `MSI` must always be reported together
+- `Pending` mutants (no verdict, e.g. after an interrupted run) are excluded from both denominators
 - `Equivalent` is an internal status and is serialized as `Ignored` in the external Stryker schema
 - the report must not claim certainty where the architecture cannot prove it
 - a high survivor count without equivalence analysis is not evidence of low test quality by itself
@@ -582,7 +598,7 @@ Persistent mutant history allows a mutant that survives now but disappears in a 
 
 The store is intentionally lightweight and file-based: no external service, no migration tool, inspectable with standard SQLite clients.
 
-Beyond trend analytics, the store doubles as the verdict cache for `--incremental` (section 8.11): two nullable columns (`subject_source_hash`, `covered_tests_fingerprint`) are populated for Killed and Survived rows and carried forward for cache-hit mutants that were never executed in the current run. Legacy rows stay NULL and are never reusable.
+Beyond trend analytics, the store doubles as the verdict cache for `--incremental` (section 8.11): two nullable columns (`subject_source_hash`, `covered_tests_fingerprint`) are populated for Killed and Survived rows and carried forward for cache-hit mutants that were never executed in the current run. Every cached Killed/Survived verdict also stores the `ReuseContext` fingerprint inside `covered_tests_fingerprint`; legacy rows without it stay unreusable. The store keys mutants by `Mutant#stable_id` (precomputed for recipe stubs, whose recipes also persist the `replacement` source), and appends a trend `runs` row only for authoritative runs — not for `--since`, subject-scoped or survivor-rerun results.
 
 ### 8.8 Report Formats
 
@@ -608,6 +624,8 @@ The expected JSON shape follows the Stryker ecosystem conventions:
 - full source text in the file payload for syntax highlighting
 - per-mutant locations, replacements, operators, and status values
 - explicit `coveredBy` and `killedBy` references when available
+
+Henitai adds vendor fields: per-file `sessionId` and `gitSha` (which run produced the entry), top-level `completeFiles` (non-authoritative runs only: files whose subjects the run mutated completely) and `sampling` (`strategy`, `ratio`, `seed`). `CanonicalReportMerger` merges a scoped run into the existing canonical report by `stableId`, except that files in `completeFiles` replace their prior entry wholesale (and are removed when the run produced no mutants for them) so stale mutants of edited or deleted code cannot linger; a file merged from several sessions drops its provenance. The dashboard reporter uploads this merged report for non-authoritative runs instead of the partial one. `--since` diffs against the merge base (`REF...HEAD`).
 
 ### 8.9 Coverage Bootstrap and Method Coverage
 
@@ -668,8 +686,10 @@ It should stay opt-in so the default mode remains easy to reason about.
 
 The reuse rules exploit an asymmetry in monotonicity:
 
-- **Killed is monotone**: an unchanged killing test still kills. A Killed verdict is reused when the subject's source hash and every recorded covering test file are byte-identical to what was recorded.
-- **Survived is not monotone**: a new or edited test can kill a previous survivor. A Survived verdict is additionally gated on the **live covering set** — the set of test files whose current per-test coverage intersects the mutant's line range must equal the recorded set in membership and content — plus a run-level **dependency fingerprint** over files that influence test behavior but never appear in a covering set (spec/rails helpers, `spec/support/**`, fixtures, factories, `Gemfile.lock`, `.henitai.yml`, `.rspec`).
+- **Killed is monotone**: an unchanged killing test still kills. A Killed verdict is reused when the subject's source hash and every recorded covering test file are byte-identical to what was recorded, and the reuse context is unchanged.
+- **Survived is not monotone**: a new or edited test can kill a previous survivor. A Survived verdict is additionally gated on the **live covering set** — the set of test files whose current per-test coverage intersects the mutant's line range must equal the recorded set in membership and content — - **Both kinds** require the same **reuse context** (`ReuseContext`): a run-level fingerprint of the dependency files that influence test behavior but never appear in a covering set (spec/rails helpers, `spec/support/**`, fixtures, factories, `Gemfile.lock`, `.henitai.yml`, `.rspec`), the henitai version, the integration, the operator set, `test_excludes` and `coverage_criteria`. A helper edit therefore invalidates Killed verdicts too. Rows recorded without a context are never reused.
+
+`--survivors-from` reruns do not have a second mechanism: the selected survivors are fed through the same `IncrementalFilter`, always (the former git-based `SurvivorTestFilter` was removed). Recipe stubs have no source range and always re-run; `DirtySourceDetector` only gates the activation-recipe fast path. Gate 1 (source selection) owns its own per-test coverage instance, so reuse and history read the post-bootstrap per-test map. `rake oracle:reuse` verifies the property: after scripted edits (source, new test, helper, configuration) the `--incremental` verdicts must equal a fresh full run.
 
 Every doubt resolves to re-execution: missing or empty per-test map, integrations without per-test coverage support, ambiguous stable ids, legacy history rows, timeout/error verdicts, and any fingerprint read failure. `--force` bypasses reuse entirely.
 
@@ -693,6 +713,9 @@ Mutant activation covers `module_function` subjects: `module_function` copies th
 | Remove per-line mutation cap (ADR-08) | keep the default cap; make it configurable only; use sampling instead | accepted | every other major mutation framework emits all mutations per node; the cap silently discarded granular operator output and made coverage metrics dishonest |
 | Split `EqualityOperator` into relational vs identity-method mutations (ADR-10) | thread operator-set context into `Operator#mutate`; rely solely on `EquivalenceDetector`; drop `eql?`/`equal?` mutations entirely | accepted | `==`/`eql?`/`equal?` is the hardest equality pairing to kill in practice (precedent: the `mutant` gem excludes it from its default operator set); partitioning by class fits the existing `Operator.for_set` model used by every other operator |
 | Content-fingerprint verdict reuse, not git scoping (ADR-11) | auto-`--since` from recorded HEAD as the only mechanism; killed-only reuse forever | accepted | git proves a scope boundary, not per-mutant validity; fingerprints over subject source, covering-set membership/content, and dependency files make Survived reuse sound, with every doubt resolving to re-execution |
+| Verdict reuse bound to a reuse context, survivor reruns folded into it (ADR-11 amendment) | separate git-based survivor skip; Killed reuse on test content alone | accepted | one reuse rule set that the `oracle:reuse` property check can verify; helper, configuration and version changes invalidate every cached verdict |
+| Canonical report merge replaces complete files and records provenance (ADR-09 amendment) | merge everything by `stableId`; overwrite the report | accepted | stale mutants of changed code cannot linger while scoped runs still preserve untouched files |
+| Real stratified sampling with a seed (D5) | first-N per subject | accepted | first-N systematically dropped later code and whole operators; operator strata with seeded stable-id ordering are reproducible and representative |
 | Detected verdicts must be caused by the mutation (ADR-14) | classify by child exit status; trust activation | accepted | a false kill hides exactly the test gap the tool exists to reveal; a fidelity check, an explicit child report, and an unmutated control run keep harness failures out of the detected count, and an oracle corpus measures it |
 
 Formal ADRs live in `docs/architecture/adr/` and use the same English terminology.
@@ -745,7 +768,7 @@ Known technical debt should be tracked explicitly rather than smoothed over in t
 | Subject | A selectable code target, such as a method or namespace |
 | FOM | First-order mutant, a mutant created by one change |
 | SOM | Second-order mutant, a mutant created by combining changes |
-| MSI | Mutation Score Indicator, the raw killed-over-total ratio |
+| MSI | Mutation Score Indicator, the raw killed-over-decided ratio (pending mutants excluded) |
 | MS | Mutation Score, the score that excludes ignored and equivalent cases from the denominator |
 | Arid node | A code location that is intentionally skipped because mutations are usually unhelpful there |
 | Stillborn mutant | A mutant that fails syntax or cannot be executed at all |

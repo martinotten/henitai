@@ -1,5 +1,9 @@
 # Survivor-Only Rerun
 
+> **Phase D note (2026-10):** `SurvivorTestFilter` described below was removed.
+> Survivor reruns now use `IncrementalFilter`'s content-fingerprint reuse rules
+> (ADR-11 amendment). This document records the original design.
+
 Status: done
 Date: 2026-04-07
 

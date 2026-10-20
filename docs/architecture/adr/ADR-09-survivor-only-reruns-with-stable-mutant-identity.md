@@ -54,6 +54,24 @@ Concretely:
 - CI users must read the report metadata, not the exit code alone, to interpret
   partial reruns correctly
 
+## Amendment (Phase D, 2026-10)
+
+- **Complete files replace, partial runs merge.** A non-authoritative run that
+  mutated every subject of a file lists it under the top-level `completeFiles`.
+  `CanonicalReportMerger` replaces such a file's prior entry wholesale, and
+  removes it when the run produced no mutants for it. Other files are merged by
+  `stableId`, so stale mutants of changed or deleted code no longer linger.
+- **Per-file provenance.** File entries carry `sessionId` and `gitSha`. A file
+  merged from several sessions has none. `--survivors-from <canonical report>`
+  redirects to the session snapshot only when every file entry carries the
+  report's `sessionId`; otherwise the report is used as is.
+- **Trend history only for authoritative runs.** `--since`, subject-scoped and
+  survivor-rerun results add no `runs` row.
+- **Recipe identity.** The history store uses `mutant.stable_id`, which is
+  precomputed for recipe stubs, and recipes persist the `replacement` source.
+- Survivor reruns no longer skip survivors on a git heuristic; they use the
+  reuse rules of ADR-11 (`SurvivorTestFilter` was removed).
+
 ## Related Documents
 
 - [Architecture overview](../architecture.md)
