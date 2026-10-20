@@ -1167,17 +1167,6 @@ module Henitai
     def load: () -> Report
   end
 
-  class SurvivorTestFilter
-    def initialize: (
-      coverage_map: Hash[String, Array[String]],
-      git_sha: String?,
-      ?dirty_source_files: bool,
-      ?worktree_changed_files: Array[String],
-      ?diff_analyzer: GitDiffAnalyzer
-    ) -> void
-    def apply: (Array[Mutant]) -> Hash[Symbol, Array[Mutant]]
-  end
-
   class SurvivorSelector
     DRIFT_THRESHOLD: Float
 
@@ -1266,6 +1255,7 @@ module Henitai
     def progress_reporter: () -> untyped?
     def history_store: () -> untyped
     def per_test_coverage: () -> PerTestCoverage
+    def reuse_filter: () -> IncrementalFilter
     def source_selection_coverage: () -> PerTestCoverage
     def reuse_context: () -> ReuseContext
     def history_store_path: () -> String
@@ -1301,27 +1291,26 @@ module Henitai
     def initialize: (survivors_from: String?, config: Configuration, git_diff_analyzer: untyped) -> void
     def active?: () -> bool
     def try_recipe_run: () -> Array[Mutant]?
-    def apply_selection: (Array[Mutant]) -> Array[Mutant]
+    def apply_selection: (Array[Mutant], ?reuse_filter: IncrementalFilter?) -> Array[Mutant]
 
     private
 
     def load_survivor_report: () -> SurvivorLoader::Report
-    def run_from_recipes: (SurvivorLoader::Report, Array[String]?) -> Array[Mutant]?
-    def recipe_fast_path_safe?: (SurvivorLoader::Report, Array[String]?) -> bool
+    def run_from_recipes: (SurvivorLoader::Report) -> Array[Mutant]?
+    def recipe_fast_path_safe?: (SurvivorLoader::Report) -> bool
     def recipe_selector_and_stubs: (Array[String], Hash[String, Hash[String, untyped]]) -> [SurvivorSelector, Array[Mutant]]
     def load_activation_recipes: (Array[String]) -> Hash[String, Hash[String, untyped]]?
     def build_stub_mutant: (String, Hash[String, untyped]) -> Mutant
     def stub_subject_from_recipe: (Hash[String, untyped]) -> Subject
     def recipe_location: (Hash[String, untyped]?) -> Hash[Symbol, untyped]
-    def finalize_survivor_split: (SurvivorSelector, Array[Mutant], Hash[Symbol, Array[Mutant]]) -> Array[Mutant]
+    def finalize_selection: (SurvivorSelector, Array[Mutant]) -> Array[Mutant]
     def dirty_worktree_changed_files: () -> Array[String]?
     def dirty_source_files?: (Array[String]?, ?git_sha: String?) -> bool
     def committed_changed_files: (String?) -> Array[String]
     def in_include_root?: (String, Array[String]) -> bool
     def normalize_path: (String) -> String
     def warn_survivor_drift: (SurvivorSelector) -> void
-    def build_survivor_stats: (SurvivorSelector, Array[Mutant], Hash[Symbol, Array[Mutant]]) -> Hash[Symbol, untyped]
-    def test_filter: (SurvivorLoader::Report, ?dirty_source_files: bool) -> SurvivorTestFilter
+    def build_survivor_stats: (SurvivorSelector, Array[Mutant]) -> Hash[Symbol, untyped]
   end
 
   class CoverageBootstrapper

@@ -397,6 +397,20 @@ RSpec.describe Henitai::IncrementalFilter do
       end
     end
 
+    it "re-runs a survivor when a new spec file now covers the mutant" do
+      Dir.mktmpdir do |dir|
+        source, test = write_workspace(dir)
+        added = File.join(dir, "b_spec.rb")
+        File.write(added, "it kills\n")
+        mutant = build_mutant(stable_id: "abc", source_file: source)
+        store = build_store("abc" => survived_verdict_for(mutant, [test]))
+
+        build_filter(store, build_coverage([test, added])).apply([mutant])
+
+        expect([mutant.status, mutant.from_cache?]).to eq([:pending, false])
+      end
+    end
+
     it "never reuses survived verdicts for mutants sharing a stable id" do
       Dir.mktmpdir do |dir|
         source, test = write_workspace(dir)

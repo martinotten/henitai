@@ -61,7 +61,6 @@ module Henitai
   autoload :ReportsDirectoryLock, "henitai/reports_directory_lock"
   autoload :SurvivorLoader,          "henitai/survivor_loader"
   autoload :SurvivorSelector,        "henitai/survivor_selector"
-  autoload :SurvivorTestFilter,      "henitai/survivor_test_filter"
   autoload :SurvivorActivationCache, "henitai/survivor_activation_cache"
   autoload :SurvivorRerunStrategy, "henitai/survivor_rerun_strategy"
   autoload :DirtySourceDetector, "henitai/dirty_source_detector"
