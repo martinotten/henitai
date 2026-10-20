@@ -27,7 +27,23 @@ module Henitai
       # Multiplicative identity: `x * 1`, `x / 1` and `x ** 1` all reduce to `x`.
       def one_operand?(node) = numeric_operand?(node, 1)
 
+      # The identities above only hold when the receiver is a number. For an
+      # unknown receiver `"ab" * 1` is `"ab"` while `"ab" / 1` raises, and a
+      # custom object may define its own operators. Negative zero is excluded
+      # because `-0.0 + 0` is `0.0` while `-0.0 - 0` is `-0.0`.
+      def numeric_receiver?(node)
+        return false unless node.is_a?(Parser::AST::Node)
+
+        case node.type
+        when :int then true
+        when :float then !negative_zero?(node.children.first)
+        else false
+        end
+      end
+
       private
+
+      def negative_zero?(value) = value.zero? && (1.0 / value).negative?
 
       # Reads the right-hand operand of a binary send. Guards against a
       # malformed node whose operand is a bare Ruby value rather than an AST

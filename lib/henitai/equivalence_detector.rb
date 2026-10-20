@@ -6,9 +6,25 @@ require_relative "equivalence_detector/operand_predicates"
 module Henitai
   # Detects obvious equivalent mutants before execution.
   #
-  # The detector is intentionally conservative: it only marks mutations as
-  # equivalent when the AST shape and the operand literals make the equivalence
-  # obvious enough to be useful.
+  # The detector is intentionally conservative: it only marks a mutation as
+  # equivalent when the AST shape and the literal operands prove the
+  # equivalence for every runtime value. Each rule below states the argument
+  # that makes it sound; a rule that cannot state one is not implemented.
+  #
+  # Rules:
+  #   * Additive identity, `n + 0` <-> `n - 0`, when `n` is an Integer literal
+  #     or a non-negative-zero Float literal. Both return `n`.
+  #   * Multiplicative identity, `n * 1` <-> `n / 1` <-> `n ** 1`, under the
+  #     same receiver condition. Both return `n`.
+  #   * Left-literal logical identity, `false || x` -> `x` and `true && x` -> `x`.
+  #     `false || x` is `x` for every `x`, and `true && x` is `x` for every `x`.
+  #     The right-literal forms are unsound: `nil || false` is `false` and
+  #     `5 && true` is `true`.
+  #   * Singleton equality, `s == v` <-> `s.equal?(v)` when `s` and `v` are
+  #     Symbol, nil, true or false literals. These values are unique instances,
+  #     so `==` reduces to identity.
+  #   * String equality, `"a" == "b"` <-> `"a".eql?("b")` when both operands are
+  #     String literals. Both compare type and value for two Strings.
   class EquivalenceDetector
     def analyze(mutant)
       return mutant unless equivalent_mutation?(mutant)
@@ -48,14 +64,16 @@ module Henitai
       additive_operator?(original.children[1]) &&
         additive_operator?(mutated.children[1]) &&
         zero_operand?(original) &&
-        zero_operand?(mutated)
+        zero_operand?(mutated) &&
+        numeric_receiver?(original)
     end
 
     def multiplicative_equivalent?(original, mutated)
       multiplicative_operator?(original.children[1]) &&
         multiplicative_operator?(mutated.children[1]) &&
         one_operand?(original) &&
-        one_operand?(mutated)
+        one_operand?(mutated) &&
+        numeric_receiver?(original)
     end
 
     def equivalent_logical_mutation?(mutant)
@@ -81,18 +99,16 @@ module Henitai
       end
     end
 
+    # `false || x` is `x` for every `x`. The right-literal form `x || false` is
+    # not: `nil || false` is `false`, not `nil`.
     def false_identity_equivalent?(original, mutated)
-      return true if false_operand?(original.children[0]) && same_node?(mutated, original.children[1])
-      return true if false_operand?(original.children[1]) && same_node?(mutated, original.children[0])
-
-      false
+      false_operand?(original.children[0]) && same_node?(mutated, original.children[1])
     end
 
+    # `true && x` is `x` for every `x`. The right-literal form `x && true` is
+    # not: `5 && true` is `true`, not `5`.
     def true_identity_equivalent?(original, mutated)
-      return true if true_operand?(original.children[0]) && same_node?(mutated, original.children[1])
-      return true if true_operand?(original.children[1]) && same_node?(mutated, original.children[0])
-
-      false
+      true_operand?(original.children[0]) && same_node?(mutated, original.children[1])
     end
 
     def false_operand?(node)
@@ -121,6 +137,8 @@ module Henitai
 
     def one_operand?(node) = operand_predicates.one_operand?(node)
 
+    def numeric_receiver?(node) = operand_predicates.numeric_receiver?(node.children[0])
+
     def operand_predicates = @operand_predicates ||= OperandPredicates.new
 
     # Detects `lhs == <singleton>` mutated to `lhs.equal?(<singleton>)` (or the
@@ -146,28 +164,27 @@ module Henitai
         equality_operators?(original.children[1], mutated.children[1])
     end
 
-    # Detects `lhs == rhs` mutated to `lhs.eql?(rhs)` (or the reverse) when at
-    # least one operand is a string literal.
+    # Detects `lhs == rhs` mutated to `lhs.eql?(rhs)` (or the reverse) when both
+    # operands are string literals.
     #
-    # String#eql? is documented to compare both type and value. Since String#==
-    # also compares type and value (it returns false for any non-String argument
-    # without invoking the other object's #==), the two methods are equivalent
-    # for all possible inputs whenever at least one operand is statically known
-    # to be a String — proven here by the presence of a :str literal on the
-    # receiver or the argument side.
-    #
-    # When no operand is a string literal we conservatively leave the mutant
-    # pending: the receiver could be any object whose custom #== diverges from
-    # its #eql?.
+    # With two String literals, neither `==` nor `eql?` can reach a custom
+    # method, so both compare type and value and return the same result. A
+    # single string literal is not enough: an unknown receiver can override
+    # `==`, and `"a" == obj` calls `obj == "a"` when obj responds to `to_str`.
     def equivalent_string_eql_mutation?(mutant)
       original = mutant.original_node
       mutated  = mutant.mutated_node
 
+      string_eql_swap?(original, mutated) &&
+        string_literal?(original.children[0]) &&
+        string_literal?(original.children[2])
+    end
+
+    def string_eql_swap?(original, mutated)
       string_eql_send?(original) && string_eql_send?(mutated) &&
         same_receiver?(original, mutated) &&
         string_eql_operators?(original.children[1], mutated.children[1]) &&
-        same_rhs?(original, mutated) &&
-        string_operand?(original)
+        same_rhs?(original, mutated)
     end
 
     def string_eql_send?(node)
@@ -187,12 +204,6 @@ module Henitai
 
     def same_rhs?(original, mutated)
       same_node?(original.children[2], mutated.children[2])
-    end
-
-    # Returns true when at least one operand is a string literal, giving static
-    # proof that the comparison is string-typed on at least one side.
-    def string_operand?(node)
-      string_literal?(node.children[0]) || string_literal?(node.children[2])
     end
 
     def string_literal?(node)
