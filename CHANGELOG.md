@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-20
+
+Minor release with a deliberate score break: false kills and harness
+failures no longer count as detected mutants, so most projects, including
+Henitai's own dogfood run, will report lower Mutation Scores. Re-measure
+before adjusting thresholds.
+
+### Changed
+
+- **Scores will drop, by design.** A mutant now counts as detected only when a
+  test failed because of its mutation (ADR-14). Harness failures that used to
+  be credited as kills are now reported as `CompileError` or `RuntimeError`,
+  with the reason in `statusReason`. On an assertion-free test suite, 0.5.3
+  reported 130 of 137 mutants as killed; this release reports none. Projects
+  should expect lower Mutation Scores. Re-measure before adjusting thresholds.
+- **Flaky-test handling.** Survivors are no longer retried: a retry could only
+  turn a survivor into a kill and inflate the score. Kills are re-checked, up
+  to `max_flaky_retries`, only when every failing test file is known to be
+  flaky, as found by the new opt-in `mutation.flaky_detection` (baseline suite
+  runs twice; flaky files go to `henitai_flaky_tests.json`, removed by
+  `henitai clean`). Without it nothing is retried, so runtime on survivor-heavy
+  suites drops. The ">5% of mutants needed a retry" warning is replaced by a
+  report of flaky tests and re-checked kills. Child reports now carry
+  `failed_tests`. Failures outside an example (an `after(:context)` hook error,
+  a suite-level hook, a Minitest result without a file) are attributed to their
+  spec file when RSpec names it; otherwise the run is flagged
+  `unattributed_failures`, which makes a kill genuine (never retried) and makes
+  the flaky baseline reject the run. Baseline runs that fail on a file the two
+  runs cannot call flaky (for example one seen in a single run) now abort
+  instead of being accepted. Minitest outcomes are keyed to the file defining
+  the test class, not to a shared module that supplies the test method.
+- Mutant runs are classified from an explicit report written by the child
+  process instead of from its exit status. An exception while activating the
+  mutant (for example a `NameError` from a superclass defined in another file)
+  is `CompileError`, not `Killed`. A child killed by a signal, or one that
+  exits without reporting, is `RuntimeError`, not `Killed`. A `SystemExit`
+  raised by the code under test is `RuntimeError`, not `Survived`.
+- Mutants are activated only after the spec or test files have loaded, so a
+  subject whose superclass or constants live in other files can be tested.
+  Previously the child loaded the subject file on its own and failed with a
+  `NameError` (every `ApplicationRecord` model, for example).
+- Mutants are activated by re-evaluating the subject's own `def` inside its
+  original module and class openers (ADR-13), not through `define_method`.
+  Constant lookup through enclosing modules, implicit `super`, `yield`,
+  `block_given?`, argument forwarding, default values, `__FILE__`/`__LINE__`,
+  `frozen_string_literal` and visibility now behave as in the original method.
+  Mutations in default values take effect, and splices no longer shift after
+  multibyte characters or leave heredoc bodies behind. Activation recipes from
+  earlier versions are ignored and regenerated.
+
+### Added
+
+- `mutation.sampling.seed` (integer >= 0, default `0`) and real stratified
+  sampling: per subject `max(1, ceil(size * ratio))` mutants, strata by
+  operator ordered by `SHA256(seed, stable_id)`, visited round-robin, original
+  order kept. The report records `"sampling": {strategy, ratio, seed}`.
+- Report fields: top-level `completeFiles` (non-authoritative runs) and
+  per-file `sessionId` and `gitSha` provenance.
+- `rake oracle:reuse` (run in CI): on a scratch copy of the oracle corpus, the
+  `--incremental` verdicts must equal a fresh full run after scripted edits to
+  source, tests, a helper and the configuration.
+- **Fork server for Minitest and parallel runs.** `mutation.fork_server`
+  (opt-in, ADR-15) now supports Minitest and `jobs > 1`: the environment is
+  booted once and each mutant process is forked from the server. Falls back to
+  per-mutant boot with a warning if the server is unavailable.
+- A fidelity check rejects, before execution, every mutant whose activated
+  code differs from the original method by more than the reported mutation.
+  Examples are a negated condition that lost its parentheses, keyword
+  arguments re-rendered as a positional hash, `|x|` re-rendered as `|x,|`, a
+  splice shifted by a multibyte character, and a removed assignment that turns
+  a later local-variable read into a method call. Such mutants are reported as
+  `CompileError` with the reason.
+- `mutation.control_runs` (default `true`): after execution, every subject
+  with a detected verdict runs once more with its unmutated method injected.
+  If its tests fail, the subject's detected verdicts are reclassified as
+  `CompileError`, because the injection itself broke them.
+- Methods defined in a constructor block assigned to a constant
+  (`Point = Struct.new(:x) do ... end`, likewise `Data.define` and
+  `Class.new`) and in `class << CONST` are now subjects. Top-level
+  `def Const.name` methods are subjects as well.
+- `rake oracle` runs a corpus whose verdicts follow from its construction and
+  fails on false kills or false survivors. CI runs it.
+
 ### Fixed
 
 - **Verdict reuse is bound to a reuse context.** `--incremental` reused stale
@@ -70,20 +153,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (served mutants still run `before(:suite)` hooks). The `fork_server` schema
   description and the remediation plan now state the real scope (RSpec and
   Minitest, any `jobs`).
-
 - **`--incremental` no longer reuses stale survived verdicts for def-line
   mutants.** Their test selection is widened with name-matched tests that the
   survivor fingerprint does not cover, so survived verdicts for mutants on a
   method's def line always re-execute (killed reuse is unaffected: a kill by
   an unchanged covering test remains valid).
-
 - **Output capture no longer delays or races on lingering grandchildren.**
   Closing a mutant child's captured stdout/stderr no longer waits up to 1 s
   per stream for EOF and no longer kills the drain thread mid-write (which
   could exceed the cap or write the truncation marker twice). The drain
   thread is stopped cooperatively through a stop pipe and takes what is
   already readable.
-
 - **Fork-server lifecycle.** A server lost or stalled mid-run no longer turns
   its in-flight mutants into `runtime_error`: they are rerun through the
   per-mutant-boot fallback. Fallback runs use boot-inclusive timeouts. Mutant
@@ -92,91 +172,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are no longer inherited by mutant processes. The parallel event loop no
   longer stalls on an exit event already buffered in the client, and the
   SIGTERM drain window always runs its full length.
-
-### Added
-
-- `mutation.sampling.seed` (integer >= 0, default `0`) and real stratified
-  sampling: per subject `max(1, ceil(size * ratio))` mutants, strata by
-  operator ordered by `SHA256(seed, stable_id)`, visited round-robin, original
-  order kept. The report records `"sampling": {strategy, ratio, seed}`.
-- Report fields: top-level `completeFiles` (non-authoritative runs) and
-  per-file `sessionId` and `gitSha` provenance.
-- `rake oracle:reuse` (run in CI): on a scratch copy of the oracle corpus, the
-  `--incremental` verdicts must equal a fresh full run after scripted edits to
-  source, tests, a helper and the configuration.
-
-- **Fork server for Minitest and parallel runs.** `mutation.fork_server`
-  (opt-in, ADR-15) now supports Minitest and `jobs > 1`: the environment is
-  booted once and each mutant process is forked from the server. Falls back to
-  per-mutant boot with a warning if the server is unavailable.
-
-### Changed
-
-- **Flaky-test handling.** Survivors are no longer retried: a retry could only
-  turn a survivor into a kill and inflate the score. Kills are re-checked, up
-  to `max_flaky_retries`, only when every failing test file is known to be
-  flaky, as found by the new opt-in `mutation.flaky_detection` (baseline suite
-  runs twice; flaky files go to `henitai_flaky_tests.json`, removed by
-  `henitai clean`). Without it nothing is retried, so runtime on survivor-heavy
-  suites drops. The ">5% of mutants needed a retry" warning is replaced by a
-  report of flaky tests and re-checked kills. Child reports now carry
-  `failed_tests`. Failures outside an example (an `after(:context)` hook error,
-  a suite-level hook, a Minitest result without a file) are attributed to their
-  spec file when RSpec names it; otherwise the run is flagged
-  `unattributed_failures`, which makes a kill genuine (never retried) and makes
-  the flaky baseline reject the run. Baseline runs that fail on a file the two
-  runs cannot call flaky (for example one seen in a single run) now abort
-  instead of being accepted. Minitest outcomes are keyed to the file defining
-  the test class, not to a shared module that supplies the test method.
-
-- **Scores will drop, by design.** A mutant now counts as detected only when a
-  test failed because of its mutation (ADR-14). Harness failures that used to
-  be credited as kills are now reported as `CompileError` or `RuntimeError`,
-  with the reason in `statusReason`. On an assertion-free test suite, 0.5.3
-  reported 130 of 137 mutants as killed; this release reports none. Projects
-  should expect lower Mutation Scores. Re-measure before adjusting thresholds.
-- Mutant runs are classified from an explicit report written by the child
-  process instead of from its exit status. An exception while activating the
-  mutant (for example a `NameError` from a superclass defined in another file)
-  is `CompileError`, not `Killed`. A child killed by a signal, or one that
-  exits without reporting, is `RuntimeError`, not `Killed`. A `SystemExit`
-  raised by the code under test is `RuntimeError`, not `Survived`.
-
-- Mutants are activated only after the spec or test files have loaded, so a
-  subject whose superclass or constants live in other files can be tested.
-  Previously the child loaded the subject file on its own and failed with a
-  `NameError` (every `ApplicationRecord` model, for example).
-- Mutants are activated by re-evaluating the subject's own `def` inside its
-  original module and class openers (ADR-13), not through `define_method`.
-  Constant lookup through enclosing modules, implicit `super`, `yield`,
-  `block_given?`, argument forwarding, default values, `__FILE__`/`__LINE__`,
-  `frozen_string_literal` and visibility now behave as in the original method.
-  Mutations in default values take effect, and splices no longer shift after
-  multibyte characters or leave heredoc bodies behind. Activation recipes from
-  earlier versions are ignored and regenerated.
-
-### Added
-
-- A fidelity check rejects, before execution, every mutant whose activated
-  code differs from the original method by more than the reported mutation.
-  Examples are a negated condition that lost its parentheses, keyword
-  arguments re-rendered as a positional hash, `|x|` re-rendered as `|x,|`, a
-  splice shifted by a multibyte character, and a removed assignment that turns
-  a later local-variable read into a method call. Such mutants are reported as
-  `CompileError` with the reason.
-- `mutation.control_runs` (default `true`): after execution, every subject
-  with a detected verdict runs once more with its unmutated method injected.
-  If its tests fail, the subject's detected verdicts are reclassified as
-  `CompileError`, because the injection itself broke them.
-- Methods defined in a constructor block assigned to a constant
-  (`Point = Struct.new(:x) do ... end`, likewise `Data.define` and
-  `Class.new`) and in `class << CONST` are now subjects. Top-level
-  `def Const.name` methods are subjects as well.
-- `rake oracle` runs a corpus whose verdicts follow from its construction and
-  fails on false kills or false survivors. CI runs it.
-
-### Fixed
-
 - The "negated condition" mutant now negates the whole condition
   (`!(a > b)`), not just its left operand (`!a > b`).
 - Source files are read as UTF-8 regardless of the process locale. With `LANG`
@@ -813,7 +808,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI critical path: `henitai run` now executes the full pipeline, supports `--since`, returns CI-friendly exit codes, and `henitai version` prints `Henitai::VERSION`
 - RSpec per-test coverage output: `henitai/coverage_formatter` now writes `coverage/henitai_per_test.json`
 
-[Unreleased]: https://github.com/martinotten/henitai/compare/v0.5.3...HEAD
+[Unreleased]: https://github.com/martinotten/henitai/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/martinotten/henitai/compare/v0.5.3...v0.6.0
 [0.5.3]: https://github.com/martinotten/henitai/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/martinotten/henitai/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/martinotten/henitai/compare/v0.5.0...v0.5.1
