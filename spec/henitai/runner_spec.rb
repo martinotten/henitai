@@ -1852,6 +1852,40 @@ RSpec.describe Henitai::Runner do
       end
     end
 
+    it "reports the selected source files as complete for an unscoped run and none for scoped ones" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "lib"))
+        File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+        Dir.chdir(dir) do
+          config = build_config(reporters: [])
+          result = instance_double(Henitai::Result, partial_rerun?: false)
+          runner = described_class.new(config:)
+          setup_runner_doubles(runner, config, result)
+          runner.run
+
+          expect(Henitai::Result).to have_received(:new).with(hash_including(complete_files: ["lib/sample.rb"]))
+        end
+      end
+    end
+
+    it "reports no complete files when subject patterns scope the run" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "lib"))
+        File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+        Dir.chdir(dir) do
+          config = build_config(reporters: [])
+          result = instance_double(Henitai::Result, partial_rerun?: false)
+          runner = described_class.new(config:, subjects: [Henitai::Subject.parse("Sample*")])
+          setup_runner_doubles(runner, config, result)
+          runner.run
+
+          expect(Henitai::Result).to have_received(:new).with(hash_including(complete_files: []))
+        end
+      end
+    end
+
     it "marks the result as non-authoritative when --since scopes the run" do
       Dir.mktmpdir do |dir|
         FileUtils.mkdir_p(File.join(dir, "lib"))

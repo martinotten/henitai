@@ -210,5 +210,69 @@ RSpec.describe Henitai::CanonicalReportMerger do
 
       expect(merged["files"].keys).to contain_exactly("gone.rb", "other.rb")
     end
+
+    describe ".merge with completeFiles" do
+      def stringified(entry) = JSON.parse(JSON.generate(entry))
+
+      it "replaces a complete file's prior mutants even when their ids changed" do
+        prior_path = write_prior(schema({ "f.rb" => file_entry(mutant_schema("A"), mutant_schema("B")),
+                                          "g.rb" => file_entry(mutant_schema("G")) }))
+        current = schema({ "f.rb" => file_entry(mutant_schema("C")) }, completeFiles: ["f.rb"])
+
+        merged = described_class.merge(current, prior_path)
+
+        expect(merged["files"].transform_values { |f| f["mutants"].map { |m| m["stableId"] } })
+          .to eq("g.rb" => ["G"], "f.rb" => ["C"])
+      end
+
+      it "removes a complete file that produced no mutants" do
+        prior_path = write_prior(schema({ "f.rb" => file_entry(mutant_schema("A")),
+                                          "g.rb" => file_entry(mutant_schema("G")) }))
+        current = schema({ "g.rb" => file_entry(mutant_schema("G2")) }, completeFiles: %w[f.rb g.rb])
+
+        expect(described_class.merge(current, prior_path)["files"].keys).to eq(["g.rb"])
+      end
+
+      it "keeps merge-by-stableId for files that are not listed as complete" do
+        prior_path = write_prior(schema({ "f.rb" => file_entry(mutant_schema("A"), mutant_schema("B")) }))
+        current = schema({ "f.rb" => file_entry(mutant_schema("C")) })
+
+        merged = described_class.merge(current, prior_path)
+
+        expect(merged["files"]["f.rb"]["mutants"].map { |m| m["stableId"] }).to eq(%w[A B C])
+      end
+
+      it "does not carry the per-run completeFiles field into the merged report" do
+        prior_path = write_prior(schema({ "g.rb" => file_entry(mutant_schema("G")) }))
+        current = schema({ "f.rb" => file_entry(mutant_schema("C")) }, completeFiles: ["f.rb"])
+
+        expect(described_class.merge(current, prior_path)).not_to have_key("completeFiles")
+      end
+
+      it "keeps each file's own provenance for untouched and replaced files" do
+        prior_path = write_prior(schema({ "f.rb" => file_entry(mutant_schema("A")).merge(sessionId: "S1"),
+                                          "g.rb" => file_entry(mutant_schema("G")).merge(sessionId: "S1") }))
+        current = schema({ "f.rb" => file_entry(mutant_schema("C")).merge(sessionId: "S2") },
+                         completeFiles: ["f.rb"], sessionId: "S2")
+
+        files = described_class.merge(current, prior_path)["files"]
+
+        expect(files.transform_values { |f| f["sessionId"] }).to eq("g.rb" => "S1", "f.rb" => "S2")
+      end
+
+      it "drops provenance of a partially merged file whose sessions differ" do
+        prior_path = write_prior(schema({ "f.rb" => file_entry(mutant_schema("A")).merge(sessionId: "S1") }))
+        current = schema({ "f.rb" => file_entry(mutant_schema("C")).merge(sessionId: "S2") })
+
+        expect(described_class.merge(current, prior_path)["files"]["f.rb"]).not_to have_key("sessionId")
+      end
+
+      it "keeps provenance of a partially merged file when both sides share the session" do
+        prior_path = write_prior(schema({ "f.rb" => file_entry(mutant_schema("A")).merge(sessionId: "S1") }))
+        current = schema({ "f.rb" => file_entry(mutant_schema("C")).merge(sessionId: "S1") })
+
+        expect(described_class.merge(current, prior_path)["files"]["f.rb"]["sessionId"]).to eq("S1")
+      end
+    end
   end
 end

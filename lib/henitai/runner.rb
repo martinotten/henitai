@@ -184,8 +184,17 @@ module Henitai
         git_sha: safe_head_sha,
         source_provider: source_provider,
         authoritative: full_run?,
-        since: @since
+        since: @since,
+        complete_files: complete_files
       )
+    end
+
+    # Files whose every subject this run mutated: no subject patterns and no
+    # survivor rerun (a --since run still selects whole changed files).
+    def complete_files
+      return [] if Array(@subjects).any? || survivor_rerun?
+
+      source_files
     end
 
     def safe_head_sha

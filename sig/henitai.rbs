@@ -1100,10 +1100,11 @@ module Henitai
     attr_reader survivor_stats: Hash[Symbol, untyped]?
     attr_reader session_id: String
     attr_reader git_sha: String?
+    attr_reader complete_files: Array[String]
     attr_reader since: String?
     attr_reader coverage_criteria: Hash[Symbol, bool]
 
-    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time, ?thresholds: Hash[Symbol, Integer]?, ?partial_rerun: bool, ?survivor_stats: Hash[Symbol, untyped]?, ?session_id: String, ?git_sha: String?, ?source_provider: ^(String) -> String, ?authoritative: bool, ?since: String?, ?coverage_criteria: Hash[Symbol, bool]?) -> void
+    def initialize: (mutants: Array[Mutant], started_at: Time, finished_at: Time, ?thresholds: Hash[Symbol, Integer]?, ?partial_rerun: bool, ?survivor_stats: Hash[Symbol, untyped]?, ?session_id: String, ?git_sha: String?, ?source_provider: ^(String) -> String, ?authoritative: bool, ?since: String?, ?coverage_criteria: Hash[Symbol, bool]?, ?complete_files: Array[String]?) -> void
     def partial_rerun?: () -> bool
     def authoritative?: () -> bool
     def killed: () -> Integer
@@ -1126,6 +1127,7 @@ module Henitai
     def base_schema: () -> Hash[Symbol, untyped]
     def unmatched_survivor_ids: () -> Array[String]
     def build_files_section: () -> Hash[Symbol, untyped]
+    def file_provenance: () -> Hash[Symbol, String]
     def mutant_to_schema: (Mutant) -> Hash[Symbol, untyped]
     def coverage_schema: (Mutant) -> Hash[Symbol, untyped]
     def replacement_for: (Mutant) -> String
@@ -1276,6 +1278,7 @@ module Henitai
     def optional_config: (Symbol) -> untyped
     def survivor_rerun?: () -> bool
     def full_run?: () -> bool
+    def complete_files: () -> Array[String]
     def survivor_strategy: () -> SurvivorRerunStrategy
     def safe_head_sha: () -> String?
   end
