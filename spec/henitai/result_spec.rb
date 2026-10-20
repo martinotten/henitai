@@ -500,6 +500,29 @@ RSpec.describe Henitai::Result do
     end
   end
 
+  describe "pending mutants" do
+    let(:mutants) do
+      [build_mutant(status: :killed), build_mutant(status: :survived), build_mutant(status: :pending)]
+    end
+
+    it "excludes pending mutants from the mutation score denominator" do
+      expect(result(mutants).mutation_score).to eq(50.0)
+    end
+
+    it "excludes pending mutants from the mutation score indicator denominator" do
+      expect(result(mutants).mutation_score_indicator).to eq(50.0)
+    end
+
+    it "returns nil scores when every mutant is pending" do
+      pending_only = [build_mutant(status: :pending)]
+
+      expect(result(pending_only).scoring_summary).to include(
+        mutation_score: nil,
+        mutation_score_indicator: nil
+      )
+    end
+  end
+
   # A mutant from before mutated_source, status_reason and from_cache? existed.
   def legacy_mutant(mutant)
     hidden = %i[mutated_source status_reason from_cache?]

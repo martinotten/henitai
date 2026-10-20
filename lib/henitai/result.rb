@@ -88,11 +88,12 @@ module Henitai
 
     # Mutation Score (MS) — Architektur-Formel aus Abschnitt 6.1:
     #
-    #   MS = detected / (total − ignored − no_coverage − compile_error − equivalent)
+    #   MS = detected / (total − ignored − no_coverage − compile_error − equivalent − pending)
     #
     # Confirmed equivalent mutants werden aus BEIDEN Seiten der Gleichung entfernt:
     # Sie sind weder im Zähler (nicht detektierbar) noch im Nenner (nicht testbar).
-    # Das ist der entscheidende Unterschied zum MSI.
+    # Das ist der entscheidende Unterschied zum MSI. Pending mutants (left over from
+    # an interrupted run, without a verdict) are excluded from both sides as well.
     #
     # @return [Float, nil] 0.0–100.0, nil wenn kein valider Mutant vorhanden
     def mutation_score
@@ -101,8 +102,9 @@ module Henitai
 
     # Mutation Score Indicator (MSI) — naive Berechnung ohne Äquivalenz-Bereinigung:
     #
-    #   MSI = killed / all_mutants
+    #   MSI = killed / (total − pending)
     #
+    # Only mutants with a verdict count; pending mutants have none.
     # MSI ist immer ≤ MS. Der Unterschied kommuniziert die Äquivalenz-Unsicherheit.
     # Beide Werte MÜSSEN im Report zusammen ausgewiesen werden (Anti-Pattern: nur MS).
     #
@@ -170,7 +172,7 @@ module Henitai
     end
 
     def mutation_score_for(list)
-      excluded = %i[ignored no_coverage compile_error equivalent]
+      excluded = %i[ignored no_coverage compile_error equivalent pending]
       valid = list.reject { |m| excluded.include?(m.status) }
       return nil if valid.empty?
 
@@ -178,9 +180,10 @@ module Henitai
     end
 
     def mutation_score_indicator_for(list)
-      return nil if list.empty?
+      decided = list.reject { |m| m.status == :pending }
+      return nil if decided.empty?
 
-      ((list.count(&:killed?).to_f / list.count) * 100.0).round(2).to_f
+      ((decided.count(&:killed?).to_f / decided.count) * 100.0).round(2).to_f
     end
 
     def base_schema
