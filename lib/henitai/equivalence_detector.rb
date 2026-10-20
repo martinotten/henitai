@@ -89,13 +89,10 @@ module Henitai
     end
 
     def logical_identity_equivalent?(original, mutated)
-      case original.type
-      when :or
+      if original.type == :or
         false_identity_equivalent?(original, mutated)
-      when :and
-        true_identity_equivalent?(original, mutated)
       else
-        false
+        true_identity_equivalent?(original, mutated)
       end
     end
 

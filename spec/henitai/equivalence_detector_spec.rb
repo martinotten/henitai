@@ -794,4 +794,125 @@ RSpec.describe Henitai::EquivalenceDetector do
 
     expect(mutant.status).to eq(:pending)
   end
+
+  it "keeps `1 * 0` mutated to `1 + 0` pending because the original is not additive" do
+    mutant = build_mutant(
+      original_node: binary_send(int(1), :*, int(0)),
+      mutated_node: binary_send(int(1), :+, int(0))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps `1 + 0` mutated to `1 * 0` pending because the mutant is not additive" do
+    mutant = build_mutant(
+      original_node: binary_send(int(1), :+, int(0)),
+      mutated_node: binary_send(int(1), :*, int(0))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps `1 * 1` mutated to `1 + 1` pending because the mutant is not multiplicative" do
+    mutant = build_mutant(
+      original_node: binary_send(int(1), :*, int(1)),
+      mutated_node: binary_send(int(1), :+, int(1))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps `1 * 2` mutated to `1 / 1` pending because the original operand is not one" do
+    mutant = build_mutant(
+      original_node: binary_send(int(1), :*, int(2)),
+      mutated_node: binary_send(int(1), :/, int(1))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps `1 * 1` mutated to `1 / 2` pending because the mutated operand is not one" do
+    mutant = build_mutant(
+      original_node: binary_send(int(1), :*, int(1)),
+      mutated_node: binary_send(int(1), :/, int(2))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps `x || y` mutated to `y` pending because only a `false` left operand is an identity" do
+    mutant = build_mutant(
+      original_node: Parser::AST::Node.new(:or, [lvar(:x), lvar(:y)]),
+      mutated_node: lvar(:y)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps `x && y` mutated to `y` pending because only a `true` left operand is an identity" do
+    mutant = build_mutant(
+      original_node: Parser::AST::Node.new(:and, [lvar(:x), lvar(:y)]),
+      mutated_node: lvar(:y)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps `:a == :b` mutated to `:c.equal?(:b)` pending because the receivers differ" do
+    mutant = build_mutant(
+      original_node: binary_send(sym(:a), :==, sym(:b)),
+      mutated_node: binary_send(sym(:c), :equal?, sym(:b))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "keeps `\"a\" + \"b\"` mutated to `\"a\".eql?(\"b\")` pending because `+` is not an equality operator" do
+    mutant = build_mutant(
+      original_node: binary_send(str("a"), :+, str("b")),
+      mutated_node: binary_send(str("a"), :eql?, str("b"))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  it "marks `\"a\".eql?(\"b\")` mutated to `\"a\" == \"b\"` equivalent in the reverse direction too" do
+    mutant = build_mutant(
+      original_node: binary_send(str("a"), :eql?, str("b")),
+      mutated_node: binary_send(str("a"), :==, str("b"))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:equivalent)
+  end
+
+  it "keeps `\"a\" == \"b\"` mutated to `\"a\".eql?(\"c\")` pending because the right operands differ" do
+    mutant = build_mutant(
+      original_node: binary_send(str("a"), :==, str("b")),
+      mutated_node: binary_send(str("a"), :eql?, str("c"))
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
 end

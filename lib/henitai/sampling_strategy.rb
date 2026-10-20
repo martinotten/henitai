@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "digest"
-
 module Henitai
   # Samples mutants deterministically, stratified by operator within each subject.
   #
@@ -30,11 +29,11 @@ module Henitai
     def stratified_sample(mutants, ratio:, seed:)
       return [] if ratio.to_f <= 0.0
 
-      kept = {}.compare_by_identity
+      kept = Set.new.compare_by_identity
       mutants.group_by { |mutant| mutant.subject.expression }.each_value do |group|
-        select_within_subject(group, ratio:, seed:).each { |mutant| kept[mutant] = true }
+        select_within_subject(group, ratio:, seed:).each { |mutant| kept << mutant }
       end
-      mutants.select { |mutant| kept.key?(mutant) }
+      mutants.select { |mutant| kept.include?(mutant) }
     end
 
     def select_within_subject(group, ratio:, seed:)

@@ -783,5 +783,72 @@ RSpec.describe Henitai::StaticFilter do
         expect(mutant.status).to eq(:pending)
       end
     end
+
+    it "reuses the source lines it already read for the same file" do
+      Dir.mktmpdir do |dir|
+        write_sample(dir, "audit_log(1)\n")
+        filter = described_class.new
+        mutant = build_mutant("foo.bar")
+        set_mutant_location(mutant, file: File.join(dir, "sample.rb"), start_line: 1, end_line: 1)
+        apply_mutants(dir, [mutant], config(ignore_patterns: ["audit_log"]), filter:)
+
+        write_sample(dir, "other(1)\n")
+        mutant.status = :pending
+        apply_mutants(dir, [mutant], config(ignore_patterns: ["audit_log"]), filter:)
+
+        expect(mutant.status).to eq(:ignored)
+      end
+    end
+
+    it "keeps a directive-ignored mutant ignored even when its activation is unfaithful" do
+      with_sample_file(<<~RUBY) do |dir, path|
+        class Sample
+          def value(input)
+            input + 1 # henitai:disable
+          end
+        end
+      RUBY
+        mutants = arithmetic_mutants(path)
+        fidelity = instance_double(Henitai::FidelityCheck, violation: "activation mismatch")
+
+        apply_mutants(dir, mutants, filter: described_class.new(fidelity_check: fidelity))
+
+        expect(mutants.map(&:status).uniq).to eq([:ignored])
+      end
+    end
+
+    it "does not overwrite the status of a mutant that is no longer pending" do
+      mutant = Henitai::Mutant.new(
+        subject: Henitai::Subject.new(namespace: "Example", method_name: "example"),
+        operator: "ArithmeticOperator",
+        nodes: { original: Henitai::SourceParser.parse("1 + 0"), mutated: Henitai::SourceParser.parse("1 - 0") },
+        description: "example mutation",
+        location: { file: "sample.rb", start_line: 1, end_line: 1, start_col: 0, end_col: 1 }
+      )
+      mutant.status = :runtime_error
+      fidelity = instance_double(Henitai::FidelityCheck, violation: nil)
+
+      Dir.mktmpdir do |dir|
+        apply_mutants(dir, [mutant], filter: described_class.new(fidelity_check: fidelity))
+      end
+
+      expect(mutant.status).to eq(:runtime_error)
+    end
+
+    it "reads source files as UTF-8 regardless of the default external encoding" do
+      original_encoding = Encoding.default_external
+      Dir.mktmpdir do |dir|
+        write_sample(dir, "café(1)\n")
+        mutant = build_mutant("foo.bar")
+        set_mutant_location(mutant, file: File.join(dir, "sample.rb"), start_line: 1, end_line: 1)
+
+        Encoding.default_external = Encoding::US_ASCII
+        apply_mutants(dir, [mutant], config(ignore_patterns: ["café"]))
+
+        expect(mutant.status).to eq(:ignored)
+      ensure
+        Encoding.default_external = original_encoding
+      end
+    end
   end
 end
