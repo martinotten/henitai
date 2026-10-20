@@ -388,12 +388,14 @@ Measurements:
 | Run | Killed | Survived | NoCoverage | MS / MSI | Wall time |
 |---|---|---|---|---|---|
 | Dogfood Phase C, default | 1184 | 75 | 80 | 94.23 % / 85.80 % | 26.5 min |
-| Dogfood Phase D | pending | pending | pending | pending (needs authorization) | pending |
+| Dogfood Phase D | 1154 | 111 | 81 | 91.60 % / 82.19 % | 28.5 min |
 | Survivor check `--since c70fd8f` | 403 | 22 | – | 94.92 % / 92.64 % | 6.1 min |
 
 Notes:
 
 - `Pending` mutants now leave the MSI denominator, so MSI is not directly comparable with earlier runs when interrupted runs were involved.
+- The Phase D dogfood run (at `aabd534`) passed its threshold (exit 0), and no control run failed. It also had 36 Timeout, 21 RuntimeError and 1 CompileError mutants, and the report records `sampling: {stratified, 0.05, seed 0}`.
+- The Phase D run is not a like-for-like comparison with Phase C. Sampling now really stratifies by operator with a fixed seed (FLT-04), so the run checks a different set of mutants. Each subject still gets at least one mutant, which is why the total stays about the same. The equivalence rules removed by FLT-01 also no longer filter mutants out. The lower MS/MSI therefore comes from which mutants were selected, not from a loss of test strength. Thresholds stay unchanged.
 - Stale-verdict reuse after a helper edit was the one reproduced soundness defect; it is closed by the reuse context rather than by a special case.
 
 ## Sequencing
