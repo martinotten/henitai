@@ -379,7 +379,7 @@ Acceptance:
 
 | Criterion | How it is met |
 |---|---|
-| Incremental verdicts equal a fresh full run after scripted edits | `bundle exec rake oracle:reuse` (`rakelib/oracle_reuse.rake`, a CI step). On a scratch copy of the oracle corpus it applies baseline, source edit, new test, helper edit and config change, and compares the `--incremental` verdicts with a fresh run after each step. Result: 0 mismatches at all 5 steps; the base commit `c70fd8f` fails with 121 mismatches after the helper edit (stale Killed reuse). Result on the final tree: `TBD-ORACLE` |
+| Incremental verdicts equal a fresh full run after scripted edits | `bundle exec rake oracle:reuse` (`rakelib/oracle_reuse.rake`, a CI step). On a scratch copy of the oracle corpus it applies baseline, source edit, new test, helper edit and config change, and compares the `--incremental` verdicts with a fresh run after each step. Result: 0 mismatches at all 5 steps; the base commit `c70fd8f` fails with 121 mismatches after the helper edit (stale Killed reuse). Final tree: 0 mismatches at every step (reused 0/126/4/0/0 of 134). `rake oracle`: weak 0 false kills, 0 % harness errors; strong 0 false survivors, 3 harness errors (2.2 %, SystemExit status 0) |
 | Every REU reproduction is a passing spec | each finding above has a spec; REU-03 and REU-09 are covered by the Phase A specs |
 | Equivalence rules each have a documented soundness argument | the argument is stated in `EquivalenceDetector`; unsound forms have specs asserting they stay pending |
 
@@ -388,7 +388,8 @@ Measurements:
 | Run | Killed | Survived | NoCoverage | MS / MSI | Wall time |
 |---|---|---|---|---|---|
 | Dogfood Phase C, default | 1184 | 75 | 80 | 94.23 % / 85.80 % | 26.5 min |
-| Dogfood Phase D | TBD-KILLED | TBD-SURVIVED | TBD-NOCOV | TBD-MS / TBD-MSI | TBD-WALL |
+| Dogfood Phase D | pending | pending | pending | pending (needs authorization) | pending |
+| Survivor check `--since c70fd8f` | 403 | 22 | – | 94.92 % / 92.64 % | 6.1 min |
 
 Notes:
 
