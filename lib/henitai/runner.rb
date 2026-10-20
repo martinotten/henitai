@@ -11,10 +11,11 @@ module Henitai
   #
   #   Gate 2 — Mutant generation
   #     Apply operators to each Subject's AST. Filter arid (non-productive)
-  #     nodes via ignore_patterns. Produces the initial mutant list.
+  #     nodes from the built-in catalog. Produces the initial mutant list.
   #
   #   Gate 3 — Static filtering
-  #     Remove ignored mutants (pattern matches), compile-time errors.
+  #     Mark mutants whose original start line matches an ignore_patterns
+  #     entry as :ignored, and remove compile-time errors.
   #     Apply per-test coverage data: mark :no_coverage for uncovered mutants.
   #
   #   Gate 4 — Mutant execution

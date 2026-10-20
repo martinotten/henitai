@@ -268,8 +268,11 @@ standalone comment in the contiguous comment block directly above a `def`
 (a blank line breaks the association). Trailing text is allowed
 (`# henitai:disable -- reviewed defensive branch`). Skipped mutants are
 reported as `Ignored`, so they stay visible in the report instead of silently
-vanishing. Use `mutation.ignore_patterns` for repo-wide policy and
-`# henitai:disable` for one-off, reviewed exclusions.
+vanishing. `mutation.ignore_patterns` is matched against the source line where
+each mutant's node starts, so only mutants on a matching line are reported as
+`Ignored`; an enclosing `if` or block whose body matches stays mutated. Use
+`mutation.ignore_patterns` for repo-wide policy and `# henitai:disable` for
+one-off, reviewed exclusions.
 
 Directives can also target specific operators, carry a reason (serialized as
 `statusReason`, visible in the HTML report), and cover regions:

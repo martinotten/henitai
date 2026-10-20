@@ -10,26 +10,11 @@ module Henitai
     INVARIANT_METHODS = %i[is_a? respond_to? kind_of?].freeze
     DSL_METHODS = %i[let subject before after].freeze
 
-    def suppressed?(node, config)
-      custom_pattern_match?(node, config) || catalog_match?(node)
+    def suppressed?(node)
+      catalog_match?(node)
     end
 
     private
-
-    def custom_pattern_match?(node, config)
-      source = node.location&.expression&.source
-      return false unless source
-
-      compiled_ignore_patterns(config).any? do |pattern|
-        pattern.match?(source)
-      end
-    end
-
-    def compiled_ignore_patterns(config)
-      patterns = Array(config&.ignore_patterns).dup.freeze
-      @compiled_ignore_patterns ||= {}
-      @compiled_ignore_patterns[patterns] ||= patterns.map { |pattern| Regexp.new(pattern) }
-    end
 
     def catalog_match?(node)
       case node.type

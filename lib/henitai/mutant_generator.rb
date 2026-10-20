@@ -110,7 +110,7 @@ module Henitai
       end
 
       def apply_operators(node)
-        return if @arid_node_filter.suppressed?(node, @config)
+        return if @arid_node_filter.suppressed?(node)
 
         @operators_by_node_type[node.type].each do |operator|
           operator.mutate(node, subject: @subject).each do |mutant|
