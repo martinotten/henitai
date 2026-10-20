@@ -1169,8 +1169,8 @@ RSpec.describe Henitai::Runner do
           integration:,
           history_store:
         )
-        allow(diff_analyzer).to receive(:changed_files) do |kwargs|
-          calls << kwargs
+        allow(diff_analyzer).to receive(:changed_files_since) do |ref|
+          calls << { since: ref }
           ["lib/sample.rb", "spec/other_spec.rb"]
         end
         allow(diff_analyzer).to receive_messages(working_tree_changed_files: [], head_sha: "new-sha")
@@ -1195,7 +1195,7 @@ RSpec.describe Henitai::Runner do
         expect(captured[:since]).to eq("HEAD~1")
         expect(calls).to eq(
           [
-            { from: "HEAD~1", to: "HEAD" },
+            { since: "HEAD~1" },
             ["lib/sample.rb"]
           ]
         )
@@ -1214,7 +1214,7 @@ RSpec.describe Henitai::Runner do
         diff_analyzer = instance_double(Henitai::GitDiffAnalyzer, head_sha: "sha")
 
         allow(Henitai::GitDiffAnalyzer).to receive(:new).and_return(diff_analyzer)
-        allow(diff_analyzer).to receive_messages(changed_files: [], working_tree_changed_files: ["lib/sample.rb"])
+        allow(diff_analyzer).to receive_messages(changed_files_since: [], working_tree_changed_files: ["lib/sample.rb"])
         collaborators = stub_pipeline(runner, history_store: build_history_store)
 
         runner.run
@@ -1237,7 +1237,9 @@ RSpec.describe Henitai::Runner do
         per_test_coverage = instance_double(Henitai::PerTestCoverage)
 
         allow(Henitai::GitDiffAnalyzer).to receive(:new).and_return(diff_analyzer)
-        allow(diff_analyzer).to receive_messages(changed_files: ["spec/sample_spec.rb"], working_tree_changed_files: [])
+        allow(diff_analyzer).to receive_messages(
+          changed_files_since: ["spec/sample_spec.rb"], working_tree_changed_files: []
+        )
         allow(per_test_coverage).to receive(:source_files_covered_by) do |path|
           path.end_with?("spec/sample_spec.rb") ? [File.expand_path("lib/sample.rb")] : []
         end
@@ -1865,7 +1867,7 @@ RSpec.describe Henitai::Runner do
           allow(runner).to receive(:git_diff_analyzer).and_return(
             instance_double(
               Henitai::GitDiffAnalyzer,
-              changed_files: [], working_tree_changed_files: [], head_sha: "abc123"
+              changed_files_since: [], working_tree_changed_files: [], head_sha: "abc123"
             )
           )
 
