@@ -419,6 +419,20 @@ RSpec.describe Henitai::MutantGenerator do
     end
   end
 
+  it "skips sampling when asked not to sample" do
+    Dir.mktmpdir do |dir|
+      path = write_source(dir, "lib/sample.rb", "class Sample\n  def announce\n    1 + 2\n  end\nend\n")
+      config = write_configuration(dir, "mutation:\n  sampling:\n    ratio: 0.0\n    strategy: stratified\n")
+      subject = Henitai::SubjectResolver.new.resolve_from_files([path]).first
+
+      mutants = described_class.new.generate(
+        [subject], [Henitai::Operators::ArithmeticOperator.new], config:, sample: false
+      )
+
+      expect(mutants).not_to be_empty
+    end
+  end
+
   it "passes the configured sampling seed to the strategy" do
     Dir.mktmpdir do |dir|
       path = write_source(dir, "lib/sample.rb", "class Sample\n  def announce\n    1 + 2\n  end\nend\n")

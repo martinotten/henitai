@@ -1173,6 +1173,33 @@ RSpec.describe Henitai::Runner do
     end
   end
 
+  it "neither samples nor records sampling on a survivor rerun" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+      Dir.chdir(dir) do
+        config = Struct.new(
+          :includes, :excludes, :operators, :timeout, :reporters, :integration, :reports_dir, :sampling
+        ).new(["lib"], [], :light, 10.0, [], "rspec", "reports", { ratio: 0.05, strategy: "stratified" })
+        strategy = instance_double(Henitai::SurvivorRerunStrategy,
+                                   try_recipe_run: nil, apply_selection: [], survivor_stats: nil, active?: true)
+        allow(Henitai::SurvivorRerunStrategy).to receive(:new).and_return(strategy)
+        runner = described_class.new(config:, survivors_from: "reports/mutation-report.json")
+        generator = instance_double(Henitai::MutantGenerator, generate: [])
+        stub_empty_pipeline(runner)
+        allow(runner).to receive(:mutant_generator).and_return(generator)
+        captured = nil
+        allow(Henitai::Result).to receive(:new) { |**kwargs| (captured = kwargs) && build_result([]) }
+        allow(Henitai::Reporter).to receive(:run_all)
+        runner.run
+
+        expect(generator).to have_received(:generate).with(anything, anything, config:, sample: false)
+        expect(captured[:sampling]).to be_nil
+      end
+    end
+  end
+
   it "restricts Gate 1 to changed files when --since is given" do
     Dir.mktmpdir do |dir|
       FileUtils.mkdir_p(File.join(dir, "lib"))
@@ -1564,13 +1591,15 @@ RSpec.describe Henitai::Runner do
           mutant_generator = instance_spy(Henitai::MutantGenerator)
           diff_analyzer    = instance_double(Henitai::GitDiffAnalyzer)
           received_mutants = :unset
+          bootstrapper = instance_spy(Henitai::CoverageBootstrapper)
 
           runner = described_class.new(config:, survivors_from: report_path)
           allow(runner).to receive_messages(
             execution_engine:,
             integration:,
             history_store:,
-            git_diff_analyzer: diff_analyzer
+            git_diff_analyzer: diff_analyzer,
+            coverage_bootstrapper: bootstrapper
           )
           allow(runner).to receive(:source_files).and_raise(
             "source_files should not be called on the recipe fast path"
@@ -1592,6 +1621,9 @@ RSpec.describe Henitai::Runner do
           # The mutant generator must NOT have been called (fast path taken)
           expect(mutant_generator).not_to have_received(:generate)
           expect(received_mutants.map(&:stable_id)).to eq([stable_id])
+          # Gate 0 still refreshes coverage, so new or edited tests are selected
+          expect(bootstrapper).to have_received(:ensure!)
+            .with(hash_including(source_files: ["lib/sample.rb"]))
         end
       end
     end

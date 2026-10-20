@@ -6,7 +6,7 @@ require_relative "source_parser"
 module Henitai
   # Traverses a subject's AST and asks operators to build mutants.
   class MutantGenerator
-    def generate(subjects, operators, config: nil)
+    def generate(subjects, operators, config: nil, sample: true)
       normalized_operators = normalize_operators(operators)
       arid_node_filter = AridNodeFilter.new
       syntax_validator = SyntaxValidator.new
@@ -26,7 +26,8 @@ module Henitai
       # mutant it receives, so running it last avoids that work for discarded mutants. Sampling is
       # stratified by operator within each subject, using a seeded per-mutant order, and returns kept
       # mutants in input order, so deduplication still keeps first occurrences deterministically.
-      distinct_programs(sample_mutants(distinct_identities(mutants), config:, sampling_strategy:))
+      unique = distinct_identities(mutants)
+      distinct_programs(sample ? sample_mutants(unique, config:, sampling_strategy:) : unique)
     end
 
     private

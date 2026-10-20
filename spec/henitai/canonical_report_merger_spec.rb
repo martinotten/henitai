@@ -267,6 +267,13 @@ RSpec.describe Henitai::CanonicalReportMerger do
         expect(described_class.merge(current, prior_path)["files"]["f.rb"]).not_to have_key("sessionId")
       end
 
+      it "takes the current provenance when the run re-verified every mutant of a file" do
+        prior_path = write_prior(schema({ "f.rb" => file_entry(mutant_schema("A")).merge(sessionId: "S1") }))
+        current = schema({ "f.rb" => file_entry(mutant_schema("A")).merge(sessionId: "S2") })
+
+        expect(described_class.merge(current, prior_path)["files"]["f.rb"]["sessionId"]).to eq("S2")
+      end
+
       it "keeps provenance of a partially merged file when both sides share the session" do
         prior_path = write_prior(schema({ "f.rb" => file_entry(mutant_schema("A")).merge(sessionId: "S1") }))
         current = schema({ "f.rb" => file_entry(mutant_schema("C")).merge(sessionId: "S1") })

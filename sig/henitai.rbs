@@ -640,7 +640,7 @@ module Henitai
   end
 
   class MutantGenerator
-    def generate: (Array[Subject], Array[untyped], ?config: untyped) -> Array[Mutant]
+    def generate: (Array[Subject], Array[untyped], ?config: untyped, ?sample: bool) -> Array[Mutant]
   end
 
   module MutantIdentity

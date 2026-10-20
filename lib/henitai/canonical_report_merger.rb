@@ -86,7 +86,9 @@ module Henitai
     # its mutants, so its provenance is dropped unless both sides agree.
     def self.merge_provenance(target, entry)
       provenance = entry.slice("sessionId", "gitSha")
-      fresh = target["mutants"].empty? && !target.key?("sessionId")
+      # A fresh run with no prior mutants left in this file: the current
+      # entry's provenance covers every mutant in it.
+      fresh = target["mutants"].empty?
       agree = fresh || target["sessionId"] == entry["sessionId"]
       %w[sessionId gitSha].each { |key| target.delete(key) }
       target.merge!(provenance) if agree

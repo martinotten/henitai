@@ -38,17 +38,24 @@ module Henitai
       # which reflects selector fallback and test_excludes and would
       # permanently mismatch the live set. When the fingerprint cannot be
       # recomputed (no per-test map, recipe stubs without a source range),
-      # the previously stored bindings are kept: the filter re-validates
-      # everything live before reuse, so a carried-forward fingerprint can
-      # never validate a changed state.
+      # the previously stored bindings are kept, but only from a survived
+      # row of the same subject source: a killed row's or an edited method's
+      # fingerprints would vouch for a state this survivor never ran in.
       def survived_cache_bindings(mutant, existing_row)
         bindings = [
           VerdictFingerprint.subject_source_hash(mutant),
           survived_tests_fingerprint(mutant)
         ]
         return bindings unless bindings.any?(&:nil?)
+        return [nil, nil] unless carry_survived_bindings?(bindings.first, existing_row)
 
         existing_cache_bindings(existing_row)
+      end
+
+      def carry_survived_bindings?(source_hash, existing_row)
+        return false unless existing_row && existing_row["current_status"] == "survived"
+
+        source_hash.nil? || source_hash == existing_row["subject_source_hash"]
       end
 
       def survived_tests_fingerprint(mutant)

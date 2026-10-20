@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--incremental`, always: new or edited tests and helpers invalidate them,
   reused survivors are reported with `fromCache`, and recipe stubs without a
   source range are always re-executed. `SurvivorTestFilter` is removed.
+  The recipe fast path now refreshes coverage (Gate 0) so new or edited tests
+  are selected, recipe stubs also run their name-matched tests, and survivor
+  reruns never sample (sampling had dropped prior survivors before matching).
+- A survived verdict whose covering-test fingerprint cannot be recomputed keeps
+  stored fingerprints only from a survived row of the same subject source,
+  never from a killed row or an edited method.
 - Gate 1 source selection has its own per-test coverage instance, so reuse and
   history read the post-bootstrap per-test map.
 - Recipe stubs keep their precomputed stable ID and persist the `replacement`
@@ -32,7 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   replaces that file's prior entry wholesale (and removes it when it has no
   mutants), so stale mutants of edited or deleted code no longer linger.
   `--survivors-from <canonical report>` redirects to the session snapshot only
-  when every file entry carries the report's `sessionId`.
+  when every file entry carries the report's `sessionId`; a file whose every
+  prior mutant was re-run takes the new run's provenance.
 - `--since` diffs against the merge base (`REF...HEAD`) instead of the ref's
   tip, so commits that landed on the base branch after the fork point are not
   treated as changes.

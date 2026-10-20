@@ -539,6 +539,33 @@ RSpec.describe Henitai::MutantHistoryStore do
         end
       end
 
+      it "never carries a killed row's fingerprints into a survived verdict" do
+        Dir.mktmpdir do |dir|
+          killed = build_cacheable_mutant(dir, status: :killed)
+          store_at(dir).record(build_result([killed], summary), version: "0.1.0")
+
+          survived = build_cacheable_mutant(dir, status: :survived)
+          degraded = store_at(dir, per_test_coverage: coverage_double([]))
+          degraded.record(build_result([survived], summary), version: "0.1.1")
+
+          expect(degraded.verdict_for(Henitai::MutantIdentity.stable_id(killed))).to be_nil
+        end
+      end
+
+      it "drops stored survived fingerprints once the subject source changed" do
+        Dir.mktmpdir do |dir|
+          mutant = build_cacheable_mutant(dir, status: :survived)
+          store = store_at(dir, per_test_coverage: coverage_double([File.join(dir, "sample_spec.rb")]))
+          store.record(build_result([mutant], summary), version: "0.1.0")
+
+          File.write(File.join(dir, "sample.rb"), "class Sample\n  def value = 2\nend\n")
+          degraded = store_at(dir, per_test_coverage: coverage_double([]))
+          degraded.record(build_result([mutant], summary), version: "0.1.1")
+
+          expect(degraded.verdict_for(Henitai::MutantIdentity.stable_id(mutant))).to be_nil
+        end
+      end
+
       it "carries stored fingerprints forward for cache-hit survivors" do
         Dir.mktmpdir do |dir|
           mutant = build_cacheable_mutant(dir, status: :survived)

@@ -80,6 +80,9 @@ module Henitai
     # static/skip/arid/stillborn filtering — everything short of execution.
     def pipeline_mutants
       if survivor_rerun? && (fast_mutants = survivor_strategy.try_recipe_run)
+        # Gate 0 still runs: test selection reads the per-test map, which must
+        # include new or edited tests.
+        bootstrap_coverage(fast_mutants.filter_map { |mutant| mutant.subject.source_file }.uniq)
         return fast_mutants
       end
 
@@ -108,8 +111,9 @@ module Henitai
       )
     end
 
+    # A survivor rerun must see every prior survivor, so it never samples.
     def generate_mutants(subjects)
-      mutant_generator.generate(subjects, operators, config:)
+      mutant_generator.generate(subjects, operators, config:, sample: !survivor_rerun?)
     end
 
     def filter_mutants(mutants)
@@ -204,7 +208,7 @@ module Henitai
     # default seed filled in so the report is reproducible on its own.
     def result_sampling
       sampling = optional_config(:sampling)
-      return nil unless sampling && sampling[:ratio]
+      return nil if survivor_rerun? || !(sampling && sampling[:ratio])
 
       {
         strategy: (sampling[:strategy] || "stratified").to_s,
