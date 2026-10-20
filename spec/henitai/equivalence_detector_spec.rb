@@ -850,6 +850,31 @@ RSpec.describe Henitai::EquivalenceDetector do
     expect(mutant.status).to eq(:pending)
   end
 
+  # Kill: a `false` left operand alone is not enough; the mutant must collapse to the
+  # right operand. `false || x` mutated to `y` is a different expression and stays pending.
+  it "keeps `false || x` mutated to an unrelated `y` pending" do
+    mutant = build_mutant(
+      original_node: Parser::AST::Node.new(:or, [boolean(false), lvar(:x)]),
+      mutated_node: lvar(:y)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
+  # Kill: same for `true && x` mutated to an unrelated `y`.
+  it "keeps `true && x` mutated to an unrelated `y` pending" do
+    mutant = build_mutant(
+      original_node: Parser::AST::Node.new(:and, [boolean(true), lvar(:x)]),
+      mutated_node: lvar(:y)
+    )
+
+    described_class.new.analyze(mutant)
+
+    expect(mutant.status).to eq(:pending)
+  end
+
   it "keeps `x || y` mutated to `y` pending because only a `false` left operand is an identity" do
     mutant = build_mutant(
       original_node: Parser::AST::Node.new(:or, [lvar(:x), lvar(:y)]),
