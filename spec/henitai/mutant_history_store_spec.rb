@@ -264,6 +264,24 @@ RSpec.describe Henitai::MutantHistoryStore do
       end
     end
 
+    it "does not insert a runs row for an authoritative partial rerun" do
+      Dir.mktmpdir do |dir|
+        store = described_class.new(path: File.join(dir, "mutation-history.sqlite3"))
+        result = build_result(
+          [build_mutant(status: :killed)],
+          { mutation_score: 100.0, mutation_score_indicator: 100.0, equivalence_uncertainty: nil }
+        )
+        allow(result).to receive_messages(authoritative?: true, partial_rerun?: true)
+        store.record(result, version: "0.1.0")
+
+        db = SQLite3::Database.new(File.join(dir, "mutation-history.sqlite3"))
+        count = db.get_first_value("SELECT COUNT(*) FROM runs")
+        db.close
+
+        expect(count).to eq(0)
+      end
+    end
+
     it "still upserts mutant rows for a partial rerun" do
       Dir.mktmpdir do |dir|
         store = described_class.new(path: File.join(dir, "mutation-history.sqlite3"))
