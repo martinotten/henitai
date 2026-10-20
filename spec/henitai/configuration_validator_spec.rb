@@ -428,6 +428,24 @@ RSpec.describe Henitai::ConfigurationValidator do
     it "accepts nil sampling" do
       expect { described_class.validate!({ mutation: { sampling: nil } }) }.not_to raise_error
     end
+
+    it "accepts an integer seed of zero or more" do
+      expect do
+        described_class.validate!({ mutation: { sampling: { ratio: 0.5, strategy: "stratified", seed: 42 } } })
+      end.not_to raise_error
+    end
+
+    it "rejects a negative seed" do
+      expect do
+        described_class.validate!({ mutation: { sampling: { ratio: 0.5, strategy: "stratified", seed: -1 } } })
+      end.to raise_error(Henitai::ConfigurationError, /mutation\.sampling\.seed/)
+    end
+
+    it "rejects a non-integer seed" do
+      expect do
+        described_class.validate!({ mutation: { sampling: { ratio: 0.5, strategy: "stratified", seed: "7" } } })
+      end.to raise_error(Henitai::ConfigurationError, /mutation\.sampling\.seed/)
+    end
   end
 
   describe "unknown key warnings" do

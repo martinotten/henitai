@@ -29,7 +29,7 @@ module Henitai
       control_runs flaky_detection fork_server
     ].freeze
     VALID_REPORTS_KEYS = %i[checkpoint checkpoint_every checkpoint_interval].freeze
-    VALID_SAMPLING_KEYS = %i[ratio strategy].freeze
+    VALID_SAMPLING_KEYS = %i[ratio strategy seed].freeze
     VALID_COVERAGE_CRITERIA_KEYS = %i[test_result timeout process_abort].freeze
     VALID_THRESHOLDS_KEYS = %i[high low].freeze
     VALID_DASHBOARD_KEYS = %i[project base_url].freeze

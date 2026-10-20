@@ -140,6 +140,7 @@ module Henitai
         Scalars.validate_sampling_completeness(value)
         Scalars.validate_sampling_ratio(value[:ratio])
         Scalars.validate_sampling_strategy(value[:strategy])
+        Scalars.validate_sampling_seed(value[:seed])
       end
 
       def warn_unknown_keys(raw, allowed_keys, path = nil)

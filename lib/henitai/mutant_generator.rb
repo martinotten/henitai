@@ -23,9 +23,9 @@ module Henitai
       end
 
       # Sample before deduplicating programs: distinct_programs computes activation sources for every
-      # mutant it receives, so running it last avoids that work for discarded mutants. Sampling keeps
-      # the first N per subject in order and deduplication keeps first occurrences, so the result is
-      # still a deterministic, duplicate-free prefix.
+      # mutant it receives, so running it last avoids that work for discarded mutants. Sampling is
+      # stratified by operator within each subject, using a seeded per-mutant order, and returns kept
+      # mutants in input order, so deduplication still keeps first occurrences deterministically.
       distinct_programs(sample_mutants(distinct_identities(mutants), config:, sampling_strategy:))
     end
 
@@ -182,7 +182,8 @@ module Henitai
       sampling_strategy.sample(
         mutants,
         ratio: sampling[:ratio],
-        strategy: sampling[:strategy] || :stratified
+        strategy: sampling[:strategy] || :stratified,
+        seed: sampling[:seed] || SamplingStrategy::DEFAULT_SEED
       )
     end
 
