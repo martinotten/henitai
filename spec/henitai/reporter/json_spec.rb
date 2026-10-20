@@ -231,6 +231,7 @@ RSpec.describe Henitai::Reporter::Json do
         Henitai::Mutant,
         survived?: true,
         stable_id: "stable-abc",
+        mutated_source: "1 + 0",
         subject: instance_double(
           Henitai::Subject,
           namespace: "Foo",

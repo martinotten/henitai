@@ -941,6 +941,7 @@ module Henitai
       def history_store: () -> MutantHistoryStore?
       def authoritative?: (untyped) -> bool
       def canonical_path: () -> String
+      def merged_schema_for: (untyped) -> untyped
     end
 
     class Terminal < Base

@@ -71,6 +71,15 @@ module Henitai
       def canonical_path
         File.join(config.reports_dir, "mutation-report.json")
       end
+
+      # Scoped runs upload the merged canonical report so that they do not
+      # replace the full report with a partial one.
+      def merged_schema_for(result)
+        schema = result.to_stryker_schema
+        return schema if authoritative?(result)
+
+        CanonicalReportMerger.merge(schema, canonical_path, prune_missing: true)
+      end
     end
 
     # Terminal reporter.
@@ -452,10 +461,7 @@ module Henitai
       end
 
       def schema_for(result)
-        schema = result.to_stryker_schema
-        return schema if authoritative?(result)
-
-        CanonicalReportMerger.merge(schema, canonical_path, prune_missing: true)
+        merged_schema_for(result)
       end
 
       def escaped_report_json(schema)
@@ -610,7 +616,7 @@ module Henitai
 
       def build_request(result, uri)
         request = Net::HTTP::Put.new(uri.request_uri, request_headers)
-        request.body = JSON.generate(result.to_stryker_schema)
+        request.body = JSON.generate(merged_schema_for(result))
         request
       end
 
