@@ -52,7 +52,7 @@ module Henitai
                    partial_rerun: false, survivor_stats: nil,
                    session_id: SecureRandom.uuid, git_sha: nil,
                    source_provider: ->(_file) { "" }, authoritative: true,
-                   since: nil, coverage_criteria: nil)
+                   since: nil, coverage_criteria: nil, sampling: nil)
       @mutants         = mutants
       @started_at      = started_at
       @finished_at     = finished_at
@@ -65,6 +65,7 @@ module Henitai
       @authoritative   = authoritative
       @since           = since
       @coverage_criteria = DEFAULT_COVERAGE_CRITERIA.merge(coverage_criteria || {})
+      @sampling = sampling
     end
     # rubocop:enable Metrics/ParameterLists
 
@@ -150,6 +151,7 @@ module Henitai
       schema = base_schema
       sha = @git_sha
       schema[:gitSha] = sha if sha
+      schema[:sampling] = @sampling if @sampling
       return schema unless partial_rerun?
 
       schema[:partialRerun] = true

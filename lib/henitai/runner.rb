@@ -185,8 +185,22 @@ module Henitai
         git_sha: safe_head_sha,
         source_provider: source_provider,
         authoritative: full_run?,
-        since: @since
+        since: @since,
+        sampling: result_sampling
       )
+    end
+
+    # Records the sampling that actually shaped the mutant set, with the
+    # default seed filled in so the report is reproducible on its own.
+    def result_sampling
+      sampling = optional_config(:sampling)
+      return nil unless sampling && sampling[:ratio]
+
+      {
+        strategy: (sampling[:strategy] || "stratified").to_s,
+        ratio: sampling[:ratio],
+        seed: sampling[:seed] || SamplingStrategy::DEFAULT_SEED
+      }
     end
 
     def safe_head_sha

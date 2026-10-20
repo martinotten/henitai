@@ -1142,6 +1142,35 @@ RSpec.describe Henitai::Runner do
     end
   end
 
+  it "passes the effective sampling config, with the default seed, to the result" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+      Dir.chdir(dir) do
+        config = Struct.new(
+          :includes, :excludes, :operators, :timeout, :reporters, :integration, :reports_dir, :sampling
+        ).new(["lib"], [], :light, 10.0, [], "rspec", "reports", { ratio: 0.05, strategy: "stratified" })
+        captured = capture_result_kwargs(described_class.new(config:))
+
+        expect(captured[:sampling]).to eq(strategy: "stratified", ratio: 0.05, seed: 0)
+      end
+    end
+  end
+
+  it "passes nil sampling to the result when sampling is not configured" do
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/sample.rb"), "class Sample; end\n")
+
+      Dir.chdir(dir) do
+        captured = capture_result_kwargs(described_class.new(config: build_config(reporters: [])))
+
+        expect(captured[:sampling]).to be_nil
+      end
+    end
+  end
+
   it "restricts Gate 1 to changed files when --since is given" do
     Dir.mktmpdir do |dir|
       FileUtils.mkdir_p(File.join(dir, "lib"))
