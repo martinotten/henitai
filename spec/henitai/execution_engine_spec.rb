@@ -67,12 +67,10 @@ RSpec.describe Henitai::ExecutionEngine do
       gate
     end
 
-    def stub_parallel_control_run(stats)
-      control_run = instance_double(Henitai::ControlRun, verify: stats)
-      allow(Henitai::ControlRun).to receive(:new).and_return(control_run)
-      runner = instance_double(Henitai::ProcessWorkerRunner, flaky_retry_count: 0, run: [])
+    def stub_parallel_runner(control_stats)
+      runner = instance_double(Henitai::ProcessWorkerRunner, flaky_retry_count: 0, run: [], control_stats:)
       allow(Henitai::ProcessWorkerRunner).to receive(:new).and_return(runner)
-      control_run
+      runner
     end
 
     it "routes linear verdicts through a control gate in front of the progress reporter", :aggregate_failures do
@@ -87,13 +85,23 @@ RSpec.describe Henitai::ExecutionEngine do
       expect(gate).to have_received(:progress).with(mutant, scenario_result: :killed)
     end
 
-    it "verifies parallel verdicts after execution" do
+    it "hands the parallel worker runner a control run for its gate" do
       mutants = 2.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
-      control_run = stub_parallel_control_run(verified: 1, failed: 0, reclassified: 0)
+      runner = stub_parallel_runner(verified: 1, failed: 0, reclassified: 0)
 
       described_class.new.run(mutants, build_integration, config_with_control_runs(true, jobs: 2))
 
-      expect(control_run).to have_received(:verify).with(mutants)
+      expect(runner).to have_received(:run)
+        .with(mutants, anything, anything, nil, hash_including(control_run: an_instance_of(Henitai::ControlRun)))
+    end
+
+    it "hands the parallel worker runner no control run when control runs are disabled" do
+      mutants = 2.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
+      runner = stub_parallel_runner(nil)
+
+      described_class.new.run(mutants, build_integration, config_with_control_runs(false, jobs: 2))
+
+      expect(runner).to have_received(:run).with(mutants, anything, anything, nil, hash_including(control_run: nil))
     end
 
     it "neither gates nor verifies when control runs are disabled", :aggregate_failures do
@@ -116,9 +124,9 @@ RSpec.describe Henitai::ExecutionEngine do
         .to_stderr
     end
 
-    it "warns when the parallel control pass reclassified verdicts" do
+    it "warns when the parallel control gate reclassified verdicts" do
       mutants = 2.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
-      stub_parallel_control_run(verified: 3, failed: 1, reclassified: 4)
+      stub_parallel_runner(verified: 3, failed: 1, reclassified: 4)
 
       expect { described_class.new.run(mutants, build_integration, config_with_control_runs(true, jobs: 2)) }
         .to output(/control runs failed for 1 of 3 subjects; 4 detected verdicts reclassified as CompileError/)
@@ -791,7 +799,8 @@ RSpec.describe Henitai::ExecutionEngine do
     engine.run(mutants, integration, config)
 
     expect(worker_runner).to have_received(:run)
-      .with(mutants, fork_runner, config, nil, test_file_resolver: anything, timeout_resolver: anything)
+      .with(mutants, fork_runner, config, nil, test_file_resolver: anything, timeout_resolver: anything,
+                                               control_run: nil)
   end
 
   it "filters candidate tests by per-test coverage before executing a mutant" do

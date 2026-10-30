@@ -38,16 +38,18 @@ module Henitai
       mutants
     end
 
+    # Verdicts pass a ControlGate before any observer sees them (ADR-16): a
+    # detection's control runs at its group's first detection, so every
+    # verdict reported is final. In parallel the worker runner builds the gate
+    # and runs controls as scheduler jobs.
     def run_pending_parallel(pending_mutants, integration, config, progress_reporter)
-      with_fork_server(pending_mutants, integration, config) do
-        run_parallel(pending_mutants, integration, config, progress_reporter)
+      control_run = control_run(integration, config) if control_runs?(config)
+      runner = with_fork_server(pending_mutants, integration, config) do
+        run_parallel(pending_mutants, integration, config, progress_reporter, control_run)
       end
-      verify_controls(pending_mutants, integration, config)
+      warn_control_failures(runner.control_stats) if control_run
     end
 
-    # Linear verdicts pass a ControlGate before any observer sees them
-    # (ADR-16): a detection's control runs at the group's first detection, so
-    # every verdict reported is final.
     def run_pending_linear(pending_mutants, integration, config, progress_reporter, mutex)
       gate = control_gate(integration, config, progress_reporter)
       with_fork_server(pending_mutants, integration, config) do
@@ -61,12 +63,6 @@ module Henitai
       return unless control_runs?(config)
 
       ControlGate.new(downstream: progress_reporter, control_run: control_run(integration, config))
-    end
-
-    def verify_controls(mutants, integration, config)
-      return unless control_runs?(config)
-
-      warn_control_failures(control_run(integration, config).verify(mutants))
     end
 
     def control_runs?(config) = config.respond_to?(:control_runs) && config.control_runs
@@ -104,22 +100,24 @@ module Henitai
       end
     end
 
-    def run_parallel(mutants, integration, config, progress_reporter)
+    def run_parallel(mutants, integration, config, progress_reporter, control_run)
       runner = ProcessWorkerRunner.new(
         worker_count: worker_count(config),
         flaky_tests: @flaky_tests,
         **parallel_runtime_options
       )
-      results = runner.run(
-        mutants,
-        @fork_server_runner || integration,
-        config,
-        progress_reporter,
-        test_file_resolver: ->(mutant) { prioritized_tests_for(mutant, integration, config) },
-        timeout_resolver: ->(_mutant, test_files) { resolved_timeout(test_files, config) }
-      )
+      runner.run(mutants, @fork_server_runner || integration, config, progress_reporter,
+                 **parallel_run_options(integration, config, control_run))
       @flaky_retry_count = runner.flaky_retry_count
-      results
+      runner
+    end
+
+    def parallel_run_options(integration, config, control_run)
+      {
+        test_file_resolver: ->(mutant) { prioritized_tests_for(mutant, integration, config) },
+        timeout_resolver: ->(_mutant, test_files) { resolved_timeout(test_files, config) },
+        control_run:
+      }
     end
 
     def process_mutant(mutant, integration, config, progress_reporter, mutex)
