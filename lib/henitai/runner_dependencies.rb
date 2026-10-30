@@ -82,8 +82,17 @@ module Henitai
     # Deliberately *not* memoized: `full_run?` is a property of the invocation,
     # not of the dependency set, and a cached reporter would silently keep the
     # first answer.
-    def progress_reporter(full_run:)
-      CompositeProgressReporter.for(config: @config, source_provider: source_provider, full_run: full_run)
+    def progress_reporter(full_run:, history_checkpointer: nil)
+      CompositeProgressReporter.for(config: @config, source_provider: source_provider, full_run: full_run,
+                                    history_checkpointer:)
+    end
+
+    # Checkpoints verdicts into the history store during the run (ADR-16);
+    # nil when `reports.checkpoint` is off.
+    def history_checkpointer(run_id:)
+      return unless @config.respond_to?(:checkpoint_enabled) && @config.checkpoint_enabled
+
+      HistoryCheckpointer.new(history_store:, config: @config, run_id:)
     end
 
     # Reads each source file once and caches it per path, so Result consumes

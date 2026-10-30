@@ -153,6 +153,31 @@ RSpec.describe Henitai::RunnerDependencies do
       expect(deps.progress_reporter(full_run: true)).to be_nil
     end
 
+    it "builds a history checkpointer on the shared history store for a run id" do
+      config = checkpoint_config(reporters: [])
+      deps = described_class.new(config:)
+      allow(Henitai::HistoryCheckpointer).to receive(:new).and_call_original
+
+      deps.history_checkpointer(run_id: "run-1")
+
+      expect(Henitai::HistoryCheckpointer).to have_received(:new)
+        .with(history_store: deps.history_store, config:, run_id: "run-1")
+    end
+
+    it "builds no history checkpointer when checkpointing is disabled" do
+      expect(build_deps(checkpoint_enabled: false).history_checkpointer(run_id: "run-1")).to be_nil
+    end
+
+    it "hands the history checkpointer to the composite" do
+      deps = described_class.new(config: checkpoint_config(reporters: []))
+      allow(Henitai::CompositeProgressReporter).to receive(:for).and_return(:a_reporter)
+
+      deps.progress_reporter(full_run: true, history_checkpointer: :checkpointer)
+
+      expect(Henitai::CompositeProgressReporter).to have_received(:for)
+        .with(hash_including(history_checkpointer: :checkpointer))
+    end
+
     # full_run? is a property of the invocation, not of the dependency set, so
     # this must not be memoized behind the first answer.
     it "passes full_run through on every call rather than caching the first" do

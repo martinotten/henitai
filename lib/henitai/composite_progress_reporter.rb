@@ -9,8 +9,11 @@ module Henitai
     # when terminal output is on, and the checkpoint writer when enabled and a
     # file report (json/html) is configured. Returns a single reporter when only
     # one is active, the composite when several are, or nil when none are.
-    def self.for(config:, source_provider:, full_run:)
-      active = [terminal_for(config), checkpoint_for(config, source_provider, full_run)].compact
+    #
+    # A {HistoryCheckpointer}, when given, joins them (ADR-16).
+    def self.for(config:, source_provider:, full_run:, history_checkpointer: nil)
+      active = [terminal_for(config), checkpoint_for(config, source_provider, full_run),
+                history_checkpointer].compact
       return active.first if active.one?
 
       active.empty? ? nil : new(active)
@@ -37,6 +40,16 @@ module Henitai
 
     def progress(mutant, scenario_result: nil)
       @reporters.each { |reporter| reporter.progress(mutant, scenario_result:) }
+    end
+
+    # Flushes every reporter that buffers. Each failure is reported and
+    # contained, so one reporter cannot keep the others from saving.
+    def flush
+      @reporters.each do |reporter|
+        reporter.flush if reporter.respond_to?(:flush)
+      rescue StandardError => e
+        warn "henitai: could not flush progress (#{e.class}: #{e.message})"
+      end
     end
   end
 end

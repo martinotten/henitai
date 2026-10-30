@@ -650,6 +650,13 @@ module Henitai
     def self.legacy_stable_id: (Mutant) -> String
   end
 
+  class HistoryCheckpointer
+    attr_reader committed: Integer
+    def initialize: (history_store: untyped, config: untyped, run_id: String, ?version: String, ?clock: untyped, ?warner: untyped) -> void
+    def progress: (untyped, **untyped) -> void
+    def flush: () -> void
+  end
+
   class ExecutionProvenance
     UNCAPTURED: untyped
     def self.capture: (Array[String], ?root: String) -> ExecutionProvenance
@@ -1220,7 +1227,8 @@ module Henitai
     def history_store: () -> untyped
     def capture_provenance: (Array[String]) -> ExecutionProvenance
     def execution_provenance: () -> untyped
-    def progress_reporter: (full_run: bool) -> untyped
+    def progress_reporter: (full_run: bool, ?history_checkpointer: untyped) -> untyped
+    def history_checkpointer: (run_id: String) -> HistoryCheckpointer?
     def source_provider: () -> ^(String) -> String
   end
 
@@ -1275,6 +1283,10 @@ module Henitai
     def integration: () -> untyped
     def operators: () -> untyped
     def progress_reporter: () -> untyped?
+    def history_checkpointer: () -> HistoryCheckpointer?
+    def run_id: () -> String
+    def save_interrupted_progress: () -> void
+    def flush_progress: () -> void
     def history_store: () -> untyped
     def per_test_coverage: () -> PerTestCoverage
     def reuse_filter: () -> IncrementalFilter

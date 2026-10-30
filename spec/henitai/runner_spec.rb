@@ -307,6 +307,88 @@ RSpec.describe Henitai::Runner do
       end
     end
 
+    describe "an interrupted run" do
+      def deps_with(dir, engine:, reporter:, checkpointer: nil, history_store: build_history_store)
+        config = build_config(reporters: [], includes: [], reports_dir: File.join(dir, "reports"))
+        deps = Henitai::RunnerDependencies.new(config:)
+        allow(deps).to receive_messages(
+          subject_resolver: instance_double(Henitai::SubjectResolver, resolve_from_files: []),
+          mutant_generator: instance_double(Henitai::MutantGenerator, generate: []),
+          static_filter: instance_double(Henitai::StaticFilter, apply: []),
+          execution_engine: engine, integration: instance_double(Henitai::Integration::Rspec, test_files: []),
+          history_store:, progress_reporter: reporter, history_checkpointer: checkpointer
+        )
+        [config, deps]
+      end
+
+      def raising_engine(error)
+        engine = instance_double(Henitai::ExecutionEngine)
+        allow(engine).to receive(:run).and_raise(error)
+        engine
+      end
+
+      [Interrupt.new, SignalException.new("TERM")].each do |signal|
+        it "flushes progress, says how to resume and re-raises #{signal.class}", :aggregate_failures do
+          Dir.mktmpdir do |dir|
+            reporter = instance_double(Henitai::CompositeProgressReporter, flush: nil)
+            checkpointer = instance_double(Henitai::HistoryCheckpointer, committed: 7)
+            config, deps = deps_with(dir, engine: raising_engine(signal), reporter:, checkpointer:)
+
+            expect { described_class.new(config:, deps:).run }
+              .to raise_error(signal.class)
+              .and output(/interrupted; 7 verdicts saved, resume with --incremental/).to_stderr
+            expect(reporter).to have_received(:flush)
+          end
+        end
+      end
+
+      it "re-raises the signal even when flushing fails" do
+        Dir.mktmpdir do |dir|
+          reporter = instance_double(Henitai::CheckpointReporter)
+          allow(reporter).to receive(:flush).and_raise(IOError, "disk full")
+          config, deps = deps_with(dir, engine: raising_engine(Interrupt.new), reporter:)
+
+          expect { described_class.new(config:, deps:).run }
+            .to raise_error(Interrupt).and output(/could not flush progress/).to_stderr
+        end
+      end
+
+      it "writes no history record for the aborted run" do
+        Dir.mktmpdir do |dir|
+          history_store = build_history_store
+          config, deps = deps_with(dir, engine: raising_engine(Interrupt.new), reporter: nil, history_store:)
+
+          expect { described_class.new(config:, deps:).run }.to raise_error(Interrupt).and output.to_stderr
+          expect(history_store).not_to have_received(:record)
+        end
+      end
+    end
+
+    it "checkpoints and records under one run id", :aggregate_failures do
+      Dir.mktmpdir do |dir|
+        config = build_config(reporters: [], includes: [], reports_dir: File.join(dir, "reports"))
+        deps = Henitai::RunnerDependencies.new(config:)
+        history_store = build_history_store
+        allow(deps).to receive_messages(
+          subject_resolver: instance_double(Henitai::SubjectResolver, resolve_from_files: []),
+          mutant_generator: instance_double(Henitai::MutantGenerator, generate: []),
+          static_filter: instance_double(Henitai::StaticFilter, apply: []),
+          execution_engine: instance_double(Henitai::ExecutionEngine, run: []),
+          integration: instance_double(Henitai::Integration::Rspec, test_files: []), history_store:
+        )
+        allow(deps).to receive(:history_checkpointer).and_call_original
+        allow(Henitai::Reporter).to receive(:run_all)
+
+        described_class.new(config:, deps:).run
+
+        run_ids = []
+        expect(deps).to have_received(:history_checkpointer) { |run_id:| run_ids << run_id }
+        expect(history_store).to have_received(:record) { |_result, **kwargs| run_ids << kwargs[:run_id] }
+        expect(run_ids.uniq.size).to eq(1)
+        expect(run_ids.first).to match(/\A\h{8}-/)
+      end
+    end
+
     it "captures the inputs before resolving subjects" do
       Dir.mktmpdir do |dir|
         config = build_config(reporters: [], includes: [], reports_dir: File.join(dir, "reports"))
