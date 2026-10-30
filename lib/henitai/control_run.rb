@@ -28,8 +28,8 @@ module Henitai
       stats = { verified: 0, failed: 0, reclassified: 0 }
       detected_groups(mutants).each_value do |detected|
         stats[:verified] += 1
-        result = run_control(detected.first)
-        next if result.status == :survived
+        result = run_for(detected.first)
+        next if passed?(result)
 
         stats[:failed] += 1
         stats[:reclassified] += reclassify(detected, result)
@@ -37,18 +37,45 @@ module Henitai
       stats
     end
 
-    private
-
-    def detected_groups(mutants)
-      Array(mutants)
-        .select { |mutant| DETECTED.include?(mutant.status) && !mutant.from_cache? && mutant.original_node }
-        .group_by { |mutant| [mutant.subject, test_files(mutant)] }
+    # True for a verdict this run's activation produced and a control can
+    # check: a detection with the original node at hand. Reused verdicts and
+    # activation-recipe stubs (no original node) are not controllable.
+    def controllable?(mutant)
+      DETECTED.include?(mutant.status) && !from_cache?(mutant) && original_node?(mutant)
     end
 
-    def run_control(mutant)
+    # Detections sharing a key share one control run.
+    def group_key(mutant) = [mutant.subject, test_files(mutant)]
+
+    # Runs the unmutated method through the activation path against the
+    # mutant's test files.
+    # @return [ScenarioExecutionResult]
+    def run_for(mutant)
       files = test_files(mutant)
       @integration.run_mutant(mutant: control_for(mutant), test_files: files, timeout: @timeout_for.call(files))
     end
+
+    def passed?(result) = result.status == :survived
+
+    # @return [Integer] the number of reclassified mutants
+    def reclassify(detected, result)
+      reason = reason_for(result)
+      detected.each do |mutant|
+        mutant.status = :compile_error
+        mutant.status_reason = reason
+      end
+      detected.size
+    end
+
+    private
+
+    def detected_groups(mutants)
+      Array(mutants).select { |mutant| controllable?(mutant) }.group_by { |mutant| group_key(mutant) }
+    end
+
+    def from_cache?(mutant) = mutant.respond_to?(:from_cache?) && mutant.from_cache?
+
+    def original_node?(mutant) = mutant.respond_to?(:original_node) && !mutant.original_node.nil?
 
     def control_for(mutant)
       node = mutant.original_node
@@ -56,14 +83,9 @@ module Henitai
                  description: "unmutated control", location: mutant.location)
     end
 
-    def reclassify(detected, result)
-      reason = "control run failed: the unmutated method fails its tests when injected " \
-               "(#{[result.status, result.status_reason].compact.join(': ')})"
-      detected.each do |mutant|
-        mutant.status = :compile_error
-        mutant.status_reason = reason
-      end
-      detected.size
+    def reason_for(result)
+      "control run failed: the unmutated method fails its tests when injected " \
+        "(#{[result.status, result.status_reason].compact.join(': ')})"
     end
 
     def test_files(mutant)

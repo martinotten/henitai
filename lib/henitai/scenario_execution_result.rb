@@ -43,6 +43,12 @@ module Henitai
       @killing_tests = killing_tests
     end
 
+    # The same run under a different verdict, e.g. a detection a failing
+    # control reclassified (ADR-14). Output and exit data are kept.
+    def reclassified(status:, status_reason:)
+      self.class.new(status:, status_reason:, stdout:, stderr:, log_path:, exit_status:, killing_tests:)
+    end
+
     # Frees the captured child output once it has been consumed (e.g. by the
     # progress reporter). The scheduler retains one result per mutant for the
     # whole run; without this a runaway mutant's multi-hundred-MB output would

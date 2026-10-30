@@ -29,28 +29,55 @@ module Henitai
       mutex = Mutex.new
       @flaky_tests = flaky_tests_for(config)
       @retrier = FlakyMutantRetrier.new(flaky_tests: @flaky_tests, max_retries: max_flaky_retries(config))
-      run_pending(pending_mutants, integration, config, progress_reporter, mutex)
+      if parallel_execution?(config, pending_mutants)
+        run_pending_parallel(pending_mutants, integration, config, progress_reporter)
+      else
+        run_pending_linear(pending_mutants, integration, config, progress_reporter, mutex)
+      end
       warn_flaky_mutants
-      verify_controls(pending_mutants, integration, config)
       mutants
     end
 
-    def run_pending(pending_mutants, integration, config, progress_reporter, mutex)
+    def run_pending_parallel(pending_mutants, integration, config, progress_reporter)
       with_fork_server(pending_mutants, integration, config) do
-        if parallel_execution?(config, pending_mutants)
-          run_parallel(pending_mutants, integration, config, progress_reporter)
-        else
-          run_linear(pending_mutants, integration, config, progress_reporter, mutex)
-          @flaky_retry_count = @retrier.retried_count
-        end
+        run_parallel(pending_mutants, integration, config, progress_reporter)
       end
+      verify_controls(pending_mutants, integration, config)
+    end
+
+    # Linear verdicts pass a ControlGate before any observer sees them
+    # (ADR-16): a detection's control runs at the group's first detection, so
+    # every verdict reported is final.
+    def run_pending_linear(pending_mutants, integration, config, progress_reporter, mutex)
+      gate = control_gate(integration, config, progress_reporter)
+      with_fork_server(pending_mutants, integration, config) do
+        run_linear(pending_mutants, integration, config, gate || progress_reporter, mutex)
+        @flaky_retry_count = @retrier.retried_count
+      end
+      warn_control_failures(gate.stats) if gate
+    end
+
+    def control_gate(integration, config, progress_reporter)
+      return unless control_runs?(config)
+
+      ControlGate.new(downstream: progress_reporter, control_run: control_run(integration, config))
     end
 
     def verify_controls(mutants, integration, config)
-      return unless config.respond_to?(:control_runs) && config.control_runs
+      return unless control_runs?(config)
 
-      timeout_for = ->(test_files) { resolved_timeout(test_files, config) }
-      stats = ControlRun.new(integration:, timeout_for:).verify(mutants)
+      warn_control_failures(control_run(integration, config).verify(mutants))
+    end
+
+    def control_runs?(config) = config.respond_to?(:control_runs) && config.control_runs
+
+    # Controls boot the suite themselves, so the boot-inclusive timeout
+    # applies even while a fork server is active.
+    def control_run(integration, config)
+      ControlRun.new(integration:, timeout_for: ->(test_files) { resolved_timeout(test_files, config) })
+    end
+
+    def warn_control_failures(stats)
       return if stats[:failed].zero?
 
       warn format("henitai: control runs failed for %<failed>d of %<verified>d subjects; " \

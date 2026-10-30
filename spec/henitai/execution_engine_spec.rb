@@ -56,39 +56,71 @@ RSpec.describe Henitai::ExecutionEngine do
   end
 
   describe "control runs" do
-    def config_with_control_runs(enabled)
-      Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :control_runs).new(12.5, "coverage", 1, 3, enabled)
+    def config_with_control_runs(enabled, jobs: 1)
+      Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :control_runs)
+            .new(12.5, "coverage", jobs, 3, enabled)
     end
 
-    def stub_control_run(stats)
+    def stub_gate(stats = { verified: 0, failed: 0, reclassified: 0 })
+      gate = instance_double(Henitai::ControlGate, progress: nil, stats:)
+      allow(Henitai::ControlGate).to receive(:new).and_return(gate)
+      gate
+    end
+
+    def stub_parallel_control_run(stats)
       control_run = instance_double(Henitai::ControlRun, verify: stats)
       allow(Henitai::ControlRun).to receive(:new).and_return(control_run)
+      runner = instance_double(Henitai::ProcessWorkerRunner, flaky_retry_count: 0, run: [])
+      allow(Henitai::ProcessWorkerRunner).to receive(:new).and_return(runner)
       control_run
     end
 
-    it "verifies the executed mutants when control runs are enabled" do
+    it "routes linear verdicts through a control gate in front of the progress reporter", :aggregate_failures do
       mutant = build_mutant(:pending, "Foo#bar")
-      control_run = stub_control_run(verified: 1, failed: 0, reclassified: 0)
+      progress = instance_double(Henitai::Reporter::Terminal, progress: nil)
+      gate = stub_gate
 
-      described_class.new.run([mutant], build_integration, config_with_control_runs(true))
+      described_class.new.run([mutant], build_integration, config_with_control_runs(true), progress_reporter: progress)
 
-      expect(control_run).to have_received(:verify).with([mutant])
+      expect(Henitai::ControlGate).to have_received(:new)
+        .with(downstream: progress, control_run: an_instance_of(Henitai::ControlRun))
+      expect(gate).to have_received(:progress).with(mutant, scenario_result: :killed)
     end
 
-    it "does not verify when control runs are disabled" do
-      mutant = build_mutant(:pending, "Foo#bar")
-      stub_control_run(verified: 0, failed: 0, reclassified: 0)
+    it "verifies parallel verdicts after execution" do
+      mutants = 2.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
+      control_run = stub_parallel_control_run(verified: 1, failed: 0, reclassified: 0)
 
-      described_class.new.run([mutant], build_integration, config_with_control_runs(false))
+      described_class.new.run(mutants, build_integration, config_with_control_runs(true, jobs: 2))
+
+      expect(control_run).to have_received(:verify).with(mutants)
+    end
+
+    it "neither gates nor verifies when control runs are disabled", :aggregate_failures do
+      mutant = build_mutant(:pending, "Foo#bar")
+      progress = instance_double(Henitai::Reporter::Terminal, progress: nil)
+      allow(Henitai::ControlRun).to receive(:new)
+
+      described_class.new.run([mutant], build_integration, config_with_control_runs(false), progress_reporter: progress)
 
       expect(Henitai::ControlRun).not_to have_received(:new)
+      expect(progress).to have_received(:progress).with(mutant, scenario_result: :killed)
     end
 
-    it "warns when a control run reclassifies verdicts" do
-      mutant = build_mutant(:pending, "Foo#bar")
-      stub_control_run(verified: 3, failed: 1, reclassified: 4)
+    it "warns when the control gate reclassified verdicts" do
+      stub_gate(verified: 3, failed: 1, reclassified: 4)
 
-      expect { described_class.new.run([mutant], build_integration, config_with_control_runs(true)) }
+      expect do
+        described_class.new.run([build_mutant(:pending, "Foo#bar")], build_integration, config_with_control_runs(true))
+      end.to output(/control runs failed for 1 of 3 subjects; 4 detected verdicts reclassified as CompileError/)
+        .to_stderr
+    end
+
+    it "warns when the parallel control pass reclassified verdicts" do
+      mutants = 2.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
+      stub_parallel_control_run(verified: 3, failed: 1, reclassified: 4)
+
+      expect { described_class.new.run(mutants, build_integration, config_with_control_runs(true, jobs: 2)) }
         .to output(/control runs failed for 1 of 3 subjects; 4 detected verdicts reclassified as CompileError/)
         .to_stderr
     end
