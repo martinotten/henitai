@@ -88,6 +88,7 @@ module Henitai
         return fast_mutants
       end
 
+      capture_provenance unless @dry_run
       source_files = self.source_files
       subjects = resolve_subjects(source_files)
       mutants_for(subjects, source_files)
@@ -145,6 +146,13 @@ module Henitai
     end
 
     def reuse_filter = deps.reuse_filter
+
+    # Before Gate 1 parses anything: what the run may parse, load or execute
+    # (ADR-16). Dry runs record nothing, and the recipe fast path's stubs are
+    # never cacheable, so neither captures.
+    def capture_provenance
+      deps.capture_provenance(source_files + Array(integration.test_files))
+    end
 
     def bootstrap_mutants(source_files) = Thread.new { bootstrap_coverage(source_files) }
 

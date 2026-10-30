@@ -99,37 +99,30 @@ final verdicts into the history store during the run. Resuming is
    history is written, so a file edited after execution would be
    fingerprinted with its new content against the old outcome. A shared
    `ExecutionProvenance` object, owned by the run, replaces that.
-   - **Snapshot before parsing.** Before Gate 1 the run records, for every
-     source file and test file it may parse, load or execute, and for every
-     test dependency file `ReuseContext` hashes (`spec_helper.rb`,
-     `test_helper.rb`, support trees, lockfiles), the content hash, size and
-     `mtime` (ns), plus the membership of the dependency set and a freshly
-     computed `ReuseContext` fingerprint.
-   - **Recheck points.** The files are re-stat'ed (and re-hashed when the
-     stat differs) after Gate 3, after the fork server reports its suite
-     booted, when a mutant is dispatched, and before each write. Any
-     difference marks that file as drifted for the rest of the run (sticky).
-     Because `mtime` is part of the record, an edit that is later restored to
-     the same content still counts as drift — this covers edits between
-     parsing and the snapshot window as well as edits during the fork-server
-     boot.
-   - **Dependency drift is run-wide.** Any drift of a dependency file, or a
-     dependency file added or removed, invalidates execution fingerprints for
-     every verdict of the run that has not been persisted yet (sticky), even
-     when the content later returns to its original value. A helper loaded by
-     the fork server affects every mutant, so a per-mutant rule is not
-     enough, and a content-only `ReuseContext` comparison would miss a
-     restored edit.
+   - **Snapshot before parsing.** Before Gate 1 the run records size and
+     `mtime` (ns) of every source file it may mutate, every test file the
+     integration knows, and every test dependency file `ReuseContext` hashes
+     (`spec_helper.rb`, `test_helper.rb`, support trees, lockfiles), plus the
+     membership of the dependency set.
+   - **Check at persistence.** Before a verdict's fingerprints are computed,
+     and again right after, its subject file and covering test files must
+     match the snapshot. Content hashed while the stat is unchanged is the
+     content that was parsed, loaded and executed. Because editors and git
+     move `mtime` forward, an edit that is later restored to the same content
+     still differs from the snapshot — this covers edits between parsing and
+     execution as well as edits during the fork-server boot, without
+     intermediate recheck points. A file the snapshot does not know (a test
+     created during the run) is never intact.
    - **Execution fingerprints.** A mutant carries execution fingerprints,
      derived from the snapshot, only if neither its subject file nor any of
      its covering test files drifted up to the moment its verdict is
      persisted. Otherwise it carries none and re-executes on the next run.
-   - **Context drift.** Before *every* write — each checkpoint flush and the
-     end-of-run `record`, regardless of whether checkpointing is enabled or
-     has failed — `ExecutionProvenance` recomputes the `ReuseContext`
-     fingerprint (not the memoized value). On a mismatch, no further verdict
-     of this run carries execution fingerprints (sticky), and a warning is
-     printed once.
+   - **Every writer checks.** The check runs inside `VerdictCache`, so it
+     applies to each checkpoint flush and to the end-of-run `record` alike,
+     regardless of whether checkpointing is enabled or has failed. Because the
+     dependency files are part of the snapshot, a changed helper or config
+     file is caught by the same stat comparison; recomputing the
+     `ReuseContext` fingerprint is not needed.
    - **One source for both writers.** `checkpoint` and `record` store exactly
      the mutant's execution fingerprints, or none. Neither recomputes them, so
      the final `record` cannot make a verdict cacheable that a checkpoint

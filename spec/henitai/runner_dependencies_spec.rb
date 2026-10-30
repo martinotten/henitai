@@ -74,6 +74,21 @@ RSpec.describe Henitai::RunnerDependencies do
       expect(Henitai::ReuseContext).to have_received(:new).once
     end
 
+    it "reports nothing intact before the run captured its inputs" do
+      expect(build_deps.execution_provenance.intact?([__FILE__])).to be(false)
+    end
+
+    it "hands the captured provenance to the history store", :aggregate_failures do
+      deps = build_deps
+      allow(Henitai::MutantHistoryStore).to receive(:new).and_call_original
+
+      provenance = deps.capture_provenance([__FILE__])
+      deps.history_store
+
+      expect(provenance.intact?([__FILE__])).to be(true)
+      expect(Henitai::MutantHistoryStore).to have_received(:new).with(hash_including(provenance:))
+    end
+
     it "returns the same history store twice" do
       deps = build_deps
       store = deps.history_store

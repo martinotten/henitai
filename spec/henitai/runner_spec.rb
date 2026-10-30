@@ -89,7 +89,7 @@ RSpec.describe Henitai::Runner do
       mutant_generator: instance_double(Henitai::MutantGenerator, generate: []),
       static_filter: instance_double(Henitai::StaticFilter, apply: []),
       execution_engine: instance_double(Henitai::ExecutionEngine, run: []),
-      integration: instance_double(Henitai::Integration::Rspec),
+      integration: instance_double(Henitai::Integration::Rspec, test_files: []),
       history_store: build_history_store
     )
   end
@@ -185,7 +185,7 @@ RSpec.describe Henitai::Runner do
     coverage_bootstrapper = stubs[:coverage_bootstrapper] ||
                             instance_double(Henitai::CoverageBootstrapper, ensure!: nil)
     execution_engine = instance_double(Henitai::ExecutionEngine, run: executed)
-    integration = instance_double(Henitai::Integration::Rspec)
+    integration = instance_double(Henitai::Integration::Rspec, test_files: [])
 
     allow(runner).to receive_messages(
       subject_resolver:, mutant_generator:, static_filter:,
@@ -244,7 +244,7 @@ RSpec.describe Henitai::Runner do
           mutant_generator = instance_double(Henitai::MutantGenerator)
           static_filter = instance_double(Henitai::StaticFilter)
           execution_engine = instance_double(Henitai::ExecutionEngine)
-          integration = instance_double(Henitai::Integration::Rspec)
+          integration = instance_double(Henitai::Integration::Rspec, test_files: [])
           diff_analyzer = instance_double(Henitai::GitDiffAnalyzer, head_sha: "abc123")
           history_store = Henitai::MutantHistoryStore.new(
             path: File.join(dir, "reports", Henitai::HISTORY_STORE_FILENAME)
@@ -291,7 +291,7 @@ RSpec.describe Henitai::Runner do
       Dir.mktmpdir do |dir|
         config = build_config(reporters: [], includes: [], reports_dir: File.join(dir, "reports"))
         deps = Henitai::RunnerDependencies.new(config:)
-        integration = instance_double(Henitai::Integration::Rspec)
+        integration = instance_double(Henitai::Integration::Rspec, test_files: [])
         execution_engine = instance_double(Henitai::ExecutionEngine, run: [])
         allow(deps).to receive_messages(
           subject_resolver: instance_double(Henitai::SubjectResolver, resolve_from_files: []),
@@ -304,6 +304,28 @@ RSpec.describe Henitai::Runner do
         described_class.new(config:, deps:).run
 
         expect(execution_engine).to have_received(:run).with([], integration, config, progress_reporter: anything)
+      end
+    end
+
+    it "captures the inputs before resolving subjects" do
+      Dir.mktmpdir do |dir|
+        config = build_config(reporters: [], includes: [], reports_dir: File.join(dir, "reports"))
+        deps = Henitai::RunnerDependencies.new(config:)
+        calls = []
+        resolver = instance_double(Henitai::SubjectResolver)
+        allow(resolver).to receive(:resolve_from_files) { calls << :resolve and [] }
+        allow(deps).to receive(:capture_provenance) { calls << :capture }
+        allow(deps).to receive_messages(
+          subject_resolver: resolver, mutant_generator: instance_double(Henitai::MutantGenerator, generate: []),
+          static_filter: instance_double(Henitai::StaticFilter, apply: []),
+          execution_engine: instance_double(Henitai::ExecutionEngine, run: []),
+          integration: instance_double(Henitai::Integration::Rspec, test_files: []), history_store: build_history_store
+        )
+        allow(Henitai::Reporter).to receive(:run_all)
+
+        described_class.new(config:, deps:).run
+
+        expect(calls).to eq(%i[capture resolve])
       end
     end
 
@@ -367,7 +389,7 @@ RSpec.describe Henitai::Runner do
           mutant_generator = instance_double(Henitai::MutantGenerator)
           static_filter = instance_double(Henitai::StaticFilter)
           execution_engine = instance_double(Henitai::ExecutionEngine)
-          integration = instance_double(Henitai::Integration::Rspec)
+          integration = instance_double(Henitai::Integration::Rspec, test_files: [])
           diff_analyzer = instance_double(Henitai::GitDiffAnalyzer, head_sha: "deadbeef")
           history_store = Henitai::MutantHistoryStore.new(
             path: File.join(dir, "reports", Henitai::HISTORY_STORE_FILENAME)
@@ -695,7 +717,7 @@ RSpec.describe Henitai::Runner do
         static_filter = instance_double(Henitai::StaticFilter)
         coverage_bootstrapper = instance_double(Henitai::CoverageBootstrapper)
         execution_engine = instance_double(Henitai::ExecutionEngine)
-        integration = instance_double(Henitai::Integration::Rspec)
+        integration = instance_double(Henitai::Integration::Rspec, test_files: [])
         history_store = build_history_store
         result = build_result([])
         received_test_files = nil
@@ -743,7 +765,7 @@ RSpec.describe Henitai::Runner do
         static_filter = instance_double(Henitai::StaticFilter)
         coverage_bootstrapper = instance_double(Henitai::CoverageBootstrapper)
         execution_engine = instance_double(Henitai::ExecutionEngine)
-        integration = instance_double(Henitai::Integration::Rspec)
+        integration = instance_double(Henitai::Integration::Rspec, test_files: [])
         history_store = build_history_store
         result = build_result([])
         received_test_files = :not_set
@@ -788,7 +810,7 @@ RSpec.describe Henitai::Runner do
         mutant_generator = instance_double(Henitai::MutantGenerator)
         static_filter = instance_double(Henitai::StaticFilter)
         execution_engine = instance_double(Henitai::ExecutionEngine)
-        integration = instance_double(Henitai::Integration::Rspec)
+        integration = instance_double(Henitai::Integration::Rspec, test_files: [])
         history_store = build_history_store
         result = build_result([])
         calls = []
@@ -830,7 +852,7 @@ RSpec.describe Henitai::Runner do
         mutant_generator = instance_double(Henitai::MutantGenerator)
         static_filter = instance_double(Henitai::StaticFilter)
         execution_engine = instance_double(Henitai::ExecutionEngine)
-        integration = instance_double(Henitai::Integration::Rspec)
+        integration = instance_double(Henitai::Integration::Rspec, test_files: [])
         history_store = build_history_store
         result = build_result([])
         calls = []
@@ -875,7 +897,7 @@ RSpec.describe Henitai::Runner do
         mutant_generator = instance_double(Henitai::MutantGenerator)
         static_filter = instance_double(Henitai::StaticFilter)
         execution_engine = instance_double(Henitai::ExecutionEngine)
-        integration = instance_double(Henitai::Integration::Rspec)
+        integration = instance_double(Henitai::Integration::Rspec, test_files: [])
         history_store = build_history_store
         result = build_result([])
         calls = []
@@ -917,7 +939,7 @@ RSpec.describe Henitai::Runner do
         mutant_generator = instance_double(Henitai::MutantGenerator)
         static_filter = instance_double(Henitai::StaticFilter)
         execution_engine = instance_double(Henitai::ExecutionEngine)
-        integration = instance_double(Henitai::Integration::Rspec)
+        integration = instance_double(Henitai::Integration::Rspec, test_files: [])
         history_store = build_history_store
         result = build_result([])
 
@@ -956,7 +978,7 @@ RSpec.describe Henitai::Runner do
         mutant_generator = instance_double(Henitai::MutantGenerator)
         static_filter = instance_double(Henitai::StaticFilter)
         execution_engine = instance_double(Henitai::ExecutionEngine)
-        integration = instance_double(Henitai::Integration::Rspec)
+        integration = instance_double(Henitai::Integration::Rspec, test_files: [])
         history_store = build_history_store
         result = build_result([])
 
@@ -995,7 +1017,7 @@ RSpec.describe Henitai::Runner do
         mutant_generator = instance_double(Henitai::MutantGenerator)
         static_filter = instance_double(Henitai::StaticFilter)
         execution_engine = instance_double(Henitai::ExecutionEngine)
-        integration = instance_double(Henitai::Integration::Rspec)
+        integration = instance_double(Henitai::Integration::Rspec, test_files: [])
         history_store = build_history_store
         result = build_result([])
 
@@ -1034,7 +1056,7 @@ RSpec.describe Henitai::Runner do
         mutant_generator = instance_double(Henitai::MutantGenerator)
         static_filter = instance_double(Henitai::StaticFilter)
         execution_engine = instance_double(Henitai::ExecutionEngine)
-        integration = instance_double(Henitai::Integration::Rspec)
+        integration = instance_double(Henitai::Integration::Rspec, test_files: [])
         history_store = build_history_store
         result = build_result([])
         received_config = nil
@@ -1084,7 +1106,7 @@ RSpec.describe Henitai::Runner do
         mutant_generator = instance_double(Henitai::MutantGenerator)
         static_filter = instance_double(Henitai::StaticFilter)
         execution_engine = instance_double(Henitai::ExecutionEngine)
-        integration = instance_double(Henitai::Integration::Rspec)
+        integration = instance_double(Henitai::Integration::Rspec, test_files: [])
         history_store = build_history_store
         result = build_result([])
         captured = nil
@@ -1234,7 +1256,7 @@ RSpec.describe Henitai::Runner do
         mutant_generator = instance_double(Henitai::MutantGenerator)
         static_filter = instance_double(Henitai::StaticFilter)
         execution_engine = instance_double(Henitai::ExecutionEngine)
-        integration = instance_double(Henitai::Integration::Rspec)
+        integration = instance_double(Henitai::Integration::Rspec, test_files: [])
         history_store = build_history_store
         result = build_result([])
         calls = []
@@ -1349,7 +1371,7 @@ RSpec.describe Henitai::Runner do
         mutant_generator = instance_double(Henitai::MutantGenerator)
         static_filter = instance_double(Henitai::StaticFilter)
         execution_engine = instance_double(Henitai::ExecutionEngine)
-        integration = instance_double(Henitai::Integration::Rspec)
+        integration = instance_double(Henitai::Integration::Rspec, test_files: [])
         history_store = build_history_store
         result = build_result([])
         alpha = build_subject("Sample#alpha", source_file: "lib/sample.rb")
@@ -1607,7 +1629,7 @@ RSpec.describe Henitai::Runner do
           config          = build_config(reporters: [])
           result          = build_result([])
           execution_engine = instance_double(Henitai::ExecutionEngine)
-          integration      = instance_double(Henitai::Integration::Rspec)
+          integration      = instance_double(Henitai::Integration::Rspec, test_files: [])
           history_store    = build_history_store
           mutant_generator = instance_spy(Henitai::MutantGenerator)
           diff_analyzer    = instance_double(Henitai::GitDiffAnalyzer)
@@ -1669,7 +1691,7 @@ RSpec.describe Henitai::Runner do
           config           = build_config(reporters: [])
           result           = build_result([])
           execution_engine = instance_double(Henitai::ExecutionEngine)
-          integration      = instance_double(Henitai::Integration::Rspec)
+          integration      = instance_double(Henitai::Integration::Rspec, test_files: [])
           history_store    = build_history_store
           mutant_generator = instance_double(Henitai::MutantGenerator)
           static_filter    = instance_double(Henitai::StaticFilter)
@@ -1742,7 +1764,7 @@ RSpec.describe Henitai::Runner do
           config           = build_config(reporters: [])
           result           = build_result([])
           execution_engine = instance_double(Henitai::ExecutionEngine, run: [])
-          integration      = instance_double(Henitai::Integration::Rspec)
+          integration      = instance_double(Henitai::Integration::Rspec, test_files: [])
           history_store    = build_history_store
           mutant_generator = instance_double(Henitai::MutantGenerator)
           static_filter    = instance_double(Henitai::StaticFilter)
@@ -1824,7 +1846,7 @@ RSpec.describe Henitai::Runner do
             Dir.chdir(dir) do
               config = build_config(reporters: [])
               execution_engine = instance_double(Henitai::ExecutionEngine)
-              integration = instance_double(Henitai::Integration::Rspec)
+              integration = instance_double(Henitai::Integration::Rspec, test_files: [])
               history_store = build_history_store
               diff_analyzer = instance_double(Henitai::GitDiffAnalyzer)
 
@@ -1870,7 +1892,7 @@ RSpec.describe Henitai::Runner do
       mutant_generator = instance_double(Henitai::MutantGenerator)
       static_filter    = instance_double(Henitai::StaticFilter)
       execution_engine = instance_double(Henitai::ExecutionEngine)
-      integration      = instance_double(Henitai::Integration::Rspec)
+      integration      = instance_double(Henitai::Integration::Rspec, test_files: [])
       history_store    = build_history_store
 
       allow(runner).to receive_messages(

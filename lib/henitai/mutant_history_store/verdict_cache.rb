@@ -21,16 +21,39 @@ module Henitai
         status = mutant.status.to_s
         return [nil, nil] unless CACHEABLE_STATUSES.include?(status)
         return existing_cache_bindings(existing_row) if from_cache?(mutant)
+        return [nil, nil] if retry_cut_short?(mutant)
         return killed_cache_bindings(mutant) if status == "killed"
 
         survived_cache_bindings(mutant, existing_row)
       end
 
       def killed_cache_bindings(mutant)
-        [
-          VerdictFingerprint.subject_source_hash(mutant),
-          VerdictFingerprint.tests_fingerprint(covered_tests_for(mutant), context_sha: reuse_context&.fingerprint)
-        ]
+        tests = covered_tests_for(mutant)
+        executed_bindings(mutant, tests) do
+          [
+            VerdictFingerprint.subject_source_hash(mutant),
+            VerdictFingerprint.tests_fingerprint(tests, context_sha: reuse_context&.fingerprint)
+          ]
+        end
+      end
+
+      # Fingerprints describe the inputs that were executed only while the
+      # provenance reports them unchanged since the run's capture (ADR-16).
+      # Checked before and after hashing, so an edit during hashing cannot
+      # slip in either.
+      def executed_bindings(mutant, test_paths)
+        paths = [subject_source_file(mutant), *Array(test_paths)].compact
+        return [nil, nil] unless inputs_intact?(paths)
+
+        bindings = yield
+        inputs_intact?(paths) ? bindings : [nil, nil]
+      end
+
+      def inputs_intact?(paths) = provenance.nil? || provenance.intact?(paths)
+
+      def subject_source_file(mutant)
+        subject = mutant.subject
+        subject.source_file if subject.respond_to?(:source_file)
       end
 
       # Survived rows fingerprint the full-map intersection set — the same
@@ -42,9 +65,14 @@ module Henitai
       # row of the same subject source: a killed row's or an edited method's
       # fingerprints would vouch for a state this survivor never ran in.
       def survived_cache_bindings(mutant, existing_row)
+        tests = per_test_coverage&.tests_covering(mutant)
+        executed_bindings(mutant, tests) { survived_bindings(mutant, tests, existing_row) }
+      end
+
+      def survived_bindings(mutant, tests, existing_row)
         bindings = [
           VerdictFingerprint.subject_source_hash(mutant),
-          survived_tests_fingerprint(mutant)
+          survived_tests_fingerprint(tests)
         ]
         return bindings unless bindings.any?(&:nil?)
         return [nil, nil] unless carry_survived_bindings?(bindings.first, existing_row)
@@ -58,13 +86,10 @@ module Henitai
         source_hash.nil? || source_hash == existing_row["subject_source_hash"]
       end
 
-      def survived_tests_fingerprint(mutant)
-        return nil unless per_test_coverage
+      def survived_tests_fingerprint(tests)
+        return nil unless tests
 
-        VerdictFingerprint.survivor_tests_fingerprint(
-          per_test_coverage.tests_covering(mutant),
-          context_sha: reuse_context&.fingerprint
-        )
+        VerdictFingerprint.survivor_tests_fingerprint(tests, context_sha: reuse_context&.fingerprint)
       end
 
       def existing_cache_bindings(existing_row)
@@ -75,6 +100,10 @@ module Henitai
 
       def from_cache?(mutant)
         mutant.respond_to?(:from_cache?) && mutant.from_cache?
+      end
+
+      def retry_cut_short?(mutant)
+        mutant.respond_to?(:retry_cut_short?) && mutant.retry_cut_short?
       end
 
       def covered_tests_for(mutant)

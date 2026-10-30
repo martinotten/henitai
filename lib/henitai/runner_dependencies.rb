@@ -48,9 +48,20 @@ module Henitai
       @history_store ||= MutantHistoryStore.new(
         path: File.join(@config.reports_dir, Henitai::HISTORY_STORE_FILENAME),
         per_test_coverage: per_test_coverage,
-        reuse_context: reuse_context
+        reuse_context: reuse_context,
+        provenance: execution_provenance
       )
     end
+
+    # Records the run's inputs; {Runner} calls it before Gate 1 parses
+    # anything (ADR-16). @return [ExecutionProvenance]
+    def capture_provenance(paths)
+      @execution_provenance = ExecutionProvenance.capture(paths)
+    end
+
+    # Until the capture, nothing counts as intact: a store built too early
+    # caches nothing rather than vouch for unrecorded inputs.
+    def execution_provenance = @execution_provenance || ExecutionProvenance::UNCAPTURED
 
     # Shared by the incremental filter and the history store: verdicts are
     # recorded under exactly the context they are later checked against.

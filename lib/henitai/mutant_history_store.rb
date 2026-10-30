@@ -19,10 +19,14 @@ module Henitai
     #   verdicts; without it survived rows stay NULL (never reusable).
     # @param reuse_context [ReuseContext, nil] fingerprint recorded with every
     #   cached verdict; without it no verdict is cached (never reusable).
-    def initialize(path:, per_test_coverage: nil, reuse_context: nil)
+    # @param provenance [ExecutionProvenance, nil] fingerprints are written
+    #   only for verdicts whose inputs it reports intact (ADR-16); nil skips
+    #   the check.
+    def initialize(path:, per_test_coverage: nil, reuse_context: nil, provenance: nil)
       @path = path
       @per_test_coverage = per_test_coverage
       @reuse_context = reuse_context
+      @provenance = provenance
     end
 
     attr_reader :path
@@ -75,7 +79,7 @@ module Henitai
 
     private
 
-    attr_reader :per_test_coverage, :reuse_context
+    attr_reader :per_test_coverage, :reuse_context, :provenance
 
     def verdict_from_row(row)
       return nil unless row && VerdictCache::CACHEABLE_STATUSES.include?(row["current_status"])

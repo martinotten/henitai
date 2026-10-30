@@ -54,6 +54,7 @@ module Henitai
   autoload :FidelityCheck, "henitai/fidelity_check"
   autoload :ControlRun, "henitai/control_run"
   autoload :ControlGate, "henitai/control_gate"
+  autoload :ExecutionProvenance, "henitai/execution_provenance"
   autoload :CanonicalReportMerger, "henitai/canonical_report_merger"
   autoload :CanonicalReportWriter, "henitai/canonical_report_writer"
   autoload :CheckpointReporter, "henitai/checkpoint_reporter"
