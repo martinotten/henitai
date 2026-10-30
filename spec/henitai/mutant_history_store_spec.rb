@@ -364,6 +364,74 @@ RSpec.describe Henitai::MutantHistoryStore do
     end
   end
 
+  describe "run ids and checkpoints" do
+    def store_in(dir) = described_class.new(path: File.join(dir, "mutation-history.sqlite3"))
+
+    def history_of(store) = store.trend_report[:mutants].first[:statusHistory]
+
+    let(:summary) { { mutation_score: 100.0, mutation_score_indicator: 100.0, equivalence_uncertainty: nil } }
+
+    it "keeps one history entry per run when a run writes a mutant twice", :aggregate_failures do
+      Dir.mktmpdir do |dir|
+        store = store_in(dir)
+        store.checkpoint([build_mutant(status: :survived)], version: "0.1.0", run_id: "run-1")
+        store.record(build_result([build_mutant(status: :killed)], summary), version: "0.1.0", run_id: "run-1")
+
+        expect(history_of(store).map { |entry| entry[:status] }).to eq(["killed"])
+        expect(history_of(store).first[:runId]).to eq("run-1")
+      end
+    end
+
+    it "appends an entry for every new run" do
+      Dir.mktmpdir do |dir|
+        store = store_in(dir)
+        store.record(build_result([build_mutant(status: :killed)], summary), version: "0.1.0", run_id: "run-1")
+        store.record(build_result([build_mutant(status: :killed)], summary), version: "0.1.0", run_id: "run-2")
+
+        expect(history_of(store).map { |entry| entry[:runId] }).to eq(%w[run-1 run-2])
+      end
+    end
+
+    it "checkpoints mutants without recording a run, and answers how many it wrote", :aggregate_failures do
+      Dir.mktmpdir do |dir|
+        store = store_in(dir)
+
+        written = store.checkpoint([build_mutant(status: :killed)], version: "0.1.0", run_id: "run-1")
+
+        expect(written).to eq(1)
+        expect(store.trend_report[:runs]).to eq([])
+        expect(store.trend_report[:mutants].size).to eq(1)
+      end
+    end
+
+    it "leaves the database unchanged when a write is interrupted midway", :aggregate_failures do
+      Dir.mktmpdir do |dir|
+        store = store_in(dir)
+        store.checkpoint([], version: "0.1.0", run_id: "run-0")
+        broken = build_mutant(status: :killed).tap do |mutant|
+          mutant.define_singleton_method(:stable_id) { raise Interrupt }
+        end
+
+        before = store.trend_report.values_at(:runs, :mutants)
+
+        expect do
+          store.record(build_result([build_mutant(status: :killed), broken], summary), version: "0.1.0")
+        end.to raise_error(Interrupt)
+        expect(store.trend_report.values_at(:runs, :mutants)).to eq(before)
+      end
+    end
+
+    it "defers signals until the write has finished" do
+      Dir.mktmpdir do |dir|
+        allow(Henitai::SignalDeferral).to receive(:call).and_call_original
+
+        store_in(dir).checkpoint([build_mutant(status: :killed)], version: "0.1.0", run_id: "run-1")
+
+        expect(Henitai::SignalDeferral).to have_received(:call)
+      end
+    end
+  end
+
   describe "verdict cache" do
     def build_cacheable_mutant(dir, status:, covered_by: :default)
       source = File.join(dir, "sample.rb")

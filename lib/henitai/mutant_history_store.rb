@@ -8,11 +8,13 @@ require "time"
 require_relative "mutant_identity"
 require_relative "mutant_history_store/sql"
 require_relative "mutant_history_store/verdict_cache"
+require_relative "mutant_history_store/database"
 
 module Henitai
   # Persists mutant outcomes across runs in a lightweight SQLite database.
   class MutantHistoryStore
     include VerdictCache
+    include Database
 
     # @param per_test_coverage [PerTestCoverage, nil] live per-test coverage
     #   view used to record the full-map intersection set for survived
@@ -31,18 +33,20 @@ module Henitai
 
     attr_reader :path
 
-    def record(result, version:, recorded_at: Time.now.utc)
-      FileUtils.mkdir_p(File.dirname(path))
-
-      with_database do |db|
-        ensure_schema(db)
-        db.transaction do
-          insert_run(db, result, version, recorded_at) if full_run?(result)
-          Array(result.mutants).each do |mutant|
-            upsert_mutant(db, mutant, version, recorded_at)
-          end
-        end
+    # @param run_id [String, nil] one history entry per mutant and run: a
+    #   second write of the same run replaces the entry its checkpoint wrote.
+    def record(result, version:, recorded_at: Time.now.utc, run_id: nil)
+      write do |db|
+        insert_run(db, result, version, recorded_at) if full_run?(result)
+        upsert_mutants(db, result.mutants, version, recorded_at, run_id)
       end
+    end
+
+    # Persists verdicts while a run is in progress (ADR-16): mutant rows
+    # only, never a run row. @return [Integer] how many mutants were written
+    def checkpoint(mutants, version:, run_id:, recorded_at: Time.now.utc)
+      write { |db| upsert_mutants(db, mutants, version, recorded_at, run_id) }
+      Array(mutants).size
     end
 
     # Verdict-cache lookup for `--incremental`: returns the stored hashes for
@@ -101,40 +105,18 @@ module Henitai
       result.respond_to?(:partial_rerun?) && result.partial_rerun?
     end
 
-    def with_database
-      db = SQLite3::Database.new(path)
-      db.results_as_hash = true
-      yield db
-    ensure
-      db&.close
-    end
-
-    def ensure_schema(db)
-      db.execute_batch(Sql::RUNS_TABLE)
-      db.execute_batch(Sql::MUTANTS_TABLE)
-      migrate_mutants_table(db)
-    end
-
-    # Additive, idempotent in-place migration: databases created before the
-    # verdict-cache columns existed gain them on first contact, with existing
-    # rows left intact (NULL hashes — valid but never reusable).
-    def migrate_mutants_table(db)
-      existing = db.execute("PRAGMA table_info(mutants)").map { |row| row["name"] }
-      Sql::MIGRATION_COLUMNS.each do |column, type|
-        next if existing.include?(column)
-
-        db.execute("ALTER TABLE mutants ADD COLUMN #{column} #{type}")
-      end
+    def upsert_mutants(db, mutants, version, recorded_at, run_id)
+      Array(mutants).each { |mutant| upsert_mutant(db, mutant, version, recorded_at, run_id) }
     end
 
     def insert_run(db, result, version, recorded_at)
       db.execute(Sql::INSERT_RUN, insert_run_bindings(result, version, recorded_at))
     end
 
-    def upsert_mutant(db, mutant, version, recorded_at)
+    def upsert_mutant(db, mutant, version, recorded_at, run_id)
       db.execute(
         Sql::UPSERT_MUTANT,
-        upsert_mutant_bindings(mutant_history_data(db, mutant, version, recorded_at))
+        upsert_mutant_bindings(mutant_history_data(db, mutant, version, recorded_at, run_id))
       )
     end
 
@@ -151,18 +133,16 @@ module Henitai
       mutant.respond_to?(:stable_id) ? mutant.stable_id : MutantIdentity.stable_id(mutant)
     end
 
-    def mutation_history_entry(mutant, version, recorded_at)
-      {
-        version: version,
-        status: mutant.status.to_s,
-        recordedAt: recorded_at.iso8601
-      }
+    def mutation_history_entry(mutant, version, recorded_at, run_id)
+      entry = { version: version, status: mutant.status.to_s, recordedAt: recorded_at.iso8601 }
+      run_id ? entry.merge(runId: run_id) : entry
     end
 
-    def mutant_history_data(db, mutant, version, recorded_at)
+    def mutant_history_data(db, mutant, version, recorded_at, run_id)
       mutant_id = stable_mutant_id(mutant)
       existing = existing_mutant_row(db, mutant_id)
-      history = existing_status_history(existing) << mutation_history_entry(mutant, version, recorded_at)
+      history = append_history(existing_status_history(existing),
+                               mutation_history_entry(mutant, version, recorded_at, run_id))
       first_seen = first_seen_metadata(existing, version, recorded_at)
 
       {
@@ -170,6 +150,12 @@ module Henitai
         first_seen_version: first_seen[:version], first_seen_at: first_seen[:at],
         days_alive: days_alive_since(first_seen[:at], recorded_at)
       }
+    end
+
+    # A later write of the same run replaces that run's entry.
+    def append_history(history, entry)
+      history.pop if entry[:runId] && history.last&.dig(:runId) == entry[:runId]
+      history << entry
     end
 
     def existing_mutant_row(db, mutant_id)

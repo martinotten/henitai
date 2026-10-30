@@ -662,7 +662,8 @@ module Henitai
     attr_reader path: String
 
     def initialize: (path: String, ?per_test_coverage: PerTestCoverage?, ?reuse_context: ReuseContext?, ?provenance: untyped) -> void
-    def record: (untyped, version: String, ?recorded_at: Time) -> void
+    def record: (untyped, version: String, ?recorded_at: Time, ?run_id: String?) -> void
+    def checkpoint: (Array[untyped], version: String, run_id: String, ?recorded_at: Time) -> Integer
     def verdict_for: (String) -> Hash[Symbol, untyped]?
     def killed_verdict_for: (String) -> Hash[Symbol, untyped]?
     def trend_report: () -> Hash[Symbol, untyped]
