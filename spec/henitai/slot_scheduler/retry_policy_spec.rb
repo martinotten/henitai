@@ -21,6 +21,18 @@ RSpec.describe Henitai::SlotScheduler::RetryPolicy do
     expect(policy.retry?(slot: build_slot(0), result: flaky_kill, shutdown: true)).to be(false)
   end
 
+  it "reports a flaky kill whose retry the shutdown vetoed" do
+    expect(policy.vetoed?(slot: build_slot(0), result: flaky_kill, shutdown: true)).to be(true)
+  end
+
+  it "reports no veto without a shutdown, or for a kill that would not be retried anyway" do
+    stable_kill = result(status: :killed, killing_tests: ["/app/spec/stable_spec.rb"])
+
+    expect([policy.vetoed?(slot: build_slot(0), result: flaky_kill, shutdown: false),
+            policy.vetoed?(slot: build_slot(0), result: stable_kill, shutdown: true),
+            policy.vetoed?(slot: build_slot(3), result: flaky_kill, shutdown: true)]).to eq([false, false, false])
+  end
+
   it "never retries a survivor" do
     expect(policy.retry?(slot: build_slot(0), result: survived, shutdown: false)).to be(false)
   end

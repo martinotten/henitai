@@ -183,7 +183,12 @@ module Henitai
     def dispatch_slot_result(slot, result)
       return retry_slot(slot) if retry_policy.retry?(slot: slot, result: result, shutdown: shutdown?)
 
+      mark_retry_cut_short(slot) if retry_policy.vetoed?(slot: slot, result: result, shutdown: shutdown?)
       finalize_slot(slot, result)
+    end
+
+    def mark_retry_cut_short(slot)
+      slot.mutant.retry_cut_short = true if slot.mutant.respond_to?(:retry_cut_short=)
     end
 
     def finalize_slot(slot, result)

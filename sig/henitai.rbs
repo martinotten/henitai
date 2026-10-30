@@ -321,6 +321,7 @@ module Henitai
     attr_accessor status_reason: String?
     attr_accessor identity_discriminator: String?
     attr_accessor from_cache: bool
+    attr_accessor retry_cut_short: bool
     attr_reader precomputed_stable_id: String?
     attr_reader precomputed_activation: untyped
     attr_reader precomputed_replacement: String?
@@ -329,6 +330,7 @@ module Henitai
     def stable_id: () -> String
     def mutated_source: () -> String
     def from_cache?: () -> bool
+    def retry_cut_short?: () -> bool
     def killed?: () -> bool
     def survived?: () -> bool
     def pending?: () -> bool

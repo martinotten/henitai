@@ -304,6 +304,28 @@ RSpec.describe Henitai::SlotScheduler do
 
       expect { scheduler.reap_all_completed_children }.not_to raise_error
     end
+
+    it "marks a flaky kill whose retry the shutdown vetoed", :aggregate_failures do
+      captured = []
+      integration = build_capturing_integration(captured)
+      allow(integration).to receive(:build_result).and_return(
+        Henitai::ScenarioExecutionResult.new(status: :killed, stdout: "", stderr: "", log_path: "/dev/null",
+                                             killing_tests: ["a_spec.rb"])
+      )
+      host = build_host(1, shutdown: true)
+      scheduler = build_worker_scheduler(captured, worker_count: 1, max_flaky_retries: 2, integration:, host:,
+                                                   flaky_tests: Henitai::FlakyTestRegistry.new(["a_spec.rb"]))
+      mutant = Struct.new(:id, :subject, :status, :covered_by, :tests_completed, :retry_cut_short)
+                     .new("a", Struct.new(:expression).new("Foo#a"), :pending)
+      scheduler.enqueue([mutant])
+      scheduler.fill_idle_slots
+      allow(host).to receive(:runtime).and_return(build_runtime_double([slot_table.each_value.first.pid, :status]))
+
+      scheduler.reap_all_completed_children
+
+      expect([mutant.status, mutant.retry_cut_short]).to eq([:killed, true])
+      expect(integration).to have_received(:spawn_mutant).once
+    end
   end
 
   describe "#next_event_timeout" do

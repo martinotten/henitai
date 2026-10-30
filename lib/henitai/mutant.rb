@@ -48,6 +48,9 @@ module Henitai
                 :precomputed_stable_id, :precomputed_activation, :precomputed_replacement
     attr_accessor :status, :killing_test, :duration, :covered_by, :tests_completed,
                   :ignore_reason, :status_reason, :from_cache
+    # Set when a shutdown vetoed the flaky-kill retries this verdict would
+    # have needed; such a verdict is reported but never cached (ADR-16).
+    attr_accessor :retry_cut_short
     # Set by MutantGenerator only for mutants whose identity would otherwise
     # collide with another one (see MutantIdentity).
     attr_accessor :identity_discriminator
@@ -87,6 +90,7 @@ module Henitai
 
     def killed?      = @status == :killed
     def from_cache?  = @from_cache == true
+    def retry_cut_short? = @retry_cut_short == true
     def survived?    = @status == :survived
     def pending?     = @status == :pending
     def ignored?     = @status == :ignored
@@ -103,6 +107,7 @@ module Henitai
       @killing_test = @duration = @covered_by = @tests_completed = nil
       @ignore_reason = @status_reason = nil
       @from_cache = false
+      @retry_cut_short = false
     end
   end
 end
