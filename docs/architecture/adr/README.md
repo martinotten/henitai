@@ -20,6 +20,7 @@ This directory contains one ADR per accepted architecture decision.
 - [ADR-14: Detected verdicts must be caused by the mutation](ADR-14-detected-verdicts-must-be-caused-by-the-mutation.md)
 
 - [ADR-15: Fork-server execution model](ADR-15-fork-server-execution-model.md)
+- [ADR-16: Resumable runs through history checkpoints](ADR-16-resumable-runs-via-history-checkpoints.md) (proposed)
 
 ## Maintenance Rule
 
