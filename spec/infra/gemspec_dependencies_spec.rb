@@ -41,6 +41,33 @@ RSpec.describe "Gemspec dependencies" do
     expect(dependency.requirement.satisfied_by?(Gem::Version.new("7.0.0"))).to be(false)
   end
 
+  it "allows SimpleCov 1.x" do
+    spec = Gem::Specification.load(
+      File.expand_path("../../henitai.gemspec", __dir__)
+    )
+    dependency = spec.runtime_dependencies.find { |item| item.name == "simplecov" }
+
+    expect(dependency.requirement.satisfied_by?(Gem::Version.new("1.2.0"))).to be(true)
+  end
+
+  it "rejects SimpleCov 2.x" do
+    spec = Gem::Specification.load(
+      File.expand_path("../../henitai.gemspec", __dir__)
+    )
+    dependency = spec.runtime_dependencies.find { |item| item.name == "simplecov" }
+
+    expect(dependency.requirement.satisfied_by?(Gem::Version.new("2.0.0"))).to be(false)
+  end
+
+  it "locks the root bundle to SimpleCov 1.x" do
+    path = File.expand_path("../../Gemfile.lock", __dir__)
+    version = File.read(path)[/^    simplecov \(([^)]+)\)$/, 1]
+
+    expect(Gem::Version.new(version)).to(
+      (be >= Gem::Version.new("1.0.0")).and(be < Gem::Version.new("2.0.0"))
+    )
+  end
+
   it "allows the patched sqlite3 release" do
     spec = Gem::Specification.load(
       File.expand_path("../../henitai.gemspec", __dir__)

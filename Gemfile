@@ -12,7 +12,7 @@ group :development do
   gem "rubocop", "~> 1.65", require: false
   gem "rubocop-rake", require: false
   gem "rubocop-rspec", require: false
-  gem "simplecov", "~> 0.22", require: false
+  gem "simplecov", ">= 0.22", "< 2", require: false
   gem "steep", require: false # Type checking via RBS
 end
 
