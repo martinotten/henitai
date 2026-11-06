@@ -24,7 +24,7 @@ module Henitai
             subject:,
             original_node: node,
             mutated_node: mutated_hash(node, index),
-            description: "replaced symbol key with string key"
+            description: "replaced symbol key #{key_label(pair, index)} with string key"
           )
         end
       end
@@ -33,6 +33,14 @@ module Henitai
 
       def symbol_key_pair?(node)
         node.type == :pair && node.children.first&.type == :sym
+      end
+
+      # Names the key so the mutants of one hash stay distinguishable. A
+      # symbol may contain a newline (`:"a\nb"`), which would break every
+      # single-line report surface, so such keys fall back to their position.
+      def key_label(pair, index)
+        label = pair.children.first.children.first.to_s
+        label.include?("\n") ? "##{index + 1}" : label
       end
 
       def mutated_hash(node, index)

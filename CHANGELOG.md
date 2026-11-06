@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `HashKeyType` descriptions name the replaced key
+  (`replaced symbol key foo with string key`) instead of one constant string,
+  so several mutants of the same hash are distinguishable in every report
+  surface. A symbol key containing a newline falls back to its position.
+  Affected mutants get new stable ids and re-execute once under
+  `--incremental`
 - Retired mutant identities no longer linger in `mutation-history.json`.
   When a description or operator changes, the old stable id can never match
   again; those rows kept appearing in the trend export with a frozen
