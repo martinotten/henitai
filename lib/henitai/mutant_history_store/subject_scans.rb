@@ -74,6 +74,12 @@ module Henitai
       #     at generation time — this repo's own config samples at 0.05
       #   - a narrower operator set, handled by keying the scan on `operators`
       #     so a `light` scan never speaks for `full`-only mutants
+      # Only a run that generated every mutant of its subjects under a known
+      # operator set may advance the retirement baseline.
+      def complete_scan?(result, full_scan, operators)
+        full_scan && operators && !partial_rerun?(result)
+      end
+
       def record_subject_scans(db, result, recorded_at, operators)
         subject_expressions(result).each do |expression|
           db.execute(

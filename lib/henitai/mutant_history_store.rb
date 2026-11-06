@@ -50,7 +50,7 @@ module Henitai
         ensure_schema(db)
         db.transaction do
           insert_run(db, result, version, recorded_at) if full_run?(result)
-          record_subject_scans(db, result, recorded_at, operators) if full_scan && operators && !partial_rerun?(result)
+          record_subject_scans(db, result, recorded_at, operators) if complete_scan?(result, full_scan, operators)
           Array(result.mutants).each do |mutant|
             upsert_mutant(db, mutant, version, recorded_at, operators)
           end
