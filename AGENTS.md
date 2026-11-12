@@ -34,6 +34,38 @@ for command execution.
 - Treat tests as part of the design: keep them fast, independent, repeatable,
   readable, and focused on one behavior per example when practical.
 
+## No Parallel Implementations
+
+Rules 7–9 of the design rules in `CODE_PRINCIPLES.md` (one owner per
+concern, vary only the difference, quantities are not modes) are enforced
+as follows. Precedent: `docs/backlog/2026-11-12-unify-execution-paths-on-slot-scheduler.md`
+— a synchronous driver for `jobs: 1` grew next to `SlotScheduler`, and every
+later feature (flaky retries, fork server) was built once per driver,
+doubling the code and the modes to test.
+
+- Ownership statements in this file and in
+  `docs/architecture/architecture.md` (for example "`SlotScheduler` owns
+  spawning, reaping, timeouts and draining") are binding. Before writing
+  code that does an owned concern somewhere else, change the ownership
+  statement first, with a reason, or use the owner.
+- Before implementing a new execution mode, option or integration path,
+  search for an existing implementer of the same concern (e.g. "who waits
+  for a child / enforces a timeout / retries?"). Extend or parameterise it
+  at the narrowest point of difference; do not add a sibling path.
+- A new user-visible mode or option that selects a different code path
+  needs an ADR with an **Execution paths** section: which paths it adds,
+  which existing paths it duplicates, and how it multiplies the test matrix
+  (modes multiply: two binary options already mean four combinations).
+- A feature that has to touch two existing paths for the same concern is a
+  signal to unify them first, not to implement it twice. If unification is
+  deliberately postponed, file a backlog item and cover both paths with one
+  shared contract spec (`it_behaves_like`), so they cannot drift apart
+  unnoticed.
+- In review, treat these as findings: a `jobs == 1` / `size > 1` style
+  branch that picks a different driver; two classes that both wait, time
+  out, retry or clean up the same kind of process; a flag argument that
+  switches between two copies of a workflow.
+
 ## Worktree And Documentation
 
 - Read `README.md`, `docs/architecture/architecture.md`,
