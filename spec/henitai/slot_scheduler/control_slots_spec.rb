@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-# Control jobs (ADR-16 §2) run through the scheduler's public loop API:
+# Control jobs (ADR-19 §2) run through the scheduler's public loop API:
 # enqueue_control, fill_idle_slots, reap_all_completed_children,
 # check_timeouts and drain_draining_slots.
 RSpec.describe Henitai::SlotScheduler::ControlSlots do

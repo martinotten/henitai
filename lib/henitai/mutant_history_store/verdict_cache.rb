@@ -38,7 +38,7 @@ module Henitai
       end
 
       # Fingerprints describe the inputs that were executed only while the
-      # provenance reports them unchanged since the run's capture (ADR-16).
+      # provenance reports them unchanged since the run's capture (ADR-19).
       # Checked before and after hashing, so an edit during hashing cannot
       # slip in either.
       def executed_bindings(mutant, test_paths)

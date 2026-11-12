@@ -63,7 +63,7 @@ module Henitai
       end
 
       # Forks on the per-mutant path without asking the server, for a process
-      # the server never saw (a control run, ADR-16). The pid is registered
+      # the server never saw (a control run, ADR-19). The pid is registered
       # with the runtime so the scheduler reaps it, and the timeout includes
       # booting the suite.
       # @return [Integration::ChildHandle]

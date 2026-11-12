@@ -3,7 +3,7 @@
 require_relative "verdict_fingerprint"
 
 module Henitai
-  # Binds cached verdicts to the inputs that were executed (ADR-16 §4).
+  # Binds cached verdicts to the inputs that were executed (ADR-19 §4).
   #
   # Before Gate 1 parses anything, the run records size and mtime of every
   # source and test file it may parse, load or execute, and of every test
@@ -16,7 +16,7 @@ module Henitai
   # record. A dependency file changing, appearing or disappearing invalidates
   # every verdict of the run for good, since a helper loaded once (for
   # example by the fork server) affects every mutant. A tool that rewrites a
-  # file and also restores its mtime is not detected; ADR-16 accepts that.
+  # file and also restores its mtime is not detected; ADR-19 accepts that.
   class ExecutionProvenance
     # Stands in until a run has captured its inputs: nothing is intact, so a
     # verdict recorded without a capture is never cached.

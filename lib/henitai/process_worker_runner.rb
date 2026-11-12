@@ -79,7 +79,7 @@ module Henitai
     # @param config [Configuration]
     # @param progress_reporter [#progress, nil]
     # @param options [Hash] scheduler options; +control_run:+ ({ControlRun})
-    #   puts a {ControlGate} in front of +progress_reporter+ (ADR-16).
+    #   puts a {ControlGate} in front of +progress_reporter+ (ADR-19).
     # @return [Array<ScenarioExecutionResult>]
     def run(mutants, integration, config, progress_reporter, options = {})
       Integration::SchedulerDiagnostics.reset! if Integration::SchedulerDiagnostics.enabled?

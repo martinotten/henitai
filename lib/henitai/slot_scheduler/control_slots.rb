@@ -2,7 +2,7 @@
 
 module Henitai
   class SlotScheduler
-    # Control jobs (ADR-16 §2): the unmutated method of a group whose first
+    # Control jobs (ADR-19 §2): the unmutated method of a group whose first
     # detection a {ControlGate} is holding. A control job is not a mutant job:
     #
     # - it is spawned ahead of pending mutants, with its group's test files

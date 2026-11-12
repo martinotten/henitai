@@ -3,7 +3,7 @@
 module Henitai
   # Progress observer that checkpoints verdicts into the history store while
   # a run is in progress, so an aborted run can be resumed with
-  # `--incremental` (ADR-16). Every verdict it sees is final: a
+  # `--incremental` (ADR-19). Every verdict it sees is final: a
   # {ControlGate} sits in front of all progress observers.
   #
   # Batches with the cadence of {CheckpointReporter} (`checkpoint_every`,

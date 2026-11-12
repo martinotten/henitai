@@ -151,7 +151,7 @@ module Henitai
     def reuse_filter = deps.reuse_filter
 
     # Before Gate 1 parses anything: what the run may parse, load or execute
-    # (ADR-16). Dry runs record nothing, and the recipe fast path's stubs are
+    # (ADR-19). Dry runs record nothing, and the recipe fast path's stubs are
     # never cacheable, so neither captures.
     def capture_provenance
       deps.capture_provenance(source_files + Array(integration.test_files))
@@ -172,7 +172,7 @@ module Henitai
     end
 
     # The engine has torn its children down by now. Whatever the observers
-    # still buffer is written, so `--incremental` can resume (ADR-16); the
+    # still buffer is written, so `--incremental` can resume (ADR-19); the
     # aborted run itself gets no history record.
     def save_interrupted_progress
       flush_progress

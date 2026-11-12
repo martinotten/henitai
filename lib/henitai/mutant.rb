@@ -49,7 +49,7 @@ module Henitai
     attr_accessor :status, :killing_test, :duration, :covered_by, :tests_completed,
                   :ignore_reason, :status_reason, :from_cache
     # Set when a shutdown vetoed the flaky-kill retries this verdict would
-    # have needed; such a verdict is reported but never cached (ADR-16).
+    # have needed; such a verdict is reported but never cached (ADR-19).
     attr_accessor :retry_cut_short
     # Set by MutantGenerator only for mutants whose identity would otherwise
     # collide with another one (see MutantIdentity).

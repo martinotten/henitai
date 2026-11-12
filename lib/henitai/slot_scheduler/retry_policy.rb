@@ -18,7 +18,7 @@ module Henitai
       end
 
       # True when only the shutdown stopped a retry: the kill may be faked by
-      # a flaky test, so its verdict must not be cached (ADR-16).
+      # a flaky test, so its verdict must not be cached (ADR-19).
       def vetoed?(slot:, result:, shutdown:)
         shutdown && retry_wanted?(slot, result)
       end

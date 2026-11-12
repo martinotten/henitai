@@ -11,7 +11,7 @@ module Henitai
   # parameter list -- so none of the group's detections can be credited to
   # their mutations. They are reclassified as CompileError with the control's
   # outcome as reason. {ControlGate} decides when a control runs: at the
-  # group's first detection (ADR-16).
+  # group's first detection (ADR-19).
   #
   # Verdicts reused from history are left alone: they were not produced by
   # this run's activation.

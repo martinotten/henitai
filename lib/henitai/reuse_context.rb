@@ -9,7 +9,7 @@ module Henitai
   # Run-level fingerprint of everything outside a mutant and its covering
   # tests that can change a verdict: the test dependency files, the
   # verdict-relevant configuration (including whether control runs verified
-  # the detections, ADR-16) and the henitai version. Recorded with every
+  # the detections, ADR-19) and the henitai version. Recorded with every
   # cached Killed/Survived verdict and required to match for reuse.
   #
   # Computed once per instance, so the filter that reads verdicts and the

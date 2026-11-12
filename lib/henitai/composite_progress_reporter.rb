@@ -10,7 +10,7 @@ module Henitai
     # file report (json/html) is configured. Returns a single reporter when only
     # one is active, the composite when several are, or nil when none are.
     #
-    # A {HistoryCheckpointer}, when given, joins them (ADR-16).
+    # A {HistoryCheckpointer}, when given, joins them (ADR-19).
     def self.for(config:, source_provider:, full_run:, history_checkpointer: nil)
       active = [terminal_for(config), checkpoint_for(config, source_provider, full_run),
                 history_checkpointer].compact

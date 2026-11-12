@@ -2,7 +2,7 @@
 
 module Henitai
   # Holds INT, TERM and HUP back while a block runs, then re-sends the first
-  # one that arrived (ADR-16). A history write therefore commits or rolls
+  # one that arrived (ADR-19). A history write therefore commits or rolls
   # back as a whole before the signal takes effect.
   #
   # `Thread.handle_interrupt` cannot do this: it does not defer the

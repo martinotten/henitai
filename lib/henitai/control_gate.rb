@@ -3,7 +3,7 @@
 module Henitai
   # Holds a detected verdict back from the progress observers until a control
   # run has shown that the unmutated method passes the same tests (ADR-14,
-  # ADR-16). Every verdict an observer sees is therefore final: the terminal,
+  # ADR-19). Every verdict an observer sees is therefore final: the terminal,
   # the report checkpoints and the history never see a detection that a later
   # control would reclassify.
   #

@@ -1,6 +1,6 @@
 # Resume an Aborted Run with `--incremental`
 
-Status: backlog (design: [ADR-16](../architecture/adr/ADR-16-resumable-runs-via-history-checkpoints.md), proposed)
+Status: backlog (design: [ADR-19](../architecture/adr/ADR-19-resumable-runs-via-history-checkpoints.md), proposed)
 Date: 2026-10-30
 Severity: High (an aborted multi-hour run is lost completely)
 Source: user report against 0.6.0 — "Henitai cannot resume an aborted run.
@@ -12,7 +12,7 @@ stored for reuse only at the end of a complete run, and this run was aborted."
 Verdicts reach the SQLite history — the only source `--incremental` reads
 (ADR-11) — once, at the end of a run. Mid-run checkpoints exist only for the
 JSON/HTML report; they carry no fingerprints and contain detections that the
-end-of-run `ControlRun` (ADR-14) has not verified. ADR-16 runs each group's
+end-of-run `ControlRun` (ADR-14) has not verified. ADR-19 runs each group's
 control at its first detection, so every emitted verdict is final, binds
 fingerprints to the inputs that were executed, and then checkpoints final
 verdicts into the history store.
@@ -64,7 +64,7 @@ every fingerprint is bound to the inputs that were executed (step 5).
    survivors and no-coverage are never held. `rake oracle` must show no new
    false kills.
 3. **ControlGate in the parallel path.** Implement the control job contract
-   from ADR-16 §2 as a collaborator of `SlotScheduler`, which is already near
+   from ADR-19 §2 as a collaborator of `SlotScheduler`, which is already near
    its class-length limit: front of queue, recorded test files, no flaky
    retries, no mutant progress, local child registered with the fork-server
    runtime (shared local-spawn adapter with `ForkServer::MutantRunner`'s
@@ -124,7 +124,7 @@ every fingerprint is bound to the inputs that were executed (step 5).
    file edit.
 9. **Docs.** README (resuming an aborted run), `architecture.md` (Gate 4/5,
    control timing, input snapshot), `AGENTS.md` execution-model bullets on
-   ADR-14 timing and persistence, ADR-16 → accepted, ADR index, CHANGELOG.
+   ADR-14 timing and persistence, ADR-19 → accepted, ADR index, CHANGELOG.
 
 ## Acceptance Criteria
 
@@ -140,7 +140,7 @@ every fingerprint is bound to the inputs that were executed (step 5).
   Killed verdict skipped its group's control; `rake oracle` shows no new
   false kills.
 - No persisted fingerprint describes content other than what the verdict was
-  produced with, except for the residual risk ADR-16 §4 accepts (a file
+  produced with, except for the residual risk ADR-19 §4 accepts (a file
   rewritten with its `mtime` restored).
 - A resumed run's verdicts equal those of a fresh run (`rake oracle:reuse`).
 - One `status_history` entry per mutant per run; no `runs` row for aborted

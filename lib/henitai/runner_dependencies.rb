@@ -54,7 +54,7 @@ module Henitai
     end
 
     # Records the run's inputs; {Runner} calls it before Gate 1 parses
-    # anything (ADR-16). @return [ExecutionProvenance]
+    # anything (ADR-19). @return [ExecutionProvenance]
     def capture_provenance(paths)
       @execution_provenance = ExecutionProvenance.capture(paths)
     end
@@ -87,7 +87,7 @@ module Henitai
                                     history_checkpointer:)
     end
 
-    # Checkpoints verdicts into the history store during the run (ADR-16);
+    # Checkpoints verdicts into the history store during the run (ADR-19);
     # nil when `reports.checkpoint` is off.
     def history_checkpointer(run_id:)
       return unless @config.respond_to?(:checkpoint_enabled) && @config.checkpoint_enabled

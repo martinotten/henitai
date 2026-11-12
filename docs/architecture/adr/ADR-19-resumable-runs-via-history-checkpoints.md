@@ -1,4 +1,4 @@
-# ADR-16: Resumable Runs Through History Checkpoints
+# ADR-19: Resumable Runs Through History Checkpoints
 
 Status: proposed
 

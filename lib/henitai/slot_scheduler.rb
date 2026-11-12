@@ -78,7 +78,7 @@ module Henitai
       pending.empty? && control_jobs.empty? && slot_table.empty?
     end
 
-    # Queued control jobs go first: detections wait on them (ADR-16).
+    # Queued control jobs go first: detections wait on them (ADR-19).
     def fill_idle_slots
       while slot_table.size < worker_count && (control_jobs.any? || pending.any?)
         control_jobs.any? ? spawn_control_into_slot(control_jobs.shift) : spawn_into_slot(pending.shift)

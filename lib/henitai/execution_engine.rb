@@ -38,7 +38,7 @@ module Henitai
       mutants
     end
 
-    # Verdicts pass a ControlGate before any observer sees them (ADR-16): a
+    # Verdicts pass a ControlGate before any observer sees them (ADR-19): a
     # detection's control runs at its group's first detection, so every
     # verdict reported is final. In parallel the worker runner builds the gate
     # and runs controls as scheduler jobs.

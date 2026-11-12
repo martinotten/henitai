@@ -22,7 +22,7 @@ module Henitai
     # @param reuse_context [ReuseContext, nil] fingerprint recorded with every
     #   cached verdict; without it no verdict is cached (never reusable).
     # @param provenance [ExecutionProvenance, nil] fingerprints are written
-    #   only for verdicts whose inputs it reports intact (ADR-16); nil skips
+    #   only for verdicts whose inputs it reports intact (ADR-19); nil skips
     #   the check.
     def initialize(path:, per_test_coverage: nil, reuse_context: nil, provenance: nil)
       @path = path
@@ -42,7 +42,7 @@ module Henitai
       end
     end
 
-    # Persists verdicts while a run is in progress (ADR-16): mutant rows
+    # Persists verdicts while a run is in progress (ADR-19): mutant rows
     # only, never a run row. @return [Integer] how many mutants were written
     def checkpoint(mutants, version:, run_id:, recorded_at: Time.now.utc)
       write { |db| upsert_mutants(db, mutants, version, recorded_at, run_id) }
