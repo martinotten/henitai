@@ -1,6 +1,7 @@
 # ADR-16: Supported Ruby Range Starts at 3.3.6, Not 4.0
 
-**Status:** Accepted
+**Status:** Superseded by [ADR-17](ADR-17-version-support-lifecycle.md)
+(the 3.3.6 floor stays in force until ADR-17's implementation lands)
 **Date:** 2026-08-01
 
 ## Context

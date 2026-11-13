@@ -19,8 +19,11 @@ This directory contains one ADR per accepted architecture decision.
 - [ADR-13: `def` injection in the original lexical nesting](ADR-13-def-injection-in-lexical-nesting.md) (supersedes ADR-04)
 - [ADR-14: Detected verdicts must be caused by the mutation](ADR-14-detected-verdicts-must-be-caused-by-the-mutation.md)
 - [ADR-15: Fork-server execution model](ADR-15-fork-server-execution-model.md)
-- [ADR-16: Supported Ruby range starts at 3.3.6, not 4.0](ADR-16-supported-ruby-range.md)
+- [ADR-16: Supported Ruby range starts at 3.3.6, not 4.0](ADR-16-supported-ruby-range.md) (superseded by ADR-17)
+- [ADR-17: Version support lifecycle for Ruby and Rails](ADR-17-version-support-lifecycle.md)
 
 ## Maintenance Rule
 
 Each decision should live in its own file. Update the relevant ADR first, then reflect any architecture-level consequences in [../architecture.md](../architecture.md) and [../../plans/implementation_plan.md](../../plans/implementation_plan.md).
+
+An ADR that introduces a user-visible mode or option selecting a different code path contains an **Execution paths** section: the paths it adds, the existing paths it duplicates or extends, and its effect on the test matrix. See "No Parallel Implementations" in `AGENTS.md`.
