@@ -90,8 +90,8 @@ RSpec.describe Henitai::FidelityCheck do
     expect(violation(mutant)).to be_nil
   end
 
-  it "accepts an interpolation-free heredoc re-rendered as a plain string" do
-    mutant = mutant_for(<<~RUBY, "removed interpolation from string")
+  it "accepts an interpolation-free heredoc replaced by a plain string" do
+    mutant = mutant_for(<<~RUBY, 'replaced string with "Henitai was here"')
       class Sample
         def usage
           <<~TXT
