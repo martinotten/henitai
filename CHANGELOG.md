@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `StringLiteral` no longer emits an equivalent mutant for strings without
+  interpolation that parse as `dstr` (adjacent literals such as
+  `"a " "b"`, multi-line heredocs). It used to "remove the interpolation"
+  and reproduce the original string, which survived every time. Such
+  strings now get the plain-string mutations (`""`,
+  `"Henitai was here"`). Affected mutants get new stable ids and re-execute
+  once under `--incremental`
 - `HashKeyType` descriptions name the replaced key
   (`replaced symbol key foo with string key`) instead of one constant string,
   so several mutants of the same hash are distinguishable in every report

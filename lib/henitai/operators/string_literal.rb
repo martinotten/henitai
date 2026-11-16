@@ -16,9 +16,9 @@ module Henitai
       def mutate(node, subject:)
         case node.type
         when :str
-          mutate_plain_string(node, subject:)
+          mutate_plain_string(node, node.children.first, subject:)
         when :dstr
-          mutate_interpolated_string(node, subject:)
+          mutate_dstr(node, subject:)
         else
           []
         end
@@ -26,8 +26,21 @@ module Henitai
 
       private
 
-      def mutate_plain_string(node, subject:)
-        original_value = node.children.first
+      # Adjacent literals and heredocs without interpolation parse as a +dstr+
+      # of +str+ parts. Collapsing their "interpolation" would reproduce the
+      # original string -- an equivalent mutant -- so they are mutated like a
+      # plain string with the concatenated value.
+      def mutate_dstr(node, subject:)
+        return mutate_plain_string(node, static_string(node), subject:) if static?(node)
+
+        mutate_interpolated_string(node, subject:)
+      end
+
+      def static?(node)
+        node.children.all? { |child| child.type == :str }
+      end
+
+      def mutate_plain_string(node, original_value, subject:)
         REPLACEMENTS.reject { |r| r == original_value }.map do |replacement|
           build_mutant(
             subject:,

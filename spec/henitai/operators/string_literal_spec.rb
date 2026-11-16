@@ -44,6 +44,32 @@ RSpec.describe Henitai::Operators::StringLiteral do
     end
   end
 
+  it "replaces adjacent string literals like a plain string" do
+    mutants = mutate(find_nodes(parse("\"foo \" \"bar\""), :dstr).first)
+
+    expect(mutants.map { |mutant| mutant.mutated_node.children }).to contain_exactly([""], ["Henitai was here"])
+  end
+
+  it "replaces heredocs without interpolation like a plain string" do
+    node = find_nodes(parse(<<~RUBY), :dstr).first
+      <<~TEXT
+        line one
+        line two
+      TEXT
+    RUBY
+
+    expect(mutate(node).map(&:description)).to contain_exactly(
+      'replaced string with ""',
+      'replaced string with "Henitai was here"'
+    )
+  end
+
+  it "skips the replacement that equals a static string's value" do
+    mutants = mutate(find_nodes(parse("\"Henitai \" \"was here\""), :dstr).first)
+
+    expect(mutants.map(&:description)).to eq(['replaced string with ""'])
+  end
+
   it "uses an empty replacement for fully interpolated strings" do
     node = find_nodes(parse("\"\#{name}\""), :dstr).first
 
