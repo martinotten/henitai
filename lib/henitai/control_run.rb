@@ -11,18 +11,13 @@ module Henitai
   # parameter list -- so none of the group's detections can be credited to
   # their mutations. They are reclassified as CompileError with the control's
   # outcome as reason. {ControlGate} decides when a control runs: at the
-  # group's first detection (ADR-19).
+  # group's first detection (ADR-19); the scheduler runs it as a control job
+  # (`SlotScheduler::ControlSlots`, ADR-20).
   #
   # Verdicts reused from history are left alone: they were not produced by
   # this run's activation.
   class ControlRun
     DETECTED = %i[killed timeout runtime_error].freeze
-
-    # @param timeout_for [#call] test files -> timeout in seconds
-    def initialize(integration:, timeout_for:)
-      @integration = integration
-      @timeout_for = timeout_for
-    end
 
     # True for a verdict this run's activation produced and a control can
     # check: a detection with the original node at hand. Reused verdicts and
@@ -33,14 +28,6 @@ module Henitai
 
     # Detections sharing a key share one control run.
     def group_key(mutant) = [mutant.subject, test_files(mutant)]
-
-    # Runs the unmutated method through the activation path against the
-    # mutant's test files.
-    # @return [ScenarioExecutionResult]
-    def run_for(mutant)
-      files = test_files(mutant)
-      @integration.run_mutant(mutant: control_mutant(mutant), test_files: files, timeout: @timeout_for.call(files))
-    end
 
     def passed?(result) = result.status == :survived
 

@@ -880,17 +880,15 @@ module Henitai
   end
 
   class ExecutionEngine
+    def initialize: (?runtime: untyped, ?wakeup: untyped) -> void
     def run: (Array[Mutant], untyped, untyped, ?progress_reporter: untyped) -> Array[Mutant]
 
     private
 
     def execute: (Array[Mutant], untyped, untyped, untyped?) -> Array[Mutant]
     def with_worker_slot: () { () -> untyped } -> untyped
-    def parallel_execution?: (untyped, Array[Mutant]) -> bool
     def worker_count: (untyped) -> Integer
-    def run_linear: (Array[Mutant], untyped, untyped, untyped?, untyped) -> void
-    def run_parallel: (Array[Mutant], untyped, untyped, untyped?) -> void
-    def process_mutant: (Mutant, untyped, untyped, untyped?, ?untyped) -> void
+    def run_workers: (Array[Mutant], untyped, untyped, untyped?, untyped) -> untyped
     def prioritized_tests_for: (Mutant, untyped, untyped) -> Array[String]
     def test_prioritizer: (untyped) -> TestPrioritizer
     def timing_source: (untyped) -> untyped
@@ -1437,12 +1435,5 @@ module Henitai
   class FlakyRetryDecision
     def initialize: (flaky_tests: FlakyTestRegistry, max_retries: Integer) -> void
     def retry?: (status: Symbol, killing_tests: Array[String], attempts: Integer) -> bool
-  end
-
-  class FlakyMutantRetrier
-    attr_reader retried_count: Integer
-
-    def initialize: (flaky_tests: FlakyTestRegistry, max_retries: Integer) -> void
-    def run: (mutant: Mutant, integration: untyped, test_files: Array[String], timeout: Float) -> untyped
   end
 end

@@ -73,7 +73,6 @@ module Henitai
   autoload :ScenarioExecutionResult, "henitai/scenario_execution_result"
   autoload :FlakyTestRegistry, "henitai/flaky_test_registry"
   autoload :FlakyDetectionBaseline, "henitai/flaky_detection_baseline"
-  autoload :FlakyMutantRetrier, "henitai/flaky_mutant_retrier"
   autoload :TestFileOutcomes, "henitai/test_file_outcomes"
   autoload :FlakyRetryDecision, "henitai/flaky_retry_decision"
   autoload :ExampleSummary, "henitai/example_summary"

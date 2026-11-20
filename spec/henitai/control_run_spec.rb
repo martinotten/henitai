@@ -5,6 +5,7 @@ require "spec_helper"
 RSpec.describe Henitai::ControlRun do
   let(:subject_a) { Henitai::Subject.new(namespace: "Sample", method_name: "a") }
   let(:subject_b) { Henitai::Subject.new(namespace: "Sample", method_name: "b") }
+  let(:control_run) { described_class.new }
 
   def mutant(subject, status, covered_by: ["spec/sample_spec.rb"])
     node = Henitai::SourceParser.parse("1 + 2")
@@ -19,16 +20,6 @@ RSpec.describe Henitai::ControlRun do
 
   def control_result(status, reason = nil)
     Henitai::ScenarioExecutionResult.new(status:, status_reason: reason, stdout: "", stderr: "", log_path: "/dev/null")
-  end
-
-  def integration_returning(status, reason = nil)
-    integration = instance_double(Henitai::Integration::Rspec)
-    allow(integration).to receive(:run_mutant).and_return(control_result(status, reason))
-    integration
-  end
-
-  def control_run(integration = integration_returning(:survived))
-    described_class.new(integration:, timeout_for: ->(_files) { 5.0 })
   end
 
   it "reclassifies detections as CompileError and explains why", :aggregate_failures do
@@ -73,16 +64,17 @@ RSpec.describe Henitai::ControlRun do
             control_run.group_key(first) == control_run.group_key(other)]).to eq([true, false])
   end
 
-  it "runs the control with the unmutated node, the same test files and their timeout" do
-    integration = integration_returning(:survived)
-    calls = []
-    allow(integration).to receive(:run_mutant) do |mutant:, test_files:, timeout:|
-      calls << [mutant.mutated_node.equal?(mutant.original_node), mutant.operator, test_files, timeout]
-      control_result(:survived)
-    end
+  it "builds the control from the unmutated node, as a Control mutant at the same place", :aggregate_failures do
+    detected = mutant(subject_a, :killed)
 
-    control_run(integration).run_for(mutant(subject_a, :killed))
+    control = control_run.control_mutant(detected)
 
-    expect(calls).to eq([[true, "Control", ["spec/sample_spec.rb"], 5.0]])
+    expect(control.mutated_node).to equal(detected.original_node)
+    expect([control.operator, control.subject, control.location]).to eq(["Control", subject_a, detected.location])
+  end
+
+  it "runs the control against the detection's test files, sorted" do
+    expect(control_run.test_files(mutant(subject_a, :killed, covered_by: %w[b_spec.rb a_spec.rb])))
+      .to eq(%w[a_spec.rb b_spec.rb])
   end
 end

@@ -3,11 +3,22 @@
 require "spec_helper"
 require "tmpdir"
 
+# Integration double whose children are SpecSupport::FakeChildren: every
+# spawn is recorded, with the environment the child would inherit, and
+# #build_result answers the outcomes queued with #answer (default: killed;
+# the last outcome repeats).
 IntegrationSpy = Class.new do
-  attr_reader :calls
+  attr_reader :calls, :children
 
-  def initialize
+  def initialize(children)
+    @children = children
     @calls = Hash.new(0)
+    @outcomes = []
+  end
+
+  def answer(*outcomes)
+    @outcomes = outcomes
+    self
   end
 
   def select_tests(subject)
@@ -20,16 +31,22 @@ IntegrationSpy = Class.new do
     ["spec/foo_spec.rb"]
   end
 
-  def run_mutant(mutant:, test_files:, timeout:)
-    @calls[:run_mutant] += 1
+  def spawn_mutant(mutant:, test_files:)
+    @calls[:spawn_mutant] += 1
     @calls[:last_test_files] = test_files
-    @calls[:last_timeout] = timeout
-    @calls[:worker_slot] = ENV.fetch("HENITAI_WORKER_SLOT", nil)
-    mutant.status = :killed
+    @calls[:env] = ENV.to_h.slice("HENITAI_REPORTS_DIR", "HENITAI_COVERAGE_DIR")
+    children.spawn(mutant, test_files)
+  end
+
+  def build_result(_wait_result, _log_paths)
+    outcome = @outcomes.size > 1 ? @outcomes.shift : @outcomes.first
+    outcome || Henitai::ScenarioExecutionResult.new(status: :killed, stdout: "", stderr: "", log_path: nil)
   end
 end
 
 RSpec.describe Henitai::ExecutionEngine do
+  let(:children) { Henitai::SpecSupport::FakeChildren.new }
+
   def build_subject(expression)
     Struct.new(:expression).new(expression)
   end
@@ -43,98 +60,101 @@ RSpec.describe Henitai::ExecutionEngine do
   end
 
   def build_integration
-    IntegrationSpy.new
+    IntegrationSpy.new(children)
   end
 
-  def build_config
-    Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(
-      12.5,
-      "coverage",
-      1,
-      3
-    )
+  # The real worker runner and scheduler, on fake children.
+  def build_engine
+    described_class.new(runtime: children, wakeup: Henitai::SpecSupport::FakeWakeup.new)
+  end
+
+  def build_config(jobs: 1)
+    Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(12.5, "coverage", jobs, 3)
+  end
+
+  def outcome(status, killing_tests: [])
+    Henitai::ScenarioExecutionResult.new(status:, stdout: "", stderr: "", log_path: nil, killing_tests:)
+  end
+
+  def stub_worker_runner(control_stats: nil, flaky_retry_count: 0)
+    runner = instance_double(Henitai::ProcessWorkerRunner, flaky_retry_count:, run: [], control_stats:)
+    allow(Henitai::ProcessWorkerRunner).to receive(:new).and_return(runner)
+    runner
+  end
+
+  def recorder
+    Struct.new(:calls) do
+      def progress(mutant, **)
+        calls << mutant.status
+      end
+    end.new([])
+  end
+
+  describe "one driver for every jobs value (ADR-20)" do
+    {
+      nil => 1,
+      0 => 1,
+      1 => 1,
+      3 => 3
+    }.each do |jobs, slots|
+      it "runs jobs=#{jobs.inspect} through one worker runner with #{slots} slot(s)" do
+        stub_worker_runner
+
+        build_engine.run([build_mutant(:pending, "Foo#bar")], build_integration, build_config(jobs:))
+
+        expect(Henitai::ProcessWorkerRunner).to have_received(:new).with(hash_including(worker_count: slots)).once
+      end
+    end
+
+    [1, 2].each do |jobs|
+      it "gives every mutant a verdict with jobs=#{jobs}" do
+        mutants = 3.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
+        integration = build_integration.answer(outcome(:killed), outcome(:survived), outcome(:timeout))
+
+        build_engine.run(mutants, integration, build_config(jobs:))
+
+        expect(mutants.map(&:status)).to eq(%i[killed survived timeout])
+      end
+    end
   end
 
   describe "control runs" do
-    def config_with_control_runs(enabled, jobs: 1)
+    def config_with_control_runs(enabled)
       Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :control_runs)
-            .new(12.5, "coverage", jobs, 3, enabled)
+            .new(12.5, "coverage", 1, 3, enabled)
     end
 
-    def stub_gate(stats = { verified: 0, failed: 0, reclassified: 0 })
-      gate = instance_double(Henitai::ControlGate, progress: nil, stats:)
-      allow(Henitai::ControlGate).to receive(:new).and_return(gate)
-      gate
-    end
+    it "hands the worker runner a control run for its gate" do
+      mutants = [build_mutant(:pending, "Foo#bar")]
+      runner = stub_worker_runner(control_stats: { verified: 1, failed: 0, reclassified: 0 })
 
-    def stub_parallel_runner(control_stats)
-      runner = instance_double(Henitai::ProcessWorkerRunner, flaky_retry_count: 0, run: [], control_stats:)
-      allow(Henitai::ProcessWorkerRunner).to receive(:new).and_return(runner)
-      runner
-    end
-
-    it "routes linear verdicts through a control gate in front of the progress reporter", :aggregate_failures do
-      mutant = build_mutant(:pending, "Foo#bar")
-      progress = instance_double(Henitai::Reporter::Terminal, progress: nil)
-      gate = stub_gate
-
-      described_class.new.run([mutant], build_integration, config_with_control_runs(true), progress_reporter: progress)
-
-      expect(Henitai::ControlGate).to have_received(:new)
-        .with(downstream: progress, control_run: an_instance_of(Henitai::ControlRun))
-      expect(gate).to have_received(:progress).with(mutant, scenario_result: :killed)
-    end
-
-    it "hands the parallel worker runner a control run for its gate" do
-      mutants = 2.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
-      runner = stub_parallel_runner(verified: 1, failed: 0, reclassified: 0)
-
-      described_class.new.run(mutants, build_integration, config_with_control_runs(true, jobs: 2))
+      build_engine.run(mutants, build_integration, config_with_control_runs(true))
 
       expect(runner).to have_received(:run)
         .with(mutants, anything, anything, nil, hash_including(control_run: an_instance_of(Henitai::ControlRun)))
     end
 
-    it "hands the parallel worker runner no control run when control runs are disabled" do
-      mutants = 2.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
-      runner = stub_parallel_runner(nil)
+    it "hands the worker runner no control run when control runs are disabled" do
+      mutants = [build_mutant(:pending, "Foo#bar")]
+      runner = stub_worker_runner
 
-      described_class.new.run(mutants, build_integration, config_with_control_runs(false, jobs: 2))
+      build_engine.run(mutants, build_integration, config_with_control_runs(false))
 
       expect(runner).to have_received(:run).with(mutants, anything, anything, nil, hash_including(control_run: nil))
     end
 
-    it "neither gates nor verifies when control runs are disabled", :aggregate_failures do
-      mutant = build_mutant(:pending, "Foo#bar")
-      progress = instance_double(Henitai::Reporter::Terminal, progress: nil)
-      allow(Henitai::ControlRun).to receive(:new)
-
-      described_class.new.run([mutant], build_integration, config_with_control_runs(false), progress_reporter: progress)
-
-      expect(Henitai::ControlRun).not_to have_received(:new)
-      expect(progress).to have_received(:progress).with(mutant, scenario_result: :killed)
-    end
-
     it "warns when the control gate reclassified verdicts" do
-      stub_gate(verified: 3, failed: 1, reclassified: 4)
+      stub_worker_runner(control_stats: { verified: 3, failed: 1, reclassified: 4 })
 
       expect do
-        described_class.new.run([build_mutant(:pending, "Foo#bar")], build_integration, config_with_control_runs(true))
-      end.to output(/control runs failed for 1 of 3 subjects; 4 detected verdicts reclassified as CompileError/)
-        .to_stderr
-    end
-
-    it "warns when the parallel control gate reclassified verdicts" do
-      mutants = 2.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
-      stub_parallel_runner(verified: 3, failed: 1, reclassified: 4)
-
-      expect { described_class.new.run(mutants, build_integration, config_with_control_runs(true, jobs: 2)) }
+        build_engine.run([build_mutant(:pending, "Foo#bar")], build_integration, config_with_control_runs(true))
+      end
         .to output(/control runs failed for 1 of 3 subjects; 4 detected verdicts reclassified as CompileError/)
         .to_stderr
     end
   end
 
-  describe "HENITAI_WORKER_SLOT on the linear path" do
+  describe "HENITAI_WORKER_SLOT" do
     around do |example|
       original = ENV.fetch("HENITAI_WORKER_SLOT", nil)
       ENV["HENITAI_WORKER_SLOT"] = "sentinel"
@@ -143,19 +163,16 @@ RSpec.describe Henitai::ExecutionEngine do
       original.nil? ? ENV.delete("HENITAI_WORKER_SLOT") : ENV["HENITAI_WORKER_SLOT"] = original
     end
 
-    it "exposes slot 0 to every child" do
-      mutant = build_mutant(:pending, "Foo#bar")
-      integration = build_integration
+    it "exposes slot 0 to every child of a one-slot run" do
+      mutants = [build_mutant(:pending, "Foo#bar"), build_mutant(:pending, "Foo#baz")]
 
-      described_class.new.run([mutant], integration, build_config)
+      build_engine.run(mutants, build_integration, build_config)
 
-      expect(integration.calls[:worker_slot]).to eq("0")
+      expect(children.spawns.map { |spawn| spawn[:worker_slot] }).to eq(%w[0 0])
     end
 
     it "restores the variable after the run" do
-      mutant = build_mutant(:pending, "Foo#bar")
-
-      described_class.new.run([mutant], build_integration, build_config)
+      build_engine.run([build_mutant(:pending, "Foo#bar")], build_integration, build_config)
 
       expect(ENV.fetch("HENITAI_WORKER_SLOT", nil)).to eq("sentinel")
     end
@@ -183,43 +200,45 @@ RSpec.describe Henitai::ExecutionEngine do
       File.write(File.join(dir, "henitai_suite_boot.json"), JSON.dump("boot_seconds" => seconds))
     end
 
+    # The timeouts the engine's resolver hands the scheduler, one per mutant.
+    def resolved_timeouts(config, mutants: [build_mutant(:pending, "Foo#bar")], engine: build_engine,
+                          integration: build_integration)
+      timeouts = []
+      allow(stub_worker_runner).to receive(:run) do |run_mutants, _integration, _config, _progress, options|
+        run_mutants.each do |mutant|
+          timeouts << options[:timeout_resolver].call(mutant, options[:test_file_resolver].call(mutant))
+        end
+        []
+      end
+      engine.run(mutants, integration, config)
+      timeouts
+    end
+
     it "includes the measured suite boot time in the calibrated timeout" do
       Dir.mktmpdir do |dir|
         config = build_calibrating_config(dir, timeout_configured: false)
         write_timing_report(dir, "spec/foo_spec.rb" => 2.0)
         write_boot_report(dir, 1.0)
-        integration = build_integration
 
-        described_class.new.run([build_mutant(:pending, "Foo#bar")], integration, config)
-
-        expect(integration.calls[:last_timeout]).to eq(9.0)
+        expect(resolved_timeouts(config)).to eq([9.0])
       end
     end
 
     it "keeps suite boot in the calibrated timeout while the fork server is active" do
       fork_runner = instance_double(Henitai::ForkServer::MutantRunner, stop: nil, active?: true, runtime: nil)
-      worker_runner = instance_double(Henitai::ProcessWorkerRunner, flaky_retry_count: 0)
       integration = instance_double(Henitai::Integration::Rspec, fork_server_supported?: true)
       allow(Henitai::ForkServer).to receive(:start).and_return(fork_runner)
-      allow(Henitai::ProcessWorkerRunner).to receive(:new).and_return(worker_runner)
-      timeouts = []
-      allow(worker_runner).to receive(:run) do |*_args, **opts|
-        timeouts << opts[:timeout_resolver].call(nil, ["spec/foo_spec.rb"])
-        []
-      end
 
       Dir.mktmpdir do |dir|
-        config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :fork_server, :timeout_multiplier) do
-          def timeout_configured? = false
-        end.new(12.5, dir, 2, 3, true, 3.0)
+        config = build_calibrating_config(dir, timeout_configured: false)
+        config.define_singleton_method(:fork_server) { true }
         write_timing_report(dir, "spec/foo_spec.rb" => 2.0)
         write_boot_report(dir, 1.0)
-        engine = described_class.new
+        engine = build_engine
         allow(engine).to receive(:prioritized_tests_for).and_return(["spec/foo_spec.rb"])
-        engine.run(2.times.map { |i| build_mutant(:pending, "Foo#bar#{i}") }, integration, config)
-      end
 
-      expect(timeouts).to eq([9.0])
+        expect(resolved_timeouts(config, engine:, integration:)).to eq([9.0])
+      end
     end
 
     it "never caps the timeout below the measured baseline" do
@@ -228,11 +247,8 @@ RSpec.describe Henitai::ExecutionEngine do
         config.define_singleton_method(:max_timeout) { 30.0 }
         write_timing_report(dir, "spec/foo_spec.rb" => 20.0)
         write_boot_report(dir, 15.0) # baseline 35s, calibrated 105s
-        integration = build_integration
 
-        described_class.new.run([build_mutant(:pending, "Foo#bar")], integration, config)
-
-        expect(integration.calls[:last_timeout]).to eq(37.0)
+        expect(resolved_timeouts(config)).to eq([37.0])
       end
     end
 
@@ -242,12 +258,12 @@ RSpec.describe Henitai::ExecutionEngine do
         config.define_singleton_method(:max_timeout) { 30.0 }
         write_timing_report(dir, "spec/foo_spec.rb" => 20.0)
         write_boot_report(dir, 15.0)
-        mutants = [build_mutant(:pending, "Foo#bar"), build_mutant(:pending, "Foo#baz")]
         warnings = []
-        engine = described_class.new
+        engine = build_engine
         allow(engine).to receive(:warn) { |message| warnings << message }
 
-        engine.run(mutants, build_integration, config)
+        resolved_timeouts(config, mutants: [build_mutant(:pending, "Foo#bar"), build_mutant(:pending, "Foo#baz")],
+                                  engine:)
 
         expect(warnings).to eq(
           ["henitai: measured test baseline of 35.0s exceeds max_timeout (30.0s); using 37.0s instead"]
@@ -260,10 +276,10 @@ RSpec.describe Henitai::ExecutionEngine do
         config = build_calibrating_config(dir, timeout_configured: false)
         config.define_singleton_method(:max_timeout) { 30.0 }
         write_timing_report(dir, "spec/foo_spec.rb" => 20.0)
-        engine = described_class.new
+        engine = build_engine
         allow(engine).to receive(:warn)
 
-        engine.run([build_mutant(:pending, "Foo#bar")], build_integration, config)
+        resolved_timeouts(config, engine:)
 
         expect(engine).not_to have_received(:warn)
       end
@@ -275,11 +291,8 @@ RSpec.describe Henitai::ExecutionEngine do
         config.define_singleton_method(:max_timeout) { 30.0 }
         write_timing_report(dir, "spec/foo_spec.rb" => 20.0)
         write_boot_report(dir, 15.0)
-        integration = build_integration
 
-        described_class.new.run([build_mutant(:pending, "Foo#bar")], integration, config)
-
-        expect(integration.calls[:last_timeout]).to eq(12.5)
+        expect(resolved_timeouts(config)).to eq([12.5])
       end
     end
 
@@ -289,10 +302,10 @@ RSpec.describe Henitai::ExecutionEngine do
         config.define_singleton_method(:max_timeout) { 30.0 }
         write_timing_report(dir, "spec/foo_spec.rb" => 20.0)
         write_boot_report(dir, 15.0)
-        engine = described_class.new
+        engine = build_engine
         allow(engine).to receive(:warn)
 
-        engine.run([build_mutant(:pending, "Foo#bar")], build_integration, config)
+        resolved_timeouts(config, engine:)
 
         expect(engine).not_to have_received(:warn)
       end
@@ -302,11 +315,8 @@ RSpec.describe Henitai::ExecutionEngine do
       Dir.mktmpdir do |dir|
         config = build_calibrating_config(dir, timeout_configured: false)
         write_timing_report(dir, "spec/foo_spec.rb" => 2.0)
-        integration = build_integration
 
-        described_class.new.run([build_mutant(:pending, "Foo#bar")], integration, config)
-
-        expect(integration.calls[:last_timeout]).to eq(6.0)
+        expect(resolved_timeouts(config)).to eq([6.0])
       end
     end
 
@@ -314,11 +324,8 @@ RSpec.describe Henitai::ExecutionEngine do
       Dir.mktmpdir do |dir|
         config = build_calibrating_config(dir, timeout_configured: true)
         write_timing_report(dir, "spec/foo_spec.rb" => 2.0)
-        integration = build_integration
 
-        described_class.new.run([build_mutant(:pending, "Foo#bar")], integration, config)
-
-        expect(integration.calls[:last_timeout]).to eq(12.5)
+        expect(resolved_timeouts(config)).to eq([12.5])
       end
     end
 
@@ -327,36 +334,30 @@ RSpec.describe Henitai::ExecutionEngine do
         config = build_calibrating_config(dir, timeout_configured: false)
         config.define_singleton_method(:max_timeout) { 30.0 }
         write_timing_report(dir, "spec/foo_spec.rb" => 20.0) # 20 * 3.0 = 60s calibrated
-        integration = build_integration
 
-        described_class.new.run([build_mutant(:pending, "Foo#bar")], integration, config)
-
-        expect(integration.calls[:last_timeout]).to eq(30.0)
+        expect(resolved_timeouts(config)).to eq([30.0])
       end
     end
 
     it "falls back to the default timeout when timing data is missing" do
       Dir.mktmpdir do |dir|
         config = build_calibrating_config(dir, timeout_configured: false)
-        integration = build_integration
-        engine = described_class.new
+        engine = build_engine
         allow(engine).to receive(:warn)
 
-        engine.run([build_mutant(:pending, "Foo#bar")], integration, config)
-
-        expect(integration.calls[:last_timeout]).to eq(Henitai::Configuration::DEFAULT_TIMEOUT)
+        expect(resolved_timeouts(config, engine:)).to eq([Henitai::Configuration::DEFAULT_TIMEOUT])
       end
     end
 
     it "warns exactly once per run when calibration is unavailable" do
       Dir.mktmpdir do |dir|
         config = build_calibrating_config(dir, timeout_configured: false)
-        mutants = [build_mutant(:pending, "Foo#bar"), build_mutant(:pending, "Foo#baz")]
         warnings = []
-        engine = described_class.new
+        engine = build_engine
         allow(engine).to receive(:warn) { |message| warnings << message }
 
-        engine.run(mutants, build_integration, config)
+        resolved_timeouts(config, mutants: [build_mutant(:pending, "Foo#bar"), build_mutant(:pending, "Foo#baz")],
+                                  engine:)
 
         expect(warnings.grep(/Timeout calibration unavailable/).size).to eq(1)
       end
@@ -376,32 +377,10 @@ RSpec.describe Henitai::ExecutionEngine do
         original.call(**kwargs)
       end
 
-      described_class.new.run([build_mutant(:pending, "Foo#bar")], build_integration, config)
+      build_engine.run([build_mutant(:pending, "Foo#bar")], build_integration, config)
 
       expect(captured.call).to eq("spec/foo_spec.rb" => 0.5)
     end
-  end
-
-  it "keeps the conservative single-worker fallback when jobs is nil" do
-    pending_a = build_mutant(:pending, "Foo#bar")
-    pending_b = build_mutant(:pending, "Foo#baz")
-    integration = build_integration
-    config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(
-      12.5,
-      "coverage",
-      nil,
-      3
-    )
-
-    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
-    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
-      mutant.status = :killed
-    end
-    allow(Henitai::ProcessWorkerRunner).to receive(:new)
-
-    described_class.new.run([pending_a, pending_b], integration, config)
-
-    expect(Henitai::ProcessWorkerRunner).not_to have_received(:new)
   end
 
   def with_env(key, value)
@@ -432,7 +411,7 @@ RSpec.describe Henitai::ExecutionEngine do
   end
 
   def build_located_mutant(expression, file:, line:)
-    Struct.new(:status, :subject, :location) do
+    Struct.new(:status, :subject, :location, :covered_by, :tests_completed) do
       def pending?
         status == :pending
       end
@@ -456,83 +435,56 @@ RSpec.describe Henitai::ExecutionEngine do
     ignored = build_mutant(:ignored, "Foo#baz")
     integration = build_integration
 
-    described_class.new.run([pending, ignored], integration, build_config)
+    build_engine.run([pending, ignored], integration, build_config)
 
-    expect(integration.calls.slice(:select_tests, :run_mutant)).to eq(
+    expect(integration.calls.slice(:select_tests, :spawn_mutant)).to eq(
       select_tests: 1,
-      run_mutant: 1
+      spawn_mutant: 1
     )
   end
 
   it "updates pending mutant statuses from the integration result" do
     pending = build_mutant(:pending, "Foo#bar")
     ignored = build_mutant(:ignored, "Foo#baz")
-    integration = build_integration
 
-    result = described_class.new.run([pending, ignored], integration, build_config)
+    result = build_engine.run([pending, ignored], build_integration, build_config)
 
     expect(result.map(&:status)).to eq(%i[killed ignored])
   end
 
-  it "marks a mutant as no coverage when test exclusions remove every selected test" do
-    pending = build_mutant(:pending, "Foo#bar")
-    integration = build_integration
-    config = build_config
-    config.define_singleton_method(:test_excludes) { ["spec/foo_spec.rb"] }
+  [1, 2].each do |jobs|
+    it "marks mutants as no coverage when test exclusions remove every selected test (jobs=#{jobs})" do
+      mutants = [build_mutant(:pending, "Foo#bar"), build_mutant(:pending, "Foo#baz")]
+      integration = build_integration
+      config = build_config(jobs:)
+      config.define_singleton_method(:test_excludes) { ["spec/foo_spec.rb"] }
 
-    described_class.new.run([pending], integration, config)
+      build_engine.run(mutants, integration, config)
 
-    expect(
-      [pending.status, pending.covered_by, pending.tests_completed, integration.calls[:run_mutant]]
-    ).to eq([:no_coverage, [], 0, 0])
-  end
-
-  it "does not spawn parallel workers when test exclusions remove every selected test" do
-    mutants = [build_mutant(:pending, "Foo#bar"), build_mutant(:pending, "Foo#baz")]
-    integration = instance_double(Henitai::Integration::Rspec)
-    spawn_calls = 0
-    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
-    allow(integration).to receive(:spawn_mutant) do
-      spawn_calls += 1
-      raise "should not spawn"
+      expect(
+        [mutants.map(&:status), mutants.map(&:covered_by), mutants.map(&:tests_completed),
+         integration.calls[:spawn_mutant]]
+      ).to eq([%i[no_coverage no_coverage], [[], []], [0, 0], 0])
     end
-    config = build_config
-    config.jobs = 2
-    config.define_singleton_method(:test_excludes) { ["spec/foo_spec.rb"] }
-
-    described_class.new.run(mutants, integration, config)
-
-    expect([mutants.map(&:status), spawn_calls]).to eq([%i[no_coverage no_coverage], 0])
   end
 
   it "reports progress for pending mutants when a reporter is provided" do
     pending = build_mutant(:pending, "Foo#bar")
     skipped = build_mutant(:ignored, "Foo#baz")
-    integration = build_integration
-    progress = Struct.new(:calls) do
-      def progress(mutant, **_)
-        calls << mutant.status
-      end
-    end.new([])
+    progress = recorder
 
-    described_class.new.run([pending, skipped], integration, build_config, progress_reporter: progress)
+    build_engine.run([pending, skipped], build_integration, build_config, progress_reporter: progress)
 
     expect(progress.calls).to eq([:killed])
   end
 
   it "reports progress for a mutant without coverage" do
     pending = build_mutant(:pending, "Foo#bar")
-    integration = build_integration
-    progress = Struct.new(:calls) do
-      def progress(mutant, **_)
-        calls << mutant.status
-      end
-    end.new([])
+    progress = recorder
     config = build_config
     config.define_singleton_method(:test_excludes) { ["spec/foo_spec.rb"] }
-    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
 
-    described_class.new.run([pending], integration, config, progress_reporter: progress)
+    build_engine.run([pending], build_integration, config, progress_reporter: progress)
 
     expect(progress.calls).to eq([:no_coverage])
   end
@@ -540,10 +492,11 @@ RSpec.describe Henitai::ExecutionEngine do
   it "prioritizes tests that have already killed other mutants" do
     pending = build_mutant(:pending, "Foo#bar")
     integration = build_integration
-    config = Struct.new(:timeout, :reports_dir, :jobs, :history).new(
+    config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :history).new(
       12.5,
       "coverage",
       1,
+      3,
       {
         "spec/b_spec.rb" => 5,
         "spec/a_spec.rb" => 1
@@ -554,259 +507,110 @@ RSpec.describe Henitai::ExecutionEngine do
       %w[spec/a_spec.rb spec/b_spec.rb spec/c_spec.rb]
     )
 
-    described_class.new.run([pending], integration, config)
+    build_engine.run([pending], integration, config)
 
     expect(integration.calls[:last_test_files]).to eq(
       %w[spec/b_spec.rb spec/a_spec.rb spec/c_spec.rb]
     )
   end
 
-  it "never retries a survived mutant" do
-    pending = build_mutant(:pending, "Foo#bar")
-    integration = build_integration
-    call_count = 0
+  describe "flaky-test retries" do
+    def run_with_flaky(outcome, flaky: ["spec/foo_spec.rb"], max_retries: 3, engine: build_engine)
+      pending = build_mutant(:pending, "Foo#bar")
+      integration = build_integration.answer(outcome)
 
-    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
-    allow(integration).to receive(:run_mutant) do
-      call_count += 1
-      :survived
+      with_temp_reports_dir do |dir|
+        write_flaky_registry(dir, flaky) if flaky
+        engine.run([pending], integration, flaky_config(dir, max_retries:))
+      end
+
+      [pending.status, integration.calls[:spawn_mutant]]
     end
 
-    with_temp_reports_dir do |dir|
-      write_flaky_registry(dir, ["spec/foo_spec.rb"])
-      described_class.new.run([pending], integration, flaky_config(dir))
+    it "never retries a survived mutant" do
+      expect(run_with_flaky(outcome(:survived))).to eq([:survived, 1])
     end
 
-    expect([pending.status, call_count]).to eq([:survived, 1])
-  end
+    it "retries a kill whose killing tests are all flaky, up to the configured budget" do
+      killed = outcome(:killed, killing_tests: ["spec/foo_spec.rb"])
 
-  it "retries a kill whose killing tests are all flaky, up to the configured budget" do
-    pending = build_mutant(:pending, "Foo#bar")
-    integration = build_integration
-    call_count = 0
-    killed = Struct.new(:status, :killing_tests).new(:killed, ["spec/foo_spec.rb"])
-
-    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
-    allow(integration).to receive(:run_mutant) do
-      call_count += 1
-      killed
+      expect(run_with_flaky(killed, max_retries: 2)).to eq([:killed, 3])
     end
 
-    with_temp_reports_dir do |dir|
-      write_flaky_registry(dir, ["spec/foo_spec.rb"])
-      described_class.new.run([pending], integration, flaky_config(dir, max_retries: 2))
+    it "does not retry a kill when a killing test is stable" do
+      killed = outcome(:killed, killing_tests: ["spec/foo_spec.rb", "spec/stable_spec.rb"])
+
+      expect(run_with_flaky(killed)).to eq([:killed, 1])
     end
 
-    expect([pending.status, call_count]).to eq([:killed, 3])
-  end
+    it "does not retry any kill when no flaky-test registry exists" do
+      killed = outcome(:killed, killing_tests: ["spec/foo_spec.rb"])
 
-  it "does not retry a kill when a killing test is stable" do
-    pending = build_mutant(:pending, "Foo#bar")
-    integration = build_integration
-    call_count = 0
-    killed = Struct.new(:status, :killing_tests).new(:killed, ["spec/foo_spec.rb", "spec/stable_spec.rb"])
-
-    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
-    allow(integration).to receive(:run_mutant) do
-      call_count += 1
-      killed
+      expect(run_with_flaky(killed, flaky: nil)).to eq([:killed, 1])
     end
 
-    with_temp_reports_dir do |dir|
-      write_flaky_registry(dir, ["spec/foo_spec.rb"])
-      described_class.new.run([pending], integration, flaky_config(dir))
+    it "warns with the flaky test files when killed mutants are re-checked" do
+      engine = build_engine
+      allow(engine).to receive(:warn)
+
+      run_with_flaky(outcome(:killed, killing_tests: ["spec/foo_spec.rb"]), max_retries: 1, engine:)
+
+      expect(engine).to have_received(:warn).with(/Flaky-test mitigation: 1 killed mutant\(s\).*foo_spec\.rb/)
     end
 
-    expect(call_count).to eq(1)
-  end
-
-  it "does not retry any kill when no flaky-test registry exists" do
-    pending = build_mutant(:pending, "Foo#bar")
-    integration = build_integration
-    call_count = 0
-    killed = Struct.new(:status, :killing_tests).new(:killed, ["spec/foo_spec.rb"])
-
-    allow(integration).to receive(:select_tests).and_return(["spec/foo_spec.rb"])
-    allow(integration).to receive(:run_mutant) do
-      call_count += 1
-      killed
+    it "does not warn when no killed mutant is re-checked" do
+      expect { run_with_flaky(outcome(:survived)) }.not_to output(/Flaky-test mitigation:/).to_stderr
     end
 
-    with_temp_reports_dir do |dir|
-      described_class.new.run([pending], integration, flaky_config(dir))
-    end
+    it "hands the known flaky tests to the worker runner" do
+      stub_worker_runner
 
-    expect(call_count).to eq(1)
-  end
+      run_with_flaky(outcome(:killed))
 
-  it "warns with the flaky test files when killed mutants are re-checked" do
-    pending = build_mutant(:pending, "Foo#bar")
-    integration = build_integration
-    engine = described_class.new
-    killed = Struct.new(:status, :killing_tests).new(:killed, ["spec/foo_spec.rb"])
-
-    allow(integration).to receive_messages(select_tests: ["spec/foo_spec.rb"], run_mutant: killed)
-    allow(engine).to receive(:warn)
-
-    with_temp_reports_dir do |dir|
-      write_flaky_registry(dir, ["spec/foo_spec.rb"])
-      engine.run([pending], integration, flaky_config(dir, max_retries: 1))
-    end
-
-    expect(engine).to have_received(:warn).with(/Flaky-test mitigation: 1 killed mutant\(s\).*foo_spec\.rb/)
-  end
-
-  it "does not warn when no killed mutant is re-checked" do
-    mutants = 25.times.map do |index|
-      build_mutant(:pending, "Foo#bar#{index}")
-    end
-    integration = build_integration
-
-    allow(integration).to receive_messages(select_tests: ["spec/foo_spec.rb"], run_mutant: :survived)
-
-    with_temp_reports_dir do |dir|
-      write_flaky_registry(dir, ["spec/foo_spec.rb"])
-      expect do
-        described_class.new.run(mutants, integration, flaky_config(dir))
-      end.not_to output(/Flaky-test mitigation:/).to_stderr
+      expect(Henitai::ProcessWorkerRunner).to have_received(:new).with(
+        hash_including(flaky_tests: satisfy { |registry| registry.flaky?("spec/foo_spec.rb") })
+      )
     end
   end
 
-  it "keeps a single pending mutant on the linear path even with parallel jobs configured" do
-    pending = build_mutant(:pending, "Foo#bar")
-    ignored = build_mutant(:ignored, "Foo#baz")
-    integration = build_integration
-    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", 2)
-    thread_ids = []
-
-    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
-      thread_ids << Thread.current.object_id
-      mutant.status = :killed
+  describe "fork server" do
+    let(:fork_runner) do
+      instance_double(Henitai::ForkServer::MutantRunner, stop: nil, active?: true, runtime: :served_runtime)
     end
 
-    described_class.new.run([pending, ignored], integration, config)
-
-    expect(thread_ids).to eq([Thread.current.object_id])
-  end
-
-  it "treats zero jobs as linear execution" do
-    first = build_mutant(:pending, "Foo#bar")
-    second = build_mutant(:pending, "Foo#baz")
-    integration = build_integration
-    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", 0)
-
-    described_class.new.run([first, second], integration, config)
-
-    expect(integration.calls[:run_mutant]).to eq(2)
-  end
-
-  it "keeps jobs=1 on the linear execution path" do
-    first = build_mutant(:pending, "Foo#bar")
-    second = build_mutant(:pending, "Foo#baz")
-    integration = build_integration
-    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", 1)
-    thread_ids = []
-
-    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
-      thread_ids << Thread.current.object_id
-      mutant.status = :killed
+    def run_with_fork_server(jobs)
+      runner = stub_worker_runner
+      allow(Henitai::ForkServer).to receive(:start).and_return(fork_runner)
+      config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :fork_server)
+                     .new(12.5, "coverage", jobs, 3, true)
+      mutants = [build_mutant(:pending, "Foo#bar")]
+      engine = build_engine
+      allow(engine).to receive(:prioritized_tests_for).and_return(["spec/foo_spec.rb"])
+      engine.run(mutants, instance_double(Henitai::Integration::Rspec, fork_server_supported?: true), config)
+      [runner, mutants, config]
     end
 
-    described_class.new.run([first, second], integration, config)
+    [1, 2].each do |jobs|
+      it "runs the worker runner on the server's runtime and runner with jobs=#{jobs}", :aggregate_failures do
+        runner, mutants, config = run_with_fork_server(jobs)
 
-    expect(thread_ids.uniq.size).to eq(1)
-  end
-
-  it "runs linearly when jobs are not configured" do
-    first = build_mutant(:pending, "Foo#bar")
-    second = build_mutant(:pending, "Foo#baz")
-    integration = build_integration
-    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "coverage", nil)
-    thread_ids = []
-
-    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
-      thread_ids << Thread.current.object_id
-      mutant.status = :killed
+        expect(Henitai::ProcessWorkerRunner).to have_received(:new).with(hash_including(runtime: :served_runtime))
+        expect(runner).to have_received(:run)
+          .with(mutants, fork_runner, config, nil, test_file_resolver: anything, timeout_resolver: anything,
+                                                   control_run: nil)
+      end
     end
 
-    described_class.new.run([first, second], integration, config)
+    it "stops the server after the run" do
+      run_with_fork_server(1)
 
-    expect(thread_ids.uniq.size).to eq(1)
-  end
-
-  it "returns the status from a scenario result object" do
-    pending = build_mutant(:pending, "Foo#bar")
-    integration = build_integration
-    config = build_config
-    result = Struct.new(:status).new(:killed)
-
-    allow(integration).to receive(:run_mutant).and_return(result)
-
-    described_class.new.run([pending], integration, config)
-
-    expect(pending.status).to eq(:killed)
-  end
-
-  it "reports flaky-test re-checks that happened on the parallel path" do
-    engine = described_class.new
-    mutants = 4.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
-    integration = build_integration
-    runner = instance_double(Henitai::ProcessWorkerRunner, flaky_retry_count: 1)
-    allow(runner).to receive(:run).and_return([])
-    allow(Henitai::ProcessWorkerRunner).to receive(:new).and_return(runner)
-    allow(engine).to receive(:warn)
-
-    with_temp_reports_dir do |dir|
-      write_flaky_registry(dir, ["spec/foo_spec.rb"])
-      engine.run(mutants, integration, flaky_config(dir).tap { |config| config.jobs = 2 })
+      expect(fork_runner).to have_received(:stop)
     end
-
-    expect(engine).to have_received(:warn).with(/Flaky-test mitigation: 1 killed mutant\(s\)/)
-  end
-
-  it "hands the known flaky tests to the parallel worker runner" do
-    engine = described_class.new
-    mutants = 2.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
-    runner = instance_double(Henitai::ProcessWorkerRunner, flaky_retry_count: 0)
-    allow(runner).to receive(:run).and_return([])
-    allow(Henitai::ProcessWorkerRunner).to receive(:new).and_return(runner)
-
-    with_temp_reports_dir do |dir|
-      write_flaky_registry(dir, ["spec/foo_spec.rb"])
-      engine.run(mutants, build_integration, flaky_config(dir).tap { |config| config.jobs = 2 })
-    end
-
-    expect(Henitai::ProcessWorkerRunner).to have_received(:new).with(
-      hash_including(flaky_tests: satisfy { |registry| registry.flaky?("spec/foo_spec.rb") })
-    )
-  end
-
-  it "runs parallel workers through the fork server while it is active" do
-    fork_runner = instance_double(Henitai::ForkServer::MutantRunner, stop: nil, active?: true, runtime: nil)
-    worker_runner = instance_double(Henitai::ProcessWorkerRunner, flaky_retry_count: 0)
-    integration = instance_double(Henitai::Integration::Rspec, fork_server_supported?: true)
-    config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :fork_server).new(
-      12.5, "coverage", 2, 3, true
-    )
-    mutants = 2.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
-
-    allow(Henitai::ForkServer).to receive(:start).and_return(fork_runner)
-    allow(worker_runner).to receive(:run).and_return([])
-    allow(Henitai::ProcessWorkerRunner).to receive(:new).and_return(worker_runner)
-
-    engine = described_class.new
-    allow(engine).to receive(:prioritized_tests_for).and_return(["spec/foo_spec.rb"])
-    engine.run(mutants, integration, config)
-
-    expect(worker_runner).to have_received(:run)
-      .with(mutants, fork_runner, config, nil, test_file_resolver: anything, timeout_resolver: anything,
-                                               control_run: nil)
   end
 
   it "filters candidate tests by per-test coverage before executing a mutant" do
     pending = build_located_mutant("Foo#bar", file: "lib/foo.rb", line: 3)
     integration = build_integration
-    observed_tests = nil
 
     with_temp_reports_dir do |reports_dir|
       write_per_test_coverage_report(
@@ -821,32 +625,24 @@ RSpec.describe Henitai::ExecutionEngine do
         }
       )
 
-      config = Struct.new(:timeout, :reports_dir, :jobs, :history).new(
-        12.5,
-        reports_dir,
-        1,
-        {}
+      config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :history).new(
+        12.5, reports_dir, 1, 3, {}
       )
 
       allow(integration).to receive_messages(
         select_tests: %w[spec/covered_spec.rb spec/uncovered_spec.rb],
         test_files: %w[spec/covered_spec.rb spec/uncovered_spec.rb]
       )
-      allow(integration).to receive(:run_mutant) do |mutant:, test_files:, **_kwargs|
-        observed_tests = test_files
-        mutant.status = :killed
-      end
 
-      described_class.new.run([pending], integration, config)
+      build_engine.run([pending], integration, config)
     end
 
-    expect(observed_tests).to eq(["spec/covered_spec.rb"])
+    expect(integration.calls[:last_test_files]).to eq(["spec/covered_spec.rb"])
   end
 
   it "runs a test covering the mutant even when name matching would not select it" do
     pending = build_located_mutant("Foo#bar", file: "lib/foo.rb", line: 3)
     integration = build_integration
-    observed_tests = nil
 
     with_temp_reports_dir do |reports_dir|
       write_per_test_coverage_report(
@@ -854,23 +650,19 @@ RSpec.describe Henitai::ExecutionEngine do
         { "spec/unrelated_name_spec.rb" => { File.expand_path("lib/foo.rb") => [3] } }
       )
 
-      config = Struct.new(:timeout, :reports_dir, :jobs, :history).new(
-        12.5, reports_dir, 1, {}
+      config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :history).new(
+        12.5, reports_dir, 1, 3, {}
       )
 
       allow(integration).to receive_messages(
         select_tests: ["spec/foo_spec.rb"],
         test_files: %w[spec/foo_spec.rb spec/unrelated_name_spec.rb]
       )
-      allow(integration).to receive(:run_mutant) do |mutant:, test_files:, **_kwargs|
-        observed_tests = test_files
-        mutant.status = :killed
-      end
 
-      described_class.new.run([pending], integration, config)
+      build_engine.run([pending], integration, config)
     end
 
-    expect(observed_tests).to eq(["spec/unrelated_name_spec.rb"])
+    expect(integration.calls[:last_test_files]).to eq(["spec/unrelated_name_spec.rb"])
   end
 
   it "records the selected tests on the mutant for report serialization" do
@@ -880,86 +672,53 @@ RSpec.describe Henitai::ExecutionEngine do
     allow(integration).to receive(:select_tests).and_return(
       %w[spec/covered_spec.rb spec/other_spec.rb]
     )
-    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
-      mutant.status = :killed
-    end
 
-    described_class.new.run([pending], integration, build_config)
+    build_engine.run([pending], integration, build_config)
 
     expect([pending.covered_by, pending.tests_completed]).to eq(
       [%w[spec/covered_spec.rb spec/other_spec.rb], 2]
     )
   end
 
+  def artifacts_config(reports_dir = "artifacts")
+    Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(12.5, reports_dir, 1, 3)
+  end
+
   it "falls back to reports when the configured reports dir is blank" do
-    pending = build_mutant(:pending, "Foo#bar")
     integration = build_integration
-    config = Struct.new(:timeout, :reports_dir, :jobs).new(12.5, "", 1)
-    observed_coverage_dir = nil
 
-    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
-      observed_coverage_dir = ENV.fetch("HENITAI_COVERAGE_DIR", nil)
-      mutant.status = :killed
-    end
+    build_engine.run([build_mutant(:pending, "Foo#bar")], integration, artifacts_config(""))
 
-    described_class.new.run([pending], integration, config)
-
-    expect(observed_coverage_dir).to eq(
-      File.join("reports", "mutation-coverage")
-    )
+    expect(integration.calls[:env]["HENITAI_COVERAGE_DIR"]).to eq(File.join("reports", "mutation-coverage"))
   end
 
-  it "exposes the configured reports dir to the integration run" do
-    pending = build_mutant(:pending, "Foo#bar")
+  it "exposes the configured reports dir to the children" do
     integration = build_integration
-    config = Struct.new(:timeout, :reports_dir).new(12.5, "artifacts")
-    observed_reports_dir = nil
 
-    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
-      observed_reports_dir = ENV.fetch("HENITAI_REPORTS_DIR", nil)
-      mutant.status = :killed
-    end
+    build_engine.run([build_mutant(:pending, "Foo#bar")], integration, artifacts_config)
 
-    described_class.new.run([pending], integration, config)
-
-    expect(observed_reports_dir).to eq("artifacts")
+    expect(integration.calls[:env]["HENITAI_REPORTS_DIR"]).to eq("artifacts")
   end
 
-  it "exposes the configured coverage dir to the integration run" do
-    pending = build_mutant(:pending, "Foo#bar")
+  it "exposes the configured coverage dir to the children" do
     integration = build_integration
-    config = Struct.new(:timeout, :reports_dir).new(12.5, "artifacts")
-    observed_coverage_dir = nil
 
-    allow(integration).to receive(:run_mutant) do |mutant:, **_kwargs|
-      observed_coverage_dir = ENV.fetch("HENITAI_COVERAGE_DIR", nil)
-      mutant.status = :killed
-    end
+    build_engine.run([build_mutant(:pending, "Foo#bar")], integration, artifacts_config)
 
-    described_class.new.run([pending], integration, config)
-
-    expect(observed_coverage_dir).to eq("artifacts/mutation-coverage")
+    expect(integration.calls[:env]["HENITAI_COVERAGE_DIR"]).to eq("artifacts/mutation-coverage")
   end
 
   it "restores the reports dir environment variable after execution" do
-    pending = build_mutant(:pending, "Foo#bar")
-    integration = build_integration
-    config = Struct.new(:timeout, :reports_dir).new(12.5, "artifacts")
-
     with_env("HENITAI_REPORTS_DIR", "preexisting") do
-      described_class.new.run([pending], integration, config)
+      build_engine.run([build_mutant(:pending, "Foo#bar")], build_integration, artifacts_config)
 
       expect(ENV.fetch("HENITAI_REPORTS_DIR", nil)).to eq("preexisting")
     end
   end
 
   it "restores the coverage dir environment variable after execution" do
-    pending = build_mutant(:pending, "Foo#bar")
-    integration = build_integration
-    config = Struct.new(:timeout, :reports_dir).new(12.5, "artifacts")
-
     with_env("HENITAI_COVERAGE_DIR", "preexisting") do
-      described_class.new.run([pending], integration, config)
+      build_engine.run([build_mutant(:pending, "Foo#bar")], build_integration, artifacts_config)
 
       expect(ENV.fetch("HENITAI_COVERAGE_DIR", nil)).to eq("preexisting")
     end

@@ -4,11 +4,11 @@ require_relative "../fork_server"
 
 module Henitai
   class ExecutionEngine
-    # Opt-in fork-server execution (`mutation.fork_server`, ADR-15) for the
-    # engine's linear path. While the block runs, @fork_server_runner (when a
-    # server booted) runs the mutants; it is nil when the flag is off, the
-    # integration cannot boot once, or the server failed to boot, and the
-    # integration then boots per mutant.
+    # Opt-in fork-server execution (`mutation.fork_server`, ADR-15). While
+    # the block runs, @fork_server_runner (when a server booted) stands in for
+    # the integration and its runtime for the worker runner's; it is nil when
+    # the flag is off, the integration cannot boot once, or the server failed
+    # to boot, and the integration then boots per mutant.
     module ForkServerScope
       private
 
@@ -45,7 +45,7 @@ module Henitai
       end
 
       # The scheduler learns of served processes' exits through the server.
-      def parallel_runtime_options
+      def fork_server_runtime_options
         @fork_server_runner&.active? ? { runtime: @fork_server_runner.runtime } : {}
       end
 

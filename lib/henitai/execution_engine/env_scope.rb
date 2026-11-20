@@ -37,9 +37,9 @@ module Henitai
         restore_env(env_key, original) if cap
       end
 
-      # Linear-path children inherit slot 0 so suite-side isolation code works
-      # identically in both execution modes; the parallel scheduler overwrites
-      # the value per spawn. Restored afterwards like the other run-scoped vars.
+      # Slot 0 for whatever the engine starts outside a scheduler slot (the
+      # fork server's boot); the scheduler sets each child's slot at spawn.
+      # Restored afterwards like the other run-scoped vars.
       def with_worker_slot
         original = ENV.fetch(SlotScheduler::WORKER_SLOT_ENV, nil)
         ENV[SlotScheduler::WORKER_SLOT_ENV] = "0"

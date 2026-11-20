@@ -17,7 +17,7 @@ RSpec.describe Henitai::ExecutionEngine::ForkServerScope, :aggregate_failures do
       def run(mutants, integration, config)
         with_fork_server(mutants, integration, config) do
           @inside = @fork_server_runner
-          @options = parallel_runtime_options
+          @options = fork_server_runtime_options
         end
       end
 
