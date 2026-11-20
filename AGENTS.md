@@ -114,6 +114,7 @@ bundle exec rake smoke:integration:dogfood_rspec
 
 bundle exec rake oracle                               # false kills/survivors on the oracle corpus
 bundle exec rake oracle:reuse                         # --incremental verdicts == fresh run after scripted edits
+bundle exec rake oracle:resume                        # interrupted runs resume to the verdicts of a fresh run
 ```
 
 Enable the repository git hook, which runs RuboCop, RSpec, and the smoke suite
@@ -194,10 +195,13 @@ coverage and is excluded from `includes` in `.henitai.yml`.
 - Opt-in `mutation.fork_server` (ADR-15, RSpec and Minitest, any `jobs`)
   boots the test environment once in a server and forks each mutant process
   from it; on failure it falls back to per-mutant boot.
-- `ExecutionEngine` runs mutants linearly by default (`config.jobs`, default
-  `1`). With more jobs, `ProcessWorkerRunner` drives a single-threaded event
-  loop and `SlotScheduler` owns spawning, reaping, timeouts and draining. Every
-  mutant runs in its own forked child; forked processes provide the isolation.
+- `ExecutionEngine` hands every run to one `ProcessWorkerRunner` (ADR-20):
+  it drives a single-threaded event loop and owns INT/TERM/HUP handling, and
+  `SlotScheduler` owns spawning, reaping, timeouts, draining, flaky retries
+  and control jobs. `config.jobs` (default `1`) is only the slot count; there
+  is no separate `jobs: 1` path. Every mutant runs in its own forked child;
+  forked processes provide the isolation. The synchronous wait in
+  `Integration::Base` serves the baseline suite only.
 - Test selection is coverage first. The per-test coverage map
   (`henitai_per_test.json`) is the primary source of candidate tests: every
   integration test file that provably covers the mutant's lines is selected,
@@ -209,7 +213,10 @@ coverage and is excluded from `includes` in `.henitai.yml`.
   `ChildReportStore` and `MutantVerdict` classifies it, so activation errors,
   signals and `SystemExit` never count as kills; `ControlRun` re-runs
   detected subjects with the unmutated method and reclassifies their
-  detections if that fails. `rake oracle` measures false kills and survivors.
+  detections if that fails. The control runs at a group's first detection,
+  as a scheduler job, and `ControlGate` holds the group's detections until
+  then, so every reported or persisted verdict is final (ADR-19). `rake
+  oracle` measures false kills and survivors.
 - Verdict reuse is sound or absent. `IncrementalFilter` reuses a stored
   `Killed`/`Survived` verdict only when the subject source, the covering test
   files (Survived: the full covering set) and the `ReuseContext` fingerprint
@@ -229,7 +236,7 @@ coverage and is excluded from `includes` in `.henitai.yml`.
   `henitai_flaky_tests.json`; a `Killed` mutant is retried up to
   `config.max_flaky_retries` (default `3`) only when every test file in the
   child report's `failed_tests` is flaky, and any surviving retry makes it
-  `Survived`. No flaky set means no retries (linear and parallel paths alike).
+  `Survived`. No flaky set means no retries.
 - Coverage is a required gate before subject resolution. If existing coverage
   does not cover configured sources, the configured test suite runs once to
   bootstrap it. If coverage remains unusable, `Henitai::CoverageError` aborts
@@ -304,7 +311,15 @@ deliberate even though `||=` is a valid `UpdateOperator`/
   Recipe stubs keep their precomputed `stable_id` and persist the `replacement`
   source. Every cached Killed/Survived verdict stores the `ReuseContext`
   fingerprint. Trend `runs` rows are written only for authoritative runs (not
-  `--since`, subject-scoped or survivor reruns).
+  `--since`, subject-scoped or survivor reruns, never for aborted runs).
+- Resumable runs (ADR-19): `HistoryCheckpointer` writes final verdicts into
+  the history during the run, in atomic batches with signals deferred; one
+  history entry per mutant and `runId`. `ExecutionProvenance` binds a cached
+  verdict to the inputs that ran (size and mtime captured before Gate 1); a
+  kill whose flaky retry a shutdown cut short is never cached. On
+  INT/TERM/HUP, `Runner` flushes observers, prints the saved count and
+  re-raises; `henitai run --incremental` resumes. `rake oracle:resume`
+  checks this end to end.
 - `mutation-report.json` is merged across scoped runs by `stableId`
   (`CanonicalReportMerger`). A non-authoritative run that mutated every subject
   of a file lists it in top-level `completeFiles`; the merger replaces that

@@ -490,7 +490,10 @@ keep harness defects out of the detected count:
   suite keeps exit-status semantics.
 - `ControlRun` (`mutation.control_runs`, on by default) re-runs every subject
   with a detected verdict once with its unmutated method injected. If the tests
-  fail, the subject's detections are reclassified as `CompileError`.
+  fail, the subject's detections are reclassified as `CompileError`. The
+  control runs at the group's first detection (`ControlGate`, ADR-19) as a
+  scheduler job; the gate holds the group's detections until it finishes, so
+  every verdict a progress observer sees is final.
 
 `spec/fixtures/oracle` measures how well this holds: its assertion-free suite
 can produce no legitimate kill, and its pinning suite no legitimate survivor
@@ -533,8 +536,8 @@ Namespace-wide ignore rules belong in `.henitai.yml`, not in source comments.
 
 With `mutation.fork_server: true` (RSpec and Minitest, any `jobs`), the
 environment and the union of the run's test files are loaded once in a
-long-lived server and every mutant process is forked from it. With `jobs > 1`
-the scheduler runs on `ForkServer::Runtime`, which completes mutants from the
+long-lived server and every mutant process is forked from it. The
+scheduler then runs on `ForkServer::Runtime`, which completes mutants from the
 server's `exited` events instead of `waitpid`. If the server is unavailable
 the run falls back to per-mutant boot with a warning. A server lost mid-run
 does not turn its in-flight mutants into `runtime_error`: they complete as
@@ -546,11 +549,13 @@ back to the pid, and probing liveness with `kill(0)`. See
 
 ### 8.6 Parallel Execution and Flaky Test Mitigation
 
-The execution engine runs mutants linearly by default; `config.jobs` above `1`
-switches to `ProcessWorkerRunner`, a single-threaded event loop that delegates
-spawning, reaping, timeouts and draining to `SlotScheduler`. The
-`AvailableCpuCount` helper exists as a future policy hook, but it is not wired
-into the default path yet. Every mutant runs in its own forked child process,
+The execution engine hands every run to `ProcessWorkerRunner`, a
+single-threaded event loop that owns INT/TERM/HUP handling and delegates
+spawning, reaping, timeouts, draining, flaky retries and control jobs to
+`SlotScheduler` (ADR-20). `config.jobs` (default `1`) is the number of slots,
+not a mode: one job is a scheduler with one slot. The `AvailableCpuCount`
+helper exists as a future policy hook, but it is not wired into the default
+path yet. Every mutant runs in its own forked child process,
 which provides the actual test isolation.
 
 Every forked mutant child begins with `Integration::ChildBootstrap.after_fork!`,
@@ -700,6 +705,8 @@ The reuse rules exploit an asymmetry in monotonicity:
 
 `--survivors-from` reruns do not have a second mechanism: the selected survivors are fed through the same `IncrementalFilter`, always (the former git-based `SurvivorTestFilter` was removed). Recipe stubs have no source range and always re-run; `DirtySourceDetector` only gates the activation-recipe fast path. Gate 1 (source selection) owns its own per-test coverage instance, so reuse and history read the post-bootstrap per-test map. `rake oracle:reuse` verifies the property: after scripted edits (source, new test, helper, configuration) the `--incremental` verdicts must equal a fresh full run.
 
+**Resumable runs (ADR-19).** `HistoryCheckpointer` is a progress observer behind the `ControlGate`: it writes final verdicts into the history store in batches during Gate 4, one atomic transaction per batch, with signals deferred while it writes. Each history entry carries the run's `runId`, so a checkpoint and the end-of-run write of the same run produce one entry per mutant; only the end-of-run write of an authoritative run adds a `runs` row. `ExecutionProvenance` records size and mtime of every file the run may parse, load or execute before Gate 1; a verdict is fingerprinted only while its files still match that record. A kill whose flaky retry a shutdown cut short is never cached. On INT/TERM/HUP the worker runner drains its children and raises `Interrupt`; `Runner` flushes every observer, reports how many verdicts were saved, and re-raises. `rake oracle:resume` interrupts real runs with each signal, for one and two jobs, with and without the fork server, and requires the `--incremental` resume to equal a fresh run.
+
 Every doubt resolves to re-execution: missing or empty per-test map, integrations without per-test coverage support, ambiguous stable ids, legacy history rows, timeout/error verdicts, and any fingerprint read failure. `--force` bypasses reuse entirely.
 
 Soundness rests on the per-test map being a complete over-approximation of reachability. The collector therefore uses count-delta attribution (every test whose run increments a line's hit count is credited, not just the first toucher), and coverage freshness watches the dependency file set as well: edits via mtime, deletions via a recorded path manifest (`henitai_dependency_manifest.json`) compared against disk. Generated artifact trees inside fixture projects are excluded from the dependency scan only on **evidence** of actual output (`GeneratedArtifacts`: known artifact files such as `.resultset.json` or `mutation-report.json`, per-mutant entries in `mutation-logs/`); a conventionally named directory without evidence stays in the scan, because wrongly excluding a real dependency would let an obsolete Survived verdict be reused.
@@ -729,6 +736,8 @@ Mutant activation covers `module_function` subjects: `module_function` copies th
 | Detected verdicts must be caused by the mutation (ADR-14) | classify by child exit status; trust activation | accepted | a false kill hides exactly the test gap the tool exists to reveal; a fidelity check, an explicit child report, and an unmutated control run keep harness failures out of the detected count, and an oracle corpus measures it |
 | Supported Ruby range starts at 3.3.6 (ADR-16) | keep `>= 4.0.0` as policy; relax to `>= 3.3.0`; relax to `>= 3.4.0` | superseded by ADR-17 | henitai runs inside the target project's process, so the floor decides who can be mutation-tested at all; measurement showed one 4.0-only API (`Enumerable#rfind`, introduced by RuboCop's own `TargetRubyVersion: 4.0`), and 3.3.6 is the version actually verified green |
 | Version support lifecycle for Ruby and Rails (ADR-17) | fixed version list maintained by hand; support only non-EOL versions; full Ruby × Rails cross product | accepted (implementation pending) | supported, grace (EOL + 1 year, tested but not guaranteed) and dropped states apply to Ruby and Rails alike; the floor moves to 3.3.0 and stays exercised in CI; new versions enter and EOL versions leave a generated matrix automatically |
+| Resumable runs through history checkpoints (ADR-19) | persist mid-run kills as "control pending"; resume from the partial JSON report | accepted | final verdicts only: the control runs at a group's first detection, so checkpoints never hold an unverified kill, and fingerprints are bound to the inputs that actually ran |
+| One mutant execution driver (ADR-20) | keep a synchronous driver for `jobs: 1` | accepted | every execution feature had been built twice; `jobs` is a slot count, the fork server the only mode switch |
 
 Formal ADRs live in `docs/architecture/adr/` and use the same English terminology.
 

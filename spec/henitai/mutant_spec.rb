@@ -88,6 +88,15 @@ RSpec.describe Henitai::Mutant do
     expect(mutant.from_cache?).to be(true)
   end
 
+  it "reports whether shutdown cut its flaky-kill retries short", :aggregate_failures do
+    mutant = build_mutant
+    fresh = mutant.retry_cut_short?
+    mutant.retry_cut_short = true
+
+    expect(fresh).to be(false)
+    expect(mutant.retry_cut_short?).to be(true)
+  end
+
   describe "#stable_id" do
     it "returns a 64-character hex string" do
       expect(build_mutant.stable_id).to match(/\A[0-9a-f]{64}\z/)

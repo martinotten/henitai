@@ -14,7 +14,19 @@ module Henitai
       end
 
       def retry?(slot:, result:, shutdown:)
-        return false if shutdown || result.status != :killed
+        !shutdown && retry_wanted?(slot, result)
+      end
+
+      # True when only the shutdown stopped a retry: the kill may be faked by
+      # a flaky test, so its verdict must not be cached (ADR-19).
+      def vetoed?(slot:, result:, shutdown:)
+        shutdown && retry_wanted?(slot, result)
+      end
+
+      private
+
+      def retry_wanted?(slot, result)
+        return false unless result.status == :killed
 
         @decision.retry?(status: :killed, killing_tests: result.killing_tests, attempts: slot.retry_count)
       end

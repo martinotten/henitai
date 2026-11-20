@@ -50,7 +50,7 @@ module Henitai
         return if draining.empty?
 
         broadcast_term(draining)
-        wait_for_drain_window
+        wait_for_drain_window(draining)
         signal_draining_slots(draining)
         reap_and_remove_draining(draining)
       end
@@ -80,9 +80,12 @@ module Henitai
         end
       end
 
-      # Unrelated events (CHLD of another slot, server traffic) wake the select
-      # early; the SIGTERM grace window must still run its full length.
-      def wait_for_drain_window
+      # The SIGTERM grace window ends at its deadline or as soon as every
+      # draining child has exited, whichever comes first. Unrelated events
+      # (CHLD of another slot, server traffic) wake the select early without
+      # ending it. Waiting out the full window for a child that already exited
+      # cost every timed-out mutant PROCESS_DRAIN_WINDOW of wall time.
+      def wait_for_drain_window(draining)
         return unless wakeup
 
         deadline = monotonic_time + PROCESS_DRAIN_WINDOW
@@ -90,7 +93,14 @@ module Henitai
           woken = wakeup.wait(remaining)
           wakeup.drain
           break unless woken
+          break if all_exited?(draining)
         end
+      end
+
+      # Reaps what has exited; the status waits on the slot for the final reap.
+      def all_exited?(draining)
+        draining.each_value { |slot| slot.reaped_status ||= wnohang_reap(slot.pid)&.last }
+        draining.each_value.all?(&:reaped_status)
       end
 
       def signal_draining_slots(draining)
@@ -121,8 +131,7 @@ module Henitai
       # One last WNOHANG before blocking: catches processes that exited
       # between SIGKILL and here.
       def reap_and_finalize_slot(slot)
-        _, final_status = wnohang_reap(slot.pid)
-        reap_pid(slot.pid) unless final_status
+        final_status = final_reap(slot)
         tear_down_process_group(slot.pid)
 
         slot_table.release_pid(slot.pid)
@@ -134,8 +143,18 @@ module Henitai
         record_drain_result(slot, final_status)
       end
 
+      # The status the drain window already reaped, else a last WNOHANG, else
+      # a blocking reap (which yields no status worth classifying).
+      def final_reap(slot)
+        status = slot.reaped_status || wnohang_reap(slot.pid)&.last
+        reap_pid(slot.pid) unless status
+        status
+      end
+
       def record_drain_result(slot, final_status)
         result = drain_verdict.build(slot, final_status)
+        return report_control(slot.control_key, result) if slot.control_key
+
         slot.mutant.status = result.status
         ScenarioExecutionResult.copy_reason(result, slot.mutant)
         results << result

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "slot_scheduler/process_control"
+require_relative "slot_scheduler/control_slots"
 require_relative "slot_scheduler/draining"
 require_relative "slot_scheduler/drain_verdict"
 require_relative "slot_scheduler/retry_policy"
@@ -25,6 +26,7 @@ module Henitai
   class SlotScheduler
     include ProcessControl
     include Draining
+    include ControlSlots
 
     PROCESS_DRAIN_WINDOW = 0.2
 
@@ -38,7 +40,7 @@ module Henitai
     Slot = Struct.new(
       :slot_id, :mutant, :pid, :started_at_monotonic, :timeout,
       :log_paths, :retry_count, :draining, :term_sent_at_monotonic,
-      :forced_outcome, :worker_index
+      :forced_outcome, :worker_index, :control_key, :reaped_status
     )
 
     # @return [Integer] mutants that required at least one retry during the run.
@@ -52,7 +54,7 @@ module Henitai
     # collaborator supplied by ProcessWorkerRunner; bundling them into a context
     # object would only move the list.
     def initialize(integration:, config:, progress_reporter:, options:, host:, slot_table: SlotTable.new,
-                   flaky_tests: nil)
+                   flaky_tests: nil, control_listener: nil)
       # rubocop:enable Metrics/ParameterLists
       @integration = integration
       @config = config
@@ -61,6 +63,7 @@ module Henitai
       @host = host
       @slot_table = slot_table
       @injected_flaky_tests = flaky_tests
+      @control_listener = control_listener
       @pending = []
       @results = []
       @flaky_retry_count = 0
@@ -72,13 +75,13 @@ module Henitai
     end
 
     def done?
-      pending.empty? && slot_table.empty?
+      pending.empty? && control_jobs.empty? && slot_table.empty?
     end
 
+    # Queued control jobs go first: detections wait on them (ADR-19).
     def fill_idle_slots
-      while slot_table.size < worker_count && !pending.empty?
-        mutant = pending.shift
-        spawn_into_slot(mutant)
+      while slot_table.size < worker_count && (control_jobs.any? || pending.any?)
+        control_jobs.any? ? spawn_control_into_slot(control_jobs.shift) : spawn_into_slot(pending.shift)
       end
     end
 
@@ -135,8 +138,9 @@ module Henitai
       mutant.tests_completed = test_files.size if mutant.respond_to?(:tests_completed=)
     end
 
-    def register_slot(handle, mutant, worker_index, timeout)
+    def register_slot(handle, mutant, worker_index, timeout, control_key: nil)
       slot = build_slot(slot_table.next_slot_id!, mutant, handle, worker_index, timeout)
+      slot.control_key = control_key
       slot_table.add(slot)
       slot_table.register_pid(handle.pid, slot.slot_id)
       Integration::SchedulerDiagnostics.child_started(handle.pid)
@@ -169,6 +173,7 @@ module Henitai
       return unless slot
 
       Integration::SchedulerDiagnostics.child_ended(pid)
+      return complete_control(slot, wait_result) if slot.control_key
       return rerun_lost_slot(slot) if lost?(wait_result)
 
       result = integration.build_result(wait_result, slot.log_paths)
@@ -178,7 +183,12 @@ module Henitai
     def dispatch_slot_result(slot, result)
       return retry_slot(slot) if retry_policy.retry?(slot: slot, result: result, shutdown: shutdown?)
 
+      mark_retry_cut_short(slot) if retry_policy.vetoed?(slot: slot, result: result, shutdown: shutdown?)
       finalize_slot(slot, result)
+    end
+
+    def mark_retry_cut_short(slot)
+      slot.mutant.retry_cut_short = true if slot.mutant.respond_to?(:retry_cut_short=)
     end
 
     def finalize_slot(slot, result)
@@ -267,13 +277,7 @@ module Henitai
     end
 
     def record_spawn_failure(mutant, error)
-      result = ScenarioExecutionResult.new(
-        status: :compile_error,
-        stdout: "",
-        stderr: "spawn failed: #{error.message}",
-        log_path: "/dev/null",
-        exit_status: nil
-      )
+      result = ScenarioExecutionResult.spawn_failure(error)
       mutant.status = result.status
       results << result
       progress_reporter&.progress(mutant, scenario_result: result)

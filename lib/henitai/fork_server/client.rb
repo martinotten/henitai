@@ -99,15 +99,6 @@ module Henitai
         !@exits.empty? || @reader.buffered_message?
       end
 
-      # Stops tracking a pid whose result is no longer wanted, such as a child
-      # the caller gave up on after a timeout. Its exit, if one already
-      # arrived or arrives later, is dropped rather than left for a recycled pid.
-      def forget(pid)
-        drain_available
-        @outstanding.delete(pid)
-        @exits.delete(pid)
-      end
-
       # Gives up on a server that is lost or stalled: it must not fork another
       # mutant that a local run is about to repeat.
       def abandon

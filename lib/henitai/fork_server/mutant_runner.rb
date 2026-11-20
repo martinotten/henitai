@@ -5,12 +5,10 @@ require "forwardable"
 module Henitai
   module ForkServer
     # Runs mutants through the fork server instead of booting the test
-    # environment in every mutant process. Offers the integration's
-    # #run_mutant, so the engine's retry and timeout logic is unchanged.
-    #
-    # Also stands in for the integration of a parallel run: #spawn_mutant hands
-    # the scheduler a handle for a process the server forked, and #runtime lets
-    # it learn of that process's exit from the server's events.
+    # environment in every mutant process. Stands in for the integration of
+    # the scheduler (ADR-20): #spawn_mutant hands it a handle for a process the
+    # server forked, and #runtime lets it learn of that process's exit from
+    # the server's events.
     #
     # Falls back to the integration's own per-mutant boot when the server is
     # lost, or when it cannot fork one particular mutant (for example the
@@ -18,16 +16,14 @@ module Henitai
     class MutantRunner
       extend Forwardable
 
-      EXIT_GRACE_SECONDS = 5.0
-
       def_delegators :@integration, :build_result, :select_tests, :test_files
 
       # @param fallback_timeout [#call, nil] test files -> timeout for a mutant
-      #   the parent boots itself; the timeout handed to #run_mutant excludes
-      #   boot while the server is active and would be far too short for it.
+      #   the parent boots itself; the scheduler's timeout excludes boot while
+      #   the server is active and would be far too short for it.
       # rubocop:disable Metrics/ParameterLists
       def initialize(integration:, client:, env: {}, warner: nil, fallback_timeout: nil,
-                     report_store: Integration::ChildReportStore.new, terminator: GroupTerminator.new)
+                     report_store: Integration::ChildReportStore.new)
         # rubocop:enable Metrics/ParameterLists
         @integration = integration
         @client = client
@@ -35,7 +31,6 @@ module Henitai
         @warner = warner || ->(message) { Kernel.warn(message) }
         @fallback_timeout = fallback_timeout
         @report_store = report_store
-        @terminator = terminator
         @active = true
       end
 
@@ -62,15 +57,13 @@ module Henitai
         spawn_locally(mutant, test_files)
       end
 
-      def run_mutant(mutant:, test_files:, timeout:)
-        return fallback(mutant, test_files, timeout) unless active?
-
-        run_through_server(mutant, test_files, timeout)
-      rescue Client::SpawnFailed
-        fallback(mutant, test_files, timeout)
-      rescue Client::ServerLost => e
-        deactivate(e.message)
-        fallback(mutant, test_files, timeout)
+      # Forks on the per-mutant path without asking the server, for a process
+      # the server never saw (a control run, ADR-19). The pid is registered
+      # with the runtime so the scheduler reaps it, and the timeout includes
+      # booting the suite.
+      # @return [Integration::ChildHandle]
+      def spawn_local(mutant:, test_files:)
+        spawn_locally(mutant, test_files)
       end
 
       def stop
@@ -99,30 +92,6 @@ module Henitai
       def spawn_env
         slot = ENV.fetch(SlotScheduler::WORKER_SLOT_ENV, nil)
         slot ? @env.merge(SlotScheduler::WORKER_SLOT_ENV => slot) : @env
-      end
-
-      def run_through_server(mutant, test_files, timeout)
-        log_paths = @integration.mutant_log_paths(mutant)
-        @report_store.clear(log_paths[:report_path])
-        pid = @client.spawn_mutant(mutant_id: mutant.id, test_files:, log_paths:, env: @env)
-        wait_result = wait_for(pid, timeout)
-        @integration.build_result(wait_result, log_paths)
-      ensure
-        @terminator.terminate(pid, leader: false) if pid && wait_result != :timeout
-      end
-
-      def wait_for(pid, timeout)
-        status = @client.wait_exit(pid, timeout)
-        return status if status
-
-        @terminator.terminate(pid)
-        @client.wait_exit(pid, EXIT_GRACE_SECONDS)
-        @client.forget(pid)
-        :timeout
-      end
-
-      def fallback(mutant, test_files, timeout)
-        @integration.run_mutant(mutant:, test_files:, timeout: fallback_timeout(test_files) || timeout)
       end
 
       def fallback_timeout(test_files)

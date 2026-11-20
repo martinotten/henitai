@@ -6,9 +6,23 @@ require_relative "execution_engine/fork_server_scope"
 
 module Henitai
   # Runs pending mutants through the selected integration.
+  #
+  # Every run, whatever `jobs` says, goes through one {ProcessWorkerRunner}
+  # (ADR-20): `jobs` is only its slot count. The engine supplies what the
+  # scheduler cannot know: which tests a mutant runs, its timeout, the flaky
+  # set, control runs and the fork server.
   class ExecutionEngine
     include EnvScope
     include ForkServerScope
+
+    # @param runtime [ProcessWorkerRunner::Runtime, nil] process primitives of
+    #   the worker runner; nil uses the real ones. Replaced by the fork
+    #   server's runtime while a server is active.
+    # @param wakeup [ProcessWakeup, nil] the runner's wakeup; nil installs one
+    def initialize(runtime: nil, wakeup: nil)
+      @runtime = runtime
+      @wakeup = wakeup
+    end
 
     def run(mutants, integration, config, progress_reporter: nil)
       with_reports_dir(config) do
@@ -24,104 +38,53 @@ module Henitai
 
     private
 
+    # Verdicts pass a ControlGate before any observer sees them (ADR-19); the
+    # worker runner builds the gate and runs its controls as scheduler jobs.
     def execute(mutants, integration, config, progress_reporter)
       pending_mutants = Array(mutants).select(&:pending?)
-      mutex = Mutex.new
       @flaky_tests = flaky_tests_for(config)
-      @retrier = FlakyMutantRetrier.new(flaky_tests: @flaky_tests, max_retries: max_flaky_retries(config))
-      run_pending(pending_mutants, integration, config, progress_reporter, mutex)
-      warn_flaky_mutants
-      verify_controls(pending_mutants, integration, config)
+      control_run = ControlRun.new if control_runs?(config)
+      runner = with_fork_server(pending_mutants, integration, config) do
+        run_workers(pending_mutants, integration, config, progress_reporter, control_run)
+      end
+      warn_control_failures(runner.control_stats) if control_run
+      warn_flaky_mutants(runner.flaky_retry_count)
       mutants
     end
 
-    def run_pending(pending_mutants, integration, config, progress_reporter, mutex)
-      with_fork_server(pending_mutants, integration, config) do
-        if parallel_execution?(config, pending_mutants)
-          run_parallel(pending_mutants, integration, config, progress_reporter)
-        else
-          run_linear(pending_mutants, integration, config, progress_reporter, mutex)
-          @flaky_retry_count = @retrier.retried_count
-        end
-      end
-    end
+    def control_runs?(config) = config.respond_to?(:control_runs) && config.control_runs
 
-    def verify_controls(mutants, integration, config)
-      return unless config.respond_to?(:control_runs) && config.control_runs
-
-      timeout_for = ->(test_files) { resolved_timeout(test_files, config) }
-      stats = ControlRun.new(integration:, timeout_for:).verify(mutants)
+    def warn_control_failures(stats)
       return if stats[:failed].zero?
 
       warn format("henitai: control runs failed for %<failed>d of %<verified>d subjects; " \
                   "%<reclassified>d detected verdicts reclassified as CompileError", **stats)
     end
 
-    def parallel_execution?(config, mutants)
-      worker_count(config) > 1 && mutants.size > 1
-    end
-
+    # `jobs` is a slot count; unset or zero means one slot. The default stays
+    # conservative: AvailableCpuCount exists as a future policy hook.
     def worker_count(config)
-      configured_jobs = config.respond_to?(:jobs) ? config.jobs : nil
-      return configured_jobs if configured_jobs
-
-      # The fallback stays conservative for now; the execution policy still
-      # defaults to a single worker even though AvailableCpuCount exists as a
-      # future policy hook.
-      1
+      [config.jobs.to_i, 1].max
     end
 
-    def run_linear(mutants, integration, config, progress_reporter, mutex)
-      mutants.each do |mutant|
-        process_mutant(mutant, integration, config, progress_reporter, mutex)
-      end
+    def run_workers(mutants, integration, config, progress_reporter, control_run)
+      runner = ProcessWorkerRunner.new(worker_count: worker_count(config), flaky_tests: @flaky_tests,
+                                       **runner_primitives)
+      runner.run(mutants, @fork_server_runner || integration, config, progress_reporter,
+                 **run_options(integration, config, control_run))
+      runner
     end
 
-    def run_parallel(mutants, integration, config, progress_reporter)
-      runner = ProcessWorkerRunner.new(
-        worker_count: worker_count(config),
-        flaky_tests: @flaky_tests,
-        **parallel_runtime_options
-      )
-      results = runner.run(
-        mutants,
-        @fork_server_runner || integration,
-        config,
-        progress_reporter,
+    def runner_primitives
+      { runtime: @runtime, wakeup: @wakeup }.compact.merge(fork_server_runtime_options)
+    end
+
+    def run_options(integration, config, control_run)
+      {
         test_file_resolver: ->(mutant) { prioritized_tests_for(mutant, integration, config) },
-        timeout_resolver: ->(_mutant, test_files) { resolved_timeout(test_files, config) }
-      )
-      @flaky_retry_count = runner.flaky_retry_count
-      results
-    end
-
-    def process_mutant(mutant, integration, config, progress_reporter, mutex)
-      test_files = prioritized_tests_for(mutant, integration, config)
-      record_test_files(mutant, test_files)
-      return record_no_coverage(mutant, progress_reporter, mutex) if test_files.empty?
-
-      scenario_result = @retrier.run(
-        mutant: mutant, integration: @fork_server_runner || integration, test_files: test_files,
-        timeout: resolved_timeout(test_files, config)
-      )
-      mutant.status = scenario_status(scenario_result)
-      ScenarioExecutionResult.copy_reason(scenario_result, mutant)
-
-      report_progress(mutant, scenario_result, progress_reporter, mutex)
-    end
-
-    def record_test_files(mutant, test_files)
-      mutant.covered_by = test_files if mutant.respond_to?(:covered_by=)
-      mutant.tests_completed = test_files.size if mutant.respond_to?(:tests_completed=)
-    end
-
-    def record_no_coverage(mutant, progress_reporter, mutex)
-      mutant.status = :no_coverage
-      report_progress(mutant, nil, progress_reporter, mutex)
-    end
-
-    def report_progress(mutant, scenario_result, progress_reporter, mutex)
-      mutex.synchronize { progress_reporter&.progress(mutant, scenario_result:) }
+        timeout_resolver: ->(_mutant, test_files) { resolved_timeout(test_files, config) },
+        control_run:
+      }
     end
 
     def prioritized_tests_for(mutant, integration, config)
@@ -225,27 +188,15 @@ module Henitai
       FlakyTestRegistry.for_config(config)
     end
 
-    def scenario_status(result)
-      return result if result.is_a?(Symbol)
-
-      result.status
-    end
-
-    def warn_flaky_mutants
-      return if @flaky_retry_count.to_i.zero?
+    def warn_flaky_mutants(count)
+      return if count.zero?
 
       warn format(
         "Flaky-test mitigation: %<count>d killed mutant(s) were re-checked because their killing tests " \
         "are flaky (%<files>s)",
-        count: @flaky_retry_count,
+        count:,
         files: @flaky_tests.all.join(", ")
       )
-    end
-
-    def max_flaky_retries(config)
-      return 3 unless config.respond_to?(:max_flaky_retries)
-
-      config.max_flaky_retries || 3
     end
   end
 end

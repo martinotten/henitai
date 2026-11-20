@@ -38,7 +38,8 @@ ADR-14 guarantees hold.
   environment and the union of test files without running them, and each
   mutant process keeps only the test classes with a test method defined in the
   requested files (suite-level filtering).
-- Parallel path (`jobs > 1`): the scheduler runs on `ForkServer::Runtime`,
+- Scheduler (every `jobs` value since ADR-20; originally `jobs > 1` only, with
+  a synchronous variant for `jobs: 1`): the scheduler runs on `ForkServer::Runtime`,
   which implements the runtime interface it uses. `wait2` completes served
   pids from relayed `exited` events and never calls `waitpid(-1)`, so it cannot
   reap the server. The client socket is added to the select set of

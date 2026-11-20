@@ -321,6 +321,7 @@ module Henitai
     attr_accessor status_reason: String?
     attr_accessor identity_discriminator: String?
     attr_accessor from_cache: bool
+    attr_accessor retry_cut_short: bool
     attr_reader precomputed_stable_id: String?
     attr_reader precomputed_activation: untyped
     attr_reader precomputed_replacement: String?
@@ -329,6 +330,7 @@ module Henitai
     def stable_id: () -> String
     def mutated_source: () -> String
     def from_cache?: () -> bool
+    def retry_cut_short?: () -> bool
     def killed?: () -> bool
     def survived?: () -> bool
     def pending?: () -> bool
@@ -480,7 +482,6 @@ module Henitai
 
       def select_tests: (Subject) -> Array[String]
       def test_files: () -> Array[String]
-      def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
       def spawn_mutant: (mutant: Mutant, test_files: Array[String]) -> ChildHandle
       def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
       def per_test_coverage_supported?: () -> bool
@@ -506,7 +507,6 @@ module Henitai
 
     module MutantRunSupport
       def spawn_mutant: (mutant: Mutant, test_files: Array[String]) -> ChildHandle
-      def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
       def scenario_log_paths: (String) -> Hash[Symbol, String]
       def build_result: (untyped, Hash[Symbol, String]) -> ScenarioExecutionResult
       def run_in_child: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
@@ -561,7 +561,6 @@ module Henitai
     end
 
     class RspecProcessRunner
-      def run_mutant: (Base, mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
       def run_suite: (Base, Array[String], timeout: Float) -> ScenarioExecutionResult
       def spawn_mutant: (Base, mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> ChildHandle
     end
@@ -608,7 +607,6 @@ module Henitai
 
       def test_files: () -> Array[String]
       def per_test_coverage_supported?: () -> bool
-      def run_mutant: (mutant: Mutant, test_files: Array[String], timeout: Float) -> ScenarioExecutionResult
       def spawn_mutant: (mutant: Mutant, test_files: Array[String]) -> ChildHandle
       def run_in_child: (mutant: Mutant, test_files: Array[String], log_paths: Hash[Symbol, String]) -> Integer
       def run_suite: (Array[String], ?timeout: Float) -> ScenarioExecutionResult
@@ -648,11 +646,27 @@ module Henitai
     def self.legacy_stable_id: (Mutant) -> String
   end
 
+  class HistoryCheckpointer
+    attr_reader committed: Integer
+    def initialize: (history_store: untyped, config: untyped, run_id: String, ?version: String, ?clock: untyped, ?warner: untyped) -> void
+    def progress: (untyped, **untyped) -> void
+    def flush: () -> void
+  end
+
+  class ExecutionProvenance
+    UNCAPTURED: untyped
+    def self.capture: (Array[String], ?root: String) -> ExecutionProvenance
+    def self.stat_of: (String) -> Array[Integer]?
+    def initialize: (stats: Hash[String, Array[Integer]?], dependencies: Array[String], root: String) -> void
+    def intact?: (Array[String]) -> bool
+  end
+
   class MutantHistoryStore
     attr_reader path: String
 
-    def initialize: (path: String, ?per_test_coverage: PerTestCoverage?, ?reuse_context: ReuseContext?) -> void
-    def record: (untyped, version: String, ?recorded_at: Time) -> void
+    def initialize: (path: String, ?per_test_coverage: PerTestCoverage?, ?reuse_context: ReuseContext?, ?provenance: untyped) -> void
+    def record: (untyped, version: String, ?recorded_at: Time, ?run_id: String?) -> void
+    def checkpoint: (Array[untyped], version: String, run_id: String, ?recorded_at: Time) -> Integer
     def verdict_for: (String) -> Hash[Symbol, untyped]?
     def killed_verdict_for: (String) -> Hash[Symbol, untyped]?
     def trend_report: () -> Hash[Symbol, untyped]
@@ -862,17 +876,15 @@ module Henitai
   end
 
   class ExecutionEngine
+    def initialize: (?runtime: untyped, ?wakeup: untyped) -> void
     def run: (Array[Mutant], untyped, untyped, ?progress_reporter: untyped) -> Array[Mutant]
 
     private
 
     def execute: (Array[Mutant], untyped, untyped, untyped?) -> Array[Mutant]
     def with_worker_slot: () { () -> untyped } -> untyped
-    def parallel_execution?: (untyped, Array[Mutant]) -> bool
     def worker_count: (untyped) -> Integer
-    def run_linear: (Array[Mutant], untyped, untyped, untyped?, untyped) -> void
-    def run_parallel: (Array[Mutant], untyped, untyped, untyped?) -> void
-    def process_mutant: (Mutant, untyped, untyped, untyped?, ?untyped) -> void
+    def run_workers: (Array[Mutant], untyped, untyped, untyped?, untyped) -> untyped
     def prioritized_tests_for: (Mutant, untyped, untyped) -> Array[String]
     def test_prioritizer: (untyped) -> TestPrioritizer
     def timing_source: (untyped) -> untyped
@@ -1207,7 +1219,10 @@ module Henitai
     def reuse_context: () -> ReuseContext
     def reuse_filter: () -> IncrementalFilter
     def history_store: () -> untyped
-    def progress_reporter: (full_run: bool) -> untyped
+    def capture_provenance: (Array[String]) -> ExecutionProvenance
+    def execution_provenance: () -> untyped
+    def progress_reporter: (full_run: bool, ?history_checkpointer: untyped) -> untyped
+    def history_checkpointer: (run_id: String) -> HistoryCheckpointer?
     def source_provider: () -> ^(String) -> String
   end
 
@@ -1262,6 +1277,10 @@ module Henitai
     def integration: () -> untyped
     def operators: () -> untyped
     def progress_reporter: () -> untyped?
+    def history_checkpointer: () -> HistoryCheckpointer?
+    def run_id: () -> String
+    def save_interrupted_progress: () -> void
+    def flush_progress: () -> void
     def history_store: () -> untyped
     def full_mutant_set?: () -> bool
     def per_test_coverage: () -> PerTestCoverage
@@ -1278,6 +1297,7 @@ module Henitai
     def build_result_object: (Array[Mutant], Time, Time) -> Result
     def pipeline_mutants: () -> Array[Mutant]
     def apply_incremental_filter: (Array[Mutant]) -> Array[Mutant]
+    def capture_provenance: () -> ExecutionProvenance
     def dry_run_result: (Array[Mutant], Time, Time) -> Result
     def source_provider: () -> ^(String) -> String
     def persist_history: (Result, Time) -> void
@@ -1411,12 +1431,5 @@ module Henitai
   class FlakyRetryDecision
     def initialize: (flaky_tests: FlakyTestRegistry, max_retries: Integer) -> void
     def retry?: (status: Symbol, killing_tests: Array[String], attempts: Integer) -> bool
-  end
-
-  class FlakyMutantRetrier
-    attr_reader retried_count: Integer
-
-    def initialize: (flaky_tests: FlakyTestRegistry, max_retries: Integer) -> void
-    def run: (mutant: Mutant, integration: untyped, test_files: Array[String], timeout: Float) -> untyped
   end
 end

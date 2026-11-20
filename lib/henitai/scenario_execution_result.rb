@@ -23,6 +23,11 @@ module Henitai
       mutant.status_reason = result.status_reason
     end
 
+    # The verdict of a child that could not be spawned at all.
+    def self.spawn_failure(error)
+      new(status: :compile_error, stdout: "", stderr: "spawn failed: #{error.message}", log_path: "/dev/null")
+    end
+
     # Classifies a mutant run from the child's report (see MutantVerdict).
     def self.build_for_mutant(wait_result:, report:, stdout:, stderr:, log_path:)
       verdict = MutantVerdict.new(wait_result:, report:, stdout:, stderr:)
@@ -41,6 +46,12 @@ module Henitai
       @log_path = log_path
       @exit_status = exit_status
       @killing_tests = killing_tests
+    end
+
+    # The same run under a different verdict, e.g. a detection a failing
+    # control reclassified (ADR-14). Output and exit data are kept.
+    def reclassified(status:, status_reason:)
+      self.class.new(status:, status_reason:, stdout:, stderr:, log_path:, exit_status:, killing_tests:)
     end
 
     # Frees the captured child output once it has been consumed (e.g. by the

@@ -56,6 +56,23 @@ RSpec.describe Henitai::CheckpointReporter do
     end
   end
 
+  it "writes the pending batch on flush, and nothing when none is pending", :aggregate_failures do
+    Dir.mktmpdir do |dir|
+      reports_dir = File.join(dir, "reports")
+      reporter = described_class.new(
+        config: build_config(reports_dir:, every: 5, interval: 1_000.0),
+        source_provider: ->(_f) { "" }, authoritative: true, clock: -> { 0.0 }
+      )
+      reporter.flush
+      expect(File).not_to exist(File.join(reports_dir, "mutation-report.json"))
+
+      reporter.progress(build_mutant(file: "a.rb"))
+      reporter.flush
+
+      expect(canonical(reports_dir)["files"].keys).to eq(["a.rb"])
+    end
+  end
+
   it "flushes once the batch reaches checkpoint_every mutants" do
     Dir.mktmpdir do |dir|
       reports_dir = File.join(dir, "reports")

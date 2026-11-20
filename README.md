@@ -196,12 +196,13 @@ of candidate tests for a mutant, and name matching is only the fallback for when
 the map cannot decide (no map, no location, or no covering test left in the
 integration).
 
-Henitai currently defaults to linear mutant execution. Set `jobs` in
-`.henitai.yml` or pass `--jobs N` to opt into parallel mutant execution.
+Henitai runs one mutant at a time by default. Set `jobs` in `.henitai.yml`
+or pass `--jobs N` to run N mutants in parallel. `jobs` only sets how many
+run at once: timeouts, flaky retries, control runs and INT/TERM handling
+behave the same for every value.
 
 Every forked test child sees a `HENITAI_WORKER_SLOT` environment variable
-holding a stable worker-slot index (`0..jobs-1`; always `0` on the linear
-path). A flaky-retry respawn keeps the original attempt's value. Test suites
+holding a stable worker-slot index (`0..jobs-1`; always `0` with one job). A flaky-retry respawn keeps the original attempt's value. Test suites
 that touch shared external resources can isolate themselves per slot without
 any henitai-side hooks — for example a per-worker database:
 
@@ -257,6 +258,18 @@ canonical entries written before site-offset IDs were introduced instead of
 duplicating them.
 Timeouts and errors always re-execute. `--force` bypasses reuse, including
 the reuse applied to `--survivors-from` reruns.
+
+An interrupted run can be resumed. During the run, finished verdicts are
+written to the history store in batches (the `reports.checkpoint_every` /
+`checkpoint_interval` cadence). When the run is stopped with Ctrl-C, `TERM`
+or `HUP`, henitai stops its test processes, saves what it has, prints
+`henitai: interrupted; N verdicts saved, resume with --incremental` and exits.
+`henitai run --incremental` then re-executes only what is missing. A detected
+verdict is saved only after its control run passed, and only while the files
+it ran against are unchanged since the run started, so an edit during the run
+makes the affected verdicts re-execute instead of being reused. After a hard
+kill (`SIGKILL`, out of memory) at most the last unsaved batch is lost. An
+aborted run adds no point to the trend in `mutation-history.json`.
 `henitai run --dry-run` lists the post-filter mutant set without executing
 mutants and always exits `0`. Gate 0 may still run the configured test suite to
 refresh baseline coverage.
@@ -410,6 +423,7 @@ bundle exec ruby bin/verify-process-free-specs # verify self-mutation-safe specs
 bundle exec rake smoke:integration:all # run rspec/minitest integration smoke projects
 bundle exec rake oracle # measure false kills/survivors on the oracle corpus
 bundle exec rake oracle:reuse # check --incremental verdicts equal fresh runs
+bundle exec rake oracle:resume # interrupt runs with INT/TERM/HUP, check the resume
 bundle exec rubocop      # lint
 bundle exec henitai clean # remove stale generated report artifacts
 bundle exec henitai run  # dogfood
