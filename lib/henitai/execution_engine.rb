@@ -64,8 +64,7 @@ module Henitai
     # `jobs` is a slot count; unset or zero means one slot. The default stays
     # conservative: AvailableCpuCount exists as a future policy hook.
     def worker_count(config)
-      configured_jobs = config.respond_to?(:jobs) ? config.jobs.to_i : 0
-      [configured_jobs, 1].max
+      [config.jobs.to_i, 1].max
     end
 
     def run_workers(mutants, integration, config, progress_reporter, control_run)
