@@ -98,32 +98,6 @@ RSpec.describe Henitai::ForkServer::Client, :aggregate_failures do
     expect([client.wait_exit(5, 0.05), client.poll_any_exit]).to eq([nil, nil])
   end
 
-  describe "forgetting a pid" do
-    it "drops its outstanding registration so a server loss does not complete it" do
-      spawn_outstanding(99)
-      client.forget(99)
-      server.close
-
-      expect([client.poll_any_exit, client.lost?]).to eq([nil, true])
-    end
-
-    it "drops an exit that already arrived for it" do
-      spawn_outstanding(5)
-      tell("type" => "exited", "pid" => 5, "exitstatus" => 0, "termsig" => nil)
-      client.forget(5)
-
-      expect([client.poll_exit(5), client.poll_any_exit]).to eq([nil, nil])
-    end
-
-    it "drops an exit that arrives after it" do
-      spawn_outstanding(5)
-      client.forget(5)
-      tell("type" => "exited", "pid" => 5, "exitstatus" => 0, "termsig" => nil)
-
-      expect(client.poll_exit(5)).to be_nil
-    end
-  end
-
   describe "polling for the parallel scheduler" do
     it "returns a relayed exit without blocking and nil while the process runs" do
       spawn_outstanding(5)

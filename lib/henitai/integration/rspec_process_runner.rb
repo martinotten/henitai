@@ -59,16 +59,6 @@ module Henitai
 
     # Runs RSpec child and suite processes on behalf of the integration.
     class RspecProcessRunner
-      def run_mutant(integration, mutant:, test_files:, timeout:)
-        handle = integration.spawn_mutant(mutant:, test_files:)
-        SchedulerDiagnostics.child_started(handle.pid)
-        wait_result = integration.wait_with_timeout(handle.pid, timeout)
-        integration.build_result(wait_result, handle.log_paths)
-      ensure
-        SchedulerDiagnostics.child_ended(handle&.pid)
-        finalize_mutant_run(integration, handle&.pid, wait_result)
-      end
-
       def run_suite(integration, test_files, timeout:)
         log_paths = integration.scenario_log_paths("baseline")
         wait_result = nil
@@ -104,15 +94,6 @@ module Henitai
           )
         end
         ChildHandle.new(pid:, log_paths:)
-      end
-
-      private
-
-      def finalize_mutant_run(integration, pid, wait_result)
-        return unless pid
-
-        integration.cleanup_process_group(pid) unless wait_result == :timeout
-        integration.reap_child(pid) if wait_result.nil?
       end
     end
   end

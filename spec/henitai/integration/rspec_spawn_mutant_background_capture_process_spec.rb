@@ -6,7 +6,7 @@ require "spec_helper"
 require "timeout"
 require "tmpdir"
 
-RSpec.describe Henitai::Integration::Rspec, "#run_mutant" do
+RSpec.describe Henitai::Integration::Rspec, "#spawn_mutant" do
   def with_temp_workspace
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) { yield dir }
@@ -64,13 +64,11 @@ RSpec.describe Henitai::Integration::Rspec, "#run_mutant" do
         [subject],
         [Henitai::Operators::ArithmeticOperator.new]
       ).first
-      result = Henitai::Integration::Rspec.new.run_mutant(
-        mutant: mutant,
-        test_files: [spec_path],
-        timeout: 10.0
-      )
+      result = Henitai::ProcessWorkerRunner.new(worker_count: 1, flaky_tests: Henitai::FlakyTestRegistry.new([]))
+        .run([mutant], Henitai::Integration::Rspec.new, Struct.new(:timeout, :max_flaky_retries).new(10.0, 0), nil,
+             test_files: [spec_path]).first
 
-      abort("unexpected=\#{result.status}\\n\#{result.combined_output}") unless result.status == :survived
+      abort("unexpected=\#{result.status}\\n\#{File.read(result.log_path)}") unless result.status == :survived
       puts result.status
     RUBY
   end
