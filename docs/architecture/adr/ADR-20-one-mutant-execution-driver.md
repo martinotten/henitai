@@ -68,9 +68,12 @@ scheduler with one slot, and `jobs: 0` or `nil` mean one slot too.
   `jobs` value. A signal during a `jobs: 1` run now drains through the
   scheduler and raises `Interrupt`, which the runner turns into saved
   progress (ADR-19).
-- A `jobs: 1` run pays the event loop (`ProcessWakeup`, `IO.select`) per
-  mutant. The cost is a select per child exit, negligible next to a fork
-  and a test run.
+- A `jobs: 1` run pays the event loop (`ProcessWakeup`, `IO.select`) and the
+  scheduler's process-group teardown per mutant. Measured on the dogfood
+  `SlotScheduler*` subjects (398 mutants, unsampled, two runs each):
+  890/893 s before, 909/914 s after, about 2% or 50 ms per mutant. The
+  cause is not yet isolated; the teardown's group polling is the first
+  suspect.
 - About 200 lines of production code and their specs go away.
 
 ## Related
