@@ -1,6 +1,10 @@
 # Resume an Aborted Run with `--incremental`
 
-Status: backlog (design: [ADR-19](../architecture/adr/ADR-19-resumable-runs-via-history-checkpoints.md), proposed)
+Status: done (2026-11-20; design: [ADR-19](../architecture/adr/ADR-19-resumable-runs-via-history-checkpoints.md),
+accepted). Step 8 is `rake oracle:resume`. A signal while a control is in
+flight is not targeted end to end (the timing cannot be forced there); the
+scheduler spec covers it (`SlotScheduler::ControlSlots`: an interrupted
+control reports nothing, the gate drops its held detections).
 Date: 2026-10-30
 Severity: High (an aborted multi-hour run is lost completely)
 Source: user report against 0.6.0 — "Henitai cannot resume an aborted run.
