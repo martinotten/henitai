@@ -1,6 +1,6 @@
 # ADR-19: Resumable Runs Through History Checkpoints
 
-Status: proposed
+Status: accepted (2026-11-20)
 
 ## Context
 

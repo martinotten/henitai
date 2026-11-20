@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Interrupted runs can be resumed with `henitai run --incremental`
+  (ADR-19). Verdicts are written to the history store in batches while the
+  run goes on; on Ctrl-C, `TERM` or `HUP` henitai saves what it has, prints
+  `interrupted; N verdicts saved, resume with --incremental` and exits.
+  After a hard kill at most the last unsaved batch is lost. Detections are
+  saved only after their control run passed: the control now runs at a
+  group's first detection instead of after the last mutant. A verdict is
+  cached only if the files it ran against are unchanged since the run
+  started, and a kill whose flaky retry was cut short by the shutdown is
+  never cached. Aborted runs add no trend point; each run writes one
+  history entry per mutant. Toggling `mutation.control_runs` now
+  invalidates cached verdicts. `rake oracle:resume` checks the resume end
+  to end
+
 ### Changed
 
 - `jobs: 1` runs through the same scheduler as `jobs: N` (ADR-20); `jobs`
