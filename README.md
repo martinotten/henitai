@@ -258,6 +258,18 @@ canonical entries written before site-offset IDs were introduced instead of
 duplicating them.
 Timeouts and errors always re-execute. `--force` bypasses reuse, including
 the reuse applied to `--survivors-from` reruns.
+
+An interrupted run can be resumed. During the run, finished verdicts are
+written to the history store in batches (the `reports.checkpoint_every` /
+`checkpoint_interval` cadence). When the run is stopped with Ctrl-C, `TERM`
+or `HUP`, henitai stops its test processes, saves what it has, prints
+`henitai: interrupted; N verdicts saved, resume with --incremental` and exits.
+`henitai run --incremental` then re-executes only what is missing. A detected
+verdict is saved only after its control run passed, and only while the files
+it ran against are unchanged since the run started, so an edit during the run
+makes the affected verdicts re-execute instead of being reused. After a hard
+kill (`SIGKILL`, out of memory) at most the last unsaved batch is lost. An
+aborted run adds no point to the trend in `mutation-history.json`.
 `henitai run --dry-run` lists the post-filter mutant set without executing
 mutants and always exits `0`. Gate 0 may still run the configured test suite to
 refresh baseline coverage.
@@ -411,6 +423,7 @@ bundle exec ruby bin/verify-process-free-specs # verify self-mutation-safe specs
 bundle exec rake smoke:integration:all # run rspec/minitest integration smoke projects
 bundle exec rake oracle # measure false kills/survivors on the oracle corpus
 bundle exec rake oracle:reuse # check --incremental verdicts equal fresh runs
+bundle exec rake oracle:resume # interrupt runs with INT/TERM/HUP, check the resume
 bundle exec rubocop      # lint
 bundle exec henitai clean # remove stale generated report artifacts
 bundle exec henitai run  # dogfood

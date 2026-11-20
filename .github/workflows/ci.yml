@@ -45,6 +45,9 @@ jobs:
       - name: Check incremental verdict reuse against fresh runs
         run: bundle exec rake oracle:reuse
 
+      - name: Check that interrupted runs resume to fresh-run verdicts
+        run: bundle exec rake oracle:resume
+
   mutation:
     name: Mutation Testing (incremental)
     runs-on: ubuntu-24.04
