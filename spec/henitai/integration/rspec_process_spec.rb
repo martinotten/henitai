@@ -68,19 +68,19 @@ RSpec.describe Henitai::Integration::Rspec do
         [subject],
         [Henitai::Operators::ArithmeticOperator.new]
       ).first
-      result = Henitai::Integration::Rspec.new.run_mutant(
-        mutant: mutant,
-        test_files: [spec_path],
-        timeout: 5.0
-      )
+      result = Henitai::ProcessWorkerRunner.new(worker_count: 1, flaky_tests: Henitai::FlakyTestRegistry.new([]))
+        .run([mutant], Henitai::Integration::Rspec.new, Struct.new(:timeout, :max_flaky_retries).new(5.0, 0), nil,
+             test_files: [spec_path]).first
 
+      # The driver releases captured output once reported; the log stays.
+      output = File.read(result.log_path)
       zero_examples_output =
-        result.combined_output.include?("No examples found.") ||
-        result.combined_output.include?("0 examples, 0 failures")
+        output.include?("No examples found.") ||
+        output.include?("0 examples, 0 failures")
       expected_output = #{expected_status.inspect} != :compile_error || zero_examples_output
 
       unless result.status == #{expected_status.inspect} && expected_output
-        abort("unexpected=\#{result.status}\\n\#{result.combined_output}")
+        abort("unexpected=\#{result.status}\\n\#{output}")
       end
 
       puts result.status

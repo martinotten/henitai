@@ -613,14 +613,6 @@ RSpec.describe Henitai::Integration::Rspec do
     expect(described_class.new.per_test_coverage_supported?).to be(true)
   end
 
-  it "keeps the base integration mutant runner abstract" do
-    integration = Henitai::Integration::Base.new
-
-    expect do
-      integration.run_mutant(mutant: nil, test_files: [], timeout: 1.0)
-    end.to raise_error(NotImplementedError)
-  end
-
   it "passes the configured timeout through the suite wait path" do
     integration = described_class.new
 
@@ -744,11 +736,10 @@ RSpec.describe Henitai::Integration::Rspec do
         Struct.new(:success?, :exitstatus).new(true, 0)
       )
 
-      integration.run_mutant(
-        mutant:,
-        test_files: ["spec/foo_spec.rb"],
-        timeout: 1.5
-      )
+      spawn_and_wait(integration,
+                     mutant:,
+                     test_files: ["spec/foo_spec.rb"],
+                     timeout: 1.5)
 
       expect(record).to include(
         forked: true,
@@ -775,7 +766,7 @@ RSpec.describe Henitai::Integration::Rspec do
       allow(integration).to receive_messages(wait_with_timeout: :survived, build_result: :result)
       allow(integration).to receive(:cleanup_process_group)
 
-      integration.run_mutant(mutant:, test_files: [], timeout: 1.0)
+      spawn_and_wait(integration, mutant:, test_files: [], timeout: 1.0)
 
       expect(ENV.fetch("PARALLEL_WORKERS")).to eq("sentinel")
     end
@@ -805,11 +796,10 @@ RSpec.describe Henitai::Integration::Rspec do
         last_status: Struct.new(:success?, :exitstatus).new(true, 0)
       )
 
-      integration.run_mutant(
-        mutant:,
-        test_files: ["spec/foo_spec.rb"],
-        timeout: 1.5
-      )
+      spawn_and_wait(integration,
+                     mutant:,
+                     test_files: ["spec/foo_spec.rb"],
+                     timeout: 1.5)
 
       expect(record).to include(setpgid: [0, 0])
     ensure
@@ -846,58 +836,16 @@ RSpec.describe Henitai::Integration::Rspec do
       record[:reap] << pid
     end
 
-    result = integration.run_mutant(mutant:, test_files: ["spec/foo_spec.rb"], timeout: 1.5)
+    result = spawn_and_wait(integration, mutant:, test_files: ["spec/foo_spec.rb"], timeout: 1.5)
 
     expect([result, record]).to eq([
                                      :survived,
                                      {
                                        names: ["mutant-abc"],
-                                       cleanup: [4321],
+                                       cleanup: [],
                                        reap: []
                                      }
                                    ])
-  end
-
-  it "cleans up the mutant process group after a successful run" do
-    mutant = Struct.new(:id).new("mutant-1a")
-    integration = described_class.new
-    record = { signals: [] }
-    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
-
-    begin
-      stub_child_logging(integration)
-      allow(Process).to receive(:exit) { |status| record[:child_status] = status }
-      allow(Process).to receive(:fork) do |&block|
-        record[:forked] = true
-        block.call
-        4322
-      end
-      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      stub_run_tests(integration)
-      allow(integration).to receive_messages(wait_with_timeout: Struct.new(:success?, :exitstatus).new(true, 0))
-      stub_process_wakeup
-      allow(Process).to receive(:wait).with(4322, Process::WNOHANG).and_return(nil, nil)
-      allow(Process).to receive_messages(
-        last_status: Struct.new(:success?, :exitstatus).new(true, 0)
-      )
-      allow(Process).to receive(:kill) do |signal, pid|
-        record[:signals] << [signal, pid]
-        raise Errno::ESRCH if signal == :SIGKILL
-      end
-
-      integration.run_mutant(mutant:, test_files: ["spec/foo_spec.rb"], timeout: 1.5)
-
-      expect(record).to eq(
-        child_status: 0,
-        forked: true,
-        signals: [
-          [:SIGTERM, -4322],
-          [:SIGKILL, -4322]
-        ]
-      )
-    ensure
-      ENV["HENITAI_MUTANT_ID"] = original_env
-    end
   end
 
   it "reports a survived result after a successful run" do
@@ -925,141 +873,9 @@ RSpec.describe Henitai::Integration::Rspec do
         raise Errno::ESRCH if signal == :SIGKILL
       end
 
-      result = integration.run_mutant(mutant:, test_files: ["spec/foo_spec.rb"], timeout: 1.5)
+      result = spawn_and_wait(integration, mutant:, test_files: ["spec/foo_spec.rb"], timeout: 1.5)
 
       expect(result.status).to eq(:survived)
-    ensure
-      ENV["HENITAI_MUTANT_ID"] = original_env
-    end
-  end
-
-  it "skips mutant cleanup when fork does not return a pid" do
-    mutant = Struct.new(:id).new("mutant-nil-pid")
-    integration = described_class.new
-    record = { cleanup: [], reap: [] }
-    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
-
-    begin
-      stub_child_logging(integration)
-      allow(Process).to receive(:exit)
-      allow(Process).to receive(:fork) do |&block|
-        block.call
-        nil
-      end
-      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      stub_run_tests(integration, 0)
-      allow(integration).to receive_messages(
-        wait_with_timeout: Struct.new(:success?, :exitstatus).new(true, 0),
-        build_result: :survived
-      )
-      allow(integration).to receive(:cleanup_process_group) do |pid|
-        record[:cleanup] << pid
-      end
-      allow(integration).to receive(:reap_child) do |pid|
-        record[:reap] << pid
-      end
-
-      result = integration.run_mutant(
-        mutant:,
-        test_files: ["spec/foo_spec.rb"],
-        timeout: 1.5
-      )
-
-      expect([result, record]).to eq([
-                                       :survived,
-                                       {
-                                         cleanup: [],
-                                         reap: []
-                                       }
-                                     ])
-    ensure
-      ENV["HENITAI_MUTANT_ID"] = original_env
-    end
-  end
-
-  it "reaps a mutant child when the wait result is nil" do
-    mutant = Struct.new(:id).new("mutant-nil-wait")
-    integration = described_class.new
-    record = { cleanup: [], reap: [] }
-    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
-
-    begin
-      stub_child_logging(integration)
-      allow(Process).to receive(:exit)
-      allow(Process).to receive(:fork) do |&block|
-        block.call
-        4323
-      end
-      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      stub_run_tests(integration, 0)
-      allow(integration).to receive_messages(
-        wait_with_timeout: nil,
-        build_result: :survived
-      )
-      allow(integration).to receive(:cleanup_process_group) do |pid|
-        record[:cleanup] << pid
-      end
-      allow(integration).to receive(:reap_child) do |pid|
-        record[:reap] << pid
-      end
-
-      result = integration.run_mutant(
-        mutant:,
-        test_files: ["spec/foo_spec.rb"],
-        timeout: 1.5
-      )
-
-      expect([result, record]).to eq([
-                                       :survived,
-                                       {
-                                         cleanup: [4323],
-                                         reap: [4323]
-                                       }
-                                     ])
-    ensure
-      ENV["HENITAI_MUTANT_ID"] = original_env
-    end
-  end
-
-  it "does not clean up a mutant child when the wait times out" do
-    mutant = Struct.new(:id).new("mutant-timeout")
-    integration = described_class.new
-    record = { cleanup: [], reap: [] }
-    original_env = ENV.fetch("HENITAI_MUTANT_ID", nil)
-
-    begin
-      stub_child_logging(integration)
-      allow(Process).to receive(:exit)
-      allow(Process).to receive(:fork) do |&block|
-        block.call
-        4324
-      end
-      allow(Henitai::Mutant::Activator).to receive(:activate!).and_return(0)
-      stub_run_tests(integration, 0)
-      allow(integration).to receive_messages(
-        wait_with_timeout: :timeout,
-        build_result: :timeout
-      )
-      allow(integration).to receive(:cleanup_process_group) do |pid|
-        record[:cleanup] << pid
-      end
-      allow(integration).to receive(:reap_child) do |pid|
-        record[:reap] << pid
-      end
-
-      result = integration.run_mutant(
-        mutant:,
-        test_files: ["spec/foo_spec.rb"],
-        timeout: 1.5
-      )
-
-      expect([result, record]).to eq([
-                                       :timeout,
-                                       {
-                                         cleanup: [],
-                                         reap: []
-                                       }
-                                     ])
     ensure
       ENV["HENITAI_MUTANT_ID"] = original_env
     end
@@ -1161,11 +977,10 @@ RSpec.describe Henitai::Integration::Rspec do
     begin
       stub_ordered_mutant_run(order, integration, child_pid: 9876)
 
-      integration.run_mutant(
-        mutant:,
-        test_files: ["spec/bar_spec.rb"],
-        timeout: 2.0
-      )
+      spawn_and_wait(integration,
+                     mutant:,
+                     test_files: ["spec/bar_spec.rb"],
+                     timeout: 2.0)
 
       expect(order).to eq(
         [
@@ -1204,11 +1019,10 @@ RSpec.describe Henitai::Integration::Rspec do
       begin
         stub_real_activation_run(integration, child_pid: 12_345)
 
-        integration.run_mutant(
-          mutant:,
-          test_files: [spec_path],
-          timeout: 1.5
-        )
+        spawn_and_wait(integration,
+                       mutant:,
+                       test_files: [spec_path],
+                       timeout: 1.5)
 
         expect(IntegrationRealActivationSample.value(3, c: 4)).to eq(2)
       ensure
@@ -1235,11 +1049,10 @@ RSpec.describe Henitai::Integration::Rspec do
       allow(Process).to receive(:wait).and_return(24_601)
       allow(Process).to receive_messages(last_status: Struct.new(:success?, :exitstatus).new(true, 0))
 
-      record[:result] = integration.run_mutant(
-        mutant:,
-        test_files: ["spec/passing_spec.rb"],
-        timeout: 0.1
-      )
+      record[:result] = spawn_and_wait(integration,
+                                       mutant:,
+                                       test_files: ["spec/passing_spec.rb"],
+                                       timeout: 0.1)
 
       expect(record[:result]).to eq(:survived)
     ensure
@@ -1265,11 +1078,10 @@ RSpec.describe Henitai::Integration::Rspec do
       allow(Process).to receive(:wait).and_return(24_602)
       allow(Process).to receive_messages(last_status: Struct.new(:success?, :exitstatus).new(false, 1))
 
-      record[:result] = integration.run_mutant(
-        mutant:,
-        test_files: ["spec/failing_spec.rb"],
-        timeout: 0.1
-      )
+      record[:result] = spawn_and_wait(integration,
+                                       mutant:,
+                                       test_files: ["spec/failing_spec.rb"],
+                                       timeout: 0.1)
 
       expect(record[:result]).to eq(:killed)
     ensure
@@ -1302,11 +1114,10 @@ RSpec.describe Henitai::Integration::Rspec do
         0
       end
 
-      integration.run_mutant(
-        mutant:,
-        test_files: ["spec/coverage_spec.rb"],
-        timeout: 0.1
-      )
+      spawn_and_wait(integration,
+                     mutant:,
+                     test_files: ["spec/coverage_spec.rb"],
+                     timeout: 0.1)
 
       expect(record[:coverage_dir]).to eq(
         File.join("reports", "mutation-coverage", mutant.id)
@@ -1341,11 +1152,10 @@ RSpec.describe Henitai::Integration::Rspec do
         last_status: Struct.new(:success?, :exitstatus).new(true, 0)
       )
 
-      integration.run_mutant(
-        mutant:,
-        test_files: ["spec/pending_spec.rb"],
-        timeout: 0.1
-      )
+      spawn_and_wait(integration,
+                     mutant:,
+                     test_files: ["spec/pending_spec.rb"],
+                     timeout: 0.1)
 
       expect(record).to include(
         selects: 1,
@@ -1365,11 +1175,10 @@ RSpec.describe Henitai::Integration::Rspec do
     begin
       stub_timeout_child(integration, record, child_pid: 2468)
 
-      integration.run_mutant(
-        mutant:,
-        test_files: ["spec/baz_spec.rb"],
-        timeout: 0.1
-      )
+      spawn_and_wait(integration,
+                     mutant:,
+                     test_files: ["spec/baz_spec.rb"],
+                     timeout: 0.1)
 
       expect(record).to include(
         signals: array_including([:SIGTERM, -2468], [:SIGKILL, -2468]),
@@ -1395,11 +1204,10 @@ RSpec.describe Henitai::Integration::Rspec do
         raise_esrch_on_kill: true
       )
 
-      integration.run_mutant(
-        mutant:,
-        test_files: ["spec/baz_spec.rb"],
-        timeout: 0.1
-      )
+      spawn_and_wait(integration,
+                     mutant:,
+                     test_files: ["spec/baz_spec.rb"],
+                     timeout: 0.1)
 
       expect(record).to include(
         signals: array_including([:SIGTERM, -2469], [:SIGKILL, -2469]),
@@ -1421,17 +1229,16 @@ RSpec.describe Henitai::Integration::Rspec do
     begin
       stub_timeout_boundary_run(integration, record)
 
-      result = integration.run_mutant(
-        mutant:,
-        test_files: ["spec/pending_spec.rb"],
-        timeout: 0.1
-      )
+      result = spawn_and_wait(integration,
+                              mutant:,
+                              test_files: ["spec/pending_spec.rb"],
+                              timeout: 0.1)
 
       expect([result.status, record]).to eq(
         [
           :survived,
           {
-            waits: 4,
+            waits: 3,
             selects: 1,
             child_status: 0
           }
@@ -1467,11 +1274,10 @@ RSpec.describe Henitai::Integration::Rspec do
         1
       end
 
-      integration.run_mutant(
-        mutant:,
-        test_files: ["spec/failing_spec.rb"],
-        timeout: 0.1
-      )
+      spawn_and_wait(integration,
+                     mutant:,
+                     test_files: ["spec/failing_spec.rb"],
+                     timeout: 0.1)
 
       expect(record).to include(
         rspec_files: [
@@ -1484,14 +1290,23 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  # What the scheduler does for one slot, synchronously: fork the child
+  # (stubbed forks run it inline), wait for it with the integration's wait,
+  # and build the result from its logs and report.
+  def spawn_and_wait(integration, mutant:, test_files:, timeout:)
+    handle = integration.spawn_mutant(mutant:, test_files:)
+    wait_result = integration.wait_with_timeout(handle.pid, timeout)
+    integration.build_result(wait_result, handle.log_paths)
+  end
+
   def run_in_process_mutant(integration, child_status:)
     stub_child_logging(integration)
     stub_in_process_fork(24_606)
     stub_process_wakeup
     allow(Process).to receive(:wait).and_return(24_606)
     allow(Process).to receive_messages(last_status: child_status)
-    integration.run_mutant(mutant: Struct.new(:id).new("mutant-contract"), test_files: ["spec/a_spec.rb"],
-                           timeout: 0.1)
+    spawn_and_wait(integration, mutant: Struct.new(:id).new("mutant-contract"), test_files: ["spec/a_spec.rb"],
+                                timeout: 0.1)
   end
 
   def stub_in_process_fork(child_pid)
@@ -1582,11 +1397,10 @@ RSpec.describe Henitai::Integration::Rspec do
         last_status: Struct.new(:success?, :exitstatus).new(false, 2)
       )
 
-      result = integration.run_mutant(
-        mutant:,
-        test_files: ["spec/compile_error_spec.rb"],
-        timeout: 0.1
-      )
+      result = spawn_and_wait(integration,
+                              mutant:,
+                              test_files: ["spec/compile_error_spec.rb"],
+                              timeout: 0.1)
 
       expect(
         {

@@ -386,7 +386,7 @@ RSpec.describe Henitai::Integration::Minitest do
     allow(integration).to receive(:scenario_log_support).and_return(log_support)
   end
 
-  def run_mutant_with_stubbed_flow(order, minitest_result:)
+  def spawn_mutant_with_stubbed_flow(order, minitest_result:)
     with_temp_workspace do |dir|
       test_file = write_file(dir, "test/sample_test.rb", minitest_source)
       mutant = Struct.new(:id).new("setup")
@@ -394,14 +394,14 @@ RSpec.describe Henitai::Integration::Minitest do
       stub_mutant_log_support(integration, mutant, order)
       stub_minitest_process_flow(order, test_file, minitest_result:)
 
-      integration.run_mutant(mutant:, test_files: [test_file], timeout: 4.0)
+      integration.spawn_mutant(mutant:, test_files: [test_file])
     end
   end
 
   it "sets up the load path before running a mutant" do
     order = []
 
-    run_mutant_with_stubbed_flow(order, minitest_result: true)
+    spawn_mutant_with_stubbed_flow(order, minitest_result: true)
 
     expect(order.first).to eq(:setup_load_path)
   end
@@ -410,7 +410,7 @@ RSpec.describe Henitai::Integration::Minitest do
     it "exits the child process with status 0" do
       order = []
 
-      run_mutant_with_stubbed_flow(order, minitest_result: true)
+      spawn_mutant_with_stubbed_flow(order, minitest_result: true)
 
       expect(order).to include([:exit, 0])
     end
@@ -420,7 +420,7 @@ RSpec.describe Henitai::Integration::Minitest do
     it "exits the child process with status 1" do
       order = []
 
-      run_mutant_with_stubbed_flow(order, minitest_result: false)
+      spawn_mutant_with_stubbed_flow(order, minitest_result: false)
 
       expect(order).to include([:exit, 1])
     end
