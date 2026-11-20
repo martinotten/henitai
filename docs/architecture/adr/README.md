@@ -23,6 +23,7 @@ This directory contains one ADR per accepted architecture decision.
 - [ADR-17: Version support lifecycle for Ruby and Rails](ADR-17-version-support-lifecycle.md)
 - [ADR-18: Defer five optimization techniques from the literature](ADR-18-deferred-optimization-techniques.md)
 - [ADR-19: Resumable runs through history checkpoints](ADR-19-resumable-runs-via-history-checkpoints.md) (proposed)
+- [ADR-20: One mutant execution driver](ADR-20-one-mutant-execution-driver.md)
 
 ## Maintenance Rule
 

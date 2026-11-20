@@ -1,6 +1,6 @@
 # ADR-20: One Mutant Execution Driver
 
-Status: proposed
+Status: accepted (2026-11-20)
 
 ## Context
 
@@ -54,9 +54,12 @@ scheduler with one slot, and `jobs: 0` or `nil` mean one slot too.
   `ForkServer::MutantRunner#spawn_mutant` encapsulate exactly that
   difference behind the scheduler's runtime and integration interfaces.
 - Test matrix: from four driver combinations (`jobs` 1/N × fork server
-  off/on) to two modes. `spec/henitai/execution_engine_spec.rb` covers the
-  engine contract with one slot and with several; smoke suites and the
-  Rails matrix run `jobs: 2` with and without the fork server.
+  off/on) to two modes. One shared contract spec
+  (`spec/henitai/execution_engine_run_process_spec.rb`) runs real mutants
+  through all four combinations and requires identical verdicts and no
+  leftover child; `spec/henitai/execution_engine_spec.rb` covers the engine
+  with one slot and with several on fake children. Smoke suites and the
+  Rails matrix can run `jobs: 2` with and without the fork server.
 
 ## Consequences
 

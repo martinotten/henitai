@@ -52,8 +52,8 @@ final verdicts into the history store during the run. Resuming is
    control releases the held verdicts unchanged; any other control outcome
    reclassifies them as `CompileError` (ADR-14 reason) and releases them.
    Later detections of a decided group are released or reclassified at once.
-   - Linear mode runs the control synchronously.
-   - Parallel mode runs the control as a scheduler job (contract below).
+   - The control runs as a scheduler job (contract below). (Proposed with a
+     synchronous variant for linear mode; ADR-20 removed that mode.)
    - The end-of-run `ControlRun` pass disappears; `ControlRun` keeps the
      per-group control execution. The number of control runs is unchanged:
      one per group with at least one detection.
@@ -152,14 +152,15 @@ final verdicts into the history store during the run. Resuming is
 7. **Interrupt safety.**
    - `Runner` builds the progress reporter once per run and keeps it, so it
      can flush the same observers it handed to the engine.
-   - `Runner` rescues `SignalException` (covering `Interrupt`, and `TERM`/`HUP`
-     in linear mode, where no trap converts them) around Gate 4 — inside the
+   - `Runner` rescues `SignalException` (the worker runner turns INT, TERM
+     and HUP into `Interrupt` for every `jobs` value since ADR-20) around Gate 4 — inside the
      `ReportsDirectoryLock` and after the engine has torn down its children
      and the fork server. It flushes every observer that supports `flush`,
      each in its own rescue so one failure neither blocks the others nor masks
      the signal, prints how many verdicts were saved and that `--incremental`
      resumes, and re-raises the original exception. Exit behaviour stays as in
-     0.6.0, including parallel mode turning TERM/HUP into `Interrupt`.
+     0.6.0 for parallel runs, which turn TERM/HUP into `Interrupt`; one-job
+     runs now do the same (ADR-20).
    - Store writes run inside a signal-deferral section: INT/TERM/HUP are
      trapped to a flag for the duration of the transaction, the previous
      handlers are restored, and a recorded signal is re-sent to the process
@@ -210,10 +211,10 @@ final verdicts into the history store during the run. Resuming is
 - Editing a source or test file during a run no longer risks a cached verdict
   that does not match its fingerprint; the affected verdicts are simply not
   cached. This also hardens complete runs, not only resumed ones.
-- In parallel mode, a detection is reported a little later — after its
-  group's control finishes. Total work is unchanged.
+- A detection is reported a little later — after its group's control
+  finishes. Total work is unchanged.
 - The history store is written several times per run, always by the parent
-  process (single-threaded event loop, or under the linear-mode mutex).
+  process (the single-threaded event loop).
 - The trend export sees mutant rows from aborted runs but no `runs` row;
   aborted runs are not scored.
 - Upgrading invalidates the verdict cache once (new `ReuseContext`

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `jobs: 1` runs through the same scheduler as `jobs: N` (ADR-20); `jobs`
+  only sets how many mutants run at once. One-job runs now handle INT, TERM
+  and HUP like parallel runs (drain the running child, then stop with
+  `Interrupt`), mark kills whose flaky retry a shutdown cut short, and run
+  control runs as scheduler jobs. `jobs: 0` means one job. Verdicts are
+  unchanged. Removed the synchronous mutant API `Integration#run_mutant`
+  (and its RSpec, Minitest and fork-server variants); integrations implement
+  `#spawn_mutant` and `#build_result`
+
 ### Fixed
 
 - `StringLiteral` no longer emits an equivalent mutant for strings without
