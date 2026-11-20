@@ -601,6 +601,26 @@ RSpec.describe Henitai::ExecutionEngine do
       end
     end
 
+    # The server boots the suite once for every slot; suite code reading the
+    # slot at boot sees slot 0, as a one-slot child does.
+    it "boots the server with worker slot 0 exported" do
+      slot_at_boot = :unset
+      allow(Henitai::ForkServer).to receive(:start) do
+        slot_at_boot = ENV.fetch("HENITAI_WORKER_SLOT", nil)
+        fork_runner
+      end
+      stub_worker_runner
+      config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :fork_server)
+                     .new(12.5, "coverage", 2, 3, true)
+      engine = build_engine
+      allow(engine).to receive(:prioritized_tests_for).and_return(["spec/foo_spec.rb"])
+
+      engine.run([build_mutant(:pending, "Foo#bar")],
+                 instance_double(Henitai::Integration::Rspec, fork_server_supported?: true), config)
+
+      expect(slot_at_boot).to eq("0")
+    end
+
     it "stops the server after the run" do
       run_with_fork_server(1)
 
