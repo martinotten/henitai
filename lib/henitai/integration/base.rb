@@ -8,8 +8,9 @@ require_relative "scenario_log_support"
 
 module Henitai
   module Integration
-    # Base class for all integrations. Provides the framework-agnostic child
-    # process lifecycle (wait, timeout handling, cleanup) and subprocess
+    # Base class for all integrations. Provides the framework-agnostic
+    # lifecycle of the baseline-suite process (wait, timeout handling,
+    # cleanup; mutant children belong to the SlotScheduler) and subprocess
     # environment helpers. Concrete adapters mix in MutantRunSupport and
     # implement #run_tests plus test selection.
     class Base
@@ -35,19 +36,10 @@ module Henitai
         raise NotImplementedError
       end
 
-      # Run test files in a child process with the mutant active.
-      #
-      # @param mutant [Mutant]
-      # @param test_files [Array<String>]
-      # @param timeout [Float] seconds
-      # @return [ScenarioExecutionResult]
-      def run_mutant(mutant:, test_files:, timeout:)
-        raise NotImplementedError
-      end
-
       # Fork a child process for the mutant without waiting for it to finish.
-      # Returns a ChildHandle carrying the OS pid and log file paths.
-      # The caller is responsible for waiting and cleanup.
+      # Returns a ChildHandle carrying the OS pid and log file paths. The
+      # SlotScheduler waits for it and cleans up (ADR-20); the synchronous
+      # wait below serves the baseline suite only.
       #
       # @param mutant [Mutant]
       # @param test_files [Array<String>]

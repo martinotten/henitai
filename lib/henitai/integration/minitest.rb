@@ -31,11 +31,6 @@ module Henitai
         true
       end
 
-      def run_mutant(mutant:, test_files:, timeout:)
-        MinitestLoadPath.ensure!
-        super
-      end
-
       def spawn_mutant(mutant:, test_files:)
         MinitestLoadPath.ensure!
         super

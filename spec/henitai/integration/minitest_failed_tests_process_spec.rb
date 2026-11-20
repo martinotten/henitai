@@ -84,7 +84,9 @@ RSpec.describe Henitai::Integration::Minitest do
       require #{source.dump}
       subject = Henitai::SubjectResolver.new.resolve_from_files([#{source.dump}]).first
       mutant = Henitai::MutantGenerator.new.generate([subject], [Henitai::Operators::ArithmeticOperator.new]).first
-      result = Henitai::Integration::Minitest.new.run_mutant(mutant: mutant, test_files: #{test_paths.inspect}, timeout: 20.0)
+      result = Henitai::ProcessWorkerRunner.new(worker_count: 1, flaky_tests: Henitai::FlakyTestRegistry.new([]))
+        .run([mutant], Henitai::Integration::Minitest.new, Struct.new(:timeout, :max_flaky_retries).new(20.0, 0), nil,
+             test_files: #{test_paths.inspect}).first
       abort(result.status.to_s) unless result.status == :killed
       puts JSON.generate(result.killing_tests)
     RUBY

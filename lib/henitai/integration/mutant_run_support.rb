@@ -18,10 +18,6 @@ module Henitai
         RspecProcessRunner.new.spawn_mutant(self, mutant:, test_files:, log_paths:)
       end
 
-      def run_mutant(mutant:, test_files:, timeout:)
-        RspecProcessRunner.new.run_mutant(self, mutant:, test_files:, timeout:)
-      end
-
       def scenario_log_paths(name)
         reports_dir = ENV.fetch("HENITAI_REPORTS_DIR", "reports")
         log_dir = File.join(reports_dir, "mutation-logs")
