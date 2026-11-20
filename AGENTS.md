@@ -194,10 +194,13 @@ coverage and is excluded from `includes` in `.henitai.yml`.
 - Opt-in `mutation.fork_server` (ADR-15, RSpec and Minitest, any `jobs`)
   boots the test environment once in a server and forks each mutant process
   from it; on failure it falls back to per-mutant boot.
-- `ExecutionEngine` runs mutants linearly by default (`config.jobs`, default
-  `1`). With more jobs, `ProcessWorkerRunner` drives a single-threaded event
-  loop and `SlotScheduler` owns spawning, reaping, timeouts and draining. Every
-  mutant runs in its own forked child; forked processes provide the isolation.
+- `ExecutionEngine` hands every run to one `ProcessWorkerRunner` (ADR-20):
+  it drives a single-threaded event loop and owns INT/TERM/HUP handling, and
+  `SlotScheduler` owns spawning, reaping, timeouts, draining, flaky retries
+  and control jobs. `config.jobs` (default `1`) is only the slot count; there
+  is no separate `jobs: 1` path. Every mutant runs in its own forked child;
+  forked processes provide the isolation. The synchronous wait in
+  `Integration::Base` serves the baseline suite only.
 - Test selection is coverage first. The per-test coverage map
   (`henitai_per_test.json`) is the primary source of candidate tests: every
   integration test file that provably covers the mutant's lines is selected,
@@ -229,7 +232,7 @@ coverage and is excluded from `includes` in `.henitai.yml`.
   `henitai_flaky_tests.json`; a `Killed` mutant is retried up to
   `config.max_flaky_retries` (default `3`) only when every test file in the
   child report's `failed_tests` is flaky, and any surviving retry makes it
-  `Survived`. No flaky set means no retries (linear and parallel paths alike).
+  `Survived`. No flaky set means no retries.
 - Coverage is a required gate before subject resolution. If existing coverage
   does not cover configured sources, the configured test suite runs once to
   bootstrap it. If coverage remains unusable, `Henitai::CoverageError` aborts

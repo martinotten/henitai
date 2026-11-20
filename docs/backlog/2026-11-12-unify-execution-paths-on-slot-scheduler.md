@@ -1,7 +1,10 @@
 # Unify Mutant Execution on the Slot Scheduler
 
-Status: proposed — **prioritized** (next after resumable runs, before the
-Rails matrix R3 of `2026-11-12-ruby-rails-version-support-matrix.md`)
+Status: done (2026-11-20, ADR-20, on `feat/resumable-runs`). Control runs
+became scheduler jobs only (proposal item 2, first option). Also removed:
+`ForkServer::GroupTerminator` and `Client#forget`, which served only the
+synchronous fork-server wait. Contract spec:
+`spec/henitai/execution_engine_run_process_spec.rb`.
 Date: 2026-11-12
 Severity: High (two drivers duplicate timeouts, retries and cleanup; every
 new execution feature is built twice; doubles the Rails compatibility matrix)
