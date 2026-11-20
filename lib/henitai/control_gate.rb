@@ -11,17 +11,16 @@ module Henitai
   # applied to every later detection of the group. A failing control
   # reclassifies the mutant and its scenario result as CompileError.
   #
-  # The launcher starts a group's control. By default it runs synchronously
-  # (linear execution); a scheduler passes its own launcher and reports the
-  # outcome through {#control_finished} later, holding the detections until
-  # then.
+  # The launcher starts a group's control; the scheduler that owns it reports
+  # the outcome through {#control_finished}, and the gate holds the group's
+  # detections until then (ADR-20: controls are scheduler jobs).
   class ControlGate
     attr_reader :stats
 
-    def initialize(downstream:, control_run:, launcher: nil)
+    def initialize(downstream:, control_run:, launcher:)
       @downstream = downstream
       @control_run = control_run
-      @launcher = launcher || ->(key, mutant) { control_finished(key, control_run.run_for(mutant)) }
+      @launcher = launcher
       @outcomes = {}
       @held = {}
       @stats = { verified: 0, failed: 0, reclassified: 0 }

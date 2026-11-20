@@ -14,6 +14,7 @@ RSpec.describe Henitai::ControlGate do
       end
     end.new
   end
+  let(:launches) { [] }
 
   def mutant(subject, status, covered_by: ["spec/sample_spec.rb"])
     node = Henitai::SourceParser.parse("1 + 2")
@@ -31,20 +32,22 @@ RSpec.describe Henitai::ControlGate do
                                          log_path: "/dev/null")
   end
 
-  def control_run_returning(*statuses)
-    integration = instance_double(Henitai::Integration::Rspec)
-    allow(integration).to receive(:run_mutant).and_return(*statuses.map { |status| result(status) })
-    Henitai::ControlRun.new(integration:, timeout_for: ->(_files) { 5.0 })
-  end
-
-  def gate(control_run, downstream: self.downstream)
-    described_class.new(downstream:, control_run:)
+  # Stands in for a scheduler that finishes every launched control at once,
+  # with the next of +statuses+ (the last one repeats).
+  def gate(*statuses, downstream: self.downstream)
+    outcomes = statuses.map { |status| result(status) }
+    built = nil
+    launcher = lambda do |key, detected|
+      launches << detected
+      built.control_finished(key, outcomes.size > 1 ? outcomes.shift : outcomes.first)
+    end
+    built = described_class.new(downstream:, control_run: Henitai::ControlRun.new, launcher:)
   end
 
   it "delivers a detection unchanged once its group's control passes" do
     killed = mutant(subject_a, :killed)
 
-    gate(control_run_returning(:survived)).progress(killed, scenario_result: result(:killed))
+    gate(:survived).progress(killed, scenario_result: result(:killed))
 
     expect(delivered).to eq([[killed, :killed, :killed]])
   end
@@ -52,7 +55,7 @@ RSpec.describe Henitai::ControlGate do
   it "reclassifies mutant and result when the control fails" do
     killed = mutant(subject_a, :killed)
 
-    gate(control_run_returning(:killed)).progress(killed, scenario_result: result(:killed))
+    gate(:killed).progress(killed, scenario_result: result(:killed))
 
     expect(delivered).to eq([[killed, :compile_error, :compile_error]])
   end
@@ -62,48 +65,44 @@ RSpec.describe Henitai::ControlGate do
     received = nil
     sink = Class.new { define_method(:progress) { |_mutant, scenario_result: nil| received = scenario_result } }.new
 
-    gate(control_run_returning(:killed), downstream: sink).progress(killed, scenario_result: result(:killed))
+    gate(:killed, downstream: sink).progress(killed, scenario_result: result(:killed))
 
     expect([received.stdout, received.status_reason]).to eq(["out", killed.status_reason])
   end
 
   it "runs one control per subject and test-file set and applies its outcome to later detections",
      :aggregate_failures do
-    control_run = control_run_returning(:killed, :survived)
-    allow(control_run).to receive(:run_for).and_call_original
-    gate = gate(control_run)
+    gate = gate(:killed, :survived)
     first = mutant(subject_a, :killed)
     second = mutant(subject_a, :timeout)
     other = mutant(subject_b, :killed)
 
     [first, second, other].each { |detected| gate.progress(detected, scenario_result: result(detected.status)) }
 
-    expect(control_run).to have_received(:run_for).twice
+    expect(launches).to eq([first, other])
     expect(delivered.map { |entry| entry[1] }).to eq(%i[compile_error compile_error killed])
   end
 
   it "passes verdicts that need no control straight through", :aggregate_failures do
-    control_run = control_run_returning(:killed)
-    allow(control_run).to receive(:run_for)
     cached = mutant(subject_a, :killed).tap { |built| built.from_cache = true }
-    gate = gate(control_run)
+    gate = gate(:killed)
 
     [mutant(subject_a, :survived), mutant(subject_a, :no_coverage), cached].each { |entry| gate.progress(entry) }
 
-    expect(control_run).not_to have_received(:run_for)
+    expect(launches).to be_empty
     expect(delivered.map { |entry| entry[1] }).to eq(%i[survived no_coverage killed])
   end
 
   it "verifies detections even without a downstream observer" do
     killed = mutant(subject_a, :killed)
 
-    gate(control_run_returning(:killed), downstream: nil).progress(killed)
+    gate(:killed, downstream: nil).progress(killed)
 
     expect(killed.status).to eq(:compile_error)
   end
 
   it "reports how many groups it verified, how many failed and how many verdicts it reclassified" do
-    gate = gate(control_run_returning(:killed, :survived))
+    gate = gate(:killed, :survived)
     [mutant(subject_a, :killed), mutant(subject_a, :killed), mutant(subject_b, :killed)]
       .each { |detected| gate.progress(detected) }
 
@@ -113,7 +112,7 @@ RSpec.describe Henitai::ControlGate do
   describe "with a deferred control" do
     def deferred_gate
       launched = []
-      gate = described_class.new(downstream:, control_run: control_run_returning(:survived),
+      gate = described_class.new(downstream:, control_run: Henitai::ControlRun.new,
                                  launcher: ->(key, detected) { launched << [key, detected] })
       [gate, launched]
     end
