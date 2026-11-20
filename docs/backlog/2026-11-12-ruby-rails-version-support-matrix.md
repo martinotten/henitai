@@ -139,8 +139,8 @@ is set. In fork-server mode the server boots once
 ActiveRecord reconnect after fork (`ChildBootstrap.after_fork!` does not
 touch connections). Every mutant process might then share the server's
 database and even its inherited connection. The isolation probe in the fork-server
-parallel mode decides this; if confirmed it is a separate bug ticket (and a
-README correction), not part of this item.
+parallel mode decides this; the fix is tracked separately in
+`2026-11-13-fork-server-worker-db-isolation.md`.
 
 ### R4 — Syntax / mutation corpus per Ruby version
 
