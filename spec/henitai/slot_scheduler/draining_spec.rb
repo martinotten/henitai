@@ -335,6 +335,29 @@ RSpec.describe Henitai::SlotScheduler::Draining do
       expect(waits.last).to be_within(1e-9).of(0.1)
     end
 
+    # A child that exits on SIGTERM must not hold the run for the rest of the
+    # window: with one slot, every timeout used to cost the full window.
+    it "ends the window once every draining child has exited, keeping its status for the reap",
+       :aggregate_failures do
+      status = instance_double(Process::Status, exited?: false)
+      runtime = build_runtime
+      now = 0.0
+      allow(runtime).to receive(:clock_gettime) { now += 0.01 }
+      reaps = [[nil, nil], [10, status]]
+      allow(runtime).to receive(:wait2) { reaps.shift || [nil, nil] }
+      wakeup = instance_double(Henitai::ProcessWakeup, drain: nil)
+      allow(wakeup).to receive(:wait).and_return([wakeup])
+      integration = build_integration(build_result(status: :timeout))
+      scheduler = build_scheduler(runtime:, wakeup:, integration:)
+      inject_slot(scheduler, build_slot(slot_id: 0, pid: 10, draining: true, forced_outcome: :timeout))
+
+      scheduler.drain_draining_slots
+
+      expect(wakeup).to have_received(:wait).once
+      expect(runtime).not_to have_received(:wait)
+      expect(slot_table).to be_empty
+    end
+
     it "stops waiting once the deadline has passed even if events keep arriving" do
       now = 0.0
       wakeup = instance_double(Henitai::ProcessWakeup, drain: nil)

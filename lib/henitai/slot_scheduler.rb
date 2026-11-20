@@ -40,7 +40,7 @@ module Henitai
     Slot = Struct.new(
       :slot_id, :mutant, :pid, :started_at_monotonic, :timeout,
       :log_paths, :retry_count, :draining, :term_sent_at_monotonic,
-      :forced_outcome, :worker_index, :control_key
+      :forced_outcome, :worker_index, :control_key, :reaped_status
     )
 
     # @return [Integer] mutants that required at least one retry during the run.
