@@ -7,12 +7,17 @@ require "sqlite3"
 require "time"
 require_relative "mutant_identity"
 require_relative "mutant_history_store/sql"
+require_relative "mutant_history_store/subject_scans"
 require_relative "mutant_history_store/verdict_cache"
 require_relative "mutant_history_store/database"
 
 module Henitai
   # Persists mutant outcomes across runs in a lightweight SQLite database.
   class MutantHistoryStore
+    # What every mutant row of one write shares.
+    UpsertContext = Data.define(:version, :recorded_at, :run_id, :operators)
+
+    include SubjectScans
     include VerdictCache
     include Database
 
@@ -33,19 +38,37 @@ module Henitai
 
     attr_reader :path
 
+    # Timestamps are normalized to UTC on the way in: they are stored as
+    # ISO8601 strings and compared lexicographically (retirement compares a
+    # mutant's last_seen_at against its subject's scan), and callers pass
+    # local-zone times — `Runner#run` hands over `Time.now`. Mixing offsets
+    # makes "2026-01-01T13:00:00Z" < "2026-01-01T14:00:00+02:00" as strings
+    # while the opposite is true as instants. `getutc`, not `utc`, so the
+    # caller's Time object is not mutated.
+    # @param operators [Symbol, nil] the operator set this run generated from;
+    #   stored per mutant so a later scan only retires mutants recorded under
+    #   the same set.
+    # @param full_scan [Boolean] whether this run regenerated each touched
+    #   subject's mutants in full. False for sampled runs, which produce a
+    #   fraction of the set and must not advance the retirement baseline.
     # @param run_id [String, nil] one history entry per mutant and run: a
     #   second write of the same run replaces the entry its checkpoint wrote.
-    def record(result, version:, recorded_at: Time.now.utc, run_id: nil)
+    # rubocop:disable Metrics/ParameterLists -- one keyword per recorded fact
+    def record(result, version:, recorded_at: Time.now, operators: nil, full_scan: false, run_id: nil)
+      # rubocop:enable Metrics/ParameterLists
+      recorded_at = recorded_at.getutc
       write do |db|
         insert_run(db, result, version, recorded_at) if full_run?(result)
-        upsert_mutants(db, result.mutants, version, recorded_at, run_id)
+        record_subject_scans(db, result, recorded_at, operators) if complete_scan?(result, full_scan, operators)
+        upsert_mutants(db, result.mutants, UpsertContext.new(version:, recorded_at:, run_id:, operators:))
       end
     end
 
     # Persists verdicts while a run is in progress (ADR-19): mutant rows
     # only, never a run row. @return [Integer] how many mutants were written
-    def checkpoint(mutants, version:, run_id:, recorded_at: Time.now.utc)
-      write { |db| upsert_mutants(db, mutants, version, recorded_at, run_id) }
+    def checkpoint(mutants, version:, run_id:, operators: nil, recorded_at: Time.now)
+      context = UpsertContext.new(version:, recorded_at: recorded_at.getutc, run_id:, operators:)
+      write { |db| upsert_mutants(db, mutants, context) }
       Array(mutants).size
     end
 
@@ -105,18 +128,18 @@ module Henitai
       result.respond_to?(:partial_rerun?) && result.partial_rerun?
     end
 
-    def upsert_mutants(db, mutants, version, recorded_at, run_id)
-      Array(mutants).each { |mutant| upsert_mutant(db, mutant, version, recorded_at, run_id) }
+    def upsert_mutants(db, mutants, context)
+      Array(mutants).each { |mutant| upsert_mutant(db, mutant, context) }
     end
 
     def insert_run(db, result, version, recorded_at)
       db.execute(Sql::INSERT_RUN, insert_run_bindings(result, version, recorded_at))
     end
 
-    def upsert_mutant(db, mutant, version, recorded_at, run_id)
+    def upsert_mutant(db, mutant, context)
       db.execute(
         Sql::UPSERT_MUTANT,
-        upsert_mutant_bindings(mutant_history_data(db, mutant, version, recorded_at, run_id))
+        upsert_mutant_bindings(mutant_history_data(db, mutant, context), context.operators)
       )
     end
 
@@ -133,16 +156,17 @@ module Henitai
       mutant.respond_to?(:stable_id) ? mutant.stable_id : MutantIdentity.stable_id(mutant)
     end
 
-    def mutation_history_entry(mutant, version, recorded_at, run_id)
-      entry = { version: version, status: mutant.status.to_s, recordedAt: recorded_at.iso8601 }
-      run_id ? entry.merge(runId: run_id) : entry
+    def mutation_history_entry(mutant, context)
+      entry = { version: context.version, status: mutant.status.to_s, recordedAt: context.recorded_at.iso8601 }
+      context.run_id ? entry.merge(runId: context.run_id) : entry
     end
 
-    def mutant_history_data(db, mutant, version, recorded_at, run_id)
+    def mutant_history_data(db, mutant, context)
+      version = context.version
+      recorded_at = context.recorded_at
       mutant_id = stable_mutant_id(mutant)
       existing = existing_mutant_row(db, mutant_id)
-      history = append_history(existing_status_history(existing),
-                               mutation_history_entry(mutant, version, recorded_at, run_id))
+      history = append_history(existing_status_history(existing), mutation_history_entry(mutant, context))
       first_seen = first_seen_metadata(existing, version, recorded_at)
 
       {
@@ -201,7 +225,7 @@ module Henitai
     end
 
     def load_mutants(db)
-      db.execute("SELECT * FROM mutants ORDER BY first_seen_at, mutant_id").map do |row|
+      db.execute(SubjectScans::LOAD_MUTANTS).map do |row|
         {
           mutantId: row["mutant_id"],
           firstSeenVersion: row["first_seen_version"],
@@ -232,7 +256,7 @@ module Henitai
       ]
     end
 
-    def upsert_mutant_bindings(data)
+    def upsert_mutant_bindings(data, operators)
       mutant = data.fetch(:mutant)
       [
         data.fetch(:mutant_id),
@@ -243,7 +267,9 @@ module Henitai
         mutant.status.to_s,
         JSON.generate(data.fetch(:history)),
         data.fetch(:days_alive),
-        *verdict_cache_bindings(mutant, data[:existing_row])
+        *verdict_cache_bindings(mutant, data[:existing_row]),
+        mutant_subject_expression(mutant),
+        operators&.to_s
       ]
     end
   end

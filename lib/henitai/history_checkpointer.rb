@@ -55,7 +55,9 @@ module Henitai
     end
 
     def commit(batch)
-      @committed += @history_store.checkpoint(batch, version: @version, run_id: @run_id)
+      @committed += @history_store.checkpoint(
+        batch, version: @version, run_id: @run_id, operators: @config.operators
+      )
       @batch = []
       @last_flush_at = @clock.call
     end

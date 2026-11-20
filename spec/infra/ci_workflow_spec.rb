@@ -24,5 +24,15 @@ RSpec.describe "CI workflow" do
       "bundle exec rake oracle:reuse"
     )
   end
+
+  it "uses a fixed Ubuntu image for every job" do
+    workflow = YAML.safe_load_file(
+      File.expand_path("../../.github/workflows/ci.yml", __dir__)
+    )
+
+    runners = workflow.fetch("jobs").values.map { |job| job.fetch("runs-on") }
+
+    expect(runners).to all(eq("ubuntu-24.04"))
+  end
 end
 # rubocop:enable RSpec/DescribeClass

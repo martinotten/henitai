@@ -40,6 +40,8 @@ module Henitai
       def ensure_schema(db)
         db.execute_batch(Sql::RUNS_TABLE)
         db.execute_batch(Sql::MUTANTS_TABLE)
+        migrate_subject_scans_table(db)
+        db.execute_batch(SubjectScans::SUBJECT_SCANS_TABLE)
         migrate_mutants_table(db)
       end
 

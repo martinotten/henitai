@@ -25,6 +25,9 @@ Code is clean if it can be understood easily – by everyone on the team. Clean 
 4. Prevent over-configurability.
 5. Use dependency injection.
 6. Follow Law of Demeter. A class should know only its direct dependencies.
+7. One owner per concern. Each responsibility (e.g. waiting for a child, timeouts, retries, process cleanup) is implemented in exactly one place. A second implementation of an owned concern is a defect, not a variant.
+8. Vary only the difference. A new mode or option injects a collaborator at the narrowest point where behavior really differs; it never copies the code around that point.
+9. Quantities are not modes. A count of one (workers, slots, retries, files) runs through the same code as a count of many. Special-casing one needs a measured reason, recorded in an ADR.
 
 ## Understandability tips
 1. Be consistent. If you do something a certain way, do all similar things in the same way.

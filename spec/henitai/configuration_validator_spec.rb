@@ -127,6 +127,91 @@ RSpec.describe Henitai::ConfigurationValidator do
   end
 
   # ---------------------------------------------------------------------------
+  # test_excludes
+  # ---------------------------------------------------------------------------
+  describe "test_excludes validation" do
+    it "accepts absent test_excludes" do
+      expect { described_class.validate!({}) }.not_to raise_error
+    end
+
+    it "accepts a string-array test_excludes" do
+      expect { described_class.validate!({ test_excludes: ["spec/**/*_process_spec.rb"] }) }
+        .not_to raise_error
+    end
+
+    it "rejects a non-array test_excludes with path in error" do
+      expect { described_class.validate!({ test_excludes: "spec" }) }.to raise_error(
+        Henitai::ConfigurationError, /for test_excludes:/
+      )
+    end
+
+    it "rejects a non-string test_excludes entry with path in error" do
+      expect { described_class.validate!({ test_excludes: [1] }) }.to raise_error(
+        Henitai::ConfigurationError, /for test_excludes:/
+      )
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # reports
+  # ---------------------------------------------------------------------------
+  describe "reports validation" do
+    it "accepts absent reports" do
+      expect { described_class.validate!({}) }.not_to raise_error
+    end
+
+    it "rejects a non-hash reports with path in error" do
+      expect { described_class.validate!({ reports: true }) }.to raise_error(
+        Henitai::ConfigurationError, /for reports:/
+      )
+    end
+
+    it "warns about unknown reports keys with full path" do
+      expect_warning(/reports\.typo_key/) do
+        described_class.validate!({ reports: { typo_key: true } })
+      end
+    end
+
+    it "accepts a fully specified reports section" do
+      expect do
+        described_class.validate!(
+          { reports: { checkpoint: true, checkpoint_every: 25, checkpoint_interval: 5.0 } }
+        )
+      end.not_to raise_error
+    end
+
+    it "rejects a non-boolean reports.checkpoint with path in error" do
+      expect { described_class.validate!({ reports: { checkpoint: "yes" } }) }.to raise_error(
+        Henitai::ConfigurationError, /for reports\.checkpoint:/
+      )
+    end
+
+    it "rejects a non-integer reports.checkpoint_every with path in error" do
+      expect { described_class.validate!({ reports: { checkpoint_every: 2.5 } }) }.to raise_error(
+        Henitai::ConfigurationError, /for reports\.checkpoint_every:/
+      )
+    end
+
+    it "rejects a non-positive reports.checkpoint_every with path in error" do
+      expect { described_class.validate!({ reports: { checkpoint_every: 0 } }) }.to raise_error(
+        Henitai::ConfigurationError, /for reports\.checkpoint_every:/
+      )
+    end
+
+    it "rejects a non-numeric reports.checkpoint_interval with path in error" do
+      expect { described_class.validate!({ reports: { checkpoint_interval: "5" } }) }.to raise_error(
+        Henitai::ConfigurationError, /for reports\.checkpoint_interval:/
+      )
+    end
+
+    it "rejects a non-positive reports.checkpoint_interval with path in error" do
+      expect { described_class.validate!({ reports: { checkpoint_interval: 0.0 } }) }.to raise_error(
+        Henitai::ConfigurationError, /for reports\.checkpoint_interval:/
+      )
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # jobs
   # ---------------------------------------------------------------------------
   describe "jobs validation" do
@@ -267,6 +352,38 @@ RSpec.describe Henitai::ConfigurationValidator do
       expect_warning(/mutation\.typo_key/) do
         described_class.validate!({ mutation: { typo_key: true } })
       end
+    end
+
+    it "rejects a non-integer mutation.max_log_bytes with path in error" do
+      expect { described_class.validate!({ mutation: { max_log_bytes: 1.5 } }) }.to raise_error(
+        Henitai::ConfigurationError, /for mutation\.max_log_bytes:/
+      )
+    end
+
+    it "rejects a non-positive mutation.max_log_bytes with path in error" do
+      expect { described_class.validate!({ mutation: { max_log_bytes: 0 } }) }.to raise_error(
+        Henitai::ConfigurationError, /for mutation\.max_log_bytes:/
+      )
+    end
+
+    it "accepts a positive integer mutation.max_log_bytes" do
+      expect { described_class.validate!({ mutation: { max_log_bytes: 65_536 } }) }.not_to raise_error
+    end
+
+    it "rejects a non-numeric mutation.max_timeout with path in error" do
+      expect { described_class.validate!({ mutation: { max_timeout: "30" } }) }.to raise_error(
+        Henitai::ConfigurationError, /for mutation\.max_timeout:/
+      )
+    end
+
+    it "rejects a non-positive mutation.max_timeout with path in error" do
+      expect { described_class.validate!({ mutation: { max_timeout: 0 } }) }.to raise_error(
+        Henitai::ConfigurationError, /for mutation\.max_timeout:/
+      )
+    end
+
+    it "accepts a positive numeric mutation.max_timeout" do
+      expect { described_class.validate!({ mutation: { max_timeout: 30.0 } }) }.not_to raise_error
     end
 
     it "rejects non-string ignore patterns with the full path in error" do

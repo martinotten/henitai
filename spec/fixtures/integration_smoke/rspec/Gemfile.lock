@@ -4,7 +4,7 @@ PATH
     henitai (0.6.0)
       minitest (>= 5.25, < 7)
       prism (~> 1.5)
-      simplecov (~> 0.22)
+      simplecov (>= 0.22, < 2)
       sqlite3 (>= 2.9.5, < 3)
       unparser (~> 0.6)
 

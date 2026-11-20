@@ -11,7 +11,7 @@ RSpec.describe Henitai::HistoryCheckpointer do
   end
 
   def build_config(every: 2, interval: 30.0)
-    Struct.new(:checkpoint_every, :checkpoint_interval).new(every, interval)
+    Struct.new(:checkpoint_every, :checkpoint_interval, :operators).new(every, interval, :light)
   end
 
   def checkpointer(config: build_config, clock: -> { 0.0 })
@@ -26,7 +26,7 @@ RSpec.describe Henitai::HistoryCheckpointer do
 
     writer.progress(:b, scenario_result: nil)
 
-    expect(store).to have_received(:checkpoint).with(%i[a b], version: "9.9.9", run_id: "run-1")
+    expect(store).to have_received(:checkpoint).with(%i[a b], version: "9.9.9", run_id: "run-1", operators: :light)
   end
 
   it "writes a batch once checkpoint_interval seconds have passed" do
@@ -35,7 +35,7 @@ RSpec.describe Henitai::HistoryCheckpointer do
 
     writer.progress(:a)
 
-    expect(store).to have_received(:checkpoint).with([:a], version: "9.9.9", run_id: "run-1")
+    expect(store).to have_received(:checkpoint).with([:a], version: "9.9.9", run_id: "run-1", operators: :light)
   end
 
   it "writes the pending verdicts on flush and counts what it committed", :aggregate_failures do

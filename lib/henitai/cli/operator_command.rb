@@ -57,14 +57,19 @@ module Henitai
         HELP
       end
 
+      # Sets nest, so each section lists only what it adds to the previous
+      # one; printing every set in full would repeat the light operators
+      # three times. The header states the nesting so a section title is
+      # never mistaken for the whole set.
       def operator_list_text
         validate_operator_metadata!
         sections = [
           operator_list_section("Light set", Operator::LIGHT_SET),
-          operator_list_section("Full set", Operator::FULL_SET)
+          operator_list_section("Full set (adds to light)", Operator::FULL_SET - Operator::LIGHT_SET),
+          operator_list_section("Hard set (adds to full)", Operator::HARD_SET - Operator::FULL_SET)
         ]
 
-        ["Available operators", *sections].join("\n")
+        ["Available operators (full includes light, hard includes full)", *sections].join("\n")
       end
 
       def operator_list_section(title, names)
@@ -86,8 +91,10 @@ module Henitai
         ["No metadata available", "n/a"]
       end
 
+      # The widest set is the registry: every operator henitai can name needs
+      # a metadata row, not just the ones a default run enables.
       def validate_operator_metadata!
-        missing = Operator::FULL_SET - operator_metadata.keys
+        missing = Operator::HARD_SET - operator_metadata.keys
         return if missing.empty?
 
         raise ArgumentError, "Missing operator metadata for: #{missing.join(', ')}"

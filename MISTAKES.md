@@ -2,6 +2,35 @@
 
 What went wrong, why, and what stops it recurring. Newest first.
 
+## 2026-11-12 — Two mutant execution drivers grew side by side
+
+**What happened.** While sizing the Ruby/Rails compatibility matrix it turned
+out that mutants run through two drivers: a synchronous one for `jobs: 1`
+(`ExecutionEngine#run_linear`, `Integration::Base#wait_with_timeout`,
+`FlakyMutantRetrier`) and the event-loop `SlotScheduler` for `jobs > 1`
+(with its own timeouts and `RetryPolicy`). The fork server (ADR-15) was then
+built once per driver (`MutantRunner#run_mutant` vs. `#spawn_mutant` +
+`ForkServer::Runtime`). `jobs > 1` even falls back to the synchronous driver
+when only one mutant is pending. Result: four execution modes that each need
+end-to-end testing, two retry implementations, and signal traps in only one
+of them — while `AGENTS.md` stated that `SlotScheduler` owns timeouts and
+reaping.
+
+**Root cause.** Parallel execution was added as a second driver next to the
+linear one instead of treating `jobs: 1` as a scheduler with one slot.
+Every later feature then followed the existing shape and was implemented per
+driver. No rule asked whether a new path duplicates an owned concern, and
+ADRs did not have to state how many code paths an option adds.
+
+**Prevention.** `CODE_PRINCIPLES.md` design rules 7–9 (one owner per
+concern, vary only the difference, quantities are not modes);
+"No Parallel Implementations" in `AGENTS.md` (binding ownership statements,
+search for an existing owner first, unify before implementing a feature
+twice, shared contract specs when unification is postponed, review
+findings); ADRs that add a mode carry an Execution paths section. The
+existing duplication is
+`docs/backlog/2026-11-12-unify-execution-paths-on-slot-scheduler.md`.
+
 ## 2026-10-18 — A full RSpec run left a partial coverage result
 
 **What happened.** After a full `bundle exec rspec`, `coverage/.resultset.json`

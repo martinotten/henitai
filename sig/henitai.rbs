@@ -1288,6 +1288,7 @@ module Henitai
     def save_interrupted_progress: () -> void
     def flush_progress: () -> void
     def history_store: () -> untyped
+    def full_mutant_set?: () -> bool
     def per_test_coverage: () -> PerTestCoverage
     def reuse_filter: () -> IncrementalFilter
     def source_selection_coverage: () -> PerTestCoverage
