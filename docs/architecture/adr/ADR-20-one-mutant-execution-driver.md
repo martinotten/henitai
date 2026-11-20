@@ -69,11 +69,16 @@ scheduler with one slot, and `jobs: 0` or `nil` mean one slot too.
   scheduler and raises `Interrupt`, which the runner turns into saved
   progress (ADR-19).
 - A `jobs: 1` run pays the event loop (`ProcessWakeup`, `IO.select`) and the
-  scheduler's process-group teardown per mutant. Measured on the dogfood
-  `SlotScheduler*` subjects (398 mutants, unsampled, two runs each):
-  890/893 s before, 909/914 s after, about 2% or 50 ms per mutant. The
-  cause is not yet isolated; the teardown's group polling is the first
-  suspect.
+  scheduler's process-group teardown per mutant, which costs nothing
+  measurable. A first measurement on the dogfood `SlotScheduler*` subjects
+  (398 mutants, unsampled, two runs each) showed 890/893 s before and
+  909/914 s after. A wall-clock profile (stackprof) traced the difference
+  to `SlotScheduler::Draining`: a timed-out mutant always waited the full
+  SIGTERM drain window (0.2 s), while the old synchronous path stopped
+  as soon as the group was gone. The drain window now ends once every
+  draining child has exited, keeping the reaped status for the final
+  reap. Measured again afterwards, interleaved: 956/923 s before,
+  948/914 s after.
 - About 200 lines of production code and their specs go away.
 
 ## Related
