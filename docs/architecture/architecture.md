@@ -533,8 +533,8 @@ Namespace-wide ignore rules belong in `.henitai.yml`, not in source comments.
 
 With `mutation.fork_server: true` (RSpec and Minitest, any `jobs`), the
 environment and the union of the run's test files are loaded once in a
-long-lived server and every mutant process is forked from it. With `jobs > 1`
-the scheduler runs on `ForkServer::Runtime`, which completes mutants from the
+long-lived server and every mutant process is forked from it. The
+scheduler then runs on `ForkServer::Runtime`, which completes mutants from the
 server's `exited` events instead of `waitpid`. If the server is unavailable
 the run falls back to per-mutant boot with a warning. A server lost mid-run
 does not turn its in-flight mutants into `runtime_error`: they complete as
@@ -546,11 +546,13 @@ back to the pid, and probing liveness with `kill(0)`. See
 
 ### 8.6 Parallel Execution and Flaky Test Mitigation
 
-The execution engine runs mutants linearly by default; `config.jobs` above `1`
-switches to `ProcessWorkerRunner`, a single-threaded event loop that delegates
-spawning, reaping, timeouts and draining to `SlotScheduler`. The
-`AvailableCpuCount` helper exists as a future policy hook, but it is not wired
-into the default path yet. Every mutant runs in its own forked child process,
+The execution engine hands every run to `ProcessWorkerRunner`, a
+single-threaded event loop that owns INT/TERM/HUP handling and delegates
+spawning, reaping, timeouts, draining, flaky retries and control jobs to
+`SlotScheduler` (ADR-20). `config.jobs` (default `1`) is the number of slots,
+not a mode: one job is a scheduler with one slot. The `AvailableCpuCount`
+helper exists as a future policy hook, but it is not wired into the default
+path yet. Every mutant runs in its own forked child process,
 which provides the actual test isolation.
 
 Every forked mutant child begins with `Integration::ChildBootstrap.after_fork!`,
