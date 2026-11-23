@@ -196,7 +196,8 @@ coverage and is excluded from `includes` in `.henitai.yml`.
   `fail_fast = 1` (set after the spec files load, overriding the project),
   Minitest via `MinitestFailFast` (no further test class starts). The
   baseline suite runs in full. The child report's `failed_tests` therefore
-  holds the first failing file only.
+  holds only the files of the first failing example (RSpec) or test class
+  (Minitest).
 - Opt-in `mutation.fork_server` (ADR-15, RSpec and Minitest, any `jobs`)
   boots the test environment once in a server and forks each mutant process
   from it; on failure it falls back to per-mutant boot.

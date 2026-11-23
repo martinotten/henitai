@@ -587,12 +587,27 @@ child's `Minitest.run`, and after the first failing result every test class
 that has not started reports no test methods (the class running at the
 failure finishes). Control runs are mutant children too; a control passes
 only when no test fails, which fail-fast does not change. The baseline suite
-runs in full. Consequences: `failed_tests` in the child report lists the
-first failing file only, so a flaky first file triggers a flaky retry even
-when a later file would also have failed (the retry reruns the full mutant,
-so the verdict stays sound); and a mutant that a test kills before a later
-test hangs or raises `SystemExit` is now `Killed` instead of `Timeout` or
-`RuntimeError`.
+runs in full.
+
+Consequences:
+
+- `failed_tests` in the child report lists only the files of the first
+  failing example (RSpec) or test class (Minitest; a class reopened in
+  another file or inheriting tests from a module can contribute more than
+  one file).
+- When the run stops before a later test that would hang, call `exit!`,
+  raise `SystemExit` or crash the child, the mutant is `Killed` instead of
+  `Timeout` or `RuntimeError`. With the default `coverage_criteria` this
+  leaves MS unchanged and raises MSI; with `timeout: false` it raises MS
+  too. `--strict-exit-codes` reports timeouts (exit `3`) less often.
+- With `mutation.flaky_detection`, a kill whose first failing file is flaky
+  is retried even when a later, non-flaky file would also have failed. The
+  retry reruns the full mutant, so a kill can now end `Survived` when no
+  test fails in any retry.
+- Fail-fast has no effect, and the run simply completes, for a test class
+  whose own `runnable_methods` does not call `super` (for example
+  `Minitest::Benchmark`) and for parallelized Minitest runs
+  (`parallelize_me!`, Rails `parallelize`).
 
 The baseline suite child is spawned, not forked, so it reaches the same
 property through `Process.spawn(..., pgroup: true)` instead of `setpgid`. Both

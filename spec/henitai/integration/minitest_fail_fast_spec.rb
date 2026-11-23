@@ -25,6 +25,11 @@ RSpec.describe Henitai::Integration::MinitestFailFast do
     described_class.disarm!
   end
 
+  # Minitest 6 runs a test class through run_suite; Minitest 5 through run.
+  def run_suite(reporter)
+    suite.respond_to?(:run_suite) ? suite.run_suite(reporter, {}) : suite.run(reporter, {})
+  end
+
   it "leaves a suite's test methods alone while no failure was reported" do
     described_class.arm!
 
@@ -43,7 +48,7 @@ RSpec.describe Henitai::Integration::MinitestFailFast do
     described_class.stop!
     reporter = Minitest::StatisticsReporter.new(StringIO.new)
 
-    suite.run(reporter, {})
+    run_suite(reporter)
 
     expect(reporter.count).to eq(0)
   end
