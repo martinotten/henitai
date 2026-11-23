@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "henitai/integration/minitest_autorun"
+require "henitai/integration/minitest_fail_fast"
 require "henitai/integration/minitest_outcome_reporter"
 require "henitai/integration/minitest_runnable_filter"
 require "henitai/test_file_outcomes"
@@ -27,22 +28,33 @@ module Henitai
         return 1 if after_load && !after_load.call
 
         install_outcome_plugin(outcomes)
+        exit_code(run_fail_fast)
+      end
+
+      private
+
+      # One failing test kills the mutant, so the run stops there.
+      def run_fail_fast
+        MinitestFailFast.arm!
         # @type var empty_args: Array[String]
         empty_args = []
-        status = ::Minitest.run(empty_args)
+        ::Minitest.run(empty_args)
+      ensure
+        MinitestFailFast.disarm!
+      end
+
+      def exit_code(status)
         return status if status.is_a?(Integer)
 
         status == true ? 0 : 1
       end
-
-      private
 
       def install_outcome_plugin(outcomes)
         ::Minitest.extensions << PLUGIN_NAME unless ::Minitest.extensions.include?(PLUGIN_NAME)
         init = :"plugin_#{PLUGIN_NAME}_init"
         ::Minitest.singleton_class.send(:remove_method, init) if ::Minitest.respond_to?(init)
         ::Minitest.define_singleton_method(init) do |_options|
-          reporter.reporters << MinitestOutcomeReporter.new(outcomes)
+          reporter.reporters << MinitestOutcomeReporter.new(outcomes, on_failure: -> { MinitestFailFast.stop! })
         end
       end
 

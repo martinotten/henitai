@@ -86,7 +86,11 @@ module Henitai
         child_debug_log.write("[henitai-debug-child] load_spec_files_return")
       end
 
+      # One failing example kills the mutant, so the run stops there. Set
+      # after the spec files loaded, so a project's own fail_fast setting
+      # cannot turn it off.
       def run_rspec_specs(runner, example_groups)
+        ::RSpec.configuration.fail_fast = 1
         child_debug_log.write("[henitai-debug-child] run_specs_start")
         result = runner.send(:run_specs, example_groups)
         child_debug_log.write("[henitai-debug-child] run_specs_return result=#{result.inspect}")

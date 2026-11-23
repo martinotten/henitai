@@ -7,16 +7,19 @@ require "henitai/minitest_result_file"
 module Henitai
   module Integration
     # Records the outcome of each finished Minitest result per test file.
+    # +on_failure+ is called for every failing (not skipped) result.
     class MinitestOutcomeReporter < ::Minitest::Reporter
-      def initialize(outcomes, report_path: nil, io: $stdout)
+      def initialize(outcomes, report_path: nil, io: $stdout, on_failure: nil)
         super(io, {})
         @outcomes = outcomes
         @report_path = report_path
+        @on_failure = on_failure
       end
 
       def record(result)
         super
         MinitestResultFile.record(@outcomes, result)
+        @on_failure&.call if !result.passed? && !result.skipped?
       end
 
       def report
