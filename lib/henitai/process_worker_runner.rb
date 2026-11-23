@@ -54,6 +54,12 @@ module Henitai
       @scheduler ? @scheduler.flaky_retry_count : 0
     end
 
+    # Statistics of the run's ControlGate (verified:, failed:, reclassified:),
+    # or nil when the run had no control runs.
+    def control_stats
+      @control_gate&.stats
+    end
+
     # True once a graceful shutdown has been requested; read by the scheduler.
     def shutdown_requested?
       @shutdown_requested
@@ -72,7 +78,8 @@ module Henitai
     # @param integration [Integration::Base]
     # @param config [Configuration]
     # @param progress_reporter [#progress, nil]
-    # @param options [Hash]
+    # @param options [Hash] scheduler options; +control_run:+ ({ControlRun})
+    #   puts a {ControlGate} in front of +progress_reporter+ (ADR-19).
     # @return [Array<ScenarioExecutionResult>]
     def run(mutants, integration, config, progress_reporter, options = {})
       Integration::SchedulerDiagnostics.reset! if Integration::SchedulerDiagnostics.enabled?
@@ -91,15 +98,28 @@ module Henitai
       @shutdown_requested = false
       @wakeup = Henitai::ProcessWakeup.new.install if @wakeup.nil?
       @wakeup.watch { @runtime.wakeup_ios } if @runtime.respond_to?(:wakeup_ios)
+      @control_gate = control_gate(progress_reporter, options[:control_run])
       @scheduler = SlotScheduler.new(
         integration: integration,
         config: config,
-        progress_reporter: progress_reporter,
+        progress_reporter: @control_gate || progress_reporter,
         options: options,
         host: self,
-        flaky_tests: @flaky_tests
+        flaky_tests: @flaky_tests,
+        control_listener: @control_gate
       )
       @scheduler.enqueue(mutants)
+    end
+
+    # The gate's controls become scheduler jobs; the scheduler reports each
+    # control's outcome back to the gate.
+    def control_gate(progress_reporter, control_run)
+      return unless control_run
+
+      launcher = lambda do |key, mutant|
+        @scheduler.enqueue_control(key, control_run.control_mutant(mutant), control_run.test_files(mutant))
+      end
+      ControlGate.new(downstream: progress_reporter, control_run:, launcher:)
     end
 
     def event_loop

@@ -136,6 +136,8 @@ module Henitai
 
       def record_drain_result(slot, final_status)
         result = drain_verdict.build(slot, final_status)
+        return report_control(slot.control_key, result) if slot.control_key
+
         slot.mutant.status = result.status
         ScenarioExecutionResult.copy_reason(result, slot.mutant)
         results << result

@@ -236,6 +236,21 @@ RSpec.describe Henitai::MutantHistoryStore do
       end
     end
 
+    # A checkpoint (ADR-19) records the operator set like the end-of-run
+    # write, or a resumed run's later scan could never retire its rows.
+    it "retires a checkpointed mutant once its subject is rescanned under the same set" do
+      Dir.mktmpdir do |dir|
+        store = described_class.new(path: File.join(dir, "history.sqlite3"))
+        gone = subject_mutant("Sample", "replaced + with -")
+        store.checkpoint([gone], version: "0.4.0", run_id: "run-1",
+                                 recorded_at: Time.utc(2026, 1, 1), operators: :light)
+        record_scan(store, [subject_mutant("Sample", "replaced - with +")],
+                    version: "0.5.0", recorded_at: Time.utc(2026, 1, 2))
+
+        expect(exported_ids(store)).not_to include(Henitai::MutantIdentity.stable_id(gone))
+      end
+    end
+
     it "rebuilds a subject_scans table predating the operators column" do
       Dir.mktmpdir do |dir|
         path = File.join(dir, "history.sqlite3")
@@ -502,6 +517,74 @@ RSpec.describe Henitai::MutantHistoryStore do
     end
   end
 
+  describe "run ids and checkpoints" do
+    def store_in(dir) = described_class.new(path: File.join(dir, "mutation-history.sqlite3"))
+
+    def history_of(store) = store.trend_report[:mutants].first[:statusHistory]
+
+    let(:summary) { { mutation_score: 100.0, mutation_score_indicator: 100.0, equivalence_uncertainty: nil } }
+
+    it "keeps one history entry per run when a run writes a mutant twice", :aggregate_failures do
+      Dir.mktmpdir do |dir|
+        store = store_in(dir)
+        store.checkpoint([build_mutant(status: :survived)], version: "0.1.0", run_id: "run-1")
+        store.record(build_result([build_mutant(status: :killed)], summary), version: "0.1.0", run_id: "run-1")
+
+        expect(history_of(store).map { |entry| entry[:status] }).to eq(["killed"])
+        expect(history_of(store).first[:runId]).to eq("run-1")
+      end
+    end
+
+    it "appends an entry for every new run" do
+      Dir.mktmpdir do |dir|
+        store = store_in(dir)
+        store.record(build_result([build_mutant(status: :killed)], summary), version: "0.1.0", run_id: "run-1")
+        store.record(build_result([build_mutant(status: :killed)], summary), version: "0.1.0", run_id: "run-2")
+
+        expect(history_of(store).map { |entry| entry[:runId] }).to eq(%w[run-1 run-2])
+      end
+    end
+
+    it "checkpoints mutants without recording a run, and answers how many it wrote", :aggregate_failures do
+      Dir.mktmpdir do |dir|
+        store = store_in(dir)
+
+        written = store.checkpoint([build_mutant(status: :killed)], version: "0.1.0", run_id: "run-1")
+
+        expect(written).to eq(1)
+        expect(store.trend_report[:runs]).to eq([])
+        expect(store.trend_report[:mutants].size).to eq(1)
+      end
+    end
+
+    it "leaves the database unchanged when a write is interrupted midway", :aggregate_failures do
+      Dir.mktmpdir do |dir|
+        store = store_in(dir)
+        store.checkpoint([], version: "0.1.0", run_id: "run-0")
+        broken = build_mutant(status: :killed).tap do |mutant|
+          mutant.define_singleton_method(:stable_id) { raise Interrupt }
+        end
+
+        before = store.trend_report.values_at(:runs, :mutants)
+
+        expect do
+          store.record(build_result([build_mutant(status: :killed), broken], summary), version: "0.1.0")
+        end.to raise_error(Interrupt)
+        expect(store.trend_report.values_at(:runs, :mutants)).to eq(before)
+      end
+    end
+
+    it "defers signals until the write has finished" do
+      Dir.mktmpdir do |dir|
+        allow(Henitai::SignalDeferral).to receive(:call).and_call_original
+
+        store_in(dir).checkpoint([build_mutant(status: :killed)], version: "0.1.0", run_id: "run-1")
+
+        expect(Henitai::SignalDeferral).to have_received(:call)
+      end
+    end
+  end
+
   describe "verdict cache" do
     def build_cacheable_mutant(dir, status:, covered_by: :default)
       source = File.join(dir, "sample.rb")
@@ -515,12 +598,19 @@ RSpec.describe Henitai::MutantHistoryStore do
       mutant
     end
 
-    def store_at(dir, per_test_coverage: nil, context_sha: "ctx-sha")
+    def store_at(dir, per_test_coverage: nil, context_sha: "ctx-sha", provenance: nil)
       described_class.new(
         path: File.join(dir, "mutation-history.sqlite3"),
         per_test_coverage:,
-        reuse_context: Struct.new(:fingerprint).new(context_sha)
+        reuse_context: Struct.new(:fingerprint).new(context_sha),
+        provenance:
       )
+    end
+
+    def provenance(*answers)
+      provenance = instance_double(Henitai::ExecutionProvenance)
+      allow(provenance).to receive(:intact?).and_return(*answers)
+      provenance
     end
 
     def summary
@@ -552,6 +642,81 @@ RSpec.describe Henitai::MutantHistoryStore do
           subject_hash: Henitai::VerdictFingerprint.subject_source_hash(mutant),
           fingerprint_current: true
         )
+      end
+    end
+
+    describe "execution provenance" do
+      def stable_id(mutant) = Henitai::MutantIdentity.stable_id(mutant)
+
+      it "checks the subject file and the covering tests of a killed mutant" do
+        Dir.mktmpdir do |dir|
+          checked = provenance(true)
+          mutant = build_cacheable_mutant(dir, status: :killed)
+
+          store_at(dir, provenance: checked).record(build_result([mutant], summary), version: "0.1.0")
+
+          expect(checked).to have_received(:intact?)
+            .with([File.join(dir, "sample.rb"), File.join(dir, "sample_spec.rb")]).twice
+        end
+      end
+
+      it "records no fingerprint for a killed mutant whose inputs drifted" do
+        Dir.mktmpdir do |dir|
+          store = store_at(dir, provenance: provenance(false))
+          mutant = build_cacheable_mutant(dir, status: :killed)
+
+          store.record(build_result([mutant], summary), version: "0.1.0")
+
+          expect(store.verdict_for(stable_id(mutant))).to be_nil
+        end
+      end
+
+      it "records no fingerprint when the inputs drift while they are being hashed" do
+        Dir.mktmpdir do |dir|
+          store = store_at(dir, provenance: provenance(true, false))
+          mutant = build_cacheable_mutant(dir, status: :killed)
+
+          store.record(build_result([mutant], summary), version: "0.1.0")
+
+          expect(store.verdict_for(stable_id(mutant))).to be_nil
+        end
+      end
+
+      it "records no fingerprint for a survived mutant whose inputs drifted, nor carries an old one" do
+        Dir.mktmpdir do |dir|
+          covering = [File.join(dir, "sample_spec.rb")]
+          mutant = build_cacheable_mutant(dir, status: :survived)
+          intact = store_at(dir, per_test_coverage: coverage_double(covering))
+          intact.record(build_result([mutant], summary), version: "0.1.0")
+          drifted = store_at(dir, per_test_coverage: coverage_double(covering), provenance: provenance(false))
+
+          drifted.record(build_result([mutant], summary), version: "0.1.1")
+
+          expect(drifted.verdict_for(stable_id(mutant))).to be_nil
+        end
+      end
+
+      it "records no fingerprint for a kill whose flaky retries a shutdown cut short" do
+        Dir.mktmpdir do |dir|
+          store = store_at(dir, provenance: provenance(true))
+          mutant = build_cacheable_mutant(dir, status: :killed)
+          mutant.define_singleton_method(:retry_cut_short?) { true }
+
+          store.record(build_result([mutant], summary), version: "0.1.0")
+
+          expect(store.verdict_for(stable_id(mutant))).to be_nil
+        end
+      end
+
+      it "records the fingerprints while the inputs are intact" do
+        Dir.mktmpdir do |dir|
+          store = store_at(dir, provenance: provenance(true))
+          mutant = build_cacheable_mutant(dir, status: :killed)
+
+          store.record(build_result([mutant], summary), version: "0.1.0")
+
+          expect(store.verdict_for(stable_id(mutant))).not_to be_nil
+        end
       end
     end
 

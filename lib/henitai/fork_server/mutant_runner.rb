@@ -62,6 +62,15 @@ module Henitai
         spawn_locally(mutant, test_files)
       end
 
+      # Forks on the per-mutant path without asking the server, for a process
+      # the server never saw (a control run, ADR-19). The pid is registered
+      # with the runtime so the scheduler reaps it, and the timeout includes
+      # booting the suite.
+      # @return [Integration::ChildHandle]
+      def spawn_local(mutant:, test_files:)
+        spawn_locally(mutant, test_files)
+      end
+
       def run_mutant(mutant:, test_files:, timeout:)
         return fallback(mutant, test_files, timeout) unless active?
 

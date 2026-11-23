@@ -190,6 +190,16 @@ RSpec.describe Henitai::ForkServer::MutantRunner, :aggregate_failures do
       expect([runner.active?, warnings.size]).to eq([false, 1])
     end
 
+    it "forks a local child the server never sees, registered with the runtime" do
+      allow(client).to receive(:spawn_mutant).and_return(77)
+
+      handle = runner.spawn_local(mutant:, test_files: ["a_spec.rb"])
+
+      expect(handle.pid).to eq(5)
+      expect(client).not_to have_received(:spawn_mutant)
+      expect(runtime).to have_received(:local).with(5)
+    end
+
     it "answers the scheduler's other integration calls from the real integration" do
       allow(integration).to receive_messages(select_tests: ["t"], test_files: ["f"])
 
