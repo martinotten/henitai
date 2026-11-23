@@ -579,6 +579,21 @@ which runs these steps in a fixed order:
    signal delivered: they reparent to init and keep a full Ruby and
    test-framework image resident.
 
+A mutant child stops its test run at the first failure: one failing test
+already kills the mutant. The RSpec child sets `fail_fast = 1` right before
+running, after the spec files loaded, so a project's own setting cannot turn
+it off. Minitest has no fail-fast; `MinitestFailFast` is armed around the
+child's `Minitest.run`, and after the first failing result every test class
+that has not started reports no test methods (the class running at the
+failure finishes). Control runs are mutant children too; a control passes
+only when no test fails, which fail-fast does not change. The baseline suite
+runs in full. Consequences: `failed_tests` in the child report lists the
+first failing file only, so a flaky first file triggers a flaky retry even
+when a later file would also have failed (the retry reruns the full mutant,
+so the verdict stays sound); and a mutant that a test kills before a later
+test hangs or raises `SystemExit` is now `Killed` instead of `Timeout` or
+`RuntimeError`.
+
 The baseline suite child is spawned, not forked, so it reaches the same
 property through `Process.spawn(..., pgroup: true)` instead of `setpgid`. Both
 integrations set it: parent-side cleanup signals the group, and a group that

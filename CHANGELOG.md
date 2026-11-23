@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged. Removed the synchronous mutant API `Integration#run_mutant`
   (and its RSpec, Minitest and fork-server variants); integrations implement
   `#spawn_mutant` and `#build_result`
+- A mutant's test run stops at its first failure (RSpec: `fail_fast = 1`,
+  overriding the project's setting; Minitest: no further test class starts).
+  Killed mutants finish sooner. A mutant that one test kills before another
+  test hangs or exits is now `Killed` instead of `Timeout` or `RuntimeError`
 
 ### Fixed
 
