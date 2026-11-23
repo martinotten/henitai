@@ -339,6 +339,39 @@ RSpec.describe Henitai::ProcessWorkerRunner do
     end
   end
 
+  describe "control runs" do
+    def build_control_run(control)
+      control_run = instance_double(Henitai::ControlRun, group_key: :group, control_mutant: control,
+                                                         test_files: ["a_spec.rb"])
+      allow(control_run).to receive(:controllable?) { |mutant| mutant.status == :killed }
+      allow(control_run).to receive(:passed?) { |result| result.status == :survived }
+      control_run
+    end
+
+    it "holds a detection until its group's control has run, then reports it", :aggregate_failures do
+      mutant = build_mutant("a")
+      control = build_mutant("control")
+      integration = instance_double(Henitai::Integration::Rspec)
+      stub_fake_spawn_sequence(integration, [10, 11])
+      stub_result_builder(integration)
+      seen = []
+      progress = Class.new { define_method(:progress) { |m, **| seen << [m.id, m.status] } }.new
+      runner = build_fake_runner(worker_count: 1,
+                                 wait2_results: [[10, build_wait_status(1)], nil, [11, build_wait_status(0)]])
+
+      results = runner.run([mutant], integration, Struct.new(:timeout, :max_flaky_retries).new(10.0, 0), progress,
+                           control_run: build_control_run(control))
+
+      expect(seen).to eq([["a", :killed]])
+      expect(integration).to have_received(:spawn_mutant).with(mutant: control, test_files: ["a_spec.rb"])
+      expect([results.size, runner.control_stats]).to eq([1, { verified: 1, failed: 0, reclassified: 0 }])
+    end
+
+    it "reports no control statistics when control runs are off" do
+      expect(described_class.new(worker_count: 1).control_stats).to be_nil
+    end
+  end
+
   describe "slot count" do
     # Proves jobs:1 serialization deterministically via SchedulerDiagnostics
     # rather than a wall-clock gap: with one slot the runner must call

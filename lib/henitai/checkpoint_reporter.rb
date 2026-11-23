@@ -33,6 +33,11 @@ module Henitai
       flush! if due?
     end
 
+    # Writes the pending batch, e.g. when the run is interrupted (ADR-19).
+    def flush
+      flush! unless @batch.empty?
+    end
+
     private
 
     def due?

@@ -29,28 +29,51 @@ module Henitai
       mutex = Mutex.new
       @flaky_tests = flaky_tests_for(config)
       @retrier = FlakyMutantRetrier.new(flaky_tests: @flaky_tests, max_retries: max_flaky_retries(config))
-      run_pending(pending_mutants, integration, config, progress_reporter, mutex)
+      if parallel_execution?(config, pending_mutants)
+        run_pending_parallel(pending_mutants, integration, config, progress_reporter)
+      else
+        run_pending_linear(pending_mutants, integration, config, progress_reporter, mutex)
+      end
       warn_flaky_mutants
-      verify_controls(pending_mutants, integration, config)
       mutants
     end
 
-    def run_pending(pending_mutants, integration, config, progress_reporter, mutex)
-      with_fork_server(pending_mutants, integration, config) do
-        if parallel_execution?(config, pending_mutants)
-          run_parallel(pending_mutants, integration, config, progress_reporter)
-        else
-          run_linear(pending_mutants, integration, config, progress_reporter, mutex)
-          @flaky_retry_count = @retrier.retried_count
-        end
+    # Verdicts pass a ControlGate before any observer sees them (ADR-19): a
+    # detection's control runs at its group's first detection, so every
+    # verdict reported is final. In parallel the worker runner builds the gate
+    # and runs controls as scheduler jobs.
+    def run_pending_parallel(pending_mutants, integration, config, progress_reporter)
+      control_run = control_run(integration, config) if control_runs?(config)
+      runner = with_fork_server(pending_mutants, integration, config) do
+        run_parallel(pending_mutants, integration, config, progress_reporter, control_run)
       end
+      warn_control_failures(runner.control_stats) if control_run
     end
 
-    def verify_controls(mutants, integration, config)
-      return unless config.respond_to?(:control_runs) && config.control_runs
+    def run_pending_linear(pending_mutants, integration, config, progress_reporter, mutex)
+      gate = control_gate(integration, config, progress_reporter)
+      with_fork_server(pending_mutants, integration, config) do
+        run_linear(pending_mutants, integration, config, gate || progress_reporter, mutex)
+        @flaky_retry_count = @retrier.retried_count
+      end
+      warn_control_failures(gate.stats) if gate
+    end
 
-      timeout_for = ->(test_files) { resolved_timeout(test_files, config) }
-      stats = ControlRun.new(integration:, timeout_for:).verify(mutants)
+    def control_gate(integration, config, progress_reporter)
+      return unless control_runs?(config)
+
+      ControlGate.new(downstream: progress_reporter, control_run: control_run(integration, config))
+    end
+
+    def control_runs?(config) = config.respond_to?(:control_runs) && config.control_runs
+
+    # Controls boot the suite themselves, so the boot-inclusive timeout
+    # applies even while a fork server is active.
+    def control_run(integration, config)
+      ControlRun.new(integration:, timeout_for: ->(test_files) { resolved_timeout(test_files, config) })
+    end
+
+    def warn_control_failures(stats)
       return if stats[:failed].zero?
 
       warn format("henitai: control runs failed for %<failed>d of %<verified>d subjects; " \
@@ -77,22 +100,24 @@ module Henitai
       end
     end
 
-    def run_parallel(mutants, integration, config, progress_reporter)
+    def run_parallel(mutants, integration, config, progress_reporter, control_run)
       runner = ProcessWorkerRunner.new(
         worker_count: worker_count(config),
         flaky_tests: @flaky_tests,
         **parallel_runtime_options
       )
-      results = runner.run(
-        mutants,
-        @fork_server_runner || integration,
-        config,
-        progress_reporter,
-        test_file_resolver: ->(mutant) { prioritized_tests_for(mutant, integration, config) },
-        timeout_resolver: ->(_mutant, test_files) { resolved_timeout(test_files, config) }
-      )
+      runner.run(mutants, @fork_server_runner || integration, config, progress_reporter,
+                 **parallel_run_options(integration, config, control_run))
       @flaky_retry_count = runner.flaky_retry_count
-      results
+      runner
+    end
+
+    def parallel_run_options(integration, config, control_run)
+      {
+        test_file_resolver: ->(mutant) { prioritized_tests_for(mutant, integration, config) },
+        timeout_resolver: ->(_mutant, test_files) { resolved_timeout(test_files, config) },
+        control_run:
+      }
     end
 
     def process_mutant(mutant, integration, config, progress_reporter, mutex)

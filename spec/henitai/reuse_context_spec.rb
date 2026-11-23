@@ -7,7 +7,7 @@ require "tmpdir"
 RSpec.describe Henitai::ReuseContext do
   def build_config(**overrides)
     defaults = {
-      integration: "rspec", operators: :light, test_excludes: [],
+      integration: "rspec", operators: :light, test_excludes: [], control_runs: true,
       coverage_criteria: { test_result: true, timeout: true, process_abort: true }
     }
     Struct.new(*defaults.keys, keyword_init: true).new(**defaults, **overrides)
@@ -60,6 +60,7 @@ RSpec.describe Henitai::ReuseContext do
     "operators" => { operators: :full },
     "test_excludes" => { test_excludes: ["spec/slow/**/*"] },
     "integration" => { integration: "minitest" },
+    "control_runs" => { control_runs: false },
     "coverage_criteria" => { coverage_criteria: { test_result: true, timeout: false, process_abort: true } }
   }.each do |name, override|
     it "changes with the #{name} setting" do

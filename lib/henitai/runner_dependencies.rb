@@ -48,9 +48,20 @@ module Henitai
       @history_store ||= MutantHistoryStore.new(
         path: File.join(@config.reports_dir, Henitai::HISTORY_STORE_FILENAME),
         per_test_coverage: per_test_coverage,
-        reuse_context: reuse_context
+        reuse_context: reuse_context,
+        provenance: execution_provenance
       )
     end
+
+    # Records the run's inputs; {Runner} calls it before Gate 1 parses
+    # anything (ADR-19). @return [ExecutionProvenance]
+    def capture_provenance(paths)
+      @execution_provenance = ExecutionProvenance.capture(paths)
+    end
+
+    # Until the capture, nothing counts as intact: a store built too early
+    # caches nothing rather than vouch for unrecorded inputs.
+    def execution_provenance = @execution_provenance || ExecutionProvenance::UNCAPTURED
 
     # Shared by the incremental filter and the history store: verdicts are
     # recorded under exactly the context they are later checked against.
@@ -71,8 +82,17 @@ module Henitai
     # Deliberately *not* memoized: `full_run?` is a property of the invocation,
     # not of the dependency set, and a cached reporter would silently keep the
     # first answer.
-    def progress_reporter(full_run:)
-      CompositeProgressReporter.for(config: @config, source_provider: source_provider, full_run: full_run)
+    def progress_reporter(full_run:, history_checkpointer: nil)
+      CompositeProgressReporter.for(config: @config, source_provider: source_provider, full_run: full_run,
+                                    history_checkpointer:)
+    end
+
+    # Checkpoints verdicts into the history store during the run (ADR-19);
+    # nil when `reports.checkpoint` is off.
+    def history_checkpointer(run_id:)
+      return unless @config.respond_to?(:checkpoint_enabled) && @config.checkpoint_enabled
+
+      HistoryCheckpointer.new(history_store:, config: @config, run_id:)
     end
 
     # Reads each source file once and caches it per path, so Result consumes

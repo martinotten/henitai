@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "securerandom"
+
 module Henitai
   # Orchestrates the full mutation testing pipeline.
   #
@@ -82,12 +84,14 @@ module Henitai
     # static/skip/arid/stillborn filtering — everything short of execution.
     def pipeline_mutants
       if survivor_rerun? && (fast_mutants = survivor_strategy.try_recipe_run)
+        @recipe_run = true
         # Gate 0 still runs: test selection reads the per-test map, which must
         # include new or edited tests.
         bootstrap_coverage(fast_mutants.filter_map { |mutant| mutant.subject.source_file }.uniq)
         return fast_mutants
       end
 
+      capture_provenance unless @dry_run
       source_files = self.source_files
       subjects = resolve_subjects(source_files)
       mutants_for(subjects, source_files)
@@ -146,6 +150,13 @@ module Henitai
 
     def reuse_filter = deps.reuse_filter
 
+    # Before Gate 1 parses anything: what the run may parse, load or execute
+    # (ADR-19). Dry runs record nothing, and the recipe fast path's stubs are
+    # never cacheable, so neither captures.
+    def capture_provenance
+      deps.capture_provenance(source_files + Array(integration.test_files))
+    end
+
     def bootstrap_mutants(source_files) = Thread.new { bootstrap_coverage(source_files) }
 
     def execute_mutants(mutants)
@@ -155,6 +166,25 @@ module Henitai
         config,
         progress_reporter: progress_reporter
       )
+    rescue SignalException
+      save_interrupted_progress
+      raise
+    end
+
+    # The engine has torn its children down by now. Whatever the observers
+    # still buffer is written, so `--incremental` can resume (ADR-19); the
+    # aborted run itself gets no history record.
+    def save_interrupted_progress
+      flush_progress
+      saved = history_checkpointer&.committed || 0
+      warn "henitai: interrupted; #{saved} verdicts saved, resume with --incremental"
+    end
+
+    def flush_progress
+      reporter = progress_reporter
+      reporter.flush if reporter.respond_to?(:flush)
+    rescue StandardError => e
+      warn "henitai: could not flush progress (#{e.class}: #{e.message})"
     end
 
     def report(result)
@@ -169,7 +199,8 @@ module Henitai
         version: Henitai::VERSION,
         recorded_at:,
         operators: config.operators,
-        full_scan: full_mutant_set?
+        full_scan: full_mutant_set?,
+        run_id:
       )
     rescue StandardError => e
       warn "henitai: could not record mutation history (#{e.class}: #{e.message}); reports are still written"
@@ -252,7 +283,22 @@ module Henitai
     def source_selection_coverage = deps.source_selection_coverage
     def source_provider = deps.source_provider
 
-    def progress_reporter = deps.progress_reporter(full_run: full_run?)
+    # Built once per run, so an interrupt flushes the observers the engine
+    # was given.
+    def progress_reporter
+      return @progress_reporter if defined?(@progress_reporter)
+
+      @progress_reporter = deps.progress_reporter(full_run: full_run?, history_checkpointer:)
+    end
+
+    # Recipe stubs are never cacheable, so the fast path checkpoints nothing.
+    def history_checkpointer
+      return @history_checkpointer if defined?(@history_checkpointer)
+
+      @history_checkpointer = @recipe_run ? nil : deps.history_checkpointer(run_id:)
+    end
+
+    def run_id = @run_id ||= SecureRandom.uuid
 
     def source_files
       @source_files ||= source_file_selection.call

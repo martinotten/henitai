@@ -27,77 +27,62 @@ RSpec.describe Henitai::ControlRun do
     integration
   end
 
-  def verify(mutants, integration)
-    described_class.new(integration:, timeout_for: ->(_files) { 5.0 }).verify(mutants)
+  def control_run(integration = integration_returning(:survived))
+    described_class.new(integration:, timeout_for: ->(_files) { 5.0 })
   end
 
-  it "reclassifies the detected verdicts of a subject whose control run fails" do
-    mutants = [mutant(subject_a, :killed), mutant(subject_a, :timeout), mutant(subject_a, :survived)]
-
-    verify(mutants, integration_returning(:killed))
-
-    expect(mutants.map(&:status)).to eq(%i[compile_error compile_error survived])
-  end
-
-  it "explains the reclassification" do
+  it "reclassifies detections as CompileError and explains why", :aggregate_failures do
     killed = mutant(subject_a, :killed)
+    timeout = mutant(subject_a, :timeout)
 
-    verify([killed], integration_returning(:runtime_error, "child terminated by signal SIGKILL"))
+    failed = control_result(:runtime_error, "child terminated by signal SIGKILL")
+    count = control_run.reclassify([killed, timeout], failed)
 
+    expect(count).to eq(2)
+    expect([killed.status, timeout.status]).to eq(%i[compile_error compile_error])
     expect(killed.status_reason).to eq(
       "control run failed: the unmutated method fails its tests when injected " \
       "(runtime_error: child terminated by signal SIGKILL)"
     )
   end
 
-  it "keeps the verdicts when the control run survives" do
-    killed = mutant(subject_a, :killed)
-
-    verify([killed], integration_returning(:survived))
-
-    expect(killed.status).to eq(:killed)
+  it "passes only a surviving control" do
+    expect(%i[survived killed timeout].map { |status| control_run.passed?(control_result(status)) })
+      .to eq([true, false, false])
   end
 
-  it "runs one control per subject and test-file set" do
-    integration = integration_returning(:survived)
-    mutants = [mutant(subject_a, :killed), mutant(subject_a, :killed), mutant(subject_b, :killed),
-               mutant(subject_b, :killed, covered_by: ["spec/other_spec.rb"])]
-
-    verify(mutants, integration)
-
-    expect(integration).to have_received(:run_mutant).exactly(3).times
+  it "controls detections of this run that carry their original node" do
+    expect(%i[killed timeout runtime_error].map { |status| control_run.controllable?(mutant(subject_a, status)) })
+      .to all(be(true))
   end
 
-  it "skips subjects without detected verdicts and verdicts reused from history" do
-    integration = integration_returning(:killed)
-    cached = mutant(subject_b, :killed).tap { |built| built.from_cache = true }
+  it "does not control survivors, reused verdicts or recipe stubs" do
+    cached = mutant(subject_a, :killed).tap { |built| built.from_cache = true }
+    stub = Struct.new(:status, :from_cache?, :original_node).new(:killed, false, nil)
 
-    verify([mutant(subject_a, :survived), cached], integration)
+    expect([mutant(subject_a, :survived), cached, stub].map { |entry| control_run.controllable?(entry) })
+      .to eq([false, false, false])
+  end
 
-    expect(integration).not_to have_received(:run_mutant)
+  it "groups detections by subject and sorted test files" do
+    first = mutant(subject_a, :killed, covered_by: %w[b_spec.rb a_spec.rb])
+    second = mutant(subject_a, :timeout, covered_by: %w[a_spec.rb b_spec.rb])
+    other = mutant(subject_b, :killed, covered_by: %w[a_spec.rb b_spec.rb])
+
+    expect([control_run.group_key(first) == control_run.group_key(second),
+            control_run.group_key(first) == control_run.group_key(other)]).to eq([true, false])
   end
 
   it "runs the control with the unmutated node, the same test files and their timeout" do
     integration = integration_returning(:survived)
-    killed = mutant(subject_a, :killed)
-
     calls = []
     allow(integration).to receive(:run_mutant) do |mutant:, test_files:, timeout:|
-      calls << [mutant.mutated_node.equal?(mutant.original_node), test_files, timeout]
+      calls << [mutant.mutated_node.equal?(mutant.original_node), mutant.operator, test_files, timeout]
       control_result(:survived)
     end
 
-    verify([killed], integration)
+    control_run(integration).run_for(mutant(subject_a, :killed))
 
-    expect(calls).to eq([[true, ["spec/sample_spec.rb"], 5.0]])
-  end
-
-  it "reports how many subjects it verified and how many failed" do
-    integration = instance_double(Henitai::Integration::Rspec)
-    allow(integration).to receive(:run_mutant).and_return(control_result(:survived), control_result(:killed))
-
-    stats = verify([mutant(subject_a, :killed), mutant(subject_b, :killed)], integration)
-
-    expect(stats).to eq(verified: 2, failed: 1, reclassified: 1)
+    expect(calls).to eq([[true, "Control", ["spec/sample_spec.rb"], 5.0]])
   end
 end
