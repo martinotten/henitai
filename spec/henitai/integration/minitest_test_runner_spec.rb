@@ -19,6 +19,11 @@ RSpec.describe Henitai::Integration::MinitestTestRunner do
     path
   end
 
+  def failing_result
+    instance_double(Minitest::Result, source_location: [File.expand_path("test/a_test.rb"), 3],
+                                      klass: "UnresolvableTest", passed?: false, skipped?: false)
+  end
+
   def stub_minitest_run(return_value)
     allow(Minitest).to receive(:run).and_return(return_value)
   end
@@ -95,6 +100,31 @@ RSpec.describe Henitai::Integration::MinitestTestRunner do
           expect($LOADED_FEATURES).not_to include(File.expand_path(test_file))
         end
       end
+    end
+
+    it "runs Minitest with fail-fast armed and disarms it afterwards", :aggregate_failures do
+      armed = []
+      allow(Minitest).to receive(:run) { armed << Henitai::Integration::MinitestFailFast.armed? and true }
+
+      runner.call([])
+
+      expect(armed).to eq([true])
+      expect(Henitai::Integration::MinitestFailFast.armed?).to be(false)
+    end
+
+    it "stops the run once the outcome reporter records a failure" do
+      composite = Minitest::CompositeReporter.new
+      allow(Minitest).to receive(:reporter).and_return(composite)
+      stopped = []
+      allow(Minitest).to receive(:run) do
+        Minitest.plugin_henitai_outcomes_init({})
+        composite.reporters.last.record(failing_result)
+        stopped << Henitai::Integration::MinitestFailFast.stopped? and false
+      end
+
+      runner.call([])
+
+      expect(stopped).to eq([true])
     end
 
     it "suppresses Minitest autorun so it is safe to call repeatedly" do

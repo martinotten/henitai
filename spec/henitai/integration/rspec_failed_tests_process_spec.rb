@@ -24,6 +24,19 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  it "stops at the first failure even when the spec files turn fail_fast off" do
+    Dir.mktmpdir do |dir|
+      source = write(dir, "lib/sample.rb", "class Sample\n  def self.sum(a, b)\n    a + b\n  end\nend\n")
+      first = write(dir, "spec/first_spec.rb",
+                    "RSpec.configure { |c| c.fail_fast = false }\n#{spec_source('expect(Sample.sum(3, 1)).to eq(4)')}")
+      second = write(dir, "spec/second_spec.rb", spec_source("expect(Sample.sum(2, 2)).to eq(4)"))
+
+      _stdout, stderr, = run_child(dir, source, [first, second])
+
+      expect(child_report(dir).fetch("failed_tests")).to eq([File.expand_path(first)]), stderr
+    end
+  end
+
   it "attributes an after(:context) hook failure to its spec file" do
     Dir.mktmpdir do |dir|
       source = write(dir, "lib/sample.rb", "class Sample\n  def self.sum(a, b)\n    a + b\n  end\nend\n")

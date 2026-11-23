@@ -68,6 +68,30 @@ RSpec.describe Henitai::Integration::MinitestOutcomeReporter do
     expect(outcomes.outcomes).to be_empty
   end
 
+  describe "on_failure" do
+    def calls_for(result)
+      calls = []
+      described_class.new(outcomes, on_failure: -> { calls << :failed }).record(result)
+      calls
+    end
+
+    it "is called for a failing result" do
+      expect(calls_for(result(passed: false))).to eq([:failed])
+    end
+
+    it "is called for a failure without a source location" do
+      expect(calls_for(unlocated(nil))).to eq([:failed])
+    end
+
+    it "is not called for a passing result" do
+      expect(calls_for(result(passed: true))).to eq([])
+    end
+
+    it "is not called for a skipped result" do
+      expect(calls_for(result(passed: false, skipped: true))).to eq([])
+    end
+  end
+
   it "writes the outcomes when a report path is given" do
     Dir.mktmpdir do |dir|
       path = File.join(dir, "outcomes.json")
