@@ -192,6 +192,11 @@ coverage and is excluded from `includes` in `.henitai.yml`.
   `def obj.name` for a non-constant `obj` are no subjects. `define_method`
   remains only as the fallback for `define_method` subjects. Process isolation
   is the required default model, not thread-only parallelism.
+- A mutant child stops its test run at the first failure: RSpec
+  `fail_fast = 1` (set after the spec files load, overriding the project),
+  Minitest via `MinitestFailFast` (no further test class starts). The
+  baseline suite runs in full. The child report's `failed_tests` therefore
+  holds the first failing file only.
 - Opt-in `mutation.fork_server` (ADR-15, RSpec and Minitest, any `jobs`)
   boots the test environment once in a server and forks each mutant process
   from it; on failure it falls back to per-mutant boot.

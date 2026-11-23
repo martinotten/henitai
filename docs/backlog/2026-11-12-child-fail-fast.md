@@ -1,6 +1,6 @@
 # Fail-Fast Inside the Mutant Child
 
-Status: proposed
+Status: done (2026-11-23)
 Date: 2026-11-12
 Severity: Medium (wall-clock per killed mutant)
 Source: optimization research 2026-11-12 (PIT, Stryker and Infection all stop
@@ -64,3 +64,22 @@ first, so stopping there captures most of the benefit of that ordering.
 - Wall-clock for the dogfood run drops measurably; record before/after in
   the PR.
 - Oracle and smoke suites green.
+
+## Resolution
+
+- RSpec: `fail_fast = 1` is set in `RspecChildRunner#run_rspec_specs`, after
+  the spec files loaded, so a project's `config.fail_fast = false` cannot
+  undo it. Minitest: `MinitestFailFast` (armed around the child's
+  `Minitest.run`) makes every test class that has not started report no test
+  methods after the first failing result; granularity is one test class.
+- Control runs keep fail-fast: a control passes only when no test fails,
+  which stopping early does not change. Only the baseline suite runs in full.
+- Flaky retry: accepted and documented (architecture 8.6). No opt-out switch.
+- Verdicts can change in one direction: a mutant killed before a later test
+  hangs or raises `SystemExit` is now `Killed`, not `Timeout`/`RuntimeError`.
+- Measured (2026-11-23) on the dogfood `SlotScheduler*` subjects, 408
+  mutants unsampled, `jobs: 1`, interleaved runs: 1068/1021 s before,
+  624/430 s after. Verdicts: 53 `Timeout` became `Killed` (a test killed
+  the mutant before a later test hung), nothing else changed; survivors
+  identical (23). MS 94.36% both, MSI 74.26% → 87.25%. Smoke and
+  `rake oracle` unchanged (0 false kills, 0 false survivors).
