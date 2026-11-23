@@ -24,6 +24,19 @@ RSpec.describe Henitai::Integration::Minitest do
     end
   end
 
+  it "starts no further test class after the first failing one" do
+    Dir.mktmpdir do |dir|
+      source = write(dir, "lib/sample.rb", "class Sample\n  def self.sum(a, b)\n    a + b\n  end\nend\n")
+      first = write(dir, "test/first_test.rb", test_source("First", "assert_equal 4, Sample.sum(3, 1)"))
+      second = write(dir, "test/second_test.rb", test_source("Second", "assert_equal 4, Sample.sum(2, 2)"))
+
+      stdout, stderr, status = run_child(dir, source, [first, second])
+
+      failed = JSON.parse(stdout) if status.success?
+      expect(failed&.size).to eq(1), [stdout, stderr].reject(&:empty?).join("\n")
+    end
+  end
+
   it "attributes a test inherited from a shared module to the including test file" do
     Dir.mktmpdir do |dir|
       source = write(dir, "lib/sample.rb", "class Sample\n  def self.sum(a, b)\n    a + b\n  end\nend\n")

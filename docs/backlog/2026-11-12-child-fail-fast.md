@@ -75,8 +75,11 @@ first, so stopping there captures most of the benefit of that ordering.
 - Control runs keep fail-fast: a control passes only when no test fails,
   which stopping early does not change. Only the baseline suite runs in full.
 - Flaky retry: accepted and documented (architecture 8.6). No opt-out switch.
-- Verdicts can change in one direction: a mutant killed before a later test
-  hangs or raises `SystemExit` is now `Killed`, not `Timeout`/`RuntimeError`.
+- Verdict changes: a mutant killed before a later test hangs, exits or
+  crashes is now `Killed`, not `Timeout`/`RuntimeError`. With
+  `flaky_detection`, a kill whose first failing file is flaky is retried and
+  can end `Survived` (before, a second, non-flaky failing file prevented the
+  retry). Architecture 8.6 lists the cases where fail-fast has no effect.
 - Measured (2026-11-23) on the dogfood `SlotScheduler*` subjects, 408
   mutants unsampled, `jobs: 1`, interleaved runs: 1068/1021 s before,
   624/430 s after. Verdicts: 53 `Timeout` became `Killed` (a test killed

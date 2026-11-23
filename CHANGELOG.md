@@ -36,7 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A mutant's test run stops at its first failure (RSpec: `fail_fast = 1`,
   overriding the project's setting; Minitest: no further test class starts).
   Killed mutants finish sooner. A mutant that one test kills before another
-  test hangs or exits is now `Killed` instead of `Timeout` or `RuntimeError`
+  test hangs, exits or crashes is now `Killed` instead of `Timeout` or
+  `RuntimeError` (MSI rises; MS is unchanged with the default
+  `coverage_criteria`). With `flaky_detection`, a kill whose first failing
+  file is flaky is retried, and ends `Survived` if no retry fails
 
 ### Fixed
 
