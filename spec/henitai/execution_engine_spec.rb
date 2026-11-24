@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "tmpdir"
+require "fileutils"
 
 # Integration double whose children are SpecSupport::FakeChildren: every
 # spawn is recorded, with the environment the child would inherit, and
@@ -47,6 +48,11 @@ end
 RSpec.describe Henitai::ExecutionEngine do
   let(:children) { Henitai::SpecSupport::FakeChildren.new }
 
+  # Each example persists its test order into a fresh temp dir, never the repo.
+  let(:reports_dir) { Dir.mktmpdir("henitai-engine") }
+
+  after { FileUtils.rm_rf(reports_dir) }
+
   def build_subject(expression)
     Struct.new(:expression).new(expression)
   end
@@ -69,7 +75,7 @@ RSpec.describe Henitai::ExecutionEngine do
   end
 
   def build_config(jobs: 1)
-    Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(12.5, "coverage", jobs, 3)
+    Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(12.5, reports_dir, jobs, 3)
   end
 
   def outcome(status, killing_tests: [], hanging_test: nil)
@@ -122,7 +128,7 @@ RSpec.describe Henitai::ExecutionEngine do
   describe "control runs" do
     def config_with_control_runs(enabled)
       Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :control_runs)
-            .new(12.5, "coverage", 1, 3, enabled)
+            .new(12.5, reports_dir, 1, 3, enabled)
     end
 
     it "hands the worker runner a control run for its gate" do
@@ -515,6 +521,62 @@ RSpec.describe Henitai::ExecutionEngine do
     expect(integration.calls[:last_test_files]).to eq(%w[spec/a_spec.rb spec/c_spec.rb spec/b_spec.rb])
   end
 
+  it "remembers the file that hung for a subject in the next run of the same reports dir" do
+    first = build_integration.answer(outcome(:timeout, hanging_test: File.expand_path("spec/b_spec.rb")))
+    allow(first).to receive(:select_tests).and_return(%w[spec/a_spec.rb spec/b_spec.rb spec/c_spec.rb])
+    build_engine.run([build_mutant(:pending, "Foo#bar")], first, build_config)
+
+    second = build_integration.answer(outcome(:survived))
+    allow(second).to receive(:select_tests).and_return(%w[spec/a_spec.rb spec/b_spec.rb spec/c_spec.rb])
+    build_engine.run([build_mutant(:pending, "Foo#bar")], second, build_config)
+
+    expect(second.calls[:last_test_files]).to eq(%w[spec/a_spec.rb spec/c_spec.rb spec/b_spec.rb])
+  end
+
+  describe "saving the learned test order" do
+    def read_only_history
+      history = Henitai::KillHistory.new
+      allow(history).to receive(:write).and_raise(Errno::EACCES, "read-only reports dir")
+      allow(Henitai::KillHistory).to receive(:load).and_return(history)
+      history
+    end
+
+    def run_with_unsaveable_order(progress)
+      mutants = [build_mutant(:pending, "Foo#bar"), build_mutant(:pending, "Foo#baz")]
+      integration = build_integration.answer(outcome(:killed), outcome(:survived))
+      build_engine.run(mutants, integration, build_config, progress_reporter: progress)
+    end
+
+    it "warns that the learned test order could not be saved" do
+      read_only_history
+
+      expect { run_with_unsaveable_order(recorder) }
+        .to output(/henitai: could not save the learned test order \(Errno::EACCES: /).to_stderr
+    end
+
+    it "still delivers every verdict when the order cannot be saved" do
+      read_only_history
+      progress = recorder
+
+      allow($stderr).to receive(:write) # the save warning is not under test here
+      run_with_unsaveable_order(progress)
+
+      expect(progress.calls).to eq(%i[killed survived])
+    end
+
+    it "does not mask an error raised by the run itself" do
+      history = read_only_history
+      allow(history).to receive(:write).and_raise(Errno::EACCES, "read-only reports dir")
+      crashing_progress = Object.new
+      def crashing_progress.progress(*, **) = raise(ArgumentError, "run failed")
+
+      expect do
+        build_engine.run([build_mutant(:pending, "Foo#bar")], build_integration, build_config,
+                         progress_reporter: crashing_progress)
+      end.to raise_error(ArgumentError, "run failed")
+    end
+  end
+
   it "counts only kills toward the order, not survivors or timeouts" do
     mutants = 3.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
     integration = build_integration.answer(
@@ -591,11 +653,15 @@ RSpec.describe Henitai::ExecutionEngine do
       instance_double(Henitai::ForkServer::MutantRunner, stop: nil, active?: true, runtime: :served_runtime)
     end
 
+    def fork_server_config(jobs)
+      Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :fork_server)
+            .new(12.5, reports_dir, jobs, 3, true)
+    end
+
     def run_with_fork_server(jobs)
       runner = stub_worker_runner
       allow(Henitai::ForkServer).to receive(:start).and_return(fork_runner)
-      config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :fork_server)
-                     .new(12.5, "coverage", jobs, 3, true)
+      config = fork_server_config(jobs)
       mutants = [build_mutant(:pending, "Foo#bar")]
       engine = build_engine
       allow(engine).to receive(:prioritized_tests_for).and_return(["spec/foo_spec.rb"])
@@ -623,8 +689,7 @@ RSpec.describe Henitai::ExecutionEngine do
         fork_runner
       end
       stub_worker_runner
-      config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :fork_server)
-                     .new(12.5, "coverage", 2, 3, true)
+      config = fork_server_config(2)
       engine = build_engine
       allow(engine).to receive(:prioritized_tests_for).and_return(["spec/foo_spec.rb"])
 
@@ -713,8 +778,8 @@ RSpec.describe Henitai::ExecutionEngine do
     )
   end
 
-  def artifacts_config(reports_dir = "artifacts")
-    Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(12.5, reports_dir, 1, 3)
+  def artifacts_config(dir = reports_dir)
+    Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(12.5, dir, 1, 3)
   end
 
   it "falls back to reports when the configured reports dir is blank" do
@@ -730,7 +795,7 @@ RSpec.describe Henitai::ExecutionEngine do
 
     build_engine.run([build_mutant(:pending, "Foo#bar")], integration, artifacts_config)
 
-    expect(integration.calls[:env]["HENITAI_REPORTS_DIR"]).to eq("artifacts")
+    expect(integration.calls[:env]["HENITAI_REPORTS_DIR"]).to eq(reports_dir)
   end
 
   it "exposes the configured coverage dir to the children" do
@@ -738,7 +803,7 @@ RSpec.describe Henitai::ExecutionEngine do
 
     build_engine.run([build_mutant(:pending, "Foo#bar")], integration, artifacts_config)
 
-    expect(integration.calls[:env]["HENITAI_COVERAGE_DIR"]).to eq("artifacts/mutation-coverage")
+    expect(integration.calls[:env]["HENITAI_COVERAGE_DIR"]).to eq(File.join(reports_dir, "mutation-coverage"))
   end
 
   it "restores the reports dir environment variable after execution" do

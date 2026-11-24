@@ -338,8 +338,11 @@ deliberate even though `||=` is a valid `UpdateOperator`/
   `mutation-history.json` (trend export), `henitai_per_test.json` (per-test
   coverage propagated to forked children through `HENITAI_REPORTS_DIR`), and
   `henitai_suite_boot.json` (`{"boot_seconds": x}`, the measured suite boot
-  time that feeds timeout calibration), and `henitai_flaky_tests.json` (flaky
-  test files, only with `flaky_detection`).
+  time that feeds timeout calibration), `henitai_flaky_tests.json` (flaky
+  test files, only with `flaky_detection`), and `henitai_test_order.json`
+  (the test prioritizer's kill counts per test file and hung files per
+  subject, carried from run to run; `henitai clean` removes it, which resets
+  the learned order).
 - Timeout calibration: calibrated timeout = `timeout_multiplier` × (sum of the
   selected test-file durations + measured boot), floored at 2 s. `max_timeout`
   caps it but never below baseline + 2 s, with a one-time warning.
