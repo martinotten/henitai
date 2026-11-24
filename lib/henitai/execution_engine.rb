@@ -43,6 +43,7 @@ module Henitai
     def execute(mutants, integration, config, progress_reporter)
       pending_mutants = Array(mutants).select(&:pending?)
       @flaky_tests = flaky_tests_for(config)
+      @kill_history = KillHistory.new
       control_run = ControlRun.new if control_runs?(config)
       runner = with_fork_server(pending_mutants, integration, config) do
         run_workers(pending_mutants, integration, config, progress_reporter, control_run)
@@ -70,7 +71,8 @@ module Henitai
     def run_workers(mutants, integration, config, progress_reporter, control_run)
       runner = ProcessWorkerRunner.new(worker_count: worker_count(config), flaky_tests: @flaky_tests,
                                        **runner_primitives)
-      runner.run(mutants, @fork_server_runner || integration, config, progress_reporter,
+      observers = CompositeProgressReporter.new([@kill_history, progress_reporter])
+      runner.run(mutants, @fork_server_runner || integration, config, observers,
                  **run_options(integration, config, control_run))
       runner
     end
@@ -94,7 +96,7 @@ module Henitai
         test_files: -> { reject_excluded_tests(integration.test_files, config) },
         fallback: -> { reject_excluded_tests(integration.select_tests(mutant.subject), config) }
       )
-      test_prioritizer(config).sort(tests, mutant, test_history(config))
+      test_prioritizer(config).sort(tests, mutant, @kill_history)
     end
 
     def reject_excluded_tests(tests, config)
@@ -177,12 +179,6 @@ module Henitai
     end
 
     def per_test_coverage_selector = @per_test_coverage_selector ||= PerTestCoverageSelector.new
-
-    def test_history(config)
-      return {} unless config.respond_to?(:history)
-
-      config.history || {}
-    end
 
     def flaky_tests_for(config)
       FlakyTestRegistry.for_config(config)
