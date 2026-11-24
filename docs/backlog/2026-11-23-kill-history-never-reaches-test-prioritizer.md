@@ -89,9 +89,16 @@ Dogfood `SlotScheduler*` subjects, 408 mutants unsampled, `jobs: 1`,
   ran, so every control including that spec failed (256 CompileError). A
   variant must keep its own suite green.
 
+## Follow-ups (2026-11-24)
+
+- Cross-run persistence: `reports/henitai_test_order.json` keeps kill
+  counts (latest run's count per file) and hangs (accumulated per subject);
+  `henitai clean` removes it. Same 408 mutants, three runs in a row
+  starting without the file: 318 s (learning, 14 timeouts), then 150 s and
+  180 s (7 and 10 timeouts). Survivors identical (23).
+- Real-child spec for the Minitest running-file marker
+  (`minitest_failed_tests_process_spec.rb`).
+
 ## Not Done
 
-- Cross-run persistence of kill and hang counts (history store or a reports
-  file): the first mutant of each subject still pays the hang once per run.
-- Minitest ordering (classes are shuffled by Minitest itself) and a
-  real-child spec for the Minitest running-file marker (unit specs only).
+- Minitest ordering: Minitest shuffles its test classes itself.
