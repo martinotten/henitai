@@ -118,6 +118,7 @@ RSpec.describe Henitai::ForkServer::Client, :aggregate_failures do
     end
 
     it "completes outstanding processes as lost when the server is lost" do
+      allow(Henitai::ForkServer::GroupKiller).to receive(:kill)
       tell("type" => "spawned", "request_id" => 1, "pid" => 99)
       client.spawn_mutant(mutant_id: "m", test_files: [], log_paths: {})
       server.close
@@ -125,6 +126,7 @@ RSpec.describe Henitai::ForkServer::Client, :aggregate_failures do
       pid, status = client.poll_any_exit
 
       expect([pid, status.lost?, client.lost?]).to eq([99, true, true])
+      expect(Henitai::ForkServer::GroupKiller).to have_received(:kill).with(99)
     end
 
     it "reports an exit that spawning already buffered as a pending event" do
