@@ -69,3 +69,7 @@ jobs:
         run: bundle exec henitai run --since origin/main --use rspec 'Henitai*'
         env:
           STRYKER_DASHBOARD_API_KEY: ${{ secrets.STRYKER_DASHBOARD_API_KEY }}
+
+      - name: Show the baseline suite log on failure
+        if: failure()
+        run: tail -n 150 reports/mutation-logs/baseline.log || true
