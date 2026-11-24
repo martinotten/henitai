@@ -286,7 +286,7 @@ The implementation maps onto the following module layout:
 3. If the current coverage artifacts do not cover the configured source files,
    Henitai runs the configured test suite once to bootstrap a usable baseline.
 4. If coverage is still missing or unusable after the bootstrap run, Henitai aborts with `Henitai::CoverageError`.
-5. Coverage data and test inventory are used to prioritize tests. Test selection is coverage first: the per-test coverage map (`henitai_per_test.json`) is the primary candidate source, and every integration test file that provably covers the mutant's lines is selected, whether or not its name matches the subject. Name matching is only the fallback when the map cannot decide (no map, no location, no covering test, or no covering test left in the integration).
+5. Coverage data and test inventory are used to prioritize tests. Test selection is coverage first: the per-test coverage map (`henitai_per_test.json`) is the primary candidate source, and every integration test file that provably covers the mutant's lines is selected, whether or not its name matches the subject. Name matching is only the fallback when the map cannot decide (no map, no location, no covering test, or no covering test left in the integration). `TestPrioritizer` then orders the selected files: files that killed more mutants earlier in this run first (`KillHistory`, fed with final verdicts behind the `ControlGate`), then by ascending measured runtime. The RSpec child runs the top-level example groups in that file order (`RspecFileOrder`), whatever the project's `config.order`; RSpec's ordering still applies within a file. Minitest shuffles its test classes, so the order has no effect there.
 6. The execution engine runs the filtered mutant set.
 7. The analysis stage classifies killed, survived, ignored, timeout, and equivalent outcomes.
 8. The reporter emits JSON, HTML, and optional review feedback.
@@ -845,7 +845,7 @@ A working mutation pipeline for medium Ruby projects:
 CI and developer-feedback features:
 
 - per-test coverage analysis via `CoverageFormatter` and `henitai_per_test.json`
-- sampling and test prioritization via `TestPrioritizer` with path normalization and historical kill counts
+- sampling and test prioritization via `TestPrioritizer` with path normalization and this run's kill counts (`KillHistory`)
 - parallel execution via an event-loop process scheduler with configurable `jobs`
 - flaky-test mitigation: opt-in `flaky_detection` baseline, kill re-checks bounded by `max_flaky_retries`
 - latent-mutant tracking via `MutantHistoryStore` (SQLite) and `mutation-history.json` trend export

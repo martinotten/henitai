@@ -1,6 +1,6 @@
 # Kill History Never Reaches `TestPrioritizer`
 
-Status: backlog
+Status: done (2026-11-24)
 Date: 2026-11-23
 Severity: Medium (wall-clock per killed mutant; no verdict impact)
 Source: review of PR #55 (fail-fast in the mutant child)
@@ -36,3 +36,15 @@ killed neighbouring mutants of the same subject is the best first guess.
 - Engine spec: a test file that killed an earlier mutant is passed first for
   the next mutant of the same subject.
 - Measure dogfood wall time before/after as in the fail-fast item.
+
+## Resolution
+
+- `KillHistory` (progress observer behind the `ControlGate`) counts final
+  kills per test file during the run; `ExecutionEngine` hands it to
+  `TestPrioritizer` for every mutant still to launch. `config.history` and
+  the spec double that faked it are gone. Persisted cross-run kill counts
+  were not added: the history store keeps no killing test files.
+- Found while fixing: with `config.order = :random` (this repository's own
+  spec_helper) the RSpec child reshuffled the top-level groups, so no file
+  order ever took effect. `RspecFileOrder` sorts the groups by the order of
+  the mutant's test files. Minitest shuffles classes; left as is.
