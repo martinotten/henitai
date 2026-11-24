@@ -42,11 +42,19 @@ handling.
   hang-aware ordering (fixed file order, `<report>.running` marker) plays a
   part is open.
 
+## Reproduction Attempt (2026-11-24)
+
+Five more runs on main d3e7a11 (hang-aware ordering, same 408 mutants,
+`HENITAI_DEBUG_CHILD=1 HENITAI_DEBUG_SCHEDULER=1`, reports kept on any
+control failure): no control failure, 239-309 s each. Together with the
+earlier measurements the failure was seen once in about 19 runs, so it is
+rare and not tied to the hang-aware ordering in any visible way.
+
 ## Next Steps
 
-- Rerun the hang-aware measurement several times with child logs kept
-  (`--all-logs`) to estimate the frequency and capture the control child's
-  log when it happens.
+- Keep the debug switches available for long dogfood runs and keep the
+  reports directory when `control runs failed` appears, so the next
+  occurrence comes with the control child's log.
 - Check who can signal the control child's process group: other slots'
   `tear_down_process_group` (pid/pgid reuse), the drain path's
   `prune_raced_draining_slots`, and specs of the scheduler run inside the
