@@ -131,7 +131,7 @@ RSpec.describe Henitai::ExecutionEngine do
       build_engine.run(mutants, build_integration, config_with_control_runs(true))
 
       expect(runner).to have_received(:run)
-        .with(mutants, anything, anything, nil, hash_including(control_run: an_instance_of(Henitai::ControlRun)))
+        .with(mutants, anything, anything, anything, hash_including(control_run: an_instance_of(Henitai::ControlRun)))
     end
 
     it "hands the worker runner no control run when control runs are disabled" do
@@ -140,7 +140,8 @@ RSpec.describe Henitai::ExecutionEngine do
 
       build_engine.run(mutants, build_integration, config_with_control_runs(false))
 
-      expect(runner).to have_received(:run).with(mutants, anything, anything, nil, hash_including(control_run: nil))
+      expect(runner).to have_received(:run).with(mutants, anything, anything, anything,
+                                                 hash_including(control_run: nil))
     end
 
     it "warns when the control gate reclassified verdicts" do
@@ -489,29 +490,28 @@ RSpec.describe Henitai::ExecutionEngine do
     expect(progress.calls).to eq([:no_coverage])
   end
 
-  it "prioritizes tests that have already killed other mutants" do
-    pending = build_mutant(:pending, "Foo#bar")
-    integration = build_integration
-    config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :history).new(
-      12.5,
-      "coverage",
-      1,
-      3,
-      {
-        "spec/b_spec.rb" => 5,
-        "spec/a_spec.rb" => 1
-      }
+  it "runs first the test file that killed an earlier mutant in this run" do
+    mutants = [build_mutant(:pending, "Foo#bar"), build_mutant(:pending, "Foo#baz")]
+    integration = build_integration.answer(
+      outcome(:killed, killing_tests: [File.expand_path("spec/b_spec.rb")]), outcome(:survived)
     )
+    allow(integration).to receive(:select_tests).and_return(%w[spec/a_spec.rb spec/b_spec.rb spec/c_spec.rb])
 
-    allow(integration).to receive(:select_tests).and_return(
-      %w[spec/a_spec.rb spec/b_spec.rb spec/c_spec.rb]
+    build_engine.run(mutants, integration, build_config)
+
+    expect(integration.calls[:last_test_files]).to eq(%w[spec/b_spec.rb spec/a_spec.rb spec/c_spec.rb])
+  end
+
+  it "counts only kills toward the order, not survivors or timeouts" do
+    mutants = 3.times.map { |index| build_mutant(:pending, "Foo#bar#{index}") }
+    integration = build_integration.answer(
+      outcome(:timeout, killing_tests: [File.expand_path("spec/b_spec.rb")]), outcome(:survived), outcome(:survived)
     )
+    allow(integration).to receive(:select_tests).and_return(%w[spec/a_spec.rb spec/b_spec.rb])
 
-    build_engine.run([pending], integration, config)
+    build_engine.run(mutants, integration, build_config)
 
-    expect(integration.calls[:last_test_files]).to eq(
-      %w[spec/b_spec.rb spec/a_spec.rb spec/c_spec.rb]
-    )
+    expect(integration.calls[:last_test_files]).to eq(%w[spec/a_spec.rb spec/b_spec.rb])
   end
 
   describe "flaky-test retries" do
@@ -596,8 +596,8 @@ RSpec.describe Henitai::ExecutionEngine do
 
         expect(Henitai::ProcessWorkerRunner).to have_received(:new).with(hash_including(runtime: :served_runtime))
         expect(runner).to have_received(:run)
-          .with(mutants, fork_runner, config, nil, test_file_resolver: anything, timeout_resolver: anything,
-                                                   control_run: nil)
+          .with(mutants, fork_runner, config, anything, test_file_resolver: anything, timeout_resolver: anything,
+                                                        control_run: nil)
       end
     end
 
@@ -645,8 +645,8 @@ RSpec.describe Henitai::ExecutionEngine do
         }
       )
 
-      config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :history).new(
-        12.5, reports_dir, 1, 3, {}
+      config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(
+        12.5, reports_dir, 1, 3
       )
 
       allow(integration).to receive_messages(
@@ -670,8 +670,8 @@ RSpec.describe Henitai::ExecutionEngine do
         { "spec/unrelated_name_spec.rb" => { File.expand_path("lib/foo.rb") => [3] } }
       )
 
-      config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries, :history).new(
-        12.5, reports_dir, 1, 3, {}
+      config = Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(
+        12.5, reports_dir, 1, 3
       )
 
       allow(integration).to receive_messages(

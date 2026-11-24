@@ -449,7 +449,7 @@ module Henitai
 
   class TestPrioritizer
     def initialize: (?timing_source: untyped?) -> void
-    def sort: (Array[String], untyped, Hash[untyped, untyped]) -> Array[String]
+    def sort: (Array[String], untyped, untyped) -> Array[String]
 
     private
 

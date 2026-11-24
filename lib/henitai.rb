@@ -84,6 +84,7 @@ module Henitai
   autoload :SyntaxValidator, "henitai/syntax_validator"
   autoload :SamplingStrategy, "henitai/sampling_strategy"
   autoload :TestPrioritizer, "henitai/test_prioritizer"
+  autoload :KillHistory, "henitai/kill_history"
   autoload :ExcludedTestFilter, "henitai/excluded_test_filter"
   autoload :SuiteBootClock, "henitai/suite_boot_clock"
   autoload :TimeoutCalibrator, "henitai/timeout_calibrator"
