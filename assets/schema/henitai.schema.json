@@ -65,6 +65,12 @@
           "type": "number",
           "exclusiveMinimum": 0
         },
+        "suite_timeout": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 900.0,
+          "description": "Seconds the baseline suite run (coverage bootstrap, flaky detection) may take before it is stopped. A timed-out baseline is reported as a timeout, not a failure."
+        },
         "flaky_detection": {
           "type": "boolean",
           "default": false,

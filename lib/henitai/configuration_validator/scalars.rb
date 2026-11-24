@@ -111,6 +111,15 @@ module Henitai
         )
       end
 
+      def validate_suite_timeout(value)
+        return if value.nil?
+        return if value.is_a?(Numeric) && value.positive?
+
+        Rules.configuration_error(
+          "Invalid configuration value for mutation.suite_timeout: expected positive Numeric, got #{value.inspect}"
+        )
+      end
+
       def validate_checkpoint_every(value)
         return if value.nil?
         return if value.is_a?(Integer) && value.positive?

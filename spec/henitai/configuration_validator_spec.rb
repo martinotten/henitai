@@ -386,6 +386,23 @@ RSpec.describe Henitai::ConfigurationValidator do
       expect { described_class.validate!({ mutation: { max_timeout: 30.0 } }) }.not_to raise_error
     end
 
+    it "rejects a non-numeric mutation.suite_timeout with path in error" do
+      expect { described_class.validate!({ mutation: { suite_timeout: "900" } }) }.to raise_error(
+        Henitai::ConfigurationError,
+        /for mutation\.suite_timeout: expected positive Numeric, got "900"/
+      )
+    end
+
+    it "rejects a non-positive mutation.suite_timeout with path in error" do
+      expect { described_class.validate!({ mutation: { suite_timeout: -5 } }) }.to raise_error(
+        Henitai::ConfigurationError, /for mutation\.suite_timeout:/
+      )
+    end
+
+    it "accepts a positive numeric mutation.suite_timeout" do
+      expect { described_class.validate!({ mutation: { suite_timeout: 1200.0 } }) }.not_to raise_error
+    end
+
     it "rejects non-string ignore patterns with the full path in error" do
       expect do
         described_class.validate!({ mutation: { ignore_patterns: ["(send _ :puts _)", 1] } })

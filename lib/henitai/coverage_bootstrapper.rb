@@ -146,18 +146,27 @@ module Henitai
 
     def bootstrap_coverage(integration, config, test_files = nil)
       test_files ||= integration.test_files
+      timeout = suite_timeout(config)
 
       with_reports_dir(config) do
         with_coverage_dir(config) do
-          result = integration.run_suite(test_files)
+          result = integration.run_suite(test_files, timeout:)
           if result == :survived
             record_dependency_manifest(config)
             return
           end
 
-          raise CoverageError, BootstrapErrorMessage.build(result)
+          raise CoverageError, BootstrapErrorMessage.build(result, timeout:)
         end
       end
+    end
+
+    # The limit (seconds) for one baseline run. Specs pass bare config doubles,
+    # so the default applies when the config does not expose one.
+    def suite_timeout(config)
+      return config.suite_timeout if config.respond_to?(:suite_timeout)
+
+      Configuration::DEFAULT_SUITE_TIMEOUT
     end
 
     # Flaky detection needs two complete baseline runs, so the existing
@@ -169,7 +178,7 @@ module Henitai
     def run_flaky_baseline(integration, config, test_files)
       with_reports_dir(config) do
         with_coverage_dir(config) do
-          FlakyDetectionBaseline.new(reports_dir: reports_dir(config))
+          FlakyDetectionBaseline.new(reports_dir: reports_dir(config), timeout: suite_timeout(config))
                                 .run(integration:, test_files:)
           record_dependency_manifest(config)
         end

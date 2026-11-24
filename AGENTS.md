@@ -345,7 +345,9 @@ deliberate even though `||=` is a valid `UpdateOperator`/
   the learned order).
 - Timeout calibration: calibrated timeout = `timeout_multiplier` × (sum of the
   selected test-file durations + measured boot), floored at 2 s. `max_timeout`
-  caps it but never below baseline + 2 s, with a one-time warning.
+  caps it but never below baseline + 2 s, with a one-time warning. The baseline
+  suite (coverage bootstrap, flaky detection) is limited by `mutation.suite_timeout`
+  (default 900 s); a timeout says so instead of reporting a failure.
 - Live terminal progress is separate from captured child stdout/stderr. Child
   logs are written to `reports/mutation-logs/` and shown only on failure or
   with `--all-logs`/`--verbose`.

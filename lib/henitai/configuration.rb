@@ -22,6 +22,9 @@ module Henitai
     # Ceiling for the per-mutant auto-calibrated timeout (seconds). Keeps a
     # runaway from running for minutes when the calibrated value is large.
     DEFAULT_MAX_TIMEOUT = 30.0
+    # Limit (seconds) for one baseline suite run: coverage bootstrap and flaky
+    # detection. A run that exceeds it reports a timeout, not a failure.
+    DEFAULT_SUITE_TIMEOUT = 900.0
     # Incremental report checkpoint cadence for long full runs.
     DEFAULT_CHECKPOINT_EVERY = 200
     DEFAULT_CHECKPOINT_INTERVAL = 30.0
@@ -43,7 +46,8 @@ module Henitai
 
     attr_reader :integration, :includes, :excludes, :test_excludes, :operators, :timeout,
                 :timeout_multiplier, :ignore_patterns, :sampling, :jobs,
-                :max_flaky_retries, :max_log_bytes, :max_timeout, :control_runs, :flaky_detection, :fork_server,
+                :max_flaky_retries, :max_log_bytes, :max_timeout, :suite_timeout,
+                :control_runs, :flaky_detection, :fork_server,
                 :coverage_criteria, :thresholds,
                 :reporters, :reports_dir,
                 :checkpoint_enabled, :checkpoint_every, :checkpoint_interval,
@@ -124,6 +128,7 @@ module Henitai
       @max_flaky_retries = mutation.fetch(:max_flaky_retries, DEFAULT_MAX_FLAKY_RETRIES)
       @max_log_bytes = mutation[:max_log_bytes] || DEFAULT_MAX_LOG_BYTES
       @max_timeout = mutation[:max_timeout] || DEFAULT_MAX_TIMEOUT
+      @suite_timeout = mutation[:suite_timeout] || DEFAULT_SUITE_TIMEOUT
       @control_runs = mutation.fetch(:control_runs, true)
       @flaky_detection = mutation.fetch(:flaky_detection, false)
       @fork_server = mutation.fetch(:fork_server, false)

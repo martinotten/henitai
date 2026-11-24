@@ -25,7 +25,8 @@ module Henitai
       jobs
     ].freeze
     VALID_MUTATION_KEYS = %i[
-      operators timeout timeout_multiplier ignore_patterns max_flaky_retries max_log_bytes max_timeout sampling
+      operators timeout timeout_multiplier ignore_patterns max_flaky_retries max_log_bytes max_timeout
+      suite_timeout sampling
       control_runs flaky_detection fork_server
     ].freeze
     VALID_REPORTS_KEYS = %i[checkpoint checkpoint_every checkpoint_interval].freeze

@@ -377,6 +377,24 @@ RSpec.describe Henitai::Configuration do
     end.to raise_error(Henitai::ConfigurationError, /mutation\.max_log_bytes/)
   end
 
+  it "defaults the baseline suite timeout" do
+    config = load_configuration("integration:\n  name: rspec\n")
+
+    expect(config.suite_timeout).to eq(900.0)
+  end
+
+  it "loads a configured baseline suite timeout" do
+    config = load_configuration("mutation:\n  suite_timeout: 1200\n")
+
+    expect(config.suite_timeout).to eq(1200)
+  end
+
+  it "aborts on a non-positive suite_timeout" do
+    expect do
+      load_configuration("mutation:\n  suite_timeout: 0\n")
+    end.to raise_error(Henitai::ConfigurationError, /mutation\.suite_timeout/)
+  end
+
   it "aborts on a non-positive max_timeout" do
     expect do
       load_configuration("mutation:\n  max_timeout: 0\n")
