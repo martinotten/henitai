@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The test order learned in a run (kill counts per test file and the test files
+  that hung per subject) is saved to `henitai_test_order.json` in the reports
+  directory and seeds the next run, so a hang is paid once rather than in every
+  run. `henitai clean` removes the file and so resets the learned order. A
+  save failure (for example a read-only reports dir) only warns and never
+  fails the run.
 - Interrupted runs can be resumed with `henitai run --incremental`
   (ADR-19). Verdicts are written to the history store in batches while the
   run goes on; on Ctrl-C, `TERM` or `HUP` henitai saves what it has, prints

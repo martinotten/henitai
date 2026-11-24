@@ -29,7 +29,9 @@ module Henitai
         with_coverage_dir(config) do
           with_max_log_bytes(config) do
             with_worker_slot do
-              execute(mutants, integration, config, progress_reporter)
+              with_test_order(config) do
+                execute(mutants, integration, config, progress_reporter)
+              end
             end
           end
         end
@@ -43,7 +45,6 @@ module Henitai
     def execute(mutants, integration, config, progress_reporter)
       pending_mutants = Array(mutants).select(&:pending?)
       @flaky_tests = flaky_tests_for(config)
-      @kill_history = KillHistory.new
       control_run = ControlRun.new if control_runs?(config)
       runner = with_fork_server(pending_mutants, integration, config) do
         run_workers(pending_mutants, integration, config, progress_reporter, control_run)
@@ -51,6 +52,33 @@ module Henitai
       warn_control_failures(runner.control_stats) if control_run
       warn_flaky_mutants(runner.flaky_retry_count)
       mutants
+    end
+
+    # Seeds the kill history from the reports dir and saves it back in an
+    # ensure, so an interrupted run keeps what it learned. Without a reports
+    # dir there is nowhere to keep it, so nothing is read or written.
+    def with_test_order(config)
+      path = test_order_path(config)
+      @kill_history = path ? KillHistory.load(path) : KillHistory.new
+      yield
+    ensure
+      save_test_order(path) if path
+    end
+
+    # A learned order is a convenience: a read-only or full reports dir must
+    # not fail the run or hide its verdicts, so a save error only warns.
+    def save_test_order(path)
+      @kill_history&.write(path)
+    rescue SystemCallError => e
+      warn format(
+        "henitai: could not save the learned test order (%<class>s: %<message>s)",
+        class: e.class, message: e.message
+      )
+    end
+
+    def test_order_path(config)
+      dir = config.reports_dir if config.respond_to?(:reports_dir)
+      File.join(dir, KillHistory::FILE_NAME) unless dir.nil? || dir.empty?
     end
 
     def control_runs?(config) = config.respond_to?(:control_runs) && config.control_runs

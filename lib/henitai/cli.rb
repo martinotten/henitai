@@ -40,6 +40,7 @@ module Henitai
       [PerTestCoverageCollector::BOOT_FILE_NAME],
       [CoverageBootstrapper::DEPENDENCY_MANIFEST_FILE],
       [FlakyTestRegistry::FILE_NAME],
+      [KillHistory::FILE_NAME],
       [TestFileOutcomes::REPORT_FILE_NAME]
     ].freeze
 

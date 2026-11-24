@@ -208,6 +208,11 @@ RSpec.describe Henitai::CLI do
       .to include([Henitai::CoverageBootstrapper::DEPENDENCY_MANIFEST_FILE])
   end
 
+  it "cleans the learned test order so clean resets the prioritizer" do
+    expect(Henitai::CLI::REPORT_CLEANUP_PATHS)
+      .to include([Henitai::KillHistory::FILE_NAME])
+  end
+
   it "removes the minimal generated report artifacts with clean" do
     Dir.mktmpdir do |dir|
       reports_dir = File.join(dir, "custom-reports")
@@ -221,7 +226,7 @@ RSpec.describe Henitai::CLI do
       aggregate_failures do
         expect do
           described_class.new(["clean", "--config", config_path]).run
-        end.to output(/Removed 9 generated report artifacts/).to_stdout
+        end.to output(/Removed 10 generated report artifacts/).to_stdout
         expect(cleanup_paths.all? { |path| !File.exist?(path) }).to be(true)
         expect(File).to exist(sentinel_path)
       end
