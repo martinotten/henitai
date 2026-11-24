@@ -1,6 +1,6 @@
 # Control Child Terminated by SIGTERM
 
-Status: backlog
+Status: probable cause fixed (2026-11-24); watch for recurrence
 Date: 2026-11-24
 Severity: Medium (rare; fails safe, but turns a subject's detections into
 `CompileError` and lowers the score)
@@ -49,6 +49,29 @@ Five more runs on main d3e7a11 (hang-aware ordering, same 408 mutants,
 control failure): no control failure, 239-309 s each. Together with the
 earlier measurements the failure was seen once in about 19 runs, so it is
 rare and not tied to the hang-aware ordering in any visible way.
+
+## Probable Cause (2026-11-24)
+
+Two process-free specs sent real signals to fake pids, and process-free
+specs run inside mutant and control children during henitai's own runs:
+
+- `spec/henitai/slot_scheduler_spec.rb`: `build_host` defaulted to the real
+  `ProcessWorkerRunner::Runtime` while the fake integration handed out pids
+  1000, 1001, ...; completing a slot sent SIGTERM (and possibly SIGKILL) to
+  process group -1000, falling back to pid 1000.
+- `spec/henitai/fork_server/client_spec.rb`: "completes outstanding processes
+  as lost" let `GroupKiller.kill` send SIGKILL to process group -99.
+
+A control child is the leader of its own process group, so when its pid
+happened to equal one of those fake pids, a spec running in a sibling child
+sent it SIGTERM: "child terminated by signal SIGTERM", outside the timeout
+path, rare. The same spec failed PR #58's CI with `Errno::EPERM` when pid
+1000 belonged to another user.
+
+Fixed on branch `fix/specs-never-signal-foreign-processes`: the process guard
+behind `bin/verify-process-free-specs` now blocks `Process.kill` except
+signal 0 and signals to the spec process itself, and both specs use a
+recording runtime or a stubbed `GroupKiller`.
 
 ## Next Steps
 

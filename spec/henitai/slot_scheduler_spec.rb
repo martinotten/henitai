@@ -26,7 +26,7 @@ RSpec.describe Henitai::SlotScheduler do
     end.new(id, subject, :pending)
   end
 
-  def build_host(worker_count, runtime: Henitai::ProcessWorkerRunner::Runtime.new, wakeup: nil, shutdown: false)
+  def build_host(worker_count, runtime: Henitai::SpecSupport::RecordingRuntime.new, wakeup: nil, shutdown: false)
     host_struct = Struct.new(:worker_count, :runtime, :wakeup) do
       define_method(:shutdown_requested?) { shutdown }
     end

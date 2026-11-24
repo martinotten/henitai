@@ -9,14 +9,27 @@ module Henitai
       class ForbiddenProcess < StandardError; end
 
       PROCESS_METHODS = %i[exec fork spawn].freeze
+      KILL_PROBE_SIGNALS = [0, "0", :"0"].freeze
       KERNEL_METHODS = %i[exec fork spawn system].freeze
       OPEN3_METHODS = %i[
         capture2 capture2e capture3 pipeline pipeline_r pipeline_rw pipeline_start
         pipeline_w popen2 popen2e popen3
       ].freeze
 
+      # Lets signal-0 probes and signals to the current process through to the
+      # real Process.kill; any other signal to another pid is recorded and
+      # raised, since it could hit a sibling process of the mutation run.
+      module KillGuard
+        def kill(signal, *pids)
+          return super if ProcessGuard.kill_allowed?(signal, pids)
+
+          ProcessGuard.block!("Process.kill")
+        end
+      end
+
       class << self
         def install!
+          Process.singleton_class.prepend(KillGuard)
           Process.singleton_class.prepend(process_methods)
           Kernel.prepend(kernel_methods)
           Kernel.singleton_class.prepend(kernel_methods)
@@ -41,6 +54,10 @@ module Henitai
         def block!(name)
           attempts << name
           raise ForbiddenProcess, "process-free spec attempted #{name}"
+        end
+
+        def kill_allowed?(signal, pids)
+          KILL_PROBE_SIGNALS.include?(signal) || pids.all? { |pid| pid == Process.pid }
         end
 
         private
