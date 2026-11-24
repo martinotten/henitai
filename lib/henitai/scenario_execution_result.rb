@@ -3,7 +3,7 @@
 module Henitai
   # Captures the result of one baseline or mutant test run.
   class ScenarioExecutionResult
-    attr_reader :status, :status_reason, :stdout, :stderr, :exit_status, :log_path, :killing_tests
+    attr_reader :status, :status_reason, :stdout, :stderr, :exit_status, :log_path, :killing_tests, :hanging_test
 
     def self.build(wait_result:, stdout:, stderr:, log_path:)
       new(
@@ -29,15 +29,20 @@ module Henitai
     end
 
     # Classifies a mutant run from the child's report (see MutantVerdict).
-    def self.build_for_mutant(wait_result:, report:, stdout:, stderr:, log_path:)
+    # +running_test+ is the test file the child was executing when it was
+    # killed; it is kept only for a timeout (see #hanging_test).
+    # rubocop:disable Metrics/ParameterLists -- one keyword per captured field
+    def self.build_for_mutant(wait_result:, report:, stdout:, stderr:, log_path:, running_test: nil)
+      # rubocop:enable Metrics/ParameterLists
       verdict = MutantVerdict.new(wait_result:, report:, stdout:, stderr:)
       status, status_reason = verdict.to_a
       new(status:, status_reason:, stdout:, stderr:, log_path:, exit_status: exit_status_for(wait_result),
-          killing_tests: verdict.killing_tests)
+          killing_tests: verdict.killing_tests, hanging_test: hanging_test_for(status, running_test))
     end
 
     # rubocop:disable Metrics/ParameterLists -- one keyword per captured field
-    def initialize(status:, stdout:, stderr:, log_path:, exit_status: nil, status_reason: nil, killing_tests: [])
+    def initialize(status:, stdout:, stderr:, log_path:, exit_status: nil, status_reason: nil, killing_tests: [],
+                   hanging_test: nil)
       # rubocop:enable Metrics/ParameterLists
       @status = status
       @status_reason = status_reason
@@ -46,12 +51,14 @@ module Henitai
       @log_path = log_path
       @exit_status = exit_status
       @killing_tests = killing_tests
+      @hanging_test = hanging_test
     end
 
     # The same run under a different verdict, e.g. a detection a failing
     # control reclassified (ADR-14). Output and exit data are kept.
     def reclassified(status:, status_reason:)
-      self.class.new(status:, status_reason:, stdout:, stderr:, log_path:, exit_status:, killing_tests:)
+      self.class.new(status:, status_reason:, stdout:, stderr:, log_path:, exit_status:, killing_tests:,
+                     hanging_test:)
     end
 
     # Frees the captured child output once it has been consumed (e.g. by the
@@ -119,6 +126,11 @@ module Henitai
 
     class << self
       private
+
+      # The test file a timed-out child was running; nil for any other verdict.
+      def hanging_test_for(status, running_test)
+        status == :timeout ? running_test : nil
+      end
 
       def status_for(wait_result, stdout:, stderr:)
         return :timeout if wait_result == :timeout

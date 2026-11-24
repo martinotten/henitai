@@ -75,6 +75,19 @@ RSpec.describe Henitai::Integration::Rspec do
     end
   end
 
+  it "leaves a running-file marker naming the spec file the child stopped in" do
+    Dir.mktmpdir do |dir|
+      source = write(dir, "lib/sample.rb", "class Sample\n  def self.sum(a, b)\n    a + b\n  end\nend\n")
+      killing = write(dir, "spec/killing_spec.rb", spec_source("expect(Sample.sum(3, 1)).to eq(4)"))
+      passing = write(dir, "spec/passing_spec.rb", spec_source("expect(1).to eq(1)"))
+
+      _stdout, stderr, = run_child(dir, source, [killing, passing])
+
+      marker = Dir.glob(File.join(dir, "reports/mutation-logs/*.report.json.running")).first
+      expect(File.read(marker)).to eq(File.expand_path(killing)), stderr
+    end
+  end
+
   def child_report(dir)
     JSON.parse(File.read(Dir.glob(File.join(dir, "reports/mutation-logs/*.report.json")).first))
   end

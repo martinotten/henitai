@@ -217,11 +217,22 @@ RSpec.describe Henitai::Integration::Rspec do
   # can live in memory and still reach the parent's classification.
   def in_memory_report_store
     reports = {}
+    markers = {}
     store = instance_double(Henitai::Integration::ChildReportStore)
+    stub_in_memory_reports(store, reports)
+    stub_in_memory_markers(store, markers)
+    allow(store).to receive(:clear) { |path| [reports, markers].each { |hash| hash.delete(path) } }
+    store
+  end
+
+  def stub_in_memory_reports(store, reports)
     allow(store).to receive(:write) { |path, data| reports[path] = data }
     allow(store).to receive(:read) { |path| reports[path] }
-    allow(store).to receive(:clear) { |path| reports.delete(path) }
-    store
+  end
+
+  def stub_in_memory_markers(store, markers)
+    allow(store).to receive(:write_running) { |path, file| markers[path] = file }
+    allow(store).to receive(:read_running) { |path| markers[path] }
   end
 
   def stub_process_exit(record)

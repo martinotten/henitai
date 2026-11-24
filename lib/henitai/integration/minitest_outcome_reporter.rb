@@ -16,6 +16,13 @@ module Henitai
         @on_failure = on_failure
       end
 
+      # Reports the file of the test about to run, so a timeout can name it.
+      def prerecord(klass, name)
+        super
+        file = MinitestResultFile.class_file_of(klass.name.to_s) || method_file(klass, name)
+        @outcomes.started(file) if file
+      end
+
       def record(result)
         super
         MinitestResultFile.record(@outcomes, result)
@@ -25,6 +32,12 @@ module Henitai
       def report
         super
         @outcomes.write(@report_path) if @report_path
+      end
+
+      private
+
+      def method_file(klass, name)
+        MinitestResultFile.usable(klass.instance_method(name).source_location&.first)
       end
     end
   end

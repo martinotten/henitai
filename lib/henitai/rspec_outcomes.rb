@@ -29,7 +29,9 @@ module Henitai
       end
 
       def example_group_started(notification)
-        @open_group_files.push(RspecOutcomes.group_file(notification.group))
+        file = RspecOutcomes.group_file(notification.group)
+        @open_group_files.push(file)
+        @outcomes.started(file) if file
       end
 
       def example_group_finished(_notification)

@@ -8,6 +8,10 @@ module Henitai
   # ascending, so the first kill costs as little wall-clock as possible.
   # Untimed tests sort after timed ones by original inventory order; with no
   # timing source at all the ordering is exactly the historical behavior.
+  #
+  # A test file that hung (timed out) for a mutant of the same subject goes
+  # last, ahead of every other key, so the hang is reached only after the
+  # mutant's other candidates have had their chance to kill it.
   class TestPrioritizer
     # @param timing_source [#call, nil] returns a Hash of test file path to
     #   wall-clock seconds; resolved lazily on first sort.
@@ -15,13 +19,17 @@ module Henitai
       @timing_source = timing_source
     end
 
-    def sort(tests, _mutant, history)
+    def sort(tests, mutant, history)
       Array(tests).each_with_index.sort_by do |test, index|
-        [-history_count(history, test), runtime(test), index]
+        [hung_rank(history, mutant, test), -history_count(history, test), runtime(test), index]
       end.map(&:first)
     end
 
     private
+
+    def hung_rank(history, mutant, test)
+      history.respond_to?(:hung?) && history.hung?(mutant, test) ? 1 : 0
+    end
 
     def runtime(test)
       durations = timing_durations
