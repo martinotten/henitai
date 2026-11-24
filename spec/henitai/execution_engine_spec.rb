@@ -72,8 +72,9 @@ RSpec.describe Henitai::ExecutionEngine do
     Struct.new(:timeout, :reports_dir, :jobs, :max_flaky_retries).new(12.5, "coverage", jobs, 3)
   end
 
-  def outcome(status, killing_tests: [])
-    Henitai::ScenarioExecutionResult.new(status:, stdout: "", stderr: "", log_path: nil, killing_tests:)
+  def outcome(status, killing_tests: [], hanging_test: nil)
+    Henitai::ScenarioExecutionResult.new(status:, stdout: "", stderr: "", log_path: nil, killing_tests:,
+                                         hanging_test:)
   end
 
   def stub_worker_runner(control_stats: nil, flaky_retry_count: 0)
@@ -500,6 +501,18 @@ RSpec.describe Henitai::ExecutionEngine do
     build_engine.run(mutants, integration, build_config)
 
     expect(integration.calls[:last_test_files]).to eq(%w[spec/b_spec.rb spec/a_spec.rb spec/c_spec.rb])
+  end
+
+  it "runs last the test file that hung for an earlier mutant of the same subject" do
+    mutants = [build_mutant(:pending, "Foo#bar"), build_mutant(:pending, "Foo#bar")]
+    integration = build_integration.answer(
+      outcome(:timeout, hanging_test: File.expand_path("spec/b_spec.rb")), outcome(:survived)
+    )
+    allow(integration).to receive(:select_tests).and_return(%w[spec/a_spec.rb spec/b_spec.rb spec/c_spec.rb])
+
+    build_engine.run(mutants, integration, build_config)
+
+    expect(integration.calls[:last_test_files]).to eq(%w[spec/a_spec.rb spec/c_spec.rb spec/b_spec.rb])
   end
 
   it "counts only kills toward the order, not survivors or timeouts" do

@@ -42,8 +42,13 @@ module Henitai
         output = { stdout:, stderr:, log_path: log_paths[:log_path] }
         return ScenarioExecutionResult.build(wait_result:, **output) unless log_paths.key?(:report_path)
 
+        build_mutant_result(wait_result, log_paths, output)
+      end
+
+      def build_mutant_result(wait_result, log_paths, output)
         report = child_report_store.read(log_paths[:report_path])
-        ScenarioExecutionResult.build_for_mutant(wait_result:, report:, **output)
+        running_test = child_report_store.read_running(log_paths[:report_path])
+        ScenarioExecutionResult.build_for_mutant(wait_result:, report:, running_test:, **output)
       end
 
       def run_in_child(mutant:, test_files:, log_paths:)
@@ -66,9 +71,10 @@ module Henitai
 
       def run_child_activation_and_tests(mutant:, test_files:, log_paths:)
         report = ->(data) { child_report_store.write(log_paths[:report_path], data) }
+        running = ->(file) { child_report_store.write_running(log_paths[:report_path], file) }
         scenario_log_support.with_coverage_dir(mutant.id) do
           scenario_log_support.capture_child_output(log_paths) do
-            run_tests_in_child(mutant, test_files, report)
+            run_tests_in_child(mutant, test_files, report, running)
           end
         end
       end
@@ -104,9 +110,10 @@ module Henitai
       # files (and the code they require) are loaded, before any test runs.
       # Activating earlier would load the subject file on its own, without the
       # superclasses and constants the rest of the application defines.
-      def run_tests_in_child(mutant, test_files, report)
+      # +running+ records the test file being executed, so a timeout can name it.
+      def run_tests_in_child(mutant, test_files, report, running)
         activated = nil
-        outcomes = TestFileOutcomes.new
+        outcomes = TestFileOutcomes.new(on_started: running)
         exit_code = run_tests(test_files, outcomes) { activated = activate_in_child(mutant, test_files, report) }
         return finish_without_tests(activated, report) unless activated
 

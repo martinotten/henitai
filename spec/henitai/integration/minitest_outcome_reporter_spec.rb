@@ -4,6 +4,9 @@ require "spec_helper"
 require "tmpdir"
 require "henitai/integration/minitest_outcome_reporter"
 
+# Named at file level so its source location is this spec file.
+PrerecordSpecTest = Class.new
+
 RSpec.describe Henitai::Integration::MinitestOutcomeReporter do
   let(:outcomes) { Henitai::TestFileOutcomes.new }
   let(:file) { File.expand_path("test/a_test.rb") }
@@ -100,6 +103,31 @@ RSpec.describe Henitai::Integration::MinitestOutcomeReporter do
       reporter.report
 
       expect(Henitai::TestFileOutcomes.load(path).failed_files).to eq([file])
+    end
+  end
+
+  describe "prerecord" do
+    let(:started) { [] }
+    let(:tracked) { Henitai::TestFileOutcomes.new(on_started: ->(path) { started << path }) }
+
+    it "reports the file of the test class about to run as started" do
+      described_class.new(tracked).prerecord(PrerecordSpecTest, "test_example")
+
+      expect(started).to eq([File.expand_path(__FILE__)])
+    end
+
+    it "falls back to the test method's source file for an anonymous class" do
+      klass = Class.new { define_method(:test_fallback) { nil } }
+
+      described_class.new(tracked).prerecord(klass, "test_fallback")
+
+      expect(started).to eq([File.expand_path(__FILE__)])
+    end
+
+    it "reports nothing when neither the class nor the method has a file" do
+      described_class.new(tracked).prerecord(Class.new, "to_s")
+
+      expect(started).to be_empty
     end
   end
 end

@@ -122,4 +122,38 @@ RSpec.describe Henitai::TestPrioritizer do
       tests.values_at(1, 0, 2)
     )
   end
+
+  describe "hung test files" do
+    def history_with_hung(counts, hung)
+      Struct.new(:counts, :hung) do
+        def fetch(key, default = nil) = counts.fetch(key, default)
+        def hung?(_mutant, file) = hung.include?(file)
+      end.new(counts, hung)
+    end
+
+    it "sorts a file that hung for this subject last, even with the most kills" do
+      tests = %w[spec/a_spec.rb spec/b_spec.rb spec/c_spec.rb]
+      history = history_with_hung({ "spec/b_spec.rb" => 9, "spec/a_spec.rb" => 1 }, ["spec/b_spec.rb"])
+
+      expect(described_class.new.sort(tests, nil, history)).to eq(
+        %w[spec/a_spec.rb spec/c_spec.rb spec/b_spec.rb]
+      )
+    end
+
+    it "keeps the kill-history order for the files that did not hang" do
+      tests = %w[spec/a_spec.rb spec/b_spec.rb spec/c_spec.rb]
+      history = history_with_hung({ "spec/c_spec.rb" => 3, "spec/a_spec.rb" => 1 }, ["spec/b_spec.rb"])
+
+      expect(described_class.new.sort(tests, nil, history)).to eq(
+        %w[spec/c_spec.rb spec/a_spec.rb spec/b_spec.rb]
+      )
+    end
+
+    it "ignores hung marks for plain hash histories" do
+      tests = %w[spec/a_spec.rb spec/b_spec.rb]
+      history = { "spec/b_spec.rb" => 5 }
+
+      expect(described_class.new.sort(tests, nil, history)).to eq(%w[spec/b_spec.rb spec/a_spec.rb])
+    end
+  end
 end

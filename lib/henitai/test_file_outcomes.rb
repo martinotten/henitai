@@ -37,9 +37,23 @@ module Henitai
       new
     end
 
-    def initialize
+    # @param on_started [#call, nil] called with the expanded path each time
+    #   a different test file starts (see {#started})
+    def initialize(on_started: nil)
       @failed = {}
       @unattributed_failures = false
+      @on_started = on_started
+      @started_file = nil
+    end
+
+    # Reports that +file+ is now running. Repeated starts of the same file
+    # are not reported again.
+    def started(file)
+      path = File.expand_path(file)
+      return if path == @started_file
+
+      @started_file = path
+      @on_started&.call(path)
     end
 
     def record(file, failed:)

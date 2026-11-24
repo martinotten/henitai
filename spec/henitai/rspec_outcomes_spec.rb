@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "henitai/rspec_outcomes"
 
 RSpec.describe Henitai::RspecOutcomes do
   let(:outcomes) { Henitai::TestFileOutcomes.new }
@@ -45,5 +46,17 @@ RSpec.describe Henitai::RspecOutcomes do
     described_class.register(outcomes, reporter)
 
     expect(reporter).to have_received(:register_listener).with(anything, *described_class::EVENTS)
+  end
+
+  describe "group start" do
+    it "reports the file of a starting example group as started" do
+      started = []
+      tracked = Henitai::TestFileOutcomes.new(on_started: ->(file) { started << file })
+      group = Struct.new(:metadata).new({ absolute_file_path: File.expand_path("spec/e_spec.rb") })
+
+      Henitai::RspecOutcomes::Listener.new(tracked).example_group_started(Struct.new(:group).new(group))
+
+      expect(started).to eq([File.expand_path("spec/e_spec.rb")])
+    end
   end
 end

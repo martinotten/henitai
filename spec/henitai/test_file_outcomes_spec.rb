@@ -71,4 +71,21 @@ RSpec.describe Henitai::TestFileOutcomes do
       expect(JSON.parse(File.read(path))).to eq("outcomes" => {})
     end
   end
+
+  describe "#started" do
+    it "reports each file change once, with the expanded path" do
+      started = []
+      outcomes = described_class.new(on_started: ->(file) { started << file })
+
+      %w[spec/a_spec.rb spec/a_spec.rb spec/b_spec.rb spec/a_spec.rb].each { |file| outcomes.started(file) }
+
+      expect(started).to eq(
+        [File.expand_path("spec/a_spec.rb"), File.expand_path("spec/b_spec.rb"), File.expand_path("spec/a_spec.rb")]
+      )
+    end
+
+    it "does nothing without a callback" do
+      expect { outcomes.started("spec/a_spec.rb") }.not_to raise_error
+    end
+  end
 end

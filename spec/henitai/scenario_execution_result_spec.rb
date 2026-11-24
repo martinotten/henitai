@@ -548,4 +548,44 @@ RSpec.describe Henitai::ScenarioExecutionResult do
       expect(result.release_output!).to be(result)
     end
   end
+
+  describe "hanging_test" do
+    let(:running) { File.expand_path("spec/hang_spec.rb") }
+
+    def mutant_result(wait_result, running_test:)
+      described_class.build_for_mutant(
+        wait_result:, report: nil, stdout: "", stderr: "", log_path: "/dev/null", running_test:
+      )
+    end
+
+    it "names the test file that was running when a mutant timed out" do
+      expect(mutant_result(:timeout, running_test: running).hanging_test).to eq(running)
+    end
+
+    it "is nil for a timeout without a running-file marker" do
+      expect(mutant_result(:timeout, running_test: nil).hanging_test).to be_nil
+    end
+
+    it "is nil for a verdict other than timeout, even with a running-file marker" do
+      wait_result = Struct.new(:success?, :exitstatus).new(true, 0)
+      report = { "outcome" => "tests_finished", "exit_code" => 0, "failed_tests" => [] }
+      result = described_class.build_for_mutant(
+        wait_result:, report:, stdout: "", stderr: "", log_path: "/dev/null", running_test: running
+      )
+
+      expect([result.status, result.hanging_test]).to eq([:survived, nil])
+    end
+
+    it "is kept when a result is reclassified" do
+      result = mutant_result(:timeout, running_test: running)
+
+      expect(result.reclassified(status: :compile_error, status_reason: "x").hanging_test).to eq(running)
+    end
+
+    it "is kept when the captured output is released" do
+      result = mutant_result(:timeout, running_test: running)
+
+      expect(result.release_output!.hanging_test).to eq(running)
+    end
+  end
 end
