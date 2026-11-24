@@ -133,4 +133,30 @@ RSpec.describe Henitai::FlakyDetectionBaseline do
     expect { run_baseline([outcomes, outcomes], %i[survived failed]) }
       .to raise_error(Henitai::CoverageError, /\(see #{Regexp.escape(log_path)}\).*LoadError/m)
   end
+
+  it "passes the configured timeout to every baseline run" do
+    seen = []
+    build = method(:scenario_result)
+    path = Henitai::TestFileOutcomes.report_path(reports_dir)
+    suite = Object.new
+    suite.define_singleton_method(:run_suite) do |_test_files, timeout:|
+      seen << timeout
+      recorder = Henitai::TestFileOutcomes.new
+      recorder.record("a_spec.rb", failed: false)
+      recorder.write(path)
+      build.call(:survived)
+    end
+
+    described_class.new(reports_dir:, timeout: 1200.0).run(integration: suite, test_files:)
+
+    expect(seen).to eq([1200.0, 1200.0])
+  end
+
+  it "raises a timeout message when a baseline run times out" do
+    outcomes = { "a_spec.rb" => "passed" }
+    suite = scripted_suite([outcomes.dup, outcomes.dup], %i[timeout timeout])
+
+    expect { described_class.new(reports_dir:, timeout: 1200).run(integration: suite, test_files:) }
+      .to raise_error(Henitai::CoverageError, /did not finish within 1200 s/)
+  end
 end

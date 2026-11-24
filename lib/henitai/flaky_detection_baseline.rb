@@ -9,8 +9,10 @@ module Henitai
   # per-file outcomes via the integration's coverage hooks; the files that
   # disagree between the two runs are written to `henitai_flaky_tests.json`.
   class FlakyDetectionBaseline
-    def initialize(reports_dir:)
+    # @param timeout [Numeric] seconds each baseline run may take
+    def initialize(reports_dir:, timeout: Configuration::DEFAULT_SUITE_TIMEOUT)
       @reports_dir = reports_dir
+      @timeout = timeout
     end
 
     def run(integration:, test_files:)
@@ -29,7 +31,7 @@ module Henitai
     def run_once(integration, test_files)
       outcome_path = TestFileOutcomes.report_path(@reports_dir)
       FileUtils.rm_f(outcome_path)
-      result = integration.run_suite(test_files)
+      result = integration.run_suite(test_files, timeout: @timeout)
       raise CoverageError, "could not record suite outcomes" unless File.exist?(outcome_path)
 
       [TestFileOutcomes.load(outcome_path), result]
@@ -44,7 +46,7 @@ module Henitai
       return if failing.empty?
       return if failing.size < runs.size && failing.all? { |outcomes, _result| explained?(registry, outcomes) }
 
-      raise CoverageError, BootstrapErrorMessage.build(failing.first.last)
+      raise CoverageError, BootstrapErrorMessage.build(failing.first.last, timeout: @timeout)
     end
 
     def explained?(registry, outcomes)

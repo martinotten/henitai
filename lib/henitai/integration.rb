@@ -57,15 +57,13 @@ module Henitai
       include RspecPreload
       include RspecTestSelection
 
-      DEFAULT_SUITE_TIMEOUT = 300.0
-
       def test_files = spec_files
 
       def per_test_coverage_supported?
         true
       end
 
-      def run_suite(test_files, timeout: DEFAULT_SUITE_TIMEOUT)
+      def run_suite(test_files, timeout: Configuration::DEFAULT_SUITE_TIMEOUT)
         RspecProcessRunner.new.run_suite(self, test_files, timeout:)
       end
 

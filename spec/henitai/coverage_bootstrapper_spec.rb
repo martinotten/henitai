@@ -169,6 +169,39 @@ RSpec.describe Henitai::CoverageBootstrapper do
     )
   end
 
+  it "passes the configured suite_timeout to the baseline suite run" do
+    static_filter = instance_double(Henitai::StaticFilter)
+    integration = build_integration(test_files: ["spec/sample_spec.rb"], run_suite_result: :survived)
+    bootstrapper = build_bootstrapper(static_filter:)
+    config = Struct.new(:reports_dir, :suite_timeout).new("reports", 1200.0)
+
+    allow(static_filter).to receive(:coverage_lines_for).and_return({ File.expand_path("lib/sample.rb") => [2] })
+    allow(integration).to receive(:run_suite).and_return(:survived)
+
+    bootstrapper.ensure!(source_files: [File.expand_path("lib/sample.rb")], config:, integration:)
+
+    expect(integration).to have_received(:run_suite).with(["spec/sample_spec.rb"], timeout: 1200.0)
+  end
+
+  it "raises a timeout message naming the configured suite_timeout when the baseline times out" do
+    static_filter = instance_double(Henitai::StaticFilter)
+    timed_out = Struct.new(:status, :log_path) do
+      def tail(_line_count)
+        ""
+      end
+    end.new(:timeout, "reports/baseline.log")
+    integration = build_integration(test_files: ["spec/sample_spec.rb"], run_suite_result: timed_out)
+    bootstrapper = build_bootstrapper(static_filter:)
+    config = Struct.new(:reports_dir, :suite_timeout).new("reports", 1200)
+
+    allow(static_filter).to receive(:coverage_lines_for).and_return({})
+    allow(integration).to receive(:run_suite).and_return(timed_out)
+
+    expect do
+      bootstrapper.ensure!(source_files: [File.expand_path("lib/sample.rb")], config:, integration:)
+    end.to raise_error(Henitai::CoverageError, /did not finish within 1200 s .* raise mutation\.suite_timeout/)
+  end
+
   it "runs the suite when no coverage report exists" do
     static_filter = instance_double(Henitai::StaticFilter)
     integration = build_integration(
@@ -189,7 +222,10 @@ RSpec.describe Henitai::CoverageBootstrapper do
       integration:
     )
 
-    expect(integration).to have_received(:run_suite).with(["spec/sample_spec.rb"])
+    expect(integration).to have_received(:run_suite).with(
+      ["spec/sample_spec.rb"],
+      timeout: Henitai::Configuration::DEFAULT_SUITE_TIMEOUT
+    )
   end
 
   def build_timeout_config(reports_dir, timeout_configured:)
@@ -273,7 +309,10 @@ RSpec.describe Henitai::CoverageBootstrapper do
       integration:
     )
 
-    expect(integration).to have_received(:run_suite).with(["spec/sample_spec.rb"])
+    expect(integration).to have_received(:run_suite).with(
+      ["spec/sample_spec.rb"],
+      timeout: Henitai::Configuration::DEFAULT_SUITE_TIMEOUT
+    )
   end
 
   it "accepts a fresh report that only covers part of the configured sources" do
@@ -798,7 +837,10 @@ RSpec.describe Henitai::CoverageBootstrapper do
           test_files: [scoped_spec]
         )
 
-        expect(integration).to have_received(:run_suite).with([scoped_spec])
+        expect(integration).to have_received(:run_suite).with(
+          [scoped_spec],
+          timeout: Henitai::Configuration::DEFAULT_SUITE_TIMEOUT
+        )
       end
     end
 
@@ -865,7 +907,10 @@ RSpec.describe Henitai::CoverageBootstrapper do
         test_files: ["spec/sample_spec.rb"]
       )
 
-      expect(integration).to have_received(:run_suite).with(["spec/sample_spec.rb"])
+      expect(integration).to have_received(:run_suite).with(
+        ["spec/sample_spec.rb"],
+        timeout: Henitai::Configuration::DEFAULT_SUITE_TIMEOUT
+      )
     end
 
     it "discovers integration.test_files once when test_files are omitted" do
@@ -925,7 +970,10 @@ RSpec.describe Henitai::CoverageBootstrapper do
         test_files: nil
       )
 
-      expect(integration).to have_received(:run_suite).with(["spec/sample_spec.rb"])
+      expect(integration).to have_received(:run_suite).with(
+        ["spec/sample_spec.rb"],
+        timeout: Henitai::Configuration::DEFAULT_SUITE_TIMEOUT
+      )
     end
 
     it "uses the coverage directory when config has no reports_dir", :aggregate_failures do
@@ -948,7 +996,10 @@ RSpec.describe Henitai::CoverageBootstrapper do
           integration:
         )
       end.not_to raise_error
-      expect(integration).to have_received(:run_suite).with(["spec/sample_spec.rb"])
+      expect(integration).to have_received(:run_suite).with(
+        ["spec/sample_spec.rb"],
+        timeout: Henitai::Configuration::DEFAULT_SUITE_TIMEOUT
+      )
     end
 
     it "uses scoped test_files for the freshness watch list" do
@@ -1023,7 +1074,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
         integration:
       )
 
-      expect(integration).to have_received(:run_suite).with(["spec/unit/a_spec.rb"])
+      expect(integration).to have_received(:run_suite).with(["spec/unit/a_spec.rb"], timeout: Henitai::Configuration::DEFAULT_SUITE_TIMEOUT)
     end
 
     it "applies the excludes to explicitly passed test files" do
@@ -1046,7 +1097,7 @@ RSpec.describe Henitai::CoverageBootstrapper do
         test_files: ["spec/unit/a_spec.rb", "spec/integration/slow_spec.rb"]
       )
 
-      expect(integration).to have_received(:run_suite).with(["spec/unit/a_spec.rb"])
+      expect(integration).to have_received(:run_suite).with(["spec/unit/a_spec.rb"], timeout: Henitai::Configuration::DEFAULT_SUITE_TIMEOUT)
     end
 
     it "raises a configuration error when the excludes match every test file" do
@@ -1113,7 +1164,8 @@ RSpec.describe Henitai::CoverageBootstrapper do
       )
 
       expect(integration).to have_received(:run_suite).with(
-        ["spec/unit/a_spec.rb", "spec/integration/slow_spec.rb"]
+        ["spec/unit/a_spec.rb", "spec/integration/slow_spec.rb"],
+        timeout: Henitai::Configuration::DEFAULT_SUITE_TIMEOUT
       )
     end
   end

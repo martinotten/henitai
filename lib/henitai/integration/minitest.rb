@@ -23,8 +23,6 @@ module Henitai
       include MutantRunSupport
       include RspecTestSelection
 
-      DEFAULT_SUITE_TIMEOUT = 300.0
-
       def test_files = spec_files
 
       def per_test_coverage_supported?
@@ -42,7 +40,7 @@ module Henitai
         super
       end
 
-      def run_suite(test_files, timeout: DEFAULT_SUITE_TIMEOUT)
+      def run_suite(test_files, timeout: Configuration::DEFAULT_SUITE_TIMEOUT)
         log_paths = scenario_log_paths("baseline")
         pid = spawn_suite_process(test_files, log_paths)
         wait_result = wait_with_timeout(pid, timeout)

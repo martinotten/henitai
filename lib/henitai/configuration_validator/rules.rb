@@ -100,6 +100,7 @@ module Henitai
         Scalars.validate_max_flaky_retries(value[:max_flaky_retries])
         Scalars.validate_max_log_bytes(value[:max_log_bytes])
         Scalars.validate_max_timeout(value[:max_timeout])
+        Scalars.validate_suite_timeout(value[:suite_timeout])
         validate_mutation_flags(value)
       end
 

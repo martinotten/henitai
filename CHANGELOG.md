@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `mutation.suite_timeout` (default `900.0` seconds) sets the limit for one
+  baseline suite run (coverage bootstrap and flaky detection).
 - The test order learned in a run (kill counts per test file and the test files
   that hung per subject) is saved to `henitai_test_order.json` in the reports
   directory and seeds the next run, so a hang is paid once rather than in every
@@ -31,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The default limit for a baseline suite run went from 300 s to 900 s; it is
+  now configurable as `mutation.suite_timeout`.
 - `jobs: 1` runs through the same scheduler as `jobs: N` (ADR-20); `jobs`
   only sets how many mutants run at once. One-job runs now handle INT, TERM
   and HUP like parallel runs (drain the running child, then stop with
@@ -49,6 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A baseline suite run that exceeds its limit is reported as a timeout that
+  names `mutation.suite_timeout`, instead of "Configured test suite failed
+  while generating coverage".
 - Test prioritization works. Kill counts never reached `TestPrioritizer`
   (it read a `config.history` that does not exist), and with
   `config.order = :random` the RSpec child reshuffled the spec files anyway.

@@ -87,6 +87,7 @@ mutation:
   flaky_detection: false   # run the baseline twice to find flaky test files
   max_log_bytes: 5000000
   max_timeout: 30.0
+  suite_timeout: 900.0   # seconds the baseline suite run (coverage bootstrap, flaky detection) may take
   control_runs: true   # re-run detected subjects with the unmutated method
   fork_server: false   # opt-in: boot the RSpec/Minitest environment once, fork each mutant run from it (any jobs; falls back to per-mutant boot with a warning)
   sampling:
@@ -129,7 +130,9 @@ durations of the selected test files + the measured suite boot time), with a
 2 s floor. `mutation.max_timeout` (default `30.0`) caps the calibrated value,
 but never below the measured baseline plus 2 s; when the baseline alone exceeds
 `max_timeout`, Henitai warns once and uses baseline + 2 s. An explicit
-`mutation.timeout` still takes precedence. When JSON or HTML reporting is
+`mutation.timeout` still takes precedence. `mutation.suite_timeout` (default
+`900.0`) limits one baseline suite run (coverage bootstrap and flaky detection);
+if it is exceeded, Henitai reports a timeout and names the setting to raise. When JSON or HTML reporting is
 enabled, `reports.checkpoint*` controls periodic canonical-report checkpoints.
 Each checkpoint updates `mutation-report.json`; when the HTML reporter is
 configured, it also regenerates `mutation-report.html` from that merged JSON.

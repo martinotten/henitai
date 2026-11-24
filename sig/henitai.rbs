@@ -198,6 +198,7 @@ module Henitai
     DEFAULT_MAX_FLAKY_RETRIES: Integer
     DEFAULT_MAX_LOG_BYTES: Integer
     DEFAULT_MAX_TIMEOUT: Float
+    DEFAULT_SUITE_TIMEOUT: Float
     DEFAULT_CHECKPOINT_EVERY: Integer
     DEFAULT_CHECKPOINT_INTERVAL: Float
     DEFAULT_REPORTS_DIR: String
@@ -220,6 +221,7 @@ module Henitai
     attr_reader fork_server: bool
     attr_reader max_log_bytes: Integer
     attr_reader max_timeout: Float
+    attr_reader suite_timeout: Float
     attr_reader sampling: untyped
     attr_reader jobs: untyped
     attr_reader coverage_criteria: Hash[Symbol, untyped]
@@ -1420,14 +1422,14 @@ module Henitai
   end
 
   class FlakyDetectionBaseline
-    def initialize: (reports_dir: String) -> void
+    def initialize: (reports_dir: String, ?timeout: Numeric) -> void
     def run: (integration: untyped, test_files: Array[String]) -> FlakyTestRegistry
   end
 
   module BootstrapErrorMessage
     GENERIC: String
 
-    def self.build: (untyped) -> String
+    def self.build: (untyped, ?timeout: Numeric?) -> String
   end
 
   class FlakyRetryDecision
