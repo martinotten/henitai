@@ -35,17 +35,18 @@ module Henitai
 
       # A fork-server process loaded the union of the run's spec files; each
       # mutant process runs only the groups defined in its own files.
+      # The groups run in the order of test_files, so the child's fail-fast
+      # stops at the file the parent expects to fail first, whatever RSpec's
+      # random ordering did to the top-level groups.
       def example_groups_to_run(test_files)
         groups = ::RSpec.world.ordered_example_groups
-        return groups unless @preloaded_runner
-
-        wanted = test_files.map { |file| File.expand_path(file) }
-        groups.select { |group| wanted.include?(example_group_file(group)) }
+        groups = filter_to_wanted_files(groups, test_files) if @preloaded_runner
+        RspecFileOrder.new(test_files).sort(groups)
       end
 
-      def example_group_file(group)
-        metadata = group.metadata
-        metadata[:absolute_file_path] || File.expand_path(metadata[:file_path])
+      def filter_to_wanted_files(groups, test_files)
+        wanted = test_files.map { |file| File.expand_path(file) }
+        groups.select { |group| wanted.include?(RspecFileOrder.file_of(group)) }
       end
 
       # The after-load hook (mutant activation) runs only when every spec file
