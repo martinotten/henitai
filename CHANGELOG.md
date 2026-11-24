@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-24
+
+Minor release. Interrupted runs can be resumed, `jobs: 1` runs through the
+same scheduler as parallel runs, a mutant's test run stops at its first
+failure, and test files are ordered by what earlier runs learned (kills,
+hangs). Expect shorter runs and a higher MSI: mutants that a test killed
+before a later test hung used to be reported as `Timeout`. Custom
+integrations must implement `#spawn_mutant` and `#build_result`;
+`Integration#run_mutant` is gone.
+
 ### Added
 
 - `mutation.suite_timeout` (default `900.0` seconds) sets the limit for one
@@ -907,7 +917,8 @@ before adjusting thresholds.
 - CLI critical path: `henitai run` now executes the full pipeline, supports `--since`, returns CI-friendly exit codes, and `henitai version` prints `Henitai::VERSION`
 - RSpec per-test coverage output: `henitai/coverage_formatter` now writes `coverage/henitai_per_test.json`
 
-[Unreleased]: https://github.com/martinotten/henitai/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/martinotten/henitai/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/martinotten/henitai/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/martinotten/henitai/compare/v0.5.3...v0.6.0
 [0.5.3]: https://github.com/martinotten/henitai/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/martinotten/henitai/compare/v0.5.1...v0.5.2
