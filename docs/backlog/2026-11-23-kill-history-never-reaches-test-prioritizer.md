@@ -42,9 +42,56 @@ killed neighbouring mutants of the same subject is the best first guess.
 - `KillHistory` (progress observer behind the `ControlGate`) counts final
   kills per test file during the run; `ExecutionEngine` hands it to
   `TestPrioritizer` for every mutant still to launch. `config.history` and
-  the spec double that faked it are gone. Persisted cross-run kill counts
-  were not added: the history store keeps no killing test files.
+  the spec double that faked it are gone.
 - Found while fixing: with `config.order = :random` (this repository's own
   spec_helper) the RSpec child reshuffled the top-level groups, so no file
-  order ever took effect. `RspecFileOrder` sorts the groups by the order of
-  the mutant's test files. Minitest shuffles classes; left as is.
+  order ever took effect, neither kill counts nor the runtime tiebreaker.
+  `RspecFileOrder` sorts the groups by the order of the mutant's test files;
+  RSpec's ordering still applies within a file. Minitest shuffles classes;
+  left as is.
+- Kill counts alone made runs slower (measurement below). A mutant child now
+  writes the test file it is running next to its report (`<report>.running`,
+  `ChildReportStore#write_running`, fed by `TestFileOutcomes#started` from
+  RSpec group starts and Minitest `prerecord`). A `Timeout` result carries
+  that file as `hanging_test`; `KillHistory` remembers it per subject, and
+  `TestPrioritizer` sorts such files last, ahead of kill count and runtime.
+
+## Analysis (2026-11-24)
+
+Dogfood `SlotScheduler*` subjects, 408 mutants unsampled, `jobs: 1`,
+`mutation.timeout: 10`, fail-fast already on main. Runs interleaved.
+
+| Ordering | Wall time | Timeouts | Killed |
+|---|---|---|---|
+| main (RSpec random order) | 639, 430, 449, 462 s | 36-40, 32, 39 | 345-353 |
+| kill count first | 923, 801 s | 74 | 311 |
+| runtime only (fastest first) | 929, 801 s | 70, 73 | 312-315 |
+| hang-aware (shipped) | 359, 248 s | 16, 12 | 369, 359 |
+
+- Survivors are identical (23) in every run; only Killed/Timeout move.
+- Any fixed order without the hang rule is about twice as slow as random
+  order. All 40 mutants that went from Killed to Timeout under kill-count
+  ordering ran `process_worker_runner_spec.rb` first: it has the most kills
+  in the run but hangs under mutants of the scheduler's drain code before
+  any example fails, so every such mutant waits out the 10 s timeout. With
+  random order a quickly failing file often runs first.
+- Timeouts were common before any of this: 82 of the 408 mutants timed out
+  before fail-fast (a test killed the mutant, a later one hung). Fail-fast
+  made order matter: the run ends at the first failure, so it pays only if
+  a failing file comes before the hanging one.
+- Hang-aware ordering pays the hang once per subject and file: versus main,
+  24 and 28 mutants went from Timeout to Killed, 8 and 6 the other way.
+- The second hang-aware run also had 14 CompileError: one subject's control
+  child died by SIGTERM. Not reproduced; tracked in
+  [`2026-11-24-control-child-terminated-by-sigterm.md`](2026-11-24-control-child-terminated-by-sigterm.md).
+- One runtime-only measurement was discarded: the variant was built by
+  disabling kill counts in a worktree while its spec for kill ordering still
+  ran, so every control including that spec failed (256 CompileError). A
+  variant must keep its own suite green.
+
+## Not Done
+
+- Cross-run persistence of kill and hang counts (history store or a reports
+  file): the first mutant of each subject still pays the hang once per run.
+- Minitest ordering (classes are shuffled by Minitest itself) and a
+  real-child spec for the Minitest running-file marker (unit specs only).

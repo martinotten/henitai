@@ -46,10 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test prioritization works. Kill counts never reached `TestPrioritizer`
   (it read a `config.history` that does not exist), and with
   `config.order = :random` the RSpec child reshuffled the spec files anyway.
-  Now a file that killed earlier mutants of the run runs first, then the
-  fastest files, and the RSpec child keeps that file order (random order
-  still applies within a file). With fail-fast this shortens killed mutants'
-  runs. Minitest shuffles test classes and is unaffected
+  Now a test file that hung (timed out) for an earlier mutant of the same
+  subject runs last; the others run by kills earlier in the run, then
+  fastest first, and the RSpec child keeps that file order (random order
+  still applies within a file). On the dogfood benchmark this cut wall time
+  by 20-46% and timeouts by more than half. Minitest shuffles test classes
+  and is unaffected
 - `StringLiteral` no longer emits an equivalent mutant for strings without
   interpolation that parse as `dstr` (adjacent literals such as
   `"a " "b"`, multi-line heredocs). It used to "remove the interpolation"
