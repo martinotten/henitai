@@ -291,14 +291,12 @@ the run trend history. The selected survivors go through the same reuse rules
 as `--incremental`, always, not only with that flag: a survivor is skipped
 (reported with `fromCache: true`) only when its subject source, its covering
 test set and the reuse context are unchanged, so new or edited tests and
-helpers invalidate it. Dirty worktree changes are included, so you can edit
-tests locally without committing first; if source files under `includes` are
-dirty, the activation-recipe fast path is not used and the survivors are
-re-matched against freshly generated mutants. Survivors restored from
-activation recipes have no source range to fingerprint and are always
-re-executed. When `--survivors-from` names a canonical report, Henitai uses the
-matching session snapshot only if every file entry carries that report's
-`sessionId`; a report merged from several runs is used as is.
+helpers invalidate it, including uncommitted edits. Henitai matches survivor
+IDs against mutants generated from the current project and ignores legacy
+`activation-recipes.json` files. When `--survivors-from` names a canonical report,
+Henitai uses the matching session snapshot only if every file entry carries
+that report's `sessionId` and the snapshot exists. A report merged from several
+runs is used as is.
 Only authoritative runs (no `--since`, no subject patterns, no survivor rerun)
 add a row to the trend history.
 

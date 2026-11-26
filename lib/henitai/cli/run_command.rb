@@ -57,26 +57,15 @@ module Henitai
       def resolve_survivors_from(survivors_from)
         return nil if survivors_from.nil?
 
-        # Fast path: if the path already points into reports/sessions/<session_id>/,
-        # keep it as-is so activation-recipes.json can be found by the runner.
         report_dir = File.dirname(survivors_from)
         parent_dir = File.dirname(report_dir)
-        # Heuristic: treat any path under a directory named "sessions" as already
-        # being a snapshot path; this keeps activation-recipes lookup correct.
         return survivors_from if File.basename(parent_dir) == "sessions"
 
         session_id = single_session_id_from_report(survivors_from)
         return survivors_from if session_id.nil?
 
         snapshot_path = survivors_snapshot_path(report_dir, session_id)
-        recipe_path = File.join(report_dir, "sessions", session_id, "activation-recipes.json")
-        return snapshot_path if File.exist?(recipe_path) && File.exist?(snapshot_path)
-
-        # If the recipes exist but the snapshot doesn't (e.g. partial cleanup),
-        # fall back to the path the user provided so the error message points
-        # at what they actually passed.
-
-        survivors_from
+        File.file?(snapshot_path) ? snapshot_path : survivors_from
       rescue StandardError => e
         warn_survivors_from_resolution_error(survivors_from, e)
         survivors_from
@@ -92,6 +81,8 @@ module Henitai
       def single_session_id_from_report(path)
         parsed = JSON.parse(File.read(path))
         session_id = parsed["sessionId"]
+        return nil unless session_id.is_a?(String) && session_id.match?(/\A[a-zA-Z0-9_-]+\z/)
+
         files = parsed["files"]
         return nil unless files.is_a?(Hash) && files.each_value.all? { |f| f["sessionId"] == session_id }
 

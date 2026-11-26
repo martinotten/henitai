@@ -14,7 +14,7 @@ module Henitai
     # For :toplevel, +lexical_scope+ holds the opener lines (e.g. "module A",
     # "class B"), +owner+ the expression the +def+ is defined on ("self" or
     # the receiver of +def Other.name+), and +singleton+ whether it is a
-    # +defs+. They let a replayed recipe reopen the scope without the AST.
+    # +defs+.
     Activation = Struct.new(:source, :mode, :file, :line, :def_offset, :lexical_scope, :owner, :singleton,
                             keyword_init: true) do
       def self.from_h(hash)

@@ -36,8 +36,8 @@ module Henitai
       # Returns the Activation for +mutant+ without evaluating it: a real
       # +def+ in the original lexical scope when the subject can be reopened
       # (ADR-13), otherwise the +define_method+ fallback. Used by the fidelity
-      # check and to pre-compute activation recipes. Returns nil if the source
-      # cannot be computed (e.g. unsupported AST node).
+      # check. Returns nil if the source cannot be computed (e.g. unsupported
+      # AST node).
       def self.activation_for(mutant)
         new.activation_for(mutant)
       rescue StandardError

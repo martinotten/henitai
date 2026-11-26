@@ -229,9 +229,8 @@ coverage and is excluded from `includes` in `.henitai.yml`.
   (test dependency files, henitai version, integration, operators,
   `test_excludes`, `coverage_criteria`) are unchanged; legacy rows without a
   context are never reused. `--survivors-from` reruns apply the same filter to
-  the selected survivors, always; recipe stubs (no source range) are never
-  reused, and `DirtySourceDetector` only gates the activation-recipe fast
-  path. `rake oracle:reuse` checks the property end to end.
+  the selected survivors, always. The report provides survivor IDs and the
+  current project supplies the activation source. `rake oracle:reuse` checks the property end to end.
 - Sampling (`mutation.sampling`) is stratified per subject: `ceil(size*ratio)`
   mutants (at least one), strata by operator, ordered by SHA256 of
   `mutation.sampling.seed` (default `0`) and the stable ID, visited
@@ -314,8 +313,7 @@ deliberate even though `||=` is a valid `UpdateOperator`/
   `reports/mutation-history.sqlite3`, keyed by a stable SHA256 of expression,
   operator, description, location, and signature. It survives line-number
   drift and supports latent-mutant tracking separately from the pass/fail model.
-  Recipe stubs keep their precomputed `stable_id` and persist the `replacement`
-  source. Every cached Killed/Survived verdict stores the `ReuseContext`
+  Every cached Killed/Survived verdict stores the `ReuseContext`
   fingerprint. Trend `runs` rows are written only for authoritative runs (not
   `--since`, subject-scoped or survivor reruns, never for aborted runs).
 - Resumable runs (ADR-19): `HistoryCheckpointer` writes final verdicts into

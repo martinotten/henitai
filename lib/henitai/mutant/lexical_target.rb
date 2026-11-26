@@ -22,10 +22,8 @@ module Henitai
       # of +def Other.name+ -- as their body. The subject's namespace is only
       # the resolver's static reading of the source, which cannot tell
       # whether +Other+ inside +module Outer+ is +Outer::Other+ or +::Other+.
-      # The scope, owner and singleton flag come from the activation, so a
-      # replayed recipe does not need the AST. The subject's file is loaded
-      # first when needed (see +ensure_loaded+), so that evaluating the openers
-      # reopens the loaded class instead of creating an empty one.
+      # The subject's file is loaded first when needed (see +ensure_loaded+),
+      # so evaluating the openers reopens the loaded class.
       def resolve(subject, activation)
         scope = activation.lexical_scope
         ensure_loaded(subject, scope)

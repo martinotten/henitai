@@ -79,7 +79,6 @@ RSpec.describe Henitai::CLI do
     sessions_dir = File.join(report_dir, "sessions", session_id)
     FileUtils.mkdir_p(sessions_dir)
 
-    File.write(File.join(sessions_dir, "activation-recipes.json"), JSON.generate({}))
     snapshot_path = File.join(sessions_dir, "mutation-report.json")
     File.write(snapshot_path, canonical_report)
     [report_path, snapshot_path]
@@ -644,36 +643,6 @@ RSpec.describe Henitai::CLI do
         session_id: "01234567-89ab-cdef-0123-456789abcdef"
       )
       FileUtils.rm_f(snapshot_path)
-      captured_survivors_from = :not_set
-      result = instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: true)
-      runner = build_runner(result:)
-
-      allow(Henitai::Runner).to receive(:new) do |**kwargs|
-        captured_survivors_from = kwargs[:survivors_from]
-        runner
-      end
-
-      cli = described_class.new(["run", "--config", config_path, "--survivors-from", report_path])
-      cli.define_singleton_method(:exit) { |_status = nil| nil }
-      cli.run
-
-      expect(captured_survivors_from).to eq(report_path)
-    end
-  end
-
-  it "falls back to the original survivors-from path when activation recipes are missing" do
-    Dir.mktmpdir do |dir|
-      config_path = write_configuration(dir)
-      report_dir = File.join(dir, "reports")
-      FileUtils.mkdir_p(report_dir)
-      report_path = File.join(report_dir, "mutation-report.json")
-      session_id = "01234567-89ab-cdef-0123-456789abcdef"
-      snapshot_path = File.join(report_dir, "sessions", session_id, "mutation-report.json")
-
-      File.write(report_path, JSON.generate("schemaVersion" => "1.0", "sessionId" => session_id, "files" => {}))
-      FileUtils.mkdir_p(File.dirname(snapshot_path))
-      File.write(snapshot_path, JSON.generate("schemaVersion" => "1.0", "sessionId" => session_id, "files" => {}))
-
       captured_survivors_from = :not_set
       result = instance_double(Henitai::Result, mutation_score: 100, partial_rerun?: true)
       runner = build_runner(result:)
