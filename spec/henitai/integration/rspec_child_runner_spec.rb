@@ -420,6 +420,13 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
   describe "the fork-server boot" do
     subject(:integration) { Henitai::Integration::Rspec.new }
 
+    around do |example|
+      original = ENV.fetch("PARALLEL_WORKERS", nil)
+      example.run
+    ensure
+      original.nil? ? ENV.delete("PARALLEL_WORKERS") : ENV["PARALLEL_WORKERS"] = original
+    end
+
     it "loads the spec files without running a single example" do
       Dir.mktmpdir do |dir|
         marker = File.join(dir, "ran")
