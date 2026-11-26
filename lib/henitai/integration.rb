@@ -53,7 +53,6 @@ module Henitai
     # RSpec integration adapter.
     class Rspec < Base
       include MutantRunSupport
-      include RspecChildRunner
       include RspecPreload
       include RspecTestSelection
 
@@ -129,13 +128,21 @@ module Henitai
         log.rspec_trace(test_files:, rspec_options: [], rspec_argv: test_files)
         log.example_count("before_run")
         log.write("[henitai-debug-child] runner_run_start")
-        status = run_rspec_runner(test_files, &outcome_recording_hook(outcomes, after_load))
+        status = rspec_child_runner.run(test_files, &outcome_recording_hook(outcomes, after_load))
         log.write("[henitai-debug-child] runner_run_return status=#{status.inspect}")
         log.example_count("after_run")
         log.rspec_exit(status)
         return status if status.is_a?(Integer)
 
         status == true ? 0 : 1
+      end
+
+      # Inherited unchanged by the forked mutant process. A fork-server boot
+      # replaces it (see RspecPreload#preload_environment), so the boot and the
+      # object that runs the tests are the same one; nothing here can fall out
+      # of step with it.
+      def rspec_child_runner
+        @rspec_child_runner ||= RspecChildRunner.new(log: child_debug_log)
       end
     end
   end

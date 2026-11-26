@@ -130,7 +130,7 @@ module Henitai
 
   module Integration::RspecPreload
     def fork_server_supported?: () -> bool
-    def preload_environment: (Array[String]) -> untyped
+    def preload_environment: (Array[String]) -> Integration::RspecChildRunner::Preloaded
   end
 
   module Integration::MinitestPreload
@@ -138,14 +138,22 @@ module Henitai
     def preload_environment: (Array[String]) -> untyped
   end
 
-  module Integration::RspecChildRunner
-    private
+  class Integration::RspecChildRunner
+    class PreloadError < StandardError
+    end
 
-    def run_rspec_runner: (Array[String]) ?{ () -> untyped } -> untyped
-    def build_rspec_runner: () -> untyped
-    def configure_rspec_runner: (untyped) -> void
-    def load_rspec_spec_files: (Array[String]) -> void
-    def run_rspec_specs: (untyped, untyped) -> untyped
+    class Preloaded < Integration::RspecChildRunner
+    end
+
+    def initialize: (?log: Integration::ChildDebugLog, ?preloaded_runner: untyped) -> void
+
+    def preloaded?: () -> bool
+
+    def preload: (Array[String] test_files) -> Preloaded
+
+    def run: (Array[String] test_files) ?{ () -> untyped } -> Integer
+
+    def rspec_loaded_cleanly?: () -> bool
   end
 
   module RspecOutcomes
@@ -570,7 +578,6 @@ module Henitai
 
     class Rspec < Base
       include MutantRunSupport
-      include RspecChildRunner
       include RspecPreload
       include RspecTestSelection
 
@@ -587,6 +594,7 @@ module Henitai
 
       def outcome_recording_hook: (TestFileOutcomes, (^() -> untyped)?) -> (^() -> untyped)
       def run_tests: (Array[String], TestFileOutcomes) ?{ () -> untyped } -> Integer
+      def rspec_child_runner: () -> RspecChildRunner
     end
 
     module CoverageRuntimeSuppressors

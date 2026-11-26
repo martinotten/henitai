@@ -1,12 +1,16 @@
 # frozen_string_literal: true
 
+require_relative "rspec_child_runner"
+
 module Henitai
   module Integration
     # Lets the fork server (ADR-15) boot the RSpec environment once. The
     # booted runner stays in the server; every forked mutant process then runs
     # its own subset of the loaded example groups.
     module RspecPreload
-      class PreloadError < StandardError; end
+      # Kept as an alias: callers rescue RspecPreload::PreloadError, and the
+      # runner that raises it is a separate collaborator.
+      PreloadError = RspecChildRunner::PreloadError
 
       def fork_server_supported?
         true
@@ -18,17 +22,15 @@ module Henitai
       # in every mutant child.
       #
       # @raise [PreloadError] when a spec file failed to load
+      # @return [RspecChildRunner::Preloaded] the booted runner, which the
+      #   forked mutant processes inherit through +rspec_child_runner+
       def preload_environment(test_files)
         CoverageRuntimeSuppressors.suppress_simplecov!
         CoverageRuntimeSuppressors.suppress_coverage!
         subprocess_env.each { |key, value| ENV[key] = value }
         require "rspec/core"
         ::RSpec.configuration.fail_if_no_examples = true
-        runner = prepare_rspec_runner(test_files)
-        raise PreloadError, "the spec files failed to load" unless rspec_loaded_cleanly?
-
-        @preloaded_runner = runner
-        nil
+        @rspec_child_runner = rspec_child_runner.preload(test_files)
       end
     end
   end

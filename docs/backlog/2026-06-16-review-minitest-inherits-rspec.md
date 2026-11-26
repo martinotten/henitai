@@ -16,7 +16,7 @@ makes Minitest a subtype of RSpec.
 ## Problem
 
 - `class Minitest < Rspec` (line 823) means `run_rspec_runner`,
-  `build_rspec_runner`, `configure_rspec_runner`, `load_rspec_spec_files` are all
+  `build_runner`, `configure_runner`, `load_spec_files` are all
   inherited into the Minitest path.
 - Any change to RSpec internals can silently break Minitest with no compile-time
   or test signal.

@@ -6,37 +6,25 @@ require "spec_helper"
 require "stringio"
 require "tmpdir"
 
-# RspecChildRunner only ever runs inside a forked mutant child, whose coverage
-# never merges into the parent's report. These examples drive it in-process
-# instead: every nested RSpec run happens against a throwaway world and
-# configuration (RSpec::Core::Sandbox), so it can neither see nor disturb this
-# suite's own examples.
+# The runner's only production caller is a forked mutant child, whose coverage
+# never merges into the parent's report. These examples therefore drive the
+# real collaborator in-process: every nested RSpec run happens against a
+# throwaway world and configuration (RSpec::Core::Sandbox), so it can neither
+# see nor disturb this suite's own examples.
 RSpec.describe Henitai::Integration::RspecChildRunner do
+  subject(:runner) { described_class.new(log: child_log) }
+
   let(:debug_output) { StringIO.new }
-  let(:host) { host_class.new(debug_output) }
-  let(:debug_lines) { debug_output.string.split("\n") }
+  let(:child_log) { Henitai::Integration::ChildDebugLog.new(io: debug_output) }
+  let(:debug_messages) { debug_output.string.split("\n").map { |line| line.delete_prefix(debug_prefix) } }
+  let(:debug_prefix) { "[henitai-debug-child] " }
 
-  let(:host_class) do
-    Class.new do
-      include Henitai::Integration::RspecChildRunner
-      include Henitai::Integration::RspecPreload
+  def a_runner = described_class.new(log: child_log)
 
-      def initialize(debug_output)
-        @debug_output = debug_output
-      end
-
-      # Integration::Base provides the memoized reader; this host points it at
-      # a captured stream so the examples can read the child diagnostics.
-      def child_debug_log = Henitai::Integration::ChildDebugLog.new(io: @debug_output)
-
-      def subprocess_env = {}
-
-      # Private in the module: Integration::Rspec#run_tests is its only caller,
-      # and that path needs a real fork.
-      public :run_rspec_runner
-    end
-  end
-
+  # RspecPreload#preload_environment disables SimpleCov and Coverage in
+  # whatever process it runs in. That is correct inside a fork-server child but
+  # would replace this suite's own coverage result, so it is stubbed here — as
+  # in every other in-process spec (see spec/infra/shared_coverage_process_spec).
   before do
     allow(Henitai::Integration::CoverageRuntimeSuppressors).to receive_messages(
       suppress_simplecov!: nil, suppress_coverage!: nil
@@ -104,11 +92,7 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
     original.nil? ? ENV.delete("HENITAI_DEBUG_CHILD") : ENV["HENITAI_DEBUG_CHILD"] = original
   end
 
-  def debug_messages
-    debug_lines.map { |line| line.delete_prefix("[henitai-debug-child] ") }
-  end
-
-  # Every phase the runner logs, in order. The debug log is the child's only
+  # Every phase the run logs, in order. The debug log is the child's only
   # diagnostic when a mutant child hangs or dies before it reports.
   def expected_trace
     %w[
@@ -120,7 +104,27 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
     ] + ["run_specs_return result=0", "runner_run_ensure"]
   end
 
-  describe "#run_rspec_runner" do
+  describe "#run" do
+    it "returns 0 when every loaded example passes" do
+      Dir.mktmpdir do |dir|
+        spec = write_spec(dir, "passing_spec.rb", recording_spec("child runner pass", File.join(dir, "ran"), "a"))
+
+        status, = with_child_rspec_world { runner.run([spec]) }
+
+        expect(status).to eq(0)
+      end
+    end
+
+    it "returns 1 when an example fails" do
+      Dir.mktmpdir do |dir|
+        spec = write_spec(dir, "failing_spec.rb", failing_spec("child runner failure"))
+
+        status, = with_child_rspec_world { runner.run([spec]) }
+
+        expect(status).to eq(1)
+      end
+    end
+
     # The child would otherwise keep whatever INT handler the parent's fork
     # left in place, and Ctrl-C would not stop it the way a user expects.
     it "installs RSpec's own INT handler instead of leaving the inherited one" do
@@ -128,7 +132,7 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
         spec = write_spec(dir, "passing_spec.rb", recording_spec("child runner interrupt", File.join(dir, "ran"), "a"))
 
         handler, = with_child_rspec_world do
-          host.run_rspec_runner([spec])
+          runner.run([spec])
           # Read the handler back without invoking it.
           Signal.trap("INT", "DEFAULT")
         end
@@ -145,30 +149,10 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
         spec = write_spec(dir, "passing_spec.rb", recording_spec("child runner formatter", File.join(dir, "ran"), "a"))
 
         _, _, output = with_child_rspec_world do
-          Dir.chdir(dir) { host.run_rspec_runner([spec]) }
+          Dir.chdir(dir) { runner.run([spec]) }
         end
 
         expect(output.lines.first(3)).to eq(["\n", "child runner formatter\n", "  runs\n"])
-      end
-    end
-
-    it "returns 0 when every loaded example passes" do
-      Dir.mktmpdir do |dir|
-        spec = write_spec(dir, "passing_spec.rb", recording_spec("child runner pass", File.join(dir, "ran"), "a"))
-
-        status, = with_child_rspec_world { host.run_rspec_runner([spec]) }
-
-        expect(status).to eq(0)
-      end
-    end
-
-    it "returns 1 when an example fails" do
-      Dir.mktmpdir do |dir|
-        spec = write_spec(dir, "failing_spec.rb", failing_spec("child runner failure"))
-
-        status, = with_child_rspec_world { host.run_rspec_runner([spec]) }
-
-        expect(status).to eq(1)
       end
     end
 
@@ -179,7 +163,7 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
         at_hook = nil
 
         with_child_rspec_world do
-          host.run_rspec_runner([spec]) do
+          runner.run([spec]) do
             at_hook = [RSpec.world.example_groups.size, ran_tags(marker)]
             true
           end
@@ -194,9 +178,7 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
         marker = File.join(dir, "ran")
         spec = write_spec(dir, "passing_spec.rb", recording_spec("child runner skipped", marker, "a"))
 
-        status, = with_child_rspec_world do
-          host.run_rspec_runner([spec]) { false }
-        end
+        status, = with_child_rspec_world { runner.run([spec]) { false } }
 
         expect([status, ran_tags(marker)]).to eq([1, []])
       end
@@ -207,9 +189,7 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
         spec = write_spec(dir, "broken_spec.rb", %(raise "load boom"\n))
         hook_calls = []
 
-        status, = with_child_rspec_world do
-          host.run_rspec_runner([spec]) { hook_calls << :called }
-        end
+        status, = with_child_rspec_world { runner.run([spec]) { hook_calls << :called } }
 
         expect([status, hook_calls]).to eq([1, []])
       end
@@ -223,7 +203,7 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
           "RSpec.world.wants_to_quit = true\n#{recording_spec('child runner quitting', marker, 'a')}"
         )
 
-        status, = with_child_rspec_world { host.run_rspec_runner([spec]) }
+        status, = with_child_rspec_world { runner.run([spec]) }
 
         expect([status, ran_tags(marker)]).to eq([1, []])
       end
@@ -237,7 +217,7 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
           "RSpec.world.rspec_is_quitting = true\n#{recording_spec('child runner already quitting', marker, 'a')}"
         )
 
-        status, = with_child_rspec_world { host.run_rspec_runner([spec]) }
+        status, = with_child_rspec_world { runner.run([spec]) }
 
         expect([status, ran_tags(marker)]).to eq([1, []])
       end
@@ -252,7 +232,7 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
         )
         second = write_spec(dir, "second_spec.rb", recording_spec("child runner second", marker, "b"))
 
-        status, configuration, = with_child_rspec_world { host.run_rspec_runner([first, second]) }
+        status, configuration, = with_child_rspec_world { runner.run([first, second]) }
 
         expect([status, configuration.fail_fast, ran_tags(marker)]).to eq([1, 1, []])
       end
@@ -264,7 +244,7 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
         first = write_spec(dir, "a_spec.rb", recording_spec("child runner ordered a", marker, "a"))
         second = write_spec(dir, "b_spec.rb", recording_spec("child runner ordered b", marker, "b"))
 
-        with_child_rspec_world { host.run_rspec_runner([second, first]) }
+        with_child_rspec_world { runner.run([second, first]) }
 
         expect(ran_tags(marker)).to eq(%w[b a])
       end
@@ -281,7 +261,7 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
 
         with_debug_child do
           with_child_rspec_world do
-            host.run_rspec_runner([spec])
+            runner.run([spec])
           rescue SystemExit => e
             raised_status = e.status
           end
@@ -297,7 +277,7 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
       Dir.mktmpdir do |dir|
         spec = write_spec(dir, "passing_spec.rb", recording_spec("child runner traced", File.join(dir, "ran"), "a"))
 
-        with_debug_child { with_child_rspec_world { host.run_rspec_runner([spec]) } }
+        with_debug_child { with_child_rspec_world { runner.run([spec]) } }
 
         expect(debug_messages.grep(/start|return|ensure/)).to eq(expected_trace)
       end
@@ -308,11 +288,9 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
         first = write_spec(dir, "a_spec.rb", recording_spec("child runner counted a", File.join(dir, "ran"), "a"))
         second = write_spec(dir, "b_spec.rb", recording_spec("child runner counted b", File.join(dir, "ran"), "b"))
 
-        with_debug_child { with_child_rspec_world { host.run_rspec_runner([first, second]) } }
+        with_debug_child { with_child_rspec_world { runner.run([first, second]) } }
 
-        expect(debug_messages.grep(/example_count/)).to eq(
-          ["rspec_world_example_count_after_load=2"]
-        )
+        expect(debug_messages.grep(/example_count/)).to eq(["rspec_world_example_count_after_load=2"])
       end
     end
 
@@ -321,42 +299,154 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
         write_spec(dir, "passing_spec.rb", recording_spec("child runner relative", File.join(dir, "ran"), "a"))
 
         _, configuration, = with_child_rspec_world do
-          Dir.chdir(dir) { host.run_rspec_runner(["passing_spec.rb"]) }
+          Dir.chdir(dir) { runner.run(["passing_spec.rb"]) }
         end
 
         expect(configuration.files_to_run).to eq([File.realpath(File.join(dir, "passing_spec.rb"))])
       end
     end
-  end
 
-  describe "with a fork-server-preloaded runner" do
-    it "runs only the example groups defined in the requested files" do
-      Dir.mktmpdir do |dir|
-        marker = File.join(dir, "ran")
-        wanted = write_spec(dir, "b_spec.rb", recording_spec("child runner preloaded b", marker, "b"))
-        other = write_spec(dir, "a_spec.rb", recording_spec("child runner preloaded a", marker, "a"))
+    context "with a runner a fork server already booted" do
+      it "runs only the example groups defined in the requested files" do
+        Dir.mktmpdir do |dir|
+          marker = File.join(dir, "ran")
+          wanted = write_spec(dir, "b_spec.rb", recording_spec("child runner preloaded b", marker, "b"))
+          other = write_spec(dir, "a_spec.rb", recording_spec("child runner preloaded a", marker, "a"))
 
+          with_child_rspec_world do
+            booted = a_runner.preload([other, wanted])
+            booted.run([wanted])
+          end
+
+          expect(ran_tags(marker)).to eq(%w[b])
+        end
+      end
+
+      it "keeps the requested file order for the groups it keeps" do
+        Dir.mktmpdir do |dir|
+          marker = File.join(dir, "ran")
+          first = write_spec(dir, "a_spec.rb", recording_spec("child runner preload order a", marker, "a"))
+          second = write_spec(dir, "b_spec.rb", recording_spec("child runner preload order b", marker, "b"))
+
+          with_child_rspec_world do
+            booted = a_runner.preload([first, second])
+            booted.run([second, first])
+          end
+
+          expect(ran_tags(marker)).to eq(%w[b a])
+        end
+      end
+
+      it "knows it was booted, while a fresh runner does not" do
         with_child_rspec_world do
-          host.preload_environment([other, wanted])
-          host.run_rspec_runner([wanted])
+          booted = a_runner.preload([])
+          [booted.preloaded?, a_runner.preloaded?]
         end
 
-        expect(ran_tags(marker)).to eq(%w[b])
+        expect(a_runner.preloaded?).to be(false)
+      end
+    end
+  end
+
+  describe "#preload" do
+    it "returns a preloaded runner holding the loaded example groups" do
+      Dir.mktmpdir do |dir|
+        spec = write_spec(dir, "passing_spec.rb", recording_spec("child runner boot", File.join(dir, "ran"), "a"))
+        booted = nil
+        groups = nil
+
+        with_child_rspec_world do
+          booted = a_runner.preload([spec])
+          groups = RSpec.world.example_groups.size
+        end
+
+        expect([booted.class, booted.preloaded?, groups])
+          .to eq([described_class::Preloaded, true, 1])
       end
     end
 
-    it "keeps the requested file order for the groups it keeps" do
+    it "raises PreloadError when a spec file fails to load" do
       Dir.mktmpdir do |dir|
-        marker = File.join(dir, "ran")
-        first = write_spec(dir, "a_spec.rb", recording_spec("child runner preload order a", marker, "a"))
-        second = write_spec(dir, "b_spec.rb", recording_spec("child runner preload order b", marker, "b"))
+        spec = write_spec(dir, "broken_spec.rb", %(raise "load boom"\n))
+        raised = nil
 
         with_child_rspec_world do
-          host.preload_environment([first, second])
-          host.run_rspec_runner([second, first])
+          a_runner.preload([spec])
+        rescue Henitai::Integration::RspecChildRunner::PreloadError => e
+          raised = e.message
         end
 
-        expect(ran_tags(marker)).to eq(%w[b a])
+        expect(raised).to eq("the spec files failed to load")
+      end
+    end
+  end
+
+  describe "#rspec_loaded_cleanly?" do
+    it "is true once every spec file loaded" do
+      Dir.mktmpdir do |dir|
+        spec = write_spec(dir, "passing_spec.rb", recording_spec("child runner loaded", File.join(dir, "ran"), "a"))
+        boot = a_runner
+
+        loaded, = with_child_rspec_world do
+          boot.preload([spec])
+          boot.rspec_loaded_cleanly?
+        end
+
+        expect(loaded).to be(true)
+      end
+    end
+
+    it "is false when RSpec wants to quit" do
+      loaded, = with_child_rspec_world do
+        RSpec.world.wants_to_quit = true
+        runner.rspec_loaded_cleanly?
+      end
+
+      expect(loaded).to be(false)
+    end
+
+    it "is false when RSpec is quitting" do
+      loaded, = with_child_rspec_world do
+        RSpec.world.rspec_is_quitting = true
+        runner.rspec_loaded_cleanly?
+      end
+
+      expect(loaded).to be(false)
+    end
+  end
+
+  # The fork server boots the environment once and hands the loaded runner to
+  # every forked mutant process (ADR-15); it must not run a single test itself.
+  describe "the fork-server boot" do
+    subject(:integration) { Henitai::Integration::Rspec.new }
+
+    it "loads the spec files without running a single example" do
+      Dir.mktmpdir do |dir|
+        marker = File.join(dir, "ran")
+        spec = write_spec(dir, "passing_spec.rb", recording_spec("preload boot", marker, "a"))
+        groups = nil
+
+        with_child_rspec_world do
+          integration.preload_environment([spec])
+          groups = RSpec.world.example_groups.size
+        end
+
+        expect([groups, ran_tags(marker)]).to eq([1, []])
+      end
+    end
+
+    it "raises PreloadError when a spec file fails to load" do
+      Dir.mktmpdir do |dir|
+        spec = write_spec(dir, "broken_spec.rb", %(raise "load boom"\n))
+        raised = nil
+
+        with_child_rspec_world do
+          integration.preload_environment([spec])
+        rescue Henitai::Integration::RspecPreload::PreloadError => e
+          raised = e.message
+        end
+
+        expect(raised).to eq("the spec files failed to load")
       end
     end
   end
