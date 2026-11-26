@@ -44,7 +44,7 @@ first, so stopping there captures most of the benefit of that ordering.
 
 1. **Red.** RSpec child runner spec: the configured runner has
    `fail_fast == 1`.
-2. **Green.** Set it in `configure_rspec_runner`
+2. **Green.** Set it in `RspecChildRunner#run_specs`
    (`lib/henitai/integration/rspec_child_runner.rb`).
 3. **Red.** Minitest test runner spec: with two failing files selected, the
    second file's tests do not run; the recorded outcome lists only the first

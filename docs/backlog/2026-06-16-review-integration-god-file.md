@@ -24,7 +24,7 @@ logic that the architecture docs claim to enforce.
   `CoverageRuntimeSuppressors` and `Integration::Minitest`. The Minitest copy
   (line 899) duplicates the `CoverageRuntimeSuppressors` version verbatim.
 - `ChildDebugSupport` (line 116) holds RSpec-specific methods
-  (`run_rspec_runner`, `build_rspec_runner`, `configure_rspec_runner`,
+  (`run`, `build_runner`, `configure_runner`,
   `load_rspec_spec_files`) yet is mixed into the shared `Base` (line 330),
   contaminating every integration including Minitest.
 

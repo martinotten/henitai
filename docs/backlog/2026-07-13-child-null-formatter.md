@@ -18,8 +18,8 @@ kill/survive is decided by the child's exit status.
 ## Proposed Behavior
 
 - In the forked mutant child (RSpec path: `RspecChildRunner`), configure a
-  null/quiet formatter instead of the default progress formatter before
-  `run_specs`, so per-example notification fan-out is skipped.
+  null/quiet formatter instead of the default progress formatter, so
+  per-example notification fan-out is skipped.
 - Keep full output for the *baseline* run and for the coverage bootstrap
   suite run — those logs are user-facing diagnostics.
 - Keep failure output available: on a survived-unexpectedly or debug case
