@@ -533,6 +533,24 @@ RSpec.describe Henitai::CLI do
     end
   end
 
+  {
+    "a path with separators" => "nested/session",
+    "a dot segment" => ".",
+    "an empty string" => "",
+    "an array" => ["S1"]
+  }.each do |description, session_id|
+    it "uses the original survivor report when the session ID is #{description}" do
+      Dir.mktmpdir do |dir|
+        report_dir = File.join(dir, "reports")
+        FileUtils.mkdir_p(report_dir)
+        files = { "a.rb" => { "sessionId" => session_id, "mutants" => [] } }
+        report_path, = write_survivors_from_fixture(report_dir:, session_id:, files:)
+
+        expect(survivors_from_passed_to_runner(dir, report_path)).to eq(report_path)
+      end
+    end
+  end
+
   it "uses the canonical report itself when its files stem from different sessions" do
     Dir.mktmpdir do |dir|
       files = { "a.rb" => { "sessionId" => "S1", "mutants" => [] }, "b.rb" => { "sessionId" => "S2", "mutants" => [] } }
