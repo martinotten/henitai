@@ -72,6 +72,15 @@ Concretely:
 - Survivor reruns no longer skip survivors on a git heuristic; they use the
   reuse rules of ADR-11 (`SurvivorTestFilter` was removed).
 
+## Amendment (report trust boundary)
+
+Survivor reruns always select by stable ID from mutants generated from the
+current project. Henitai no longer writes or reads activation recipes. A
+companion recipe could supply Ruby source, its lexical owner, and a source
+file path, while the Git change check only measured project source drift.
+Canonical reports can still select an existing session snapshot, which
+provides survivor IDs through the same data-only loader.
+
 ## Related Documents
 
 - [Architecture overview](../architecture.md)

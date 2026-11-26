@@ -1021,10 +1021,7 @@ module Henitai
 
       def write_canonical: (Hash[Symbol, untyped], authoritative: bool) -> void
       def write_session_snapshot: (Hash[Symbol, untyped]) -> void
-      def write_activation_recipes: (untyped) -> void
-      def survived_mutants_for: (untyped) -> Array[Mutant]
       def session_snapshot_path: (String) -> String
-      def session_recipe_path: (String) -> String
       def write_history_report: () -> void
       def default_history_store: () -> MutantHistoryStore
       def history_report_path: () -> String
@@ -1199,14 +1196,6 @@ module Henitai
     def drift_warning?: () -> bool
   end
 
-  class SurvivorActivationCache
-    FILENAME: String
-
-    def self.compute: (Array[Mutant]) -> Hash[String, Hash[String, untyped]]
-    def self.load: (String) -> Hash[String, Hash[String, untyped]]?
-    def self.write: (String, Hash[String, Hash[String, untyped]]) -> void
-  end
-
   class RunnerDependencies
     def initialize: (config: untyped) -> void
     def subject_resolver: () -> untyped
@@ -1322,27 +1311,14 @@ module Henitai
   class SurvivorRerunStrategy
     attr_reader survivor_stats: Hash[Symbol, untyped]?
 
-    def initialize: (survivors_from: String?, config: Configuration, git_diff_analyzer: untyped) -> void
+    def initialize: (survivors_from: String?, config: Configuration) -> void
     def active?: () -> bool
-    def try_recipe_run: () -> Array[Mutant]?
     def apply_selection: (Array[Mutant], ?reuse_filter: IncrementalFilter?) -> Array[Mutant]
 
     private
 
     def load_survivor_report: () -> SurvivorLoader::Report
-    def run_from_recipes: (SurvivorLoader::Report) -> Array[Mutant]?
-    def recipe_fast_path_safe?: (SurvivorLoader::Report) -> bool
-    def recipe_selector_and_stubs: (Array[String], Hash[String, Hash[String, untyped]]) -> [SurvivorSelector, Array[Mutant]]
-    def load_activation_recipes: (Array[String]) -> Hash[String, Hash[String, untyped]]?
-    def build_stub_mutant: (String, Hash[String, untyped]) -> Mutant
-    def stub_subject_from_recipe: (Hash[String, untyped]) -> Subject
-    def recipe_location: (Hash[String, untyped]?) -> Hash[Symbol, untyped]
     def finalize_selection: (SurvivorSelector, Array[Mutant]) -> Array[Mutant]
-    def dirty_worktree_changed_files: () -> Array[String]?
-    def dirty_source_files?: (Array[String]?, ?git_sha: String?) -> bool
-    def committed_changed_files: (String?) -> Array[String]
-    def in_include_root?: (String, Array[String]) -> bool
-    def normalize_path: (String) -> String
     def warn_survivor_drift: (SurvivorSelector) -> void
     def build_survivor_stats: (SurvivorSelector, Array[Mutant]) -> Hash[Symbol, untyped]
   end
