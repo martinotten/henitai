@@ -57,12 +57,7 @@ module Henitai
 
     # Entry point — runs the full pipeline and returns a Result.
     #
-    # Fast path (recipe rerun): when +--survivors-from+ is given and an
-    # +activation-recipes.json+ file exists beside the report with entries for
-    # all survivor IDs, stub Mutants are built from the recipes and the full
-    # source-parse / mutant-generation pipeline is skipped entirely.
-    #
-    # Normal path: Coverage bootstrap (Gate 0) runs in a background thread so
+    # Coverage bootstrap (Gate 0) runs in a background thread so
     # that Gate 1 (subject resolution) and Gate 2 (mutant generation) proceed
     # concurrently. The thread is joined before Gate 3 (static filtering).
     #
@@ -83,14 +78,6 @@ module Henitai
     # Gates 0–3 only: coverage bootstrap, subject resolution, generation and
     # static/skip/arid/stillborn filtering — everything short of execution.
     def pipeline_mutants
-      if survivor_rerun? && (fast_mutants = survivor_strategy.try_recipe_run)
-        @recipe_run = true
-        # Gate 0 still runs: test selection reads the per-test map, which must
-        # include new or edited tests.
-        bootstrap_coverage(fast_mutants.filter_map { |mutant| mutant.subject.source_file }.uniq)
-        return fast_mutants
-      end
-
       capture_provenance unless @dry_run
       source_files = self.source_files
       subjects = resolve_subjects(source_files)
@@ -151,8 +138,7 @@ module Henitai
     def reuse_filter = deps.reuse_filter
 
     # Before Gate 1 parses anything: what the run may parse, load or execute
-    # (ADR-19). Dry runs record nothing, and the recipe fast path's stubs are
-    # never cacheable, so neither captures.
+    # (ADR-19). Dry runs record nothing.
     def capture_provenance
       deps.capture_provenance(source_files + Array(integration.test_files))
     end
@@ -291,11 +277,10 @@ module Henitai
       @progress_reporter = deps.progress_reporter(full_run: full_run?, history_checkpointer:)
     end
 
-    # Recipe stubs are never cacheable, so the fast path checkpoints nothing.
     def history_checkpointer
       return @history_checkpointer if defined?(@history_checkpointer)
 
-      @history_checkpointer = @recipe_run ? nil : deps.history_checkpointer(run_id:)
+      @history_checkpointer = deps.history_checkpointer(run_id:)
     end
 
     def run_id = @run_id ||= SecureRandom.uuid
@@ -330,8 +315,7 @@ module Henitai
     def survivor_strategy
       @survivor_strategy ||= SurvivorRerunStrategy.new(
         survivors_from: @survivors_from,
-        config:,
-        git_diff_analyzer:
+        config:
       )
     end
   end

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Survivor reruns generate mutants from the current project and use the prior
+  report to select survivor IDs. Henitai no longer reads or writes
+  `activation-recipes.json`, which could supply executable Ruby to a rerun.
+
 ## [0.7.0] - 2026-11-24
 
 Minor release. Interrupted runs can be resumed, `jobs: 1` runs through the

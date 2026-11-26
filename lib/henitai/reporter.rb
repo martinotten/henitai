@@ -352,7 +352,6 @@ module Henitai
         schema = result.to_stryker_schema
         write_canonical(schema, authoritative: authoritative?(result))
         write_session_snapshot(schema)
-        write_activation_recipes(result)
         write_history_report
       end
 
@@ -371,31 +370,8 @@ module Henitai
         File.write(path, JSON.pretty_generate(schema))
       end
 
-      def write_activation_recipes(result)
-        session_id = result.session_id if result.respond_to?(:session_id)
-        return unless session_id
-
-        survived = survived_mutants_for(result)
-        return if survived.empty?
-
-        recipes = SurvivorActivationCache.compute(survived)
-        return if recipes.empty?
-
-        SurvivorActivationCache.write(session_recipe_path(session_id), recipes)
-      end
-
-      def survived_mutants_for(result)
-        return [] unless result.respond_to?(:mutants)
-
-        result.mutants.select(&:survived?)
-      end
-
       def session_snapshot_path(session_id)
         File.join(config.reports_dir, "sessions", session_id, "mutation-report.json")
-      end
-
-      def session_recipe_path(session_id)
-        File.join(config.reports_dir, "sessions", session_id, SurvivorActivationCache::FILENAME)
       end
 
       def write_history_report

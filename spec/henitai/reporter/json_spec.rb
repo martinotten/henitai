@@ -2,7 +2,7 @@
 
 # Reporter integration examples naturally use a compact fixture helper and
 # multiple assertions against the produced artifacts.
-# rubocop:disable Metrics/MethodLength, RSpec/MultipleExpectations, RSpec/ExampleLength
+# rubocop:disable Metrics/MethodLength, RSpec/MultipleExpectations
 
 require "fileutils"
 require "json"
@@ -222,81 +222,6 @@ RSpec.describe Henitai::Reporter::Json do
     end
   end
 
-  it "writes activation-recipes.json to the session directory for survived mutants" do
-    Dir.mktmpdir do |dir|
-      reports_dir = File.join(dir, "reports")
-      session_id  = "sess-xyz"
-
-      survived = instance_double(
-        Henitai::Mutant,
-        survived?: true,
-        stable_id: "stable-abc",
-        mutated_source: "1 + 0",
-        subject: instance_double(
-          Henitai::Subject,
-          namespace: "Foo",
-          method_name: "bar",
-          method_type: :instance,
-          source_file: "lib/foo.rb"
-        ),
-        operator: "ArithmeticOperator",
-        description: "+ to -",
-        location: { file: "lib/foo.rb", start_line: 1, end_line: 1, start_col: 0, end_col: 5 },
-        covered_by: []
-      )
-      allow(Henitai::Mutant::Activator)
-        .to receive(:activation_for).with(survived)
-        .and_return(Henitai::Mutant::Activation.new(source: "define_method(:bar) do\n  nil\nend\n", mode: :class_eval))
-
-      result = Struct.new(:to_stryker_schema, :session_id, :mutants).new(
-        {
-          schemaVersion: "1.0",
-          sessionId: session_id,
-          thresholds: { high: 80, low: 60 },
-          files: {}
-        },
-        session_id,
-        [survived]
-      )
-
-      described_class.new(config: build_config(reports_dir:)).report(result)
-
-      recipe_path = File.join(
-        reports_dir, "sessions", session_id,
-        Henitai::SurvivorActivationCache::FILENAME
-      )
-      expect(File).to exist(recipe_path)
-      recipes = JSON.parse(File.read(recipe_path))
-      expect(recipes["stable-abc"]["activation"]["source"]).to eq("define_method(:bar) do\n  nil\nend\n")
-    end
-  end
-
-  it "does not create an activation-recipes.json when there are no survivors" do
-    Dir.mktmpdir do |dir|
-      reports_dir = File.join(dir, "reports")
-      session_id  = "sess-no-survivors"
-
-      result = Struct.new(:to_stryker_schema, :session_id, :mutants).new(
-        {
-          schemaVersion: "1.0",
-          sessionId: session_id,
-          thresholds: { high: 80, low: 60 },
-          files: {}
-        },
-        session_id,
-        []
-      )
-
-      described_class.new(config: build_config(reports_dir:)).report(result)
-
-      recipe_path = File.join(
-        reports_dir, "sessions", session_id,
-        Henitai::SurvivorActivationCache::FILENAME
-      )
-      expect(File).not_to exist(recipe_path)
-    end
-  end
-
   it "writes mutation-history.json from an injected history store" do
     Dir.mktmpdir do |dir|
       reports_dir = File.join(dir, "nested", "reports")
@@ -386,4 +311,4 @@ RSpec.describe Henitai::Reporter::Json do
     end
   end
 end
-# rubocop:enable Metrics/MethodLength, RSpec/MultipleExpectations, RSpec/ExampleLength
+# rubocop:enable Metrics/MethodLength, RSpec/MultipleExpectations
