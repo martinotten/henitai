@@ -31,14 +31,15 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
     )
   end
 
-  # Runs the block with RSpec's globals swapped for a fresh world and
-  # configuration, the nested run's output captured, and the INT trap it
-  # installs restored afterwards. Returns the block's value, the sandboxed
-  # configuration and the captured output.
+  # Runs the block with a fresh RSpec world and configuration and captures its
+  # output. Clear SPEC_OPTS so the outer suite's options cannot override a
+  # fixture project's .rspec. Restore the INT trap and preload's worker setting.
   def with_child_rspec_world(&block)
     captured = StringIO.new
     original_streams = [$stdout, $stderr]
     previous_int_handler = Signal.trap("INT", "DEFAULT")
+    previous_spec_opts = ENV.delete("SPEC_OPTS")
+    previous_parallel_workers = ENV.fetch("PARALLEL_WORKERS", nil)
     $stdout = captured
     $stderr = captured
     result, configuration = sandboxed_run(&block)
@@ -46,6 +47,20 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
   ensure
     $stdout, $stderr = original_streams
     Signal.trap("INT", previous_int_handler) if previous_int_handler
+    set_env("SPEC_OPTS", previous_spec_opts)
+    set_env("PARALLEL_WORKERS", previous_parallel_workers)
+  end
+
+  def with_env(key, value)
+    original = ENV.fetch(key, nil)
+    set_env(key, value)
+    yield
+  ensure
+    set_env(key, original)
+  end
+
+  def set_env(key, value)
+    value.nil? ? ENV.delete(key) : ENV[key] = value
   end
 
   def sandboxed_run
@@ -148,11 +163,14 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
         File.write(File.join(dir, ".rspec"), "--format documentation\n")
         spec = write_spec(dir, "passing_spec.rb", recording_spec("child runner formatter", File.join(dir, "ran"), "a"))
 
-        _, _, output = with_child_rspec_world do
-          Dir.chdir(dir) { runner.run([spec]) }
-        end
+        with_env("SPEC_OPTS", "--format progress") do
+          _, _, output = with_child_rspec_world do
+            Dir.chdir(dir) { runner.run([spec]) }
+          end
 
-        expect(output.lines.first(3)).to eq(["\n", "child runner formatter\n", "  runs\n"])
+          expect([output.lines.first(3), ENV.fetch("SPEC_OPTS", nil)])
+            .to eq([["\n", "child runner formatter\n", "  runs\n"], "--format progress"])
+        end
       end
     end
 
@@ -244,7 +262,10 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
         first = write_spec(dir, "a_spec.rb", recording_spec("child runner ordered a", marker, "a"))
         second = write_spec(dir, "b_spec.rb", recording_spec("child runner ordered b", marker, "b"))
 
-        with_child_rspec_world { runner.run([second, first]) }
+        with_child_rspec_world do
+          RSpec.configuration.register_ordering(:global, &:reverse)
+          runner.run([second, first])
+        end
 
         expect(ran_tags(marker)).to eq(%w[b a])
       end
@@ -338,12 +359,12 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
       end
 
       it "knows it was booted, while a fresh runner does not" do
-        with_child_rspec_world do
-          booted = a_runner.preload([])
-          [booted.preloaded?, a_runner.preloaded?]
+        preloaded_states, = with_child_rspec_world do
+          booted = runner.preload([])
+          [booted.preloaded?, runner.preloaded?]
         end
 
-        expect(a_runner.preloaded?).to be(false)
+        expect(preloaded_states).to eq([true, false])
       end
     end
   end
@@ -420,11 +441,14 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
   describe "the fork-server boot" do
     subject(:integration) { Henitai::Integration::Rspec.new }
 
-    around do |example|
-      original = ENV.fetch("PARALLEL_WORKERS", nil)
-      example.run
-    ensure
-      original.nil? ? ENV.delete("PARALLEL_WORKERS") : ENV["PARALLEL_WORKERS"] = original
+    [nil, "sentinel"].each do |original|
+      it "restores PARALLEL_WORKERS after preload when it was #{original.nil? ? 'unset' : 'set'}" do
+        with_env("PARALLEL_WORKERS", original) do
+          with_child_rspec_world { integration.preload_environment([]) }
+
+          expect(ENV.fetch("PARALLEL_WORKERS", nil)).to eq(original)
+        end
+      end
     end
 
     it "loads the spec files without running a single example" do
