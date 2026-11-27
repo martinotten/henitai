@@ -109,11 +109,19 @@ RSpec.describe Henitai::ForkServer::Launcher, :aggregate_failures do
         .to eq(%w[from-request m1])
     end
 
-    it "exports only the mutant id when the request carries no environment" do
-      run_child_work(launcher, request.except("env"))
+    it "keeps the run's mutant id when the request env would overwrite it" do
+      run_child_work(launcher, request.merge("env" => { "HENITAI_MUTANT_ID" => "from-request" }))
 
       expect(ENV.fetch("HENITAI_MUTANT_ID")).to eq("m1")
-      expect(ENV).not_to have_key("HENITAI_SPEC_PROBE")
+    end
+
+    it "leaves the inherited environment alone when the request carries none" do
+      ENV["HENITAI_SPEC_PROBE"] = "inherited"
+
+      run_child_work(launcher, request.except("env"))
+
+      expect([ENV.fetch("HENITAI_SPEC_PROBE"), ENV.fetch("HENITAI_MUTANT_ID")])
+        .to eq(%w[inherited m1])
     end
 
     it "exits with the status the tests ended in" do
