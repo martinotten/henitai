@@ -102,17 +102,13 @@ RSpec.describe Henitai::ForkServer::Launcher, :aggregate_failures do
       expect(integration).to have_received(:run_in_child).with(hash_including(test_files: []))
     end
 
-    it "exports the request's environment and the mutant id to the child" do
-      run_child_work
+    it "applies the request's environment, but the run's mutant id wins a conflict" do
+      env = request.fetch("env").merge("HENITAI_MUTANT_ID" => "from-env")
+
+      run_child_work(launcher, request.merge("env" => env))
 
       expect([ENV.fetch("HENITAI_SPEC_PROBE"), ENV.fetch("HENITAI_MUTANT_ID")])
         .to eq(%w[from-request m1])
-    end
-
-    it "keeps the run's mutant id when the request env would overwrite it" do
-      run_child_work(launcher, request.merge("env" => { "HENITAI_MUTANT_ID" => "from-request" }))
-
-      expect(ENV.fetch("HENITAI_MUTANT_ID")).to eq("m1")
     end
 
     it "leaves the inherited environment alone when the request carries none" do
