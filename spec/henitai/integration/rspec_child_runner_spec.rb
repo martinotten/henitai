@@ -442,11 +442,14 @@ RSpec.describe Henitai::Integration::RspecChildRunner do
     subject(:integration) { Henitai::Integration::Rspec.new }
 
     [nil, "sentinel"].each do |original|
-      it "restores PARALLEL_WORKERS after preload when it was #{original.nil? ? 'unset' : 'set'}" do
+      it "sets and restores PARALLEL_WORKERS when initially #{original.nil? ? 'unset' : 'set'}" do
         with_env("PARALLEL_WORKERS", original) do
-          with_child_rspec_world { integration.preload_environment([]) }
+          preloaded_workers, = with_child_rspec_world do
+            integration.preload_environment([])
+            ENV.fetch("PARALLEL_WORKERS", nil)
+          end
 
-          expect(ENV.fetch("PARALLEL_WORKERS", nil)).to eq(original)
+          expect([preloaded_workers, ENV.fetch("PARALLEL_WORKERS", nil)]).to eq(["1", original])
         end
       end
     end
